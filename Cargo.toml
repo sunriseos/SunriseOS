@@ -1,0 +1,4 @@
+[package]
+authors = ["roblabla <unfiltered@roblab.la>"]
+name = "kfs"
+version = "0.1.0"
