@@ -1,5 +1,5 @@
 ENTRY(start)
-OUTPUT_FORMAT(elf64-x86-64)
+OUTPUT_FORMAT(elf-i386)
 
 SECTIONS {
 	. = 1M;

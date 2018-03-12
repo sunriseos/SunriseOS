@@ -1,9 +1,21 @@
-#![feature(lang_items, start, asm, global_asm)]
+#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib)]
 #![no_std]
 #![no_main]
 
+extern crate compiler_builtins;
+
 fn main() {
-    
+    let hello = b"Hello World!";
+    let color_byte = 0x1f; // white foreground, blue background
+
+    let mut hello_colored = [color_byte; 24];
+    for (i, char_byte) in hello.into_iter().enumerate() {
+        hello_colored[i*2] = *char_byte;
+    }
+
+    // write `Hello World!` to the center of the VGA text buffer
+    let buffer_ptr = (0xb8000 + 1988) as *mut _;
+    unsafe { *buffer_ptr = hello_colored };
 }
 
 #[no_mangle]
