@@ -1,0 +1,20 @@
+[tasks.iso]
+description = "Creates a bootable ISO containing the kernel and grub."
+dependencies = ["build"]
+script = [
+'''
+cp target/i386-unknown-none/debug/kfs isofiles/boot/kernel.bin
+grub-mkrescue -o os.iso isofiles
+'''
+]
+
+[tasks.build]
+description = "Runs the rust compiler."
+command = "xargo"
+args = ["build", "--target=i386-unknown-none", "--bin=kfs"]
+
+[tasks.qemu]
+description = "Runs the bootable ISO in qemu."
+dependencies = ["iso"]
+command = "qemu-system-i386"
+args = ["-cdrom", "os.iso"]
