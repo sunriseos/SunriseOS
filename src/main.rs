@@ -18,30 +18,15 @@ mod print;
 use print::*;
 
 fn main() {
-    //let hello = b"Hello World!";
-    //let color_byte = 0x1f; // white foreground, blue background
-
-    //let mut hello_colored = [color_byte; 24];
-    //for (i, char_byte) in hello.into_iter().enumerate() {
-    //    hello_colored[i*2] = *char_byte;
-    //}
-
-    // write `Hello World!` to the center of the VGA text buffer
-    //let buffer_ptr = (0xb8000 + 1988) as *mut _;
-    //unsafe { *buffer_ptr = hello_colored };
-    let mut printer = Print::new();
-    printer.println(b"Hello world!      ".as_ascii_str().expect("ASCII"));
-    printer.println(b"the cake is a lie\nand so is love".as_ascii_str().expect("ASCII"));
-    printer.println(b"A very long line that goes like this : Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed non risus. Suspendisse lectus tortor, dignissim sit amet, adipiscing nec, ultricies sed, dolor.".as_ascii_str().expect("ASCII"));
-    printer.println(b"Let's count now :\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20".as_ascii_str().expect("ASCII"));
-    printer.print_attr(b"Whoah, nice color".as_ascii_str().expect("ASCII"),
-                       PrintAttribute::new(Color::Pink, Color::Cyan, false));
-    printer.print_attr(b"such blink".as_ascii_str().expect("ASCII"),
-                       PrintAttribute::new(Color::Magenta, Color::LightGreen, true));
-    printer.print_attr(b"such blink".as_ascii_str().expect("ASCII"),
-                       PrintAttribute::new(Color::White, Color::Black, true));
-    printer.print_attr(b"such blink".as_ascii_str().expect("ASCII"),
-                       PrintAttribute::new(Color::White, Color::Black, false));
+    Printer::println(b"Hello world!      ".as_ascii_str().expect("ASCII"));
+    Printer::println(b"the cake is a lie\nand so is love".as_ascii_str().expect("ASCII"));
+    Printer::println(b"A very long line that goes like this : Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed non risus. Suspendisse lectus tortor, dignissim sit amet, adipiscing nec, ultricies sed, dolor.".as_ascii_str().expect("ASCII"));
+    Printer::println_attr(b"Whoah, nice color".as_ascii_str().expect("ASCII"),
+                                  PrintAttribute::new(Color::Pink, Color::Cyan, false));
+    Printer::println_attr(b"such hues".as_ascii_str().expect("ASCII"),
+                                  PrintAttribute::new(Color::Magenta, Color::LightGreen, true));
+    Printer::println_attr(b"very polychromatic".as_ascii_str().expect("ASCII"),
+                           PrintAttribute::new(Color::Yellow, Color::Pink, true));
 }
 
 #[cfg(target_os = "none")]
