@@ -4,3 +4,7 @@
 Cargo.lock
 isofiles/boot/kernel.bin
 os.iso
+.idea
+/CMakeLists.txt
+/kfs.iml
+/cmake-build-debug
