@@ -1,4 +1,12 @@
-#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib)]
+//! KFS
+//!
+//! A small kernel written in rust for shit and giggles. Also, hopefully the
+//! last project I'll do before graduating from 42 >_>'.
+//!
+//! Currently doesn't do much, besides booting and printing Hello World on the
+//! screen. But hey, that's a start.
+
+#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, repr_transparent, naked_functions)]
 #![cfg_attr(target_os = "none", no_std)]
 #![cfg_attr(target_os = "none", no_main)]
 
@@ -29,9 +37,22 @@ fn main() {
                            PrintAttribute::new(Color::Yellow, Color::Pink, true));
 }
 
+#[no_mangle]
+pub static mut STACK: [u8; 4096 * 4] = [0; 4096 * 4];
+
 #[cfg(target_os = "none")]
 #[no_mangle]
-pub extern fn start() -> ! {
+#[naked]
+pub unsafe extern fn start() -> ! {
+    asm!("lea eax, STACK" : : : : "intel");
+    asm!("add eax, 16383" : : : : "intel");
+    common_start();
+}
+
+/// CRT0 starts here.
+#[cfg(target_os = "none")]
+#[no_mangle]
+extern "C" fn common_start() -> ! {
     // Do whatever is necessary to have a proper environment here.
     main();
     // Die !
@@ -47,7 +68,7 @@ pub extern fn start() -> ! {
 #[cfg(target_os = "none")]
 #[lang = "panic_fmt"] #[no_mangle] pub extern fn panic_fmt() -> ! { loop {} }
 
-#[repr(packed)]
+#[repr(C, packed)]
 #[allow(dead_code)]
 pub struct MultiBootHeader {
     magic: u32,
