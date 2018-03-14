@@ -1,5 +1,5 @@
 [package]
-authors = ["roblabla <unfiltered@roblab.la>"]
+authors = ["roblabla <unfiltered@roblab.la>", "orycterope <tvermeilh@gmail.com>"]
 name = "kfs"
 version = "0.1.0"
 
