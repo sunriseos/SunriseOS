@@ -13,9 +13,11 @@
 #[cfg(not(target_os = "none"))]
 use std as core;
 
+extern crate arrayvec;
+extern crate ascii;
+extern crate bit_field;
 #[cfg(target_os = "none")]
 extern crate compiler_builtins;
-extern crate ascii;
 #[macro_use]
 extern crate lazy_static;
 extern crate spin;
@@ -24,6 +26,9 @@ use ascii::AsAsciiStr;
 
 mod print;
 use print::*;
+
+mod i386;
+mod gdt;
 
 fn main() {
     Printer::println(b"Hello world!      ".as_ascii_str().expect("ASCII"));
@@ -54,6 +59,10 @@ pub unsafe extern fn start() -> ! {
 #[no_mangle]
 extern "C" fn common_start() -> ! {
     // Do whatever is necessary to have a proper environment here.
+
+    // Set up (read: inhibit) the GDT.
+    gdt::init_gdt();
+
     main();
     // Die !
     #[cfg(target_os = "none")]
