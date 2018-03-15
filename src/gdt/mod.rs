@@ -11,6 +11,7 @@ use bit_field::BitField;
 
 use super::i386::PrivilegeLevel;
 
+#[link_section = ".gdt"]
 static GDT: Once<Gdt> = Once::new();
 
 pub fn init_gdt() {
