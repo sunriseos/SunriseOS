@@ -15,7 +15,7 @@ pub mod instructions {
             /// Size of the DT.
             pub limit: u16,
             /// Pointer to the memory region containing the DT.
-            pub base: u64,
+            pub base: u32,
         }
 
         /// Load GDT table.

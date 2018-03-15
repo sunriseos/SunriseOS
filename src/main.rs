@@ -23,9 +23,10 @@ extern crate lazy_static;
 extern crate spin;
 
 use ascii::AsAsciiStr;
+use core::fmt::Write;
 
 mod print;
-use print::*;
+pub use print::*;
 
 mod i386;
 mod gdt;
@@ -75,7 +76,20 @@ extern "C" fn common_start() -> ! {
 #[lang = "eh_personality"] #[no_mangle] pub extern fn eh_personality() {}
 
 #[cfg(target_os = "none")]
-#[lang = "panic_fmt"] #[no_mangle] pub extern fn panic_fmt() -> ! { loop {} }
+#[lang = "panic_fmt"] #[no_mangle]
+pub extern fn panic_fmt(msg: core::fmt::Arguments,
+                        file: &'static str,
+                        line: u32,
+                        column: u32) -> ! {
+
+    let _ = writeln!(Printer, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\
+                               ! Panic! at the disco\n\
+                               ! file {} - line {} - col {}\n\
+                               ! {}\n\
+                               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+                     file, line, column, msg);
+    loop { }
+}
 
 #[repr(C, packed)]
 #[allow(dead_code)]

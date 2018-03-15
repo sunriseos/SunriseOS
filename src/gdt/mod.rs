@@ -63,7 +63,7 @@ impl Gdt {
         use core::mem::size_of;
 
         let ptr = DescriptorTablePointer {
-            base: self.table.as_ptr() as u64,
+            base: self.table.as_ptr() as u32,
             limit: (self.table.len() * size_of::<u64>() - 1) as u16,
         };
 

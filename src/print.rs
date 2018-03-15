@@ -65,7 +65,7 @@ impl Default for PrintAttribute {
 
 /// A class managing the VGA compatible text mode
 /// (see [wikipedia page](https://en.wikipedia.org/wiki/VGA-compatible_text_mode))
-pub struct PrinterInternal {
+struct PrinterInternal {
     pos: (usize, usize), // (y, x)
     buffer: &'static mut [u16]
 }
@@ -127,7 +127,7 @@ impl PrinterInternal {
     }
 
     /// Prints a string to the screen with attributes
-    pub fn print_attr(&mut self, string: &AsciiStr, attr: PrintAttribute) {
+    fn print_attr(&mut self, string: &AsciiStr, attr: PrintAttribute) {
         let slice = string.as_bytes();
 
         // TODO check max len

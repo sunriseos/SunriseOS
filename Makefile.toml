@@ -21,3 +21,17 @@ description = "Runs the bootable ISO in qemu."
 dependencies = ["iso"]
 command = "qemu-system-i386"
 args = ["-cdrom", "os.iso"]
+
+[tasks.qemu-vnc]
+description = "Runs the bootable ISO in qemu in vnc mode."
+dependencies = ["iso"]
+command = "qemu-system-i386"
+args = ["-cdrom", "os.iso", "-vnc", ":0"]
+
+[tasks.vb]
+description = "Fait tourner qemu sur le PC de l'animal bizarre"
+script = [
+'''
+scp -r Makefile.toml Cargo.toml src root@192.168.56.101:/root/workspace/kfs
+ssh root@192.168.56.101 -t 'cd workspace/kfs ; exec ~/.cargo/bin/cargo make qemu-vnc'
+''']
