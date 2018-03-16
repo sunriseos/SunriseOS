@@ -69,3 +69,50 @@ impl PrivilegeLevel {
         }
     }
 }
+
+/// The Task State Segment (TSS) is a special data structure for x86 processors which holds
+/// information about a task. The TSS is primarily suited for hardware multitasking,
+/// where each individual process has its own TSS.
+/// ([see OSDEV](https://wiki.osdev.org/TSS))
+#[repr(C, packed)]
+#[derive(Copy, Clone, Debug, Default)]
+pub struct TssStruct {
+    _reserved1: u16,
+    link:       u16,
+    esp0:       u32,
+    _reserved2: u16,
+    ss0:        u16,
+    esp1:       u32,
+    _reserved3: u16,
+    ss1:        u16,
+    esp2:       u32,
+    _reserved4: u16,
+    ss2:        u16,
+    cr3:        u32,
+    eip:        u32,
+    eflags:     u32,
+    eax:        u32,
+    ecx:        u32,
+    edx:        u32,
+    ebx:        u32,
+    esp:        u32,
+    ebp:        u32,
+    esi:        u32,
+    edi:        u32,
+    _reserved5: u16,
+    es:         u16,
+    _reserved6: u16,
+    cs:         u16,
+    _reserved7: u16,
+    ss:         u16,
+    _reserved8: u16,
+    ds:         u16,
+    _reserved9: u16,
+    fs:         u16,
+    _reserveda: u16,
+    gs:         u16,
+    _reservedb: u16,
+    ldtr:       u16,
+    iopboffset: u16,
+    _reservedc: u16,
+}

@@ -9,7 +9,7 @@ use spin::Once;
 use arrayvec::ArrayVec;
 use bit_field::BitField;
 
-use super::i386::PrivilegeLevel;
+use super::i386::{PrivilegeLevel, TssStruct};
 
 #[link_section = ".gdt"]
 static GDT: Once<Gdt> = Once::new();
@@ -17,6 +17,11 @@ static GDT: Once<Gdt> = Once::new();
 pub fn init_gdt() {
     let gdt = GDT.call_once(|| Gdt::new());
     gdt.load();
+}
+
+#[no_mangle]
+lazy_static! {
+    pub static ref TSS: TssStruct = Default::default();
 }
 
 /// A structure containing our GDT. We can have at most 8 segments, we should be
@@ -53,6 +58,7 @@ impl Gdt {
             false,
             PrivilegeLevel::Ring3,
         )); // Push a userland data segment
+        vec.push(GdtDescriptor::new_tss(&(*TSS) as *const TssStruct as u32));
         Gdt { table: vec }
     }
 
@@ -106,8 +112,19 @@ impl GdtDescriptor {
 
         gdt.0.set_bit(43, is_code);
         gdt.0.set_bits(45..47, priv_level as u64);
-        gdt.set_limit(limit);
+        gdt.set_limit(limit >> 12);
         gdt.set_base(base);
+        gdt
+    }
+
+    /// Creates a GDT descriptor pointing to a TSS segment
+    pub fn new_tss(base: u32) -> GdtDescriptor {
+
+        let mut gdt = Self::new(base, 0xffffffff, false, PrivilegeLevel::Ring0);
+
+        gdt.0.set_bit(55, false);
+        gdt.set_limit(::core::mem::size_of::<TssStruct>() as u32);
+
         gdt
     }
 
