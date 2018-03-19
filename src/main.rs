@@ -31,6 +31,7 @@ pub use print::*;
 mod i386;
 #[cfg(target_os = "none")]
 mod gdt;
+mod utils;
 
 fn main() {
     Printer::println(b"Hello world!      ".as_ascii_str().expect("ASCII"));
@@ -42,6 +43,8 @@ fn main() {
                                   PrintAttribute::new(Color::Magenta, Color::LightGreen, true));
     Printer::println_attr(b"very polychromatic".as_ascii_str().expect("ASCII"),
                            PrintAttribute::new(Color::Yellow, Color::Pink, true));
+
+    utils::print_stack();
 }
 
 #[no_mangle]
