@@ -29,6 +29,7 @@ mod print;
 pub use print::*;
 
 mod i386;
+#[cfg(target_os = "none")]
 mod gdt;
 
 fn main() {

@@ -16,7 +16,7 @@ static GDT: Once<Gdt> = Once::new();
 
 pub fn init_gdt() {
     let gdt = GDT.call_once(|| Gdt::new());
-    gdt.load();
+    gdt.load(0x8, 0x10, 0x18);
 }
 
 #[no_mangle]
@@ -49,6 +49,12 @@ impl Gdt {
         vec.push(GdtDescriptor::new(
             0,
             0xffffffff,
+            false,
+            PrivilegeLevel::Ring0,
+        )); // Push a kernel stack segment
+        vec.push(GdtDescriptor::new(
+            0,
+            0xffffffff,
             true,
             PrivilegeLevel::Ring3,
         )); // Push a userland code segment
@@ -59,12 +65,18 @@ impl Gdt {
             PrivilegeLevel::Ring3,
         )); // Push a userland data segment
         vec.push(GdtDescriptor::new_tss(&(*TSS) as *const TssStruct as u32));
+        vec.push(GdtDescriptor::new(
+            0,
+            0xffffffff,
+            false,
+            PrivilegeLevel::Ring3,
+        )); // Push a userland stack segment
         Gdt { table: vec }
     }
 
     // TODO: make this configurable
 
-    pub fn load(&'static self) {
+    pub fn load(&'static self, _new_cs: u16, new_ds: u16, new_ss: u16) {
         use i386::instructions::tables::{lgdt, DescriptorTablePointer};
         use core::mem::size_of;
 
@@ -73,7 +85,30 @@ impl Gdt {
             limit: (self.table.len() * size_of::<u64>() - 1) as u16,
         };
 
-        unsafe { lgdt(&ptr) };
+        // TODO: Figure out how to chose CS.
+        unsafe {
+            lgdt(&ptr);
+
+
+            // For some reason, I can only far jmp using AT&T syntax... Which
+            // makes me unbelievably sad. I should probably yell at LLVM for
+            // this one.
+            asm!("
+            // Reload CS through far jmp
+            ljmp $$0x8, $$reload_CS
+            reload_CS:");
+
+            asm!("
+            // Reload other selectors
+            MOV   AX, $0
+            MOV   DS, AX
+            MOV   ES, AX
+            MOV   FS, AX
+            MOV   GS, AX
+            MOV   AX, $1
+            MOV   SS, AX
+            " : : "r"(new_ds), "r"(new_ss) : "EAX" : "intel");
+        }
     }
 }
 
