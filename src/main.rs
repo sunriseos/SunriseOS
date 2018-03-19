@@ -51,8 +51,8 @@ pub static mut STACK: [u8; 4096 * 4] = [0; 4096 * 4];
 #[no_mangle]
 #[naked]
 pub unsafe extern fn start() -> ! {
-    asm!("lea eax, STACK" : : : : "intel");
-    asm!("add eax, 16383" : : : : "intel");
+    asm!("lea esp, STACK" : : : : "intel");
+    asm!("add esp, 16383" : : : : "intel");
     common_start();
 }
 
