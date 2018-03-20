@@ -41,3 +41,31 @@ pub fn print_stack() {
         print_hexdump(&::STACK[sp_start..]);
     }
 }
+
+pub trait BitArrayExt<U: ::bit_field::BitField>: ::bit_field::BitArray<U> {
+    fn set_bits_area(&mut self, range: ::core::ops::Range<usize>, value: bool) {
+        for i in range {
+            self.set_bit(i, value);
+        }
+    }
+}
+
+impl<T: ?Sized, U: ::bit_field::BitField> BitArrayExt<U> for T where T: ::bit_field::BitArray<U> {}
+
+/// Returns the index of the first zero in a bit array
+/// If no zero is found, returns bitarray.len(), which is outside the set of valid indexes
+pub fn bit_array_first_zero(bitarray: &[u8]) -> usize {
+    for (index, &byte) in bitarray.iter().enumerate() {
+        if byte == 0xFF {
+            continue;
+        }
+        // We've got a zero in this byte
+        for offset in 0..7 {
+            if (byte & (1 << offset)) == 0 {
+                return index * 8 + offset;
+            }
+        }
+    }
+    // not found
+    bitarray.len()
+}

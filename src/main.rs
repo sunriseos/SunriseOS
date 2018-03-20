@@ -6,7 +6,7 @@
 //! Currently doesn't do much, besides booting and printing Hello World on the
 //! screen. But hey, that's a start.
 
-#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, repr_transparent, naked_functions)]
+#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, repr_transparent, naked_functions, core_intrinsics)]
 #![cfg_attr(target_os = "none", no_std)]
 #![cfg_attr(target_os = "none", no_main)]
 
@@ -21,6 +21,7 @@ extern crate compiler_builtins;
 #[macro_use]
 extern crate lazy_static;
 extern crate spin;
+extern crate multiboot2;
 
 use ascii::AsAsciiStr;
 use core::fmt::Write;
@@ -32,6 +33,8 @@ mod i386;
 #[cfg(target_os = "none")]
 mod gdt;
 mod utils;
+mod frame_alloc;
+pub use frame_alloc::FrameAllocator;
 
 fn main() {
     Printer::println(b"Hello world!      ".as_ascii_str().expect("ASCII"));
@@ -45,6 +48,45 @@ fn main() {
                            PrintAttribute::new(Color::Yellow, Color::Pink, true));
 
     utils::print_stack();
+
+    writeln!(Printer, "----------");
+
+    let mymem = FrameAllocator::alloc_frame();
+    writeln!(Printer, "Allocated address {:?}", mymem.as_ptr());
+    FrameAllocator::free_frame(mymem.as_ptr() as usize);
+    writeln!(Printer, "Freed address {:?}", mymem.as_ptr());
+
+    writeln!(Printer, "----------");
+
+    let mymem = FrameAllocator::alloc_frame();
+    writeln!(Printer, "Allocated address {:?}", mymem.as_ptr());
+    mymem[0] = 42;
+    writeln!(Printer, "Written at address {:?} : {:?}", mymem.as_ptr(), mymem[0]);
+    FrameAllocator::free_frame(mymem.as_ptr() as usize);
+    writeln!(Printer, "Freed address {:?}", mymem.as_ptr());
+
+    writeln!(Printer, "----------");
+
+    let mymem1 = FrameAllocator::alloc_frame();
+    writeln!(Printer, "Allocated address {:?}", mymem1.as_ptr());
+    let mymem2 = FrameAllocator::alloc_frame();
+    writeln!(Printer, "Allocated address {:?}", mymem2.as_ptr());
+    let mymem3 = FrameAllocator::alloc_frame();
+    writeln!(Printer, "Allocated address {:?}", mymem3.as_ptr());
+
+    mymem1[0] = 43;
+    writeln!(Printer, "Written at address {:?} : {:?}", mymem1.as_ptr(), mymem1[0]);
+    mymem2[0] = 44;
+    writeln!(Printer, "Written at address {:?} : {:?}", mymem2.as_ptr(), mymem2[0]);
+    mymem3[0] = 45;
+    writeln!(Printer, "Written at address {:?} : {:?}", mymem3.as_ptr(), mymem3[0]);
+    FrameAllocator::free_frame(mymem1.as_ptr() as usize);
+    writeln!(Printer, "Freed address {:?}", mymem1.as_ptr());
+    FrameAllocator::free_frame(mymem2.as_ptr() as usize);
+    writeln!(Printer, "Freed address {:?}", mymem2.as_ptr());
+    FrameAllocator::free_frame(mymem3.as_ptr() as usize);
+    writeln!(Printer, "Freed address {:?}", mymem3.as_ptr());
+
 }
 
 #[no_mangle]
@@ -54,19 +96,28 @@ pub static mut STACK: [u8; 4096 * 4] = [0; 4096 * 4];
 #[no_mangle]
 #[naked]
 pub unsafe extern fn start() -> ! {
-    asm!("lea esp, STACK" : : : : "intel");
-    asm!("add esp, 16383" : : : : "intel");
-    common_start();
+    asm!("
+        // Create the stack
+        lea esp, STACK
+        add esp, 16383
+        mov ebp, esp
+        // Save multiboot infos addr present in ebx
+        push ebx
+        call common_start" : : : : "intel", "volatile");
+    core::intrinsics::unreachable()
 }
 
 /// CRT0 starts here.
 #[cfg(target_os = "none")]
 #[no_mangle]
-extern "C" fn common_start() -> ! {
+pub extern "C" fn common_start(multiboot_addr: usize) -> ! {
     // Do whatever is necessary to have a proper environment here.
 
     // Set up (read: inhibit) the GDT.
     gdt::init_gdt();
+
+    // Setup frame allocator
+    FrameAllocator::init(multiboot_addr);
 
     main();
     // Die !
