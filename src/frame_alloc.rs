@@ -22,9 +22,11 @@ fn addr_to_frame(addr: usize) -> usize {
 }
 
 #[inline]
-unsafe fn frame_to_addr(frame: usize) -> &'static mut [u8] {
+unsafe fn frame_to_addr(frame: usize) -> Frame {
     let addr = frame << FRAME_BASE_LOG;
-    ::core::slice::from_raw_parts_mut(addr as *mut u8, MEMORY_FRAME_SIZE)
+    Frame {
+        physical_addr: addr,
+    }
 }
 
 /// Rounds an address to its page address
@@ -51,6 +53,18 @@ static FRAMES_BITMAP: Mutex<AllocatorBitmap> = Mutex::new(AllocatorBitmap {
     memory_bitmap: [0x00; FRAMES_BITMAP_SIZE],
     initialized: false,
 });
+
+#[derive(Debug, Clone, Copy)]
+pub struct Frame {
+    pub physical_addr: usize,
+}
+
+impl Frame {
+    /// This should only be called before the page table is setup.
+    pub fn dangerous_as_physical_ptr(&self) -> *mut [u8] {
+        unsafe { ::core::slice::from_raw_parts_mut(self.physical_addr as *mut u8, MEMORY_FRAME_SIZE) as _ }
+    }
+}
 
 /// A struct to allocate and free memory frames
 /// A frame is 4ko in size
@@ -116,7 +130,7 @@ impl FrameAllocator {
     }
 
     /// Allocates a free frame
-    pub fn alloc_frame() -> &'static mut [u8] {
+    pub fn alloc_frame() -> Frame {
         let mut frames_bitmap = FRAMES_BITMAP.lock();
 
         FrameAllocator::check_initialized(&*frames_bitmap);
@@ -132,13 +146,13 @@ impl FrameAllocator {
 
     /// Frees an allocated frame.
     /// Panics if the frame was not allocated
-    pub fn free_frame(addr: usize) {
+    pub fn free_frame(frame: Frame) {
         let mut frames_bitmap = FRAMES_BITMAP.lock();
         FrameAllocator::check_initialized(&*frames_bitmap);
 
         // Check addr is a multiple of MEMORY_FRAME_SIZE
-        assert_eq!(addr & FRAME_OFFSET_MASK, 0x000);
-        let frame = addr_to_frame(addr);
+        assert_eq!(frame.physical_addr & FRAME_OFFSET_MASK, 0x000);
+        let frame = addr_to_frame(frame.physical_addr);
         if frames_bitmap.memory_bitmap.get_bit(frame) == false {
             panic!("Frame being freed was not allocated");
         }

@@ -6,7 +6,7 @@
 //! Currently doesn't do much, besides booting and printing Hello World on the
 //! screen. But hey, that's a start.
 
-#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, repr_transparent, naked_functions, core_intrinsics)]
+#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, repr_transparent, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt)]
 #![cfg_attr(target_os = "none", no_std)]
 #![cfg_attr(target_os = "none", no_main)]
 
@@ -52,40 +52,42 @@ fn main() {
     writeln!(Printer, "----------");
 
     let mymem = FrameAllocator::alloc_frame();
-    writeln!(Printer, "Allocated address {:?}", mymem.as_ptr());
-    FrameAllocator::free_frame(mymem.as_ptr() as usize);
-    writeln!(Printer, "Freed address {:?}", mymem.as_ptr());
+    writeln!(Printer, "Allocated address {:?}", mymem);
+    FrameAllocator::free_frame(mymem);
+    writeln!(Printer, "Freed address {:?}", mymem);
 
     writeln!(Printer, "----------");
 
     let mymem = FrameAllocator::alloc_frame();
-    writeln!(Printer, "Allocated address {:?}", mymem.as_ptr());
-    mymem[0] = 42;
-    writeln!(Printer, "Written at address {:?} : {:?}", mymem.as_ptr(), mymem[0]);
-    FrameAllocator::free_frame(mymem.as_ptr() as usize);
-    writeln!(Printer, "Freed address {:?}", mymem.as_ptr());
+    writeln!(Printer, "Allocated address {:?}", mymem);
+    unsafe { (*mymem.dangerous_as_physical_ptr())[0] = 42; }
+    unsafe { writeln!(Printer, "Written at address {:?} : {:?}", mymem, (*mymem.dangerous_as_physical_ptr())[0]); }
+    FrameAllocator::free_frame(mymem);
+    writeln!(Printer, "Freed address {:?}", mymem);
 
     writeln!(Printer, "----------");
 
     let mymem1 = FrameAllocator::alloc_frame();
-    writeln!(Printer, "Allocated address {:?}", mymem1.as_ptr());
+    writeln!(Printer, "Allocated address {:?}", mymem1);
     let mymem2 = FrameAllocator::alloc_frame();
-    writeln!(Printer, "Allocated address {:?}", mymem2.as_ptr());
+    writeln!(Printer, "Allocated address {:?}", mymem2);
     let mymem3 = FrameAllocator::alloc_frame();
-    writeln!(Printer, "Allocated address {:?}", mymem3.as_ptr());
+    writeln!(Printer, "Allocated address {:?}", mymem3);
 
-    mymem1[0] = 43;
-    writeln!(Printer, "Written at address {:?} : {:?}", mymem1.as_ptr(), mymem1[0]);
-    mymem2[0] = 44;
-    writeln!(Printer, "Written at address {:?} : {:?}", mymem2.as_ptr(), mymem2[0]);
-    mymem3[0] = 45;
-    writeln!(Printer, "Written at address {:?} : {:?}", mymem3.as_ptr(), mymem3[0]);
-    FrameAllocator::free_frame(mymem1.as_ptr() as usize);
-    writeln!(Printer, "Freed address {:?}", mymem1.as_ptr());
-    FrameAllocator::free_frame(mymem2.as_ptr() as usize);
-    writeln!(Printer, "Freed address {:?}", mymem2.as_ptr());
-    FrameAllocator::free_frame(mymem3.as_ptr() as usize);
-    writeln!(Printer, "Freed address {:?}", mymem3.as_ptr());
+    unsafe {
+        (*mymem1.dangerous_as_physical_ptr())[0] = 43;
+        writeln!(Printer, "Written at address {:?} : {:?}", mymem1, (*mymem1.dangerous_as_physical_ptr())[0]);
+        (*mymem2.dangerous_as_physical_ptr())[0] = 44;
+        writeln!(Printer, "Written at address {:?} : {:?}", mymem2, (*mymem2.dangerous_as_physical_ptr())[0]);
+        (*mymem3.dangerous_as_physical_ptr())[0] = 45;
+        writeln!(Printer, "Written at address {:?} : {:?}", mymem3, (*mymem3.dangerous_as_physical_ptr())[0]);
+    }
+    FrameAllocator::free_frame(mymem1);
+    writeln!(Printer, "Freed address {:?}", mymem1);
+    FrameAllocator::free_frame(mymem2);
+    writeln!(Printer, "Freed address {:?}", mymem2);
+    FrameAllocator::free_frame(mymem3);
+    writeln!(Printer, "Freed address {:?}", mymem3);
 
 }
 
