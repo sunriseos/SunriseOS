@@ -91,7 +91,7 @@ fn main() {
 
 }
 
-#[no_mangle]
+#[link_section = ".stack"]
 pub static mut STACK: [u8; 4096 * 4] = [0; 4096 * 4];
 
 #[cfg(target_os = "none")]
@@ -100,12 +100,12 @@ pub static mut STACK: [u8; 4096 * 4] = [0; 4096 * 4];
 pub unsafe extern fn start() -> ! {
     asm!("
         // Create the stack
-        lea esp, STACK
+        lea esp, $0
         add esp, 16383
         mov ebp, esp
         // Save multiboot infos addr present in ebx
         push ebx
-        call common_start" : : : : "intel", "volatile");
+        call common_start" : : "m"(&STACK) : : "intel", "volatile");
     core::intrinsics::unreachable()
 }
 
