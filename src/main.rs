@@ -9,7 +9,7 @@
 #![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, repr_transparent, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt)]
 #![cfg_attr(target_os = "none", no_std)]
 #![cfg_attr(target_os = "none", no_main)]
-
+#![allow(unused)]
 #[cfg(not(target_os = "none"))]
 use std as core;
 
@@ -22,7 +22,10 @@ extern crate compiler_builtins;
 extern crate lazy_static;
 extern crate spin;
 extern crate multiboot2;
-
+#[macro_use]
+extern crate bitflags;
+#[macro_use]
+extern crate static_assertions;
 use ascii::AsAsciiStr;
 use core::fmt::Write;
 
@@ -35,6 +38,7 @@ mod gdt;
 mod utils;
 mod frame_alloc;
 pub use frame_alloc::FrameAllocator;
+pub use i386::paging;
 
 fn main() {
     Printer::println(b"Hello world!      ".as_ascii_str().expect("ASCII"));
@@ -89,6 +93,12 @@ fn main() {
     FrameAllocator::free_frame(mymem3);
     writeln!(Printer, "Freed address {:?}", mymem3);
 
+    unsafe {
+        // VERY UNSAFE.
+        paging::init_paging();
+    }
+
+    Printer::println(b"Paging is on ! \\o/".as_ascii_str().expect("ASCII"));
 }
 
 #[link_section = ".stack"]
