@@ -97,6 +97,11 @@ impl FrameAllocator {
                                     section.start_address() as usize,
                                     section.end_address() as usize);
         }
+
+        // Reserve the very first frame for null pointers when paging is off
+        FrameAllocator::mark_area_reserved(&mut frames_bitmap.memory_bitmap,
+                                            0x00000000,
+                                            0x00000001);
         frames_bitmap.initialized = true
     }
 

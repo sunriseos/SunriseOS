@@ -97,6 +97,11 @@ fn main() {
     }
 
     Printer::println(b"Paging is on ! \\o/".as_ascii_str().expect("ASCII"));
+    let page1 = ::paging::get_page::<::paging::UserLand>();
+    writeln!(Printer, "Got page {:x}", page1);
+    let page2 = ::paging::get_page::<::paging::UserLand>();
+    writeln!(Printer, "Got page {:x}", page2);
+
 }
 
 #[link_section = ".stack"]
