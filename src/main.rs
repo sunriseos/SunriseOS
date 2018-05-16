@@ -104,11 +104,10 @@ pub static mut STACK: [u8; 4096 * 4] = [0; 4096 * 4];
 
 #[cfg(target_os = "none")]
 #[no_mangle]
-#[naked]
 pub unsafe extern fn start() -> ! {
     asm!("
         // Create the stack
-        lea esp, $0
+        mov esp, $0
         add esp, 16383
         mov ebp, esp
         // Save multiboot infos addr present in ebx
