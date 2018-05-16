@@ -1,0 +1,8 @@
+[dependencies.core]
+stage = 0
+path = "../rust/src/libcore"
+
+[dependencies.compiler_builtins]
+stage = 1
+path = "../rust/src/libcompiler_builtins"
+features = ["mem"]

@@ -21,10 +21,6 @@ version = "0.8.6"
 default-features = false
 version = "1.2.1"
 
-[dependencies.compiler_builtins]
-features = ["mem"]
-git = "https://github.com/rust-lang-nursery/compiler-builtins"
-
 [dependencies.lazy_static]
 features = ["spin_no_std"]
 version = "1.0.0"

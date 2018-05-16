@@ -16,8 +16,6 @@ use std as core;
 extern crate arrayvec;
 extern crate ascii;
 extern crate bit_field;
-#[cfg(target_os = "none")]
-extern crate compiler_builtins;
 #[macro_use]
 extern crate lazy_static;
 extern crate spin;
