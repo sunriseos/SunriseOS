@@ -249,7 +249,7 @@ pub fn common_start_continue_stack() -> ! {
     info!("Initialized PIT");
 
     info!("Enabling interrupts");
-    interrupts::init();
+    unsafe { interrupts::init(); }
 
     info!("Calling main()");
 

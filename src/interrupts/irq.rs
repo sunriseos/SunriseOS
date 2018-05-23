@@ -1,15 +1,16 @@
 use i386::pio::Pio;
+use io::Io;
 use i386::structures::idt::ExceptionStackFrame;
 use core::fmt::Write;
+use devices::pic;
 use logger::Loggers;
-use io::Io;
 
 fn acknowledge_irq(irq: u8) {
     unsafe {
         // TODO: this is probably very unsafe. Maybe. I don't really know.
-        Pio::<u8>::new(0x20).write(0x20);
+        pic::MASTER.acknowledge();
         if irq >= 8 {
-            Pio::<u8>::new(0xA0).write(0x20);
+            pic::SLAVE.acknowledge();
         }
     }
 }
