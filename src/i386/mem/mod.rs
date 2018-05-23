@@ -10,9 +10,12 @@ use core::fmt::{Formatter, Error, Display, Debug};
 ///
 /// Should only be used when paging is off
 #[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(transparent)]
 pub struct PhysicalAddress(pub usize);
+
 /// Represents a Virtual address
 #[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(transparent)]
 pub struct VirtualAddress(pub usize);
 
 impl VirtualAddress  { pub fn addr(&self) -> usize { self.0 } }

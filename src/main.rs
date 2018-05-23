@@ -49,6 +49,8 @@ use paging::KernelLand;
 mod i386;
 #[cfg(target_os = "none")]
 mod gdt;
+mod interrupts;
+
 mod utils;
 mod heap_allocator;
 mod io;
@@ -246,7 +248,12 @@ pub fn common_start_continue_stack() -> ! {
     unsafe { devices::pit::init_channel_0() };
     info!("Initialized PIT");
 
+    info!("Enabling interrupts");
+    interrupts::init();
+
     info!("Calling main()");
+
+    writeln!(SerialLogger, "= Calling main()");
     main();
     // Die !
     // We shouldn't reach this...
