@@ -2,13 +2,14 @@ use i386::instructions::port::*;
 use i386::structures::idt::ExceptionStackFrame;
 use print::Printer;
 use core::fmt::Write;
+use devices::pic;
 
 fn acknowledge_irq(irq: u8) {
     unsafe {
         // TODO: this is probably very unsafe. Maybe. I don't really know.
-        outb(0x20, 0x20);
+        pic::MASTER.acknowledge();
         if irq >= 8 {
-            outb(0xA0, 0x20);
+            pic::SLAVE.acknowledge();
         }
     }
 }
