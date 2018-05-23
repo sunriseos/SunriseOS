@@ -42,6 +42,8 @@ use paging::KernelLand;
 mod i386;
 #[cfg(target_os = "none")]
 mod gdt;
+mod interrupts;
+
 mod utils;
 mod frame_alloc;
 mod heap_allocator;
@@ -228,6 +230,9 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 #[no_mangle]
 pub fn common_start_continue_stack() -> ! {
     writeln!(SerialLogger, "= Switched to new kernel stack");
+
+    writeln!(SerialLogger, "= Enabling interrupts");
+    interrupts::init();
 
     writeln!(SerialLogger, "= Calling main()");
     main();
