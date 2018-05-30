@@ -37,6 +37,7 @@ mod utils;
 mod frame_alloc;
 pub use frame_alloc::FrameAllocator;
 pub use i386::paging;
+use i386::paging::{InactivePageTables, PageTablesSet, EntryFlags};
 
 fn main() {
     Printer::println(b"Hello world!      ".as_ascii_str().expect("ASCII"));
@@ -101,6 +102,10 @@ fn main() {
     writeln!(Printer, "Got page {:x}", page1);
     let page2 = ::paging::get_page::<::paging::UserLand>();
     writeln!(Printer, "Got page {:x}", page2);
+
+    let mut inactive_pages = InactivePageTables::new();
+    let page4 = inactive_pages.get_page::<paging::UserLand>(EntryFlags::PRESENT | EntryFlags::WRITABLE);
+    writeln!(Printer, "Got inactive page {:x}", page4);
 
 }
 

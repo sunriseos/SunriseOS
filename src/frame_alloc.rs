@@ -6,6 +6,7 @@ use spin::Mutex;
 use bit_field::BitArray;
 use utils::BitArrayExt;
 use utils::bit_array_first_zero;
+use ::paging::PhysicalAddress;
 
 pub const MEMORY_FRAME_SIZE: usize = 4096;
 
@@ -63,6 +64,10 @@ impl Frame {
     /// This should only be called before the page table is setup.
     pub fn dangerous_as_physical_ptr(&self) -> *mut [u8] {
         unsafe { ::core::slice::from_raw_parts_mut(self.physical_addr as *mut u8, MEMORY_FRAME_SIZE) as _ }
+    }
+
+    pub fn from_physical_addr(physical_addr: PhysicalAddress) -> Frame {
+        Frame { physical_addr }
     }
 }
 

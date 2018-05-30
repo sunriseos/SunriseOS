@@ -1,9 +1,15 @@
 ///! # Paging on i386
 
+mod entry;
 mod table;
 
-use self::table::{PageDirectory, DIRECTORY_RECURSIVE_ADDRESS};
+pub use self::table::InactivePageTables;
+pub use self::table::PageTablesSet;
+pub use self::table::entry::EntryFlags;
+
+use self::table::{PageDirectory, ActivePageTables, PagingOffPageSet, DIRECTORY_RECURSIVE_ADDRESS};
 use self::table::entry::Entry;
+use spin::Mutex;
 
 pub const PAGE_SIZE: usize = 4096;
 
@@ -12,26 +18,7 @@ const ENTRY_COUNT: usize = PAGE_SIZE / ::core::mem::size_of::<Entry>();
 pub type PhysicalAddress = usize;
 pub type VirtualAddress = usize;
 
-/// The page directory currently in use.
-/// This struct is used to manage rust ownership.
-/// Used when paging is already on (recursive mapping of the directory)
-pub struct ActivePageTable {
-    dir: *mut PageDirectory,
-}
-
-impl ActivePageTable {
-    pub unsafe fn new() -> ActivePageTable {
-        ActivePageTable { dir: DIRECTORY_RECURSIVE_ADDRESS }
-    }
-
-    fn directory(&self) -> &PageDirectory {
-        unsafe { &*self.dir }
-    }
-
-    fn directory_mut(&mut self) -> &mut PageDirectory {
-        unsafe { &mut *self.dir }
-    }
-}
+static ACTIVE_PAGE_TABLES: Mutex<ActivePageTables> = Mutex::new(ActivePageTables());
 
 unsafe fn enable_paging(page_directory_address: usize) {
     asm!("mov eax, $0
@@ -61,8 +48,8 @@ fn flush_tlb() {
 
 /// Used at startup to create the page tables and mapping the kernel
 pub unsafe fn init_paging() {
-   let dir = PageDirectory::paging_off_create_directory();
-   enable_paging(dir as *const _ as usize)
+    let tables = PagingOffPageSet::paging_off_create_page_set();
+    enable_paging(tables.directory_physical_address)
 }
 
 /// A trait describing the splitting of virtual memory between Kernel and User.
@@ -116,8 +103,6 @@ fn __land_assertions() {
     const_assert!(UserLand::start_addr()   % (ENTRY_COUNT * PAGE_SIZE) == 0);
 }
 
-// TODO make this a lot safer
 pub fn get_page<Land: VirtualSpaceLand>() -> VirtualAddress {
-    let mut apt = unsafe { ActivePageTable::new() };
-    apt.directory_mut().map::<Land>(table::entry::EntryFlags::PRESENT | table::entry::EntryFlags::WRITABLE)
+    ACTIVE_PAGE_TABLES.lock().get_page::<Land>(table::entry::EntryFlags::PRESENT | table::entry::EntryFlags::WRITABLE)
 }
