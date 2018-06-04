@@ -1,7 +1,7 @@
 ///! A module to allocate and free whole frames
 ///! A frame is 4ko in size
 
-use multiboot2;
+use multiboot2::BootInformation;
 use spin::Mutex;
 use bit_field::BitArray;
 use utils::BitArrayExt;
@@ -57,7 +57,7 @@ static FRAMES_BITMAP: Mutex<AllocatorBitmap> = Mutex::new(AllocatorBitmap {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Frame {
-    pub physical_addr: usize,
+    physical_addr: usize,
 }
 
 impl Frame {
@@ -67,8 +67,12 @@ impl Frame {
     }
 
     pub fn from_physical_addr(physical_addr: PhysicalAddress) -> Frame {
+        assert_eq!(physical_addr % MEMORY_FRAME_SIZE, 0,
+                   "Frame must be constructed from a framesize-aligned pointer");
         Frame { physical_addr }
     }
+
+    pub fn address(&self) -> PhysicalAddress { self.physical_addr }
 }
 
 /// A struct to allocate and free memory frames
@@ -79,13 +83,7 @@ impl FrameAllocator {
 
     /// Initialize the FrameAllocator by parsing the multiboot informations
     /// and marking some memory areas as unusable
-    pub fn init(multiboot_info_addr: usize) {
-
-        let boot_info;
-        unsafe {
-            boot_info = multiboot2::load(multiboot_info_addr);
-        }
-
+    pub fn init(boot_info: &BootInformation) {
         let mut frames_bitmap = FRAMES_BITMAP.lock();
 
         let memory_map_tag = boot_info.memory_map_tag()

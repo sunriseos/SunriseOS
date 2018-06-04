@@ -3,13 +3,19 @@
 mod entry;
 mod table;
 
+use multiboot2::{BootInformation, ElfSectionFlags};
+
 pub use self::table::InactivePageTables;
 pub use self::table::PageTablesSet;
 pub use self::table::entry::EntryFlags;
 
-use self::table::{PageDirectory, ActivePageTables, PagingOffPageSet, DIRECTORY_RECURSIVE_ADDRESS};
+use self::table::*;
 use self::table::entry::Entry;
+pub use frame_alloc::{round_to_page, round_to_page_upper};
 use spin::Mutex;
+use frame_alloc::Frame;
+use ::print::{Printer, VGA_SCREEN_ADDRESS, VGA_SCREEN_MEMORY_SIZE};
+use ::core::fmt::Write;
 
 pub const PAGE_SIZE: usize = 4096;
 
@@ -30,7 +36,7 @@ unsafe fn enable_paging(page_directory_address: usize) {
 
             :
             : "r" (page_directory_address)
-            : "eax"
+            : "eax", "memory"
             : "intel", "volatile");
 }
 
@@ -44,6 +50,60 @@ fn flush_tlb() {
           : "eax"
           : "intel", "volatile");
     }
+}
+
+/// Changes the content of the cr3 register, and returns the value before the change was made
+fn swap_cr3(page_directory_address: PhysicalAddress) -> PhysicalAddress {
+    let old_value: PhysicalAddress;
+    unsafe {
+        asm!("mov $0, cr3
+              mov cr3, $1"
+              : "=&r"(old_value)
+              : "r"(page_directory_address)
+              : "memory"
+              : "intel", "volatile");
+    }
+    old_value
+}
+
+/// Creates an InactivePageTables set mapping the kernel sections with correct rights,
+/// and makes it active
+pub unsafe fn remap_kernel(boot_info : &BootInformation) {
+    let mut new_pages = InactivePageTables::new();
+
+    // Map the elf sections
+    let elf_sections_tag = boot_info.elf_sections_tag()
+        .expect("GRUB, you're drunk. Give us our elf_sections_tag.");
+    for section in elf_sections_tag.sections() {
+        if !section.is_allocated() {
+            continue; // section is not loaded to memory
+        }
+        assert_eq!(section.start_address() as usize % PAGE_SIZE, 0, "sections must be page aligned");
+
+        let mut map_flags = EntryFlags::PRESENT;
+        if section.flags().contains(ElfSectionFlags::WRITABLE) {
+            map_flags |= EntryFlags::WRITABLE
+        }
+
+        new_pages.identity_map_region(section.start_address() as PhysicalAddress,
+                                      section.size() as usize,
+                                      map_flags);
+    }
+
+    // Map the vga screen memory
+    new_pages.identity_map_region(VGA_SCREEN_ADDRESS, VGA_SCREEN_MEMORY_SIZE,
+                                  EntryFlags::PRESENT | EntryFlags::WRITABLE);
+
+    // Reserve the very first frame for null pointers
+    new_pages.identity_map(Frame::from_physical_addr(0), EntryFlags::GUARD_PAGE);
+
+    // Switch to the new tables set
+    let old_pages = new_pages.switch_to();
+
+    // Delete the page tables and directory of previous set
+    old_pages.delete();
+
+    // TODO do something for the stack
 }
 
 /// Used at startup to create the page tables and mapping the kernel

@@ -6,7 +6,7 @@
 //! Currently doesn't do much, besides booting and printing Hello World on the
 //! screen. But hey, that's a start.
 
-#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, repr_transparent, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt)]
+#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, repr_transparent, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, iterator_step_by)]
 #![cfg_attr(target_os = "none", no_std)]
 #![cfg_attr(target_os = "none", no_main)]
 #![allow(unused)]
@@ -63,8 +63,6 @@ fn main() {
 
     let mymem = FrameAllocator::alloc_frame();
     writeln!(Printer, "Allocated address {:?}", mymem);
-    unsafe { (*mymem.dangerous_as_physical_ptr())[0] = 42; }
-    unsafe { writeln!(Printer, "Written at address {:?} : {:?}", mymem, (*mymem.dangerous_as_physical_ptr())[0]); }
     FrameAllocator::free_frame(mymem);
     writeln!(Printer, "Freed address {:?}", mymem);
 
@@ -76,15 +74,6 @@ fn main() {
     writeln!(Printer, "Allocated address {:?}", mymem2);
     let mymem3 = FrameAllocator::alloc_frame();
     writeln!(Printer, "Allocated address {:?}", mymem3);
-
-    unsafe {
-        (*mymem1.dangerous_as_physical_ptr())[0] = 43;
-        writeln!(Printer, "Written at address {:?} : {:?}", mymem1, (*mymem1.dangerous_as_physical_ptr())[0]);
-        (*mymem2.dangerous_as_physical_ptr())[0] = 44;
-        writeln!(Printer, "Written at address {:?} : {:?}", mymem2, (*mymem2.dangerous_as_physical_ptr())[0]);
-        (*mymem3.dangerous_as_physical_ptr())[0] = 45;
-        writeln!(Printer, "Written at address {:?} : {:?}", mymem3, (*mymem3.dangerous_as_physical_ptr())[0]);
-    }
     FrameAllocator::free_frame(mymem1);
     writeln!(Printer, "Freed address {:?}", mymem1);
     FrameAllocator::free_frame(mymem2);
@@ -92,12 +81,8 @@ fn main() {
     FrameAllocator::free_frame(mymem3);
     writeln!(Printer, "Freed address {:?}", mymem3);
 
-    unsafe {
-        // VERY UNSAFE.
-        paging::init_paging();
-    }
+    writeln!(Printer, "----------");
 
-    Printer::println(b"Paging is on ! \\o/".as_ascii_str().expect("ASCII"));
     let page1 = ::paging::get_page::<::paging::UserLand>();
     writeln!(Printer, "Got page {:x}", page1);
     let page2 = ::paging::get_page::<::paging::UserLand>();
@@ -109,8 +94,11 @@ fn main() {
 
 }
 
+#[repr(align(4096))]
+pub struct AlignedStack([u8; 4096 * 4]);
+
 #[link_section = ".stack"]
-pub static mut STACK: [u8; 4096 * 4] = [0; 4096 * 4];
+pub static mut STACK: AlignedStack = AlignedStack([0; 4096 * 4]);
 
 #[cfg(target_os = "none")]
 #[no_mangle]
@@ -129,15 +117,36 @@ pub unsafe extern fn start() -> ! {
 /// CRT0 starts here.
 #[cfg(target_os = "none")]
 #[no_mangle]
-pub extern "C" fn common_start(multiboot_addr: usize) -> ! {
+pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     // Do whatever is necessary to have a proper environment here.
+
+    // Say hello to the world
+    write!(Printer, "\n# Welcome to ");
+    Printer::print_attr("KFS".as_ascii_str().expect("ASCII"),
+                        PrintAttribute::new(Color::LightCyan, Color::Black, false));
+    writeln!(Printer, "!\n");
 
     // Set up (read: inhibit) the GDT.
     gdt::init_gdt();
+    writeln!(Printer, "= Gdt initialized");
+
+    // Parse the multiboot infos
+    let boot_info = unsafe { multiboot2::load(multiboot_info_addr) };
+    writeln!(Printer, "= Parsed multiboot informations");
 
     // Setup frame allocator
-    FrameAllocator::init(multiboot_addr);
+    FrameAllocator::init(&boot_info);
+    writeln!(Printer, "= Initialized frame allocator");
 
+    // Setup paging, poorly identity map the first 4Mb of memory
+    unsafe { paging::init_paging() }
+    writeln!(Printer, "= Paging on");
+
+    // Create page tables with the right access rights for each kernel section
+    unsafe { paging::remap_kernel(&boot_info) }
+    writeln!(Printer, "= Remapped the kernel");
+
+    writeln!(Printer, "= Calling main()");
     main();
     // Die !
     #[cfg(target_os = "none")]

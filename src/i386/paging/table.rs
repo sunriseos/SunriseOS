@@ -6,12 +6,11 @@ use core::ops::{Index, IndexMut};
 #[path = "entry.rs"]
 pub mod entry;
 
-use self::entry::{EntryFlags, Entry};
-use super::{PAGE_SIZE, ENTRY_COUNT, PhysicalAddress, VirtualAddress, flush_tlb, VirtualSpaceLand, ACTIVE_PAGE_TABLES};
+use self::entry::*;
+use super::*;
 use ::frame_alloc::{Frame, FrameAllocator, MEMORY_FRAME_SIZE};
 use core::ops::Deref;
 use core::ops::DerefMut;
-use paging::KernelLand;
 
 /// A page table
 pub struct PageTable {
@@ -91,7 +90,7 @@ pub trait PageTableTrait : HierarchicalTable {
     fn map_whole_table(&mut self, start_address: PhysicalAddress, flags: EntryFlags) {
         let mut addr = start_address;
         for entry in &mut self.entries_mut()[..] {
-            entry.set(Frame { physical_addr: addr }, flags);
+            entry.set(Frame::from_physical_addr(addr), flags);
             addr += PAGE_SIZE;
         }
     }
@@ -125,6 +124,7 @@ pub trait PageDirectoryTrait : HierarchicalTable {
         let table_nbr = address / (ENTRY_COUNT * PAGE_SIZE);
         let table_off = address % (ENTRY_COUNT * PAGE_SIZE) / PAGE_SIZE;
         let table = self.get_table_or_create(table_nbr);
+        assert!(table.entries()[table_off].is_unused(), "Tried to map an already mapped entry");
         table.map_nth_entry(table_off, page, flags);
     }
 
@@ -157,6 +157,7 @@ pub trait PageDirectoryTrait : HierarchicalTable {
         let mut counter_curr_table:  usize = Land::start_table();
         let mut counter_curr_page:   usize = 0;
         while counter_curr_table < Land::end_table() && hole_size < page_nb {
+            counter_curr_page = 0;
             match self.get_table(counter_curr_table) {
                 None => { // The whole page table is free, so add it to our hole_size
                     if hole_size == 0 {
@@ -165,10 +166,8 @@ pub trait PageDirectoryTrait : HierarchicalTable {
                         hole_start_page = counter_curr_page;
                     }
                     hole_size += ENTRY_COUNT;
-                    counter_curr_table += 1;
                 }
                 Some(curr_table) => {
-                    counter_curr_page = 0;
                     while counter_curr_page < ENTRY_COUNT && hole_size < page_nb {
                         if curr_table.entries()[counter_curr_page].is_unused() {
                             if hole_size == 0 {
@@ -240,6 +239,22 @@ pub trait PageTablesSet {
         self.map_allocate_to(va, flags);
         va
     }
+
+    /// Maps a memory frame to the same virtual address
+    fn identity_map(&mut self, frame: Frame, flags: EntryFlags) {
+        self.map_to(frame, frame.address(), flags);
+    }
+
+    fn identity_map_region(&mut self, start_address: PhysicalAddress, region_size: usize, flags: EntryFlags) {
+        assert_eq!(start_address % PAGE_SIZE, 0, "Tried to map a non paged-aligned region");
+        let start = round_to_page(start_address as usize);
+        let end = round_to_page_upper(start_address + region_size as usize);
+        for frame_addr in (start..end).step_by(PAGE_SIZE) {
+            let frame = Frame::from_physical_addr(frame_addr);
+            self.identity_map(frame, flags);
+        }
+    }
+
     /// Deletes a mapping in the page tables
     fn unmap(&mut self, page: VirtualAddress) {
        self.get_directory_mut().__unmap(page, false)
@@ -404,6 +419,19 @@ impl InactivePageTables {
         };
         pageset
     }
+
+    /// Switch to this page tables set.
+    /// Returns the old active page tables set after the switch
+    pub fn switch_to(&self) -> InactivePageTables {
+        let old_pages = super::swap_cr3(self.directory_physical_address);
+        InactivePageTables { directory_physical_address: old_pages }
+    }
+
+    /// Frees the frames occupied by the page directory and page tables of this set
+    /// Does not free the pages mapped by this set
+    pub fn delete(mut self) {
+        self.get_directory_mut().delete();
+    }
 }
 
 /// A temporary mapped page directory.
@@ -454,6 +482,21 @@ impl PageDirectoryTrait for InactivePageDirectory {
         self.map_nth_entry(index, table_frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);
 
         mapped_table
+    }
+}
+
+impl InactivePageDirectory {
+    /// Frees the frames occupied by the page directory and page tables
+    /// Does not free the pages mapped by this directory
+    fn delete(&mut self) {
+        // We're a destructor, we should not take self by reference, but a directory structure is PAGE_SIZE big
+        // and the public function in the set takes self by value so it's ok
+        for table in self.entries_mut().iter_mut() {
+            if let Some(table_frame) = table.pointed_frame() {
+                FrameAllocator::free_frame(table_frame);
+            }
+            // Directory frees itself by freeing the recursive last entry
+        }
     }
 }
 
@@ -562,7 +605,7 @@ impl PagingOffDirectory {
         self.zero();
         self.entries_mut()[0].set(first_table_frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);
 
-        let self_frame = Frame { physical_addr: self as *mut _ as PhysicalAddress };
+        let self_frame = Frame::from_physical_addr(self as *mut _ as PhysicalAddress);
         // Make last entry of the directory point to the directory itself
         self.entries_mut()[ENTRY_COUNT - 1].set(self_frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);
     }

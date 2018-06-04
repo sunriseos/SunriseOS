@@ -14,44 +14,43 @@ PHDRS
 SECTIONS {
 	. = 0;
 
-	.boot : {
+	.boot ALIGN(4K) : {
 		KEEP(*(.multiboot_header))
 	} : boot
 
-	. = 0x79C;
-
-	.gdt : {
+	.gdt ALIGN(4K) : {
 		*(.gdt)
 	}
 
 	. = 1M;
 
-	.stack : {
+	.stack ALIGN(4K) : {
 		*(.stack)
 	} : stack
 
-	.text : {
+	.text ALIGN(4K) : {
 		*(.text .text.*)
 	} : text
 
-	.data : {
+	.data ALIGN(4K) : {
 		*(.data .data.*)
 	} : data
 
-	.rodata : {
+	.rodata ALIGN(4K) : {
 		*(.rodata .rodata.*)
 	} : data
 
-	.got : {
+	.got ALIGN(4K) : {
 		*(.got)
 	} : data
 
-	.bss : {
+	.bss ALIGN(4K) : {
 		*(.bss)
 	} : data
 
-	.data.rel.ro : {
+	.data.rel.ro ALIGN(4K) : {
 		*(.data.rel.ro.local.*) *(data.rel.ro .data.rel.ro.*)
+	    . = ALIGN(4K);
 	} : data
 
 	/DISCARD/ : {

@@ -14,9 +14,9 @@ bitflags! {
         const DIRTY =           1 << 6;
         const HUGE_PAGE =       1 << 7;
         const GLOBAL =          1 << 8;
-        const USER_DEFINED_1 =  1 << 9;
-        const USER_DEFINED_2 =  1 << 10;
-        const USER_DEFINED_3 =  1 << 11;
+        const GUARD_PAGE =      1 << 9;     // user_defined_1
+        const USER_DEFINED_2 =  1 << 10;    // user_defined_2
+        const USER_DEFINED_3 =  1 << 11;    // user_defined_3
     }
 }
 
@@ -40,7 +40,7 @@ impl Entry {
     pub fn pointed_frame(&self) -> Option<Frame> {
         if self.flags().contains(EntryFlags::PRESENT) {
             let frame_phys_addr = self.0 as usize & ENTRY_PHYS_ADDRESS_MASK;
-            Some( Frame { physical_addr: frame_phys_addr })
+            Some( Frame::from_physical_addr(frame_phys_addr) )
         } else {
             None
         }

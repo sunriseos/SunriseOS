@@ -37,8 +37,8 @@ pub fn print_stack() {
         // TODO: I hate this.
         let sp: usize;
         asm!("mov $0, esp" : "=r"(sp) : : : "intel");
-        let sp_start = sp - ::STACK.as_ptr() as usize;
-        print_hexdump(&::STACK[sp_start..]);
+        let sp_start = sp - ::STACK.0.as_ptr() as usize;
+        print_hexdump(&::STACK.0[sp_start..]);
     }
 }
 
