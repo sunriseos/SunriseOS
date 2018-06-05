@@ -131,7 +131,7 @@ pub trait PageDirectoryTrait : HierarchicalTable {
     /// Deletes a mapping in the page tables, optionally free the pointed frame
     fn __unmap(&mut self, page: VirtualAddress, free_frame: bool) {
         let table_nbr = page / (ENTRY_COUNT * PAGE_SIZE);
-        let table_off = page % (ENTRY_COUNT * PAGE_SIZE);
+        let table_off = page % (ENTRY_COUNT * PAGE_SIZE) / PAGE_SIZE;
         let table = self.get_table_mut(table_nbr)
         // TODO: Return an Error if the table was not present
             .unwrap();
@@ -219,10 +219,10 @@ pub trait PageDirectoryTrait : HierarchicalTable {
 pub trait PageTablesSet {
     type PageDirectoryType: PageDirectoryTrait;
     /// Gets a reference to the directory
-    fn get_directory(&self) -> &Self::PageDirectoryType;
+    fn get_directory(&self) -> SmartPageDirectory<Self::PageDirectoryType>;
 
     /// Gets a mut reference to the directory
-    fn get_directory_mut(&mut self) -> &mut Self::PageDirectoryType;
+    fn get_directory_mut(&mut self) -> SmartPageDirectory<Self::PageDirectoryType>;
 
     /// Creates a mapping in the page tables with the given flags
     fn map_to(&mut self, page:    Frame,
@@ -330,11 +330,11 @@ pub struct ActivePageTables ();
 
 impl PageTablesSet for ActivePageTables {
     type PageDirectoryType = ActivePageDirectory;
-    fn get_directory(&self) -> &ActivePageDirectory {
-        unsafe {(DIRECTORY_RECURSIVE_ADDRESS as *const ActivePageDirectory).as_ref().unwrap()}
+    fn get_directory(&self) -> SmartPageDirectory<ActivePageDirectory> {
+        SmartPageDirectory(DIRECTORY_RECURSIVE_ADDRESS as *mut ActivePageDirectory)
     }
-    fn get_directory_mut(&mut self) -> &mut ActivePageDirectory {
-        unsafe { (DIRECTORY_RECURSIVE_ADDRESS as *mut ActivePageDirectory).as_mut().unwrap() }
+    fn get_directory_mut(&mut self) -> SmartPageDirectory<ActivePageDirectory> {
+        SmartPageDirectory(DIRECTORY_RECURSIVE_ADDRESS as *mut ActivePageDirectory)
     }
 }
 
@@ -396,6 +396,33 @@ impl PageTableTrait for ActivePageTable {}
 
 /* ********************************************************************************************** */
 
+struct SmartPageDirectory<T: PageDirectoryTrait>(*mut T);
+
+impl<T: PageDirectoryTrait> Deref for SmartPageDirectory<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        unsafe {
+            self.0.as_ref().unwrap()
+        }
+    }
+}
+
+impl<T: PageDirectoryTrait> DerefMut for SmartPageDirectory<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        unsafe {
+            self.0.as_mut().unwrap()
+        }
+    }
+}
+
+impl<T: PageDirectoryTrait> Drop for SmartPageDirectory<T> {
+    fn drop(&mut self) {
+        unsafe {
+            ::core::ptr::drop_in_place(self.0);
+        }
+    }
+}
+
 /// A set of PageTables that are not the ones currently in use.
 /// We can't use recursive mapping to modify them, so instead we have to temporarily
 /// map the directory and tables to make changes to them.
@@ -408,19 +435,19 @@ impl PageTablesSet for InactivePageTables {
     type PageDirectoryType = InactivePageDirectory;
 
     /// Temporary map the directory
-    fn get_directory(&self) -> &InactivePageDirectory {
+    fn get_directory(&self) -> SmartPageDirectory<InactivePageDirectory> {
         let frame = Frame::from_physical_addr(self.directory_physical_address);
         let mut active_pages = ACTIVE_PAGE_TABLES.lock();
         let va = active_pages.map_frame::<KernelLand>(frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);
-        unsafe { (va as *mut InactivePageDirectory).as_ref().unwrap() }
+        SmartPageDirectory(va as *mut InactivePageDirectory)
     }
 
     /// Temporary map the directory
-    fn get_directory_mut(&mut self) -> &mut InactivePageDirectory {
+    fn get_directory_mut(&mut self) -> SmartPageDirectory<InactivePageDirectory> {
         let frame = Frame::from_physical_addr(self.directory_physical_address);
         let mut active_pages = ACTIVE_PAGE_TABLES.lock();
         let va = active_pages.map_frame::<KernelLand>(frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);
-        unsafe { (va as *mut InactivePageDirectory).as_mut().unwrap() }
+        SmartPageDirectory(va as *mut InactivePageDirectory)
     }
 }
 
@@ -433,7 +460,7 @@ impl InactivePageTables {
             .dangerous_as_physical_ptr() as *mut u8 as PhysicalAddress
         };
         {
-            let dir = pageset.get_directory_mut();
+            let mut dir = pageset.get_directory_mut();
             dir.zero();
             dir.map_nth_entry(ENTRY_COUNT - 1, directory_frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);
         };
@@ -552,11 +579,11 @@ pub struct PagingOffPageSet {
 
 impl PageTablesSet for PagingOffPageSet {
     type PageDirectoryType = PagingOffDirectory;
-    fn get_directory(&self) -> &<Self as PageTablesSet>::PageDirectoryType {
-        unsafe {(self.directory_physical_address as *mut PagingOffDirectory).as_ref().unwrap()}
+    fn get_directory(&self) -> SmartPageDirectory<<Self as PageTablesSet>::PageDirectoryType> {
+        SmartPageDirectory(self.directory_physical_address as *mut PagingOffDirectory)
     }
-    fn get_directory_mut(&mut self) -> &mut <Self as PageTablesSet>::PageDirectoryType {
-        unsafe {(self.directory_physical_address as *mut PagingOffDirectory).as_mut().unwrap()}
+    fn get_directory_mut(&mut self) -> SmartPageDirectory<<Self as PageTablesSet>::PageDirectoryType> {
+        SmartPageDirectory(self.directory_physical_address as *mut PagingOffDirectory)
     }
 }
 
