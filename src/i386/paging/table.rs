@@ -66,10 +66,14 @@ pub trait HierarchicalTable {
     }
 
     /// Creates a mapping on the nth entry of a table
-    fn map_nth_entry(&mut self, entry: usize, frame: Frame, flags: EntryFlags) {
+    /// T is a flusher describing if we should flush the TLB or not
+    fn map_nth_entry<T: Flusher>(&mut self, entry: usize, frame: Frame, flags: EntryFlags) {
         self.entries_mut()[entry].set(frame, flags);
-        flush_tlb();
-        // TODO : do not flush the cache if we're mapping on an inactive table/directory
+        T::flush_cache();
+    }
+
+    fn flush_cache() {
+        // Don't do anything by default
     }
 }
 
@@ -86,6 +90,7 @@ impl HierarchicalTable for PageDirectory {
 /* ********************************************************************************************** */
 
 pub trait PageTableTrait : HierarchicalTable {
+    type FlusherType : Flusher;
     /// Used at startup when creating the first page tables.
     fn map_whole_table(&mut self, start_address: PhysicalAddress, flags: EntryFlags) {
         let mut addr = start_address;
@@ -93,11 +98,13 @@ pub trait PageTableTrait : HierarchicalTable {
             entry.set(Frame::from_physical_addr(addr), flags);
             addr += PAGE_SIZE;
         }
+        Self::FlusherType::flush_cache();
     }
 }
 
 pub trait PageDirectoryTrait : HierarchicalTable {
     type PageTableType : PageTableTrait;
+    type FlusherType : Flusher;
 
     /// Gets a reference to a page table through recursive mapping
     fn get_table(&self, index: usize) -> Option<&Self::PageTableType>;
@@ -125,7 +132,7 @@ pub trait PageDirectoryTrait : HierarchicalTable {
         let table_off = address % (ENTRY_COUNT * PAGE_SIZE) / PAGE_SIZE;
         let table = self.get_table_or_create(table_nbr);
         assert!(table.entries()[table_off].is_unused(), "Tried to map an already mapped entry");
-        table.map_nth_entry(table_off, page, flags);
+        table.map_nth_entry::<Self::FlusherType>(table_off, page, flags);
     }
 
     /// Deletes a mapping in the page tables, optionally free the pointed frame
@@ -145,8 +152,7 @@ pub trait PageDirectoryTrait : HierarchicalTable {
            };
         }
         entry.set_unused();
-        flush_tlb();
-        // TODO : do not flush the cache if we're unmapping on an inactive table/directory
+        Self::FlusherType::flush_cache();
     }
 
     /// Finds a virtual space hole that can contain page_nb consecutive pages
@@ -346,6 +352,7 @@ impl_hierachical_table!(ActivePageDirectory);
 
 impl PageDirectoryTrait for ActivePageDirectory {
     type PageTableType = ActivePageTable;
+    type FlusherType = TlbFlush;
 
     /// Gets a reference to a page table through recursive mapping
     fn get_table(&self, index: usize) -> Option<&Self::PageTableType> {
@@ -364,7 +371,7 @@ impl PageDirectoryTrait for ActivePageDirectory {
         assert!(self.entries()[index].is_unused());
         let table_frame = FrameAllocator::alloc_frame();
 
-        self.map_nth_entry(index, table_frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);
+        self.map_nth_entry::<Self::FlusherType>(index, table_frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);
 
         // Now that table is mapped in page directory we can write to it through recursive mapping
         let table= self.get_table_mut(index).unwrap();
@@ -392,7 +399,7 @@ pub struct ActivePageTable(PageTable);
 inherit_deref_index!(ActivePageTable, PageTable);
 impl_hierachical_table!(ActivePageTable);
 
-impl PageTableTrait for ActivePageTable {}
+impl PageTableTrait for ActivePageTable { type FlusherType = TlbFlush; }
 
 /* ********************************************************************************************** */
 
@@ -462,7 +469,7 @@ impl InactivePageTables {
         {
             let mut dir = pageset.get_directory_mut();
             dir.zero();
-            dir.map_nth_entry(ENTRY_COUNT - 1, directory_frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);
+            dir.map_nth_entry::<NoFlush>(ENTRY_COUNT - 1, directory_frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);
         };
         pageset
     }
@@ -494,6 +501,7 @@ impl_hierachical_table!(InactivePageTable);
 
 impl PageDirectoryTrait for InactivePageDirectory {
     type PageTableType = InactivePageTable;
+    type FlusherType = NoFlush;
 
     fn get_table(&self, index: usize) -> Option<&Self::PageTableType> {
         match self.entries()[index].pointed_frame() {
@@ -526,7 +534,7 @@ impl PageDirectoryTrait for InactivePageDirectory {
         let mut mapped_table = unsafe {(va as *mut InactivePageTable).as_mut().unwrap()};
         mapped_table.zero();
 
-        self.map_nth_entry(index, table_frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);
+        self.map_nth_entry::<Self::FlusherType>(index, table_frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);
 
         mapped_table
     }
@@ -547,7 +555,7 @@ impl InactivePageDirectory {
     }
 }
 
-impl PageTableTrait for InactivePageTable {}
+impl PageTableTrait for InactivePageTable { type FlusherType = NoFlush; }
 
 /// When the temporary inactive directory is drop, we unmap it
 impl Drop for InactivePageDirectory {
@@ -608,6 +616,7 @@ impl_hierachical_table!(PagingOffDirectory);
 
 impl PageDirectoryTrait for PagingOffDirectory {
     type PageTableType = PagingOffTable;
+    type FlusherType = NoFlush;
 
     fn get_table(&self, index: usize) -> Option<&Self::PageTableType> {
         match self.entries()[index].pointed_frame() {
@@ -644,7 +653,7 @@ impl PagingOffDirectory {
     unsafe fn paging_off_init_page_directory(&mut self) {
         let first_table_frame = FrameAllocator::alloc_frame();
         let first_table = first_table_frame
-            .dangerous_as_physical_ptr() as *mut ActivePageTable as *mut PageTableTrait;
+            .dangerous_as_physical_ptr() as *mut PagingOffTable;
 
         (*first_table).zero();
         (*first_table).map_whole_table(0x00000000, EntryFlags::PRESENT | EntryFlags::WRITABLE);
@@ -662,4 +671,19 @@ pub struct PagingOffTable(PageTable);
 inherit_deref_index!(PagingOffTable, PageTable);
 impl_hierachical_table!(PagingOffTable);
 
-impl PageTableTrait for PagingOffTable { }
+impl PageTableTrait for PagingOffTable { type FlusherType = NoFlush; }
+
+/* ********************************************************************************************** */
+
+/// A trait used to decide if the TLB cache should be flushed or not
+pub trait Flusher {
+    fn flush_cache() {}
+}
+
+/// When passing this struct the TLB will be flushed. Used by ActivePageTables
+pub struct TlbFlush;
+impl Flusher for TlbFlush { fn flush_cache() { flush_tlb(); } }
+
+/// When passing this struct the TLB will **not** be flushed. Used by Inactive/PagingOff page tables
+pub struct NoFlush;
+impl Flusher for NoFlush { fn flush_cache() { } }
