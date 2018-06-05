@@ -150,35 +150,52 @@ pub trait PageDirectoryTrait : HierarchicalTable {
     }
 
     /// Finds a virtual space hole that can contain page_nb consecutive pages
-    fn find_available_virtual_space<Land: VirtualSpaceLand>(&self, page_nb: usize) -> Option<VirtualAddress> {
+    /// Alignment is a mask that the first page address must satisfy (ex: 16 for 0x....0000)
+    fn find_available_virtual_space_aligned<Land: VirtualSpaceLand>(&self,
+                                                            page_nb: usize,
+                                                            alignement: usize) -> Option<VirtualAddress> {
+        fn compute_address(table: usize, page: usize) -> VirtualAddress {
+            table * ENTRY_COUNT * PAGE_SIZE + page * PAGE_SIZE as VirtualAddress
+        }
+        fn satisfies_alignement(table: usize, page: usize, alignement: usize) -> bool {
+            let mask : usize = (1 << alignement) - 1;
+            compute_address(table, page) & mask == 0
+        }
+        let mut considering_hole: bool = false;
         let mut hole_size: usize = 0;
         let mut hole_start_table: usize = 0;
         let mut hole_start_page:  usize = 0;
         let mut counter_curr_table:  usize = Land::start_table();
         let mut counter_curr_page:   usize = 0;
-        while counter_curr_table < Land::end_table() && hole_size < page_nb {
+        while counter_curr_table < Land::end_table() && (!considering_hole || hole_size < page_nb) {
             counter_curr_page = 0;
             match self.get_table(counter_curr_table) {
                 None => { // The whole page table is free, so add it to our hole_size
-                    if hole_size == 0 {
+                    if !considering_hole
+                        && satisfies_alignement(counter_curr_page, 0, alignement) {
                         // This is the start of a hole
+                        considering_hole = true;
                         hole_start_table = counter_curr_table;
-                        hole_start_page = counter_curr_page;
+                        hole_start_page = 0;
+                        hole_size = 0;
                     }
                     hole_size += ENTRY_COUNT;
                 }
                 Some(curr_table) => {
-                    while counter_curr_page < ENTRY_COUNT && hole_size < page_nb {
+                    while counter_curr_page < ENTRY_COUNT && (!considering_hole || hole_size < page_nb) {
                         if curr_table.entries()[counter_curr_page].is_unused() {
-                            if hole_size == 0 {
+                            if !considering_hole
+                                && satisfies_alignement(counter_curr_table, counter_curr_page, alignement) {
                                 // This is the start of a hole
+                                considering_hole = true;
                                 hole_start_table = counter_curr_table;
                                 hole_start_page = counter_curr_page;
+                                hole_size = 0;
                             }
                             hole_size += 1;
                         } else {
                             // The current hole was not big enough, so reset counter
-                            hole_size = 0;
+                            considering_hole = false;
                         }
                         counter_curr_page += 1;
                     }
@@ -186,11 +203,8 @@ pub trait PageDirectoryTrait : HierarchicalTable {
             }
             counter_curr_table += 1;
         };
-        if hole_size >= page_nb { // The last tested hole was big enough
-            Some(hole_start_table * ENTRY_COUNT * PAGE_SIZE +
-                 hole_start_page * PAGE_SIZE
-                    as VirtualAddress
-            )
+        if considering_hole && hole_size >= page_nb { // The last tested hole was big enough
+            Some(compute_address(hole_start_table, hole_start_page))
         } else { // No hole was big enough
             None
         }
@@ -267,8 +281,14 @@ pub trait PageTablesSet {
     }
 
     /// Finds a virtual space hole that can contain page_nb consecutive pages
+    fn find_available_virtual_space_aligned<Land: VirtualSpaceLand>(&self, page_nb: usize, alignement: usize) -> Option<VirtualAddress> {
+        self.get_directory().find_available_virtual_space_aligned::<Land>(page_nb, alignement)
+    }
+
+    /// Finds a virtual space hole that can contain page_nb consecutive pages
     fn find_available_virtual_space<Land: VirtualSpaceLand>(&self, page_nb: usize) -> Option<VirtualAddress> {
-        self.get_directory().find_available_virtual_space::<Land>(page_nb)
+        // find_available_available_virtual_space_aligned with any alignement
+        self.get_directory().find_available_virtual_space_aligned::<Land>(page_nb, 0)
     }
 }
 
