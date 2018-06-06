@@ -246,6 +246,7 @@ pub trait PageTablesSet {
     }
 
 
+    /// Maps a given frame in the page tables. Takes care of choosing the virtual address
     fn map_frame<Land: VirtualSpaceLand>(&mut self, frame: Frame, flags: EntryFlags) -> VirtualAddress {
         let va = self.find_available_virtual_space::<Land>(1).unwrap();
         self.map_to(frame,va, flags);
@@ -258,6 +259,22 @@ pub trait PageTablesSet {
         let va = self.find_available_virtual_space::<Land>(1).unwrap();
         self.map_allocate_to(va, flags);
         va
+    }
+
+    /// Reserves a given page as guard page.
+    /// This affects only virtual memory and doesn't take any actual physical frame.
+    fn map_page_guard(&mut self, address: VirtualAddress) {
+        // Just map to frame 0, it will page fault anyway since PRESENT is missing
+        self.map_to(Frame::from_physical_addr(0x00000000), address,EntryFlags::GUARD_PAGE)
+    }
+
+    /// Maps a given number of consecutive pages at a given address
+    /// Allocates the frames
+    fn map_range_allocate(&mut self, address: VirtualAddress, page_nb: usize, flags: EntryFlags) {
+        let address_end = address + (page_nb * PAGE_SIZE);
+        for current_address in (address..address_end).step_by(PAGE_SIZE) {
+            self.map_allocate_to(current_address, flags);
+        }
     }
 
     /// Maps a memory frame to the same virtual address
@@ -403,7 +420,7 @@ impl PageTableTrait for ActivePageTable { type FlusherType = TlbFlush; }
 
 /* ********************************************************************************************** */
 
-struct SmartPageDirectory<T: PageDirectoryTrait>(*mut T);
+pub struct SmartPageDirectory<T: PageDirectoryTrait>(*mut T);
 
 impl<T: PageDirectoryTrait> Deref for SmartPageDirectory<T> {
     type Target = T;

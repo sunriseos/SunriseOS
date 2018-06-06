@@ -37,6 +37,7 @@ mod utils;
 mod frame_alloc;
 pub use frame_alloc::FrameAllocator;
 pub use i386::paging;
+pub use i386::stack;
 use i386::paging::{InactivePageTables, PageTablesSet, EntryFlags};
 
 fn main() {
@@ -49,8 +50,6 @@ fn main() {
                                   PrintAttribute::new(Color::Magenta, Color::LightGreen, true));
     Printer::println_attr(b"very polychromatic".as_ascii_str().expect("ASCII"),
                            PrintAttribute::new(Color::Yellow, Color::Pink, true));
-
-    utils::print_stack();
 
     writeln!(Printer, "----------");
 
@@ -145,6 +144,20 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     // Create page tables with the right access rights for each kernel section
     unsafe { paging::remap_kernel(&boot_info) }
     writeln!(Printer, "= Remapped the kernel");
+
+    let new_stack = stack::KernelStack::allocate_stack(&mut paging::ACTIVE_PAGE_TABLES.lock())
+        .expect("Failed to allocate new kernel stack");
+    unsafe { new_stack.switch_to(common_start_continue_stack) }
+    unreachable!()
+}
+
+/// When we switch to a new valid kernel stack during init, we can't return now that the stack is empty
+/// so we need to call some function that will proceed with the end of the init procedure
+/// This is some function
+#[cfg(target_os = "none")]
+#[no_mangle]
+pub fn common_start_continue_stack() -> ! {
+    writeln!(Printer, "= Switched to new kernel stack");
 
     writeln!(Printer, "= Calling main()");
     main();

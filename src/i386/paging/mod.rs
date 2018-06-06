@@ -5,7 +5,7 @@ mod table;
 
 use multiboot2::{BootInformation, ElfSectionFlags};
 
-pub use self::table::InactivePageTables;
+pub use self::table::{ActivePageTables, InactivePageTables};
 pub use self::table::PageTablesSet;
 pub use self::table::entry::EntryFlags;
 
@@ -24,7 +24,7 @@ const ENTRY_COUNT: usize = PAGE_SIZE / ::core::mem::size_of::<Entry>();
 pub type PhysicalAddress = usize;
 pub type VirtualAddress = usize;
 
-static ACTIVE_PAGE_TABLES: Mutex<ActivePageTables> = Mutex::new(ActivePageTables());
+pub static ACTIVE_PAGE_TABLES: Mutex<ActivePageTables> = Mutex::new(ActivePageTables());
 
 unsafe fn enable_paging(page_directory_address: usize) {
     asm!("mov eax, $0

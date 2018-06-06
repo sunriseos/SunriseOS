@@ -4,6 +4,7 @@
 #![cfg(target_arch = "x86")]
 
 pub mod paging;
+pub mod stack;
 
 pub mod instructions {
     //! Low level functions for special i386 instructions.
