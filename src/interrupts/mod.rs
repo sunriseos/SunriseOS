@@ -3,7 +3,7 @@ use i386::instructions::{port::{inb, outb}, interrupts::sti};
 
 use print::Printer;
 use core::fmt::Write;
-use frame_alloc::{Frame, FrameAllocator};
+use paging;
 use spin::Mutex;
 use devices::pic;
 
@@ -20,7 +20,7 @@ extern "x86-interrupt" fn invalid_opcode(stack_frame: &mut ExceptionStackFrame) 
 }
 
 lazy_static! {
-    static ref IDT: Mutex<Option<Frame>> = Mutex::new(None);
+    static ref IDT: Mutex<Option<::i386::paging::VirtualAddress>> = Mutex::new(None);
 }
 
 /// initialize the interrupt subsystem. Sets up the PIC and the IDT.
@@ -28,9 +28,8 @@ pub unsafe fn init() {
     pic::init();
 
     {
-        let frame = FrameAllocator::alloc_frame();
-        let ptr = frame.dangerous_as_physical_ptr();
-        let idt = ptr as *mut u8 as *mut Idt;
+        let page = paging::get_page::<paging::KernelLand>();
+        let idt = page as *mut u8 as *mut Idt;
         (*idt).init();
         (*idt).breakpoint.set_handler_fn(breakpoint_handler);
         for interrupt in &mut (*idt).interrupts[0..16] {
@@ -40,7 +39,7 @@ pub unsafe fn init() {
             (*idt).interrupts[i].set_handler_fn(*handler);
         }
         let mut lock = IDT.lock();
-        *lock = Some(frame);
+        *lock = Some(page);
         (*idt).load();
     }
 

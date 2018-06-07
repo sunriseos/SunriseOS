@@ -43,6 +43,7 @@ mod i386;
 #[cfg(target_os = "none")]
 mod gdt;
 mod interrupts;
+mod devices;
 
 mod utils;
 mod frame_alloc;
@@ -232,7 +233,7 @@ pub fn common_start_continue_stack() -> ! {
     writeln!(SerialLogger, "= Switched to new kernel stack");
 
     writeln!(SerialLogger, "= Enabling interrupts");
-    interrupts::init();
+    unsafe { interrupts::init() }
 
     writeln!(SerialLogger, "= Calling main()");
     main();
