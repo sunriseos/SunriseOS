@@ -13,20 +13,18 @@ use self::table::*;
 use self::table::entry::Entry;
 pub use frame_alloc::{round_to_page, round_to_page_upper};
 use spin::Mutex;
-use frame_alloc::Frame;
+use frame_alloc::{Frame, PhysicalAddress, VirtualAddress};
 use ::print::{Printer, VGA_SCREEN_ADDRESS, VGA_SCREEN_MEMORY_SIZE};
 use ::core::fmt::Write;
+use ::core::ops::Deref;
 
 pub const PAGE_SIZE: usize = 4096;
 
 const ENTRY_COUNT: usize = PAGE_SIZE / ::core::mem::size_of::<Entry>();
 
-pub type PhysicalAddress = usize;
-pub type VirtualAddress = usize;
-
 pub static ACTIVE_PAGE_TABLES: Mutex<ActivePageTables> = Mutex::new(ActivePageTables());
 
-unsafe fn enable_paging(page_directory_address: usize) {
+unsafe fn enable_paging(page_directory_address: PhysicalAddress) {
     asm!("mov eax, $0
           mov cr3, eax
 
@@ -35,7 +33,7 @@ unsafe fn enable_paging(page_directory_address: usize) {
           mov cr0, eax          "
 
             :
-            : "r" (page_directory_address)
+            : "r" (page_directory_address.addr())
             : "eax", "memory"
             : "intel", "volatile");
 }
@@ -85,7 +83,7 @@ pub unsafe fn remap_kernel(boot_info : &BootInformation) {
             map_flags |= EntryFlags::WRITABLE
         }
 
-        new_pages.identity_map_region(section.start_address() as PhysicalAddress,
+        new_pages.identity_map_region(PhysicalAddress(section.start_address() as usize),
                                       section.size() as usize,
                                       map_flags);
     }
@@ -95,7 +93,7 @@ pub unsafe fn remap_kernel(boot_info : &BootInformation) {
                                   EntryFlags::PRESENT | EntryFlags::WRITABLE);
 
     // Reserve the very first frame for null pointers
-    new_pages.identity_map(Frame::from_physical_addr(0), EntryFlags::GUARD_PAGE);
+    new_pages.identity_map(Frame::from_physical_addr(PhysicalAddress(0)), EntryFlags::GUARD_PAGE);
 
     // Switch to the new tables set
     let old_pages = new_pages.switch_to();
@@ -120,25 +118,25 @@ pub trait VirtualSpaceLand {
 
     /// The index in page directory of the first table of this land
     fn start_table() -> usize {
-        Self::start_addr() / (PAGE_SIZE * ENTRY_COUNT) as usize
+        Self::start_addr().addr() / (PAGE_SIZE * ENTRY_COUNT) as usize
     }
 
     /// The index in page directory of the last table of this land
     fn end_table() -> usize {
-        Self::end_addr() / (PAGE_SIZE * ENTRY_COUNT) as usize
+        Self::end_addr().addr() / (PAGE_SIZE * ENTRY_COUNT) as usize
     }
 }
 
-pub enum KernelLand {}
-pub enum UserLand   {}
+pub struct  KernelLand;
+pub struct UserLand;
 
 impl KernelLand {
-    const fn start_addr() -> VirtualAddress { 0x00000000 }
-    const fn end_addr()   -> VirtualAddress { 0x3fffffff }
+    const fn start_addr() -> VirtualAddress { VirtualAddress(0x00000000) }
+    const fn end_addr()   -> VirtualAddress { VirtualAddress(0x3fffffff) }
 }
 impl UserLand {
-    const fn start_addr() -> VirtualAddress { 0x40000000 }
-    const fn end_addr()   -> VirtualAddress { 0xffffffff }
+    const fn start_addr() -> VirtualAddress { VirtualAddress(0x40000000) }
+    const fn end_addr()   -> VirtualAddress { VirtualAddress(0xffffffff) }
 }
 
 impl VirtualSpaceLand for KernelLand {
@@ -153,14 +151,14 @@ impl VirtualSpaceLand for UserLand {
 // Assertions to check that Kernel/User pages falls on distinct page tables
 // and also that they do not overlap
 fn __land_assertions() {
-    const_assert!(KernelLand::start_addr() < KernelLand::end_addr());
-    const_assert!(UserLand::start_addr() < UserLand::end_addr());
+    const_assert!(KernelLand::start_addr().0 < KernelLand::end_addr().0);
+    const_assert!(UserLand::start_addr().0 < UserLand::end_addr().0);
     // TODO: Const FN sucks! Check that the kernelland and userland don't overlap.
     //const_assert!(::core::cmp::max(KernelLand::start_addr(), UserLand::start_addr()) >=
     //              ::core::cmp::min(KernelLand::end_addr(),   UserLand::end_addr()));
 
-    const_assert!(KernelLand::start_addr() % (ENTRY_COUNT * PAGE_SIZE) == 0);
-    const_assert!(UserLand::start_addr()   % (ENTRY_COUNT * PAGE_SIZE) == 0);
+    const_assert!(KernelLand::start_addr().0 % (ENTRY_COUNT * PAGE_SIZE) == 0);
+    const_assert!(UserLand::start_addr().0   % (ENTRY_COUNT * PAGE_SIZE) == 0);
 }
 
 pub fn get_page<Land: VirtualSpaceLand>() -> VirtualAddress {

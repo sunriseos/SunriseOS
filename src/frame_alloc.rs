@@ -6,7 +6,17 @@ use spin::Mutex;
 use bit_field::BitArray;
 use utils::BitArrayExt;
 use utils::bit_array_first_zero;
-use ::paging::PhysicalAddress;
+
+/// Represents a Physical address
+/// Can only be used when paging is off
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct PhysicalAddress(pub usize);
+/// Represents a Virtual address
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct VirtualAddress(pub usize);
+
+impl VirtualAddress  { pub fn addr(&self) -> usize { self.0 } }
+impl PhysicalAddress { pub fn addr(&self) -> usize { self.0 } }
 
 pub const MEMORY_FRAME_SIZE: usize = 4096;
 
@@ -67,12 +77,12 @@ impl Frame {
     }
 
     pub fn from_physical_addr(physical_addr: PhysicalAddress) -> Frame {
-        assert_eq!(physical_addr % MEMORY_FRAME_SIZE, 0,
+        assert_eq!(physical_addr.addr() % MEMORY_FRAME_SIZE, 0,
                    "Frame must be constructed from a framesize-aligned pointer");
-        Frame { physical_addr }
+        Frame { physical_addr: physical_addr.addr() }
     }
 
-    pub fn address(&self) -> PhysicalAddress { self.physical_addr }
+    pub fn address(&self) -> PhysicalAddress { PhysicalAddress(self.physical_addr) }
 }
 
 /// A struct to allocate and free memory frames

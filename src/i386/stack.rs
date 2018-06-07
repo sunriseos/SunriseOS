@@ -29,6 +29,7 @@
 
 use ::core::mem::size_of;
 use paging::*;
+use frame_alloc::VirtualAddress;
 
 /// The size of a kernel stack, not accounting for the page guard
 pub const STACK_SIZE: usize            = 2;
@@ -40,7 +41,7 @@ const STACK_ALIGNEMENT: usize = 14;
 /// A structure representing a kernel stack
 #[derive(Debug)]
 pub struct KernelStack {
-    stack_address: usize // This falls in the page guard
+    stack_address: VirtualAddress // This falls in the page guard
 }
 
 impl KernelStack {
@@ -50,7 +51,7 @@ impl KernelStack {
     pub fn allocate_stack(tables: &mut ActivePageTables) -> Option<KernelStack> {
         tables.find_available_virtual_space_aligned::<KernelLand>(STACK_SIZE_WITH_GUARD, STACK_ALIGNEMENT)
             .map(|va| {
-                tables.map_range_allocate(va + PAGE_SIZE, STACK_SIZE,
+                tables.map_range_allocate(VirtualAddress(va.addr() + PAGE_SIZE), STACK_SIZE,
                                           EntryFlags::PRESENT | EntryFlags::WRITABLE);
                 tables.map_page_guard(va);
 
@@ -69,9 +70,9 @@ impl KernelStack {
 
     /// Puts two poisons pointers at the base of the stack for the saved ebp and saved eip
     unsafe fn create_poison_pointers(&mut self) {
-        let saved_eip: *mut usize = (self.stack_address + STACK_SIZE_WITH_GUARD * PAGE_SIZE
-                                                        - size_of::<ThreadInfoInStack>()
-                                                        - size_of::<usize>()
+        let saved_eip: *mut usize = (self.stack_address.addr() + STACK_SIZE_WITH_GUARD * PAGE_SIZE
+                                                               - size_of::<ThreadInfoInStack>()
+                                                               - size_of::<usize>()
                                     ) as *mut usize;
         let saved_ebp: *mut usize = saved_eip.offset(-1);
         *saved_eip = 0x00000000;
@@ -81,9 +82,9 @@ impl KernelStack {
     /// Switch to this kernel stack.
     /// The function passed as parameter will be called with the new stack, and should never return
     pub unsafe fn switch_to(self, f: fn() -> !) -> ! {
-        let new_ebp_esp: usize = self.stack_address + STACK_SIZE_WITH_GUARD * PAGE_SIZE
-                                                    - size_of::<ThreadInfoInStack>()
-                                                    - Self::STACK_POISON_SIZE;
+        let new_ebp_esp: usize = self.stack_address.addr() + STACK_SIZE_WITH_GUARD * PAGE_SIZE
+                                                           - size_of::<ThreadInfoInStack>()
+                                                           - Self::STACK_POISON_SIZE;
         asm!("
         mov ebp, $0
         mov esp, $0
@@ -123,7 +124,7 @@ impl ThreadInfoInStack {
         let ti = ThreadInfoInStack { shitty_place_holder_field: 0xabba1974 };
 
         // Copy it to the kernel stack
-        let ti_ptr = (stack.stack_address + THREAD_INFO_OFFSET) as *mut ThreadInfoInStack;
+        let ti_ptr = (stack.stack_address.addr() + THREAD_INFO_OFFSET) as *mut ThreadInfoInStack;
         *ti_ptr = ti;
     }
 }

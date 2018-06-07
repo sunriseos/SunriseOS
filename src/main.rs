@@ -83,13 +83,13 @@ fn main() {
     writeln!(Printer, "----------");
 
     let page1 = ::paging::get_page::<::paging::UserLand>();
-    writeln!(Printer, "Got page {:x}", page1);
+    writeln!(Printer, "Got page {:x}", page1.addr());
     let page2 = ::paging::get_page::<::paging::UserLand>();
-    writeln!(Printer, "Got page {:x}", page2);
+    writeln!(Printer, "Got page {:x}", page2.addr());
 
     let mut inactive_pages = InactivePageTables::new();
     let page4 = inactive_pages.get_page::<paging::UserLand>(EntryFlags::PRESENT | EntryFlags::WRITABLE);
-    writeln!(Printer, "Got inactive page {:x}", page4);
+    writeln!(Printer, "Got inactive page {:x}", page4.addr());
 
 }
 

@@ -1,7 +1,6 @@
 ///! # Page table entry
 
-use super::PhysicalAddress;
-use ::frame_alloc::Frame;
+use ::frame_alloc::{Frame, PhysicalAddress};
 
 bitflags! {
     pub struct EntryFlags: u32 {
@@ -40,15 +39,15 @@ impl Entry {
     pub fn pointed_frame(&self) -> Option<Frame> {
         if self.flags().contains(EntryFlags::PRESENT) {
             let frame_phys_addr = self.0 as usize & ENTRY_PHYS_ADDRESS_MASK;
-            Some( Frame::from_physical_addr(frame_phys_addr) )
+            Some( Frame::from_physical_addr(PhysicalAddress(frame_phys_addr)) )
         } else {
             None
         }
     }
 
     pub fn set(&mut self, frame: Frame, flags: EntryFlags) {
-        let frame_phys_addr = frame.dangerous_as_physical_ptr() as *mut u8 as PhysicalAddress;
-        assert_eq!(frame_phys_addr & !ENTRY_PHYS_ADDRESS_MASK, 0);
-        self.0 = (frame_phys_addr as u32) | flags.bits();
+        let frame_phys_addr = frame.address();
+        assert_eq!(frame_phys_addr.addr() & !ENTRY_PHYS_ADDRESS_MASK, 0);
+        self.0 = (frame_phys_addr.addr() as u32) | flags.bits();
     }
 }

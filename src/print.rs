@@ -4,8 +4,9 @@
 use spin::Mutex;
 use ascii::AsciiStr;
 use ascii::AsAsciiStr;
+use frame_alloc::PhysicalAddress;
 
-pub const VGA_SCREEN_ADDRESS: usize = 0xb8000;
+pub const VGA_SCREEN_ADDRESS: PhysicalAddress = PhysicalAddress(0xb8000);
 pub const VGA_SCREEN_SIZE: (usize, usize) = (25, 80); // y, x
 pub const VGA_SCREEN_MEMORY_SIZE: usize = 32 * 1024 / 2; // 32 ko in u16
 
@@ -77,7 +78,7 @@ impl PrinterInternal {
         #[cfg(target_os = "none")]
         return PrinterInternal {
             pos: (0, 0),
-            buffer: unsafe { ::core::slice::from_raw_parts_mut(VGA_SCREEN_ADDRESS as _, VGA_SCREEN_MEMORY_SIZE) }
+            buffer: unsafe { ::core::slice::from_raw_parts_mut(VGA_SCREEN_ADDRESS.addr() as _, VGA_SCREEN_MEMORY_SIZE) }
         };
         #[cfg(not(target_os = "none"))]
         PrinterInternal {
