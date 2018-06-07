@@ -74,8 +74,8 @@ impl KernelStack {
                                                         - size_of::<usize>()
                                     ) as *mut usize;
         let saved_ebp: *mut usize = saved_eip.offset(-1);
-        *saved_eip = 0xdeadbeef;
-        *saved_ebp = 0xdeadbabe;
+        *saved_eip = 0x00000000;
+        *saved_ebp = 0x00000000;
     }
 
     /// Switch to this kernel stack.
@@ -87,9 +87,7 @@ impl KernelStack {
         asm!("
         mov ebp, $0
         mov esp, $0
-        call $1" // We could jmp $1,
-                 // but with call $1 we ensure that if the function accidentally returns
-                 // it will come back here and panic on the following unreachable() instruction
+        jmp $1"
         :
         : "r"(new_ebp_esp), "r"(f)
         : "memory"
@@ -97,8 +95,6 @@ impl KernelStack {
 
         unreachable!();
     }
-
-    // TODO do we actually need poisons if we call the function and not jmp to it ?
 
     // TODO get current stack pointer from $esp
 
