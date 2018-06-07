@@ -119,6 +119,10 @@ pub unsafe extern fn start() -> ! {
 pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     // Do whatever is necessary to have a proper environment here.
 
+
+    write!(Printer, "Clearing screen...");
+    Printer::clear_screen();
+
     // Say hello to the world
     write!(Printer, "\n# Welcome to ");
     Printer::print_attr("KFS".as_ascii_str().expect("ASCII"),

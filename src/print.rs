@@ -144,6 +144,14 @@ impl PrinterInternal {
             }
         }
     }
+
+    /// Clears the whole screen by writing 0 to it and reset cursor
+    fn clear(&mut self) {
+        for i in 0..(VGA_SCREEN_SIZE.0 * VGA_SCREEN_SIZE.1) {
+            self.buffer[i] = 0;
+        }
+        self.pos = (0,0);
+    }
 }
 
 /// A class to print text to the screen
@@ -173,6 +181,12 @@ impl Printer {
         let mut myprinter = G_PRINTER.lock();
         myprinter.print_attr(string, attr);
         myprinter.line_feed();
+    }
+
+    /// Clears the whole screen and resets cursor to top left
+    pub fn clear_screen() {
+        let mut myprinter = G_PRINTER.lock();
+        myprinter.clear();
     }
 }
 
