@@ -23,6 +23,7 @@ const ENTRY_PHYS_ADDRESS_MASK: usize = 0xffff_f000;
 
 /// An entry in a page table or page directory. An unused entry is 0
 #[repr(transparent)]
+#[derive(Debug, Clone, Copy)]
 pub struct Entry(u32);
 
 impl Entry {

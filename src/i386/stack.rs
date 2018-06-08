@@ -46,9 +46,8 @@ pub struct KernelStack {
 
 impl KernelStack {
     /// Allocates the kernel stack
-    // TODO We should also work on InactivePageTables, but for that we need an InactivePage structure
-    // TODO that can temporary map a page so we can write to it
-    pub fn allocate_stack(tables: &mut ActivePageTables) -> Option<KernelStack> {
+    pub fn allocate_stack() -> Option<KernelStack> {
+        let mut tables = ACTIVE_PAGE_TABLES.lock();
         tables.find_available_virtual_space_aligned::<KernelLand>(STACK_SIZE_WITH_GUARD, STACK_ALIGNEMENT)
             .map(|va| {
                 tables.map_range_allocate(VirtualAddress(va.addr() + PAGE_SIZE), STACK_SIZE,

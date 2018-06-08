@@ -42,8 +42,6 @@ use i386::paging::{InactivePageTables, PageTablesSet, EntryFlags};
 
 fn main() {
     Printer::println(b"Hello world!      ".as_ascii_str().expect("ASCII"));
-    Printer::println(b"the cake is a lie\nand so is love".as_ascii_str().expect("ASCII"));
-    Printer::println(b"A very long line that goes like this : Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed non risus. Suspendisse lectus tortor, dignissim sit amet, adipiscing nec, ultricies sed, dolor.".as_ascii_str().expect("ASCII"));
     Printer::println_attr(b"Whoah, nice color".as_ascii_str().expect("ASCII"),
                                   PrintAttribute::new(Color::Pink, Color::Cyan, false));
     Printer::println_attr(b"such hues".as_ascii_str().expect("ASCII"),
@@ -51,45 +49,28 @@ fn main() {
     Printer::println_attr(b"very polychromatic".as_ascii_str().expect("ASCII"),
                            PrintAttribute::new(Color::Yellow, Color::Pink, true));
 
-    writeln!(Printer, "----------");
-
     let mymem = FrameAllocator::alloc_frame();
-    writeln!(Printer, "Allocated address {:?}", mymem);
+    writeln!(Printer, "Allocated frame {:x?}", mymem);
     FrameAllocator::free_frame(mymem);
-    writeln!(Printer, "Freed address {:?}", mymem);
-
-    writeln!(Printer, "----------");
-
-    let mymem = FrameAllocator::alloc_frame();
-    writeln!(Printer, "Allocated address {:?}", mymem);
-    FrameAllocator::free_frame(mymem);
-    writeln!(Printer, "Freed address {:?}", mymem);
-
-    writeln!(Printer, "----------");
-
-    let mymem1 = FrameAllocator::alloc_frame();
-    writeln!(Printer, "Allocated address {:?}", mymem1);
-    let mymem2 = FrameAllocator::alloc_frame();
-    writeln!(Printer, "Allocated address {:?}", mymem2);
-    let mymem3 = FrameAllocator::alloc_frame();
-    writeln!(Printer, "Allocated address {:?}", mymem3);
-    FrameAllocator::free_frame(mymem1);
-    writeln!(Printer, "Freed address {:?}", mymem1);
-    FrameAllocator::free_frame(mymem2);
-    writeln!(Printer, "Freed address {:?}", mymem2);
-    FrameAllocator::free_frame(mymem3);
-    writeln!(Printer, "Freed address {:?}", mymem3);
+    writeln!(Printer, "Freed frame {:x?}", mymem);
 
     writeln!(Printer, "----------");
 
     let page1 = ::paging::get_page::<::paging::UserLand>();
-    writeln!(Printer, "Got page {:x}", page1.addr());
+    writeln!(Printer, "Got page {:#x}", page1.addr());
     let page2 = ::paging::get_page::<::paging::UserLand>();
-    writeln!(Printer, "Got page {:x}", page2.addr());
+    writeln!(Printer, "Got page {:#x}", page2.addr());
+
+    writeln!(Printer, "----------");
 
     let mut inactive_pages = InactivePageTables::new();
-    let page4 = inactive_pages.get_page::<paging::UserLand>(EntryFlags::PRESENT | EntryFlags::WRITABLE);
-    writeln!(Printer, "Got inactive page {:x}", page4.addr());
+    writeln!(Printer, "Created new tables");
+    let page_innactive = inactive_pages.get_page::<paging::UserLand>(EntryFlags::PRESENT | EntryFlags::WRITABLE);
+    writeln!(Printer, "Mapped inactive page {:#x}", page_innactive.addr());
+    unsafe { inactive_pages.switch_to() };
+    writeln!(Printer, "Switched to new tables");
+    let page_active = ::paging::get_page::<::paging::UserLand>();
+    writeln!(Printer, "Got page {:#x}", page_active.addr());
 
 }
 
@@ -150,7 +131,7 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     unsafe { page_tables.enable_paging() }
     writeln!(Printer, "= Paging on");
 
-    let new_stack = stack::KernelStack::allocate_stack(&mut paging::ACTIVE_PAGE_TABLES.lock())
+    let new_stack = stack::KernelStack::allocate_stack()
         .expect("Failed to allocate new kernel stack");
     unsafe { new_stack.switch_to(common_start_continue_stack) }
     unreachable!()

@@ -509,15 +509,29 @@ impl InactivePageTables {
 
     /// Switch to this page tables set.
     /// Returns the old active page tables set after the switch
-    pub fn switch_to(&self) -> InactivePageTables {
+    ///
+    /// Since all process are supposed to have the same view of kernelspace,
+    /// this function will copy the part of the active directory that is mapping kernel space tables
+    /// to the directory being switched to, and then performs the switch
+    ///
+    /// # Safety
+    ///
+    /// All reference to userspace memory will be invalidated
+    pub unsafe fn switch_to(&mut self) -> InactivePageTables {
+        // Copy the kernel space tables
+        self.get_directory().copy_active_kernelspace();
         let old_pages = super::swap_cr3(self.directory_physical_address);
         InactivePageTables { directory_physical_address: old_pages }
     }
 
-    /// Frees the frames occupied by the page directory and page tables of this set
-    /// Does not free the pages mapped by this set
+    /// Frees the userspace pages mapped by this set
+    /// Frees the userspace tables frames
+    /// Frees directory's frame
+    ///
+    /// Does not free pages mapped in kernelspace and kernel space tables
     pub fn delete(mut self) {
-        self.get_directory().delete();
+        self.get_directory().delete_userspace();
+        FrameAllocator::free_frame(Frame::from_physical_addr(self.directory_physical_address))
     }
 }
 
@@ -563,21 +577,45 @@ impl PageDirectoryTrait for InactivePageDirectory {
 }
 
 impl InactivePageDirectory {
-    /// Frees the frames occupied by the page directory and page tables
-    /// Does not free the pages mapped by this directory
-    fn delete(&mut self) {
-        // We're a destructor, we should not take self by reference, but a directory structure is PAGE_SIZE big
-        // and the public function in the set takes self by value so it's ok
-        for table in self.entries_mut().iter_mut() {
-            if let Some(table_frame) = table.pointed_frame() {
+    /// Frees the userspace pages mapped by this set
+    /// Frees the userspace tables frames
+    ///
+    /// Does not free pages mapped in kernelspace and kernel space tables
+    fn delete_userspace(&mut self) {
+        for table_index in UserLand::start_table()..KernelLand::end_table() {
+            if let Some(mut table) = self.get_table(table_index) {
+                // Free all pages
+                table.free_all_frames();
+                // Free the table
+                let table_frame = self.entries_mut()[table_index].pointed_frame().unwrap();
                 FrameAllocator::free_frame(table_frame);
             }
-            // Directory frees itself by freeing the recursive last entry
+            // Zero the directory entry
+            self.entries_mut()[table_index].set_unused();
+        }
+    }
+
+    /// Copies all the entries in the directory mapping tables that fall in kernelspace
+    /// from active page tables
+    fn copy_active_kernelspace(&mut self) {
+        let mut active_dir = ACTIVE_PAGE_TABLES.lock().get_directory();
+        for table in KernelLand::start_table()..=KernelLand::end_table() {
+            self.entries_mut()[table] = active_dir.entries_mut()[table];
         }
     }
 }
 
 impl PageTableTrait for InactivePageTable { type FlusherType = NoFlush; }
+
+impl InactivePageTable {
+    /// Frees all pages mapped by this table, and mark the frames as deallocated
+    fn free_all_frames(&mut self) {
+        for entry in self.entries_mut().iter_mut() {
+            entry.pointed_frame().map(|frame| {FrameAllocator::free_frame(frame)});
+            entry.set_unused();
+        }
+    }
+}
 
 /// When the temporary inactive directory is drop, we unmap it
 impl Drop for InactivePageDirectory {
