@@ -141,13 +141,14 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     FrameAllocator::init(&boot_info);
     writeln!(Printer, "= Initialized frame allocator");
 
-    // Setup paging, poorly identity map the first 4Mb of memory
-    unsafe { paging::init_paging() }
-    writeln!(Printer, "= Paging on");
-
     // Create page tables with the right access rights for each kernel section
-    unsafe { paging::remap_kernel(&boot_info) }
-    writeln!(Printer, "= Remapped the kernel");
+    let page_tables =
+    unsafe { paging::map_kernel(&boot_info) };
+    writeln!(Printer, "= Mapped the kernel");
+
+    // Start using these page tables
+    unsafe { page_tables.enable_paging() }
+    writeln!(Printer, "= Paging on");
 
     let new_stack = stack::KernelStack::allocate_stack(&mut paging::ACTIVE_PAGE_TABLES.lock())
         .expect("Failed to allocate new kernel stack");

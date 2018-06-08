@@ -585,8 +585,17 @@ impl PagingOffPageSet {
     pub unsafe fn paging_off_create_page_set() -> Self {
         let dir = FrameAllocator::alloc_frame().dangerous_as_physical_ptr()
             as *mut PagingOffDirectory;
-        (*dir).paging_off_init_page_directory();
+        (*dir).init_directory();
         Self { directory_physical_address : PhysicalAddress(dir as usize) }
+    }
+
+    /// Enables paging with this tables as active tables
+    ///
+    /// # Safety
+    ///
+    /// Paging **must** be disabled when calling this function.
+    pub unsafe fn enable_paging(self) {
+        enable_paging(self.directory_physical_address)
     }
 }
 
@@ -609,31 +618,26 @@ impl PageDirectoryTrait for PagingOffDirectory {
     }
     fn create_table(&mut self, index: usize) -> SmartHierarchicalTable<Self::PageTableType> {
         let mut frame = FrameAllocator::alloc_frame();
-        SmartHierarchicalTable(unsafe {(frame.dangerous_as_physical_ptr() as *mut PagingOffTable)})
+        let mut table = SmartHierarchicalTable(
+            unsafe {(frame.dangerous_as_physical_ptr() as *mut PagingOffTable)}
+        );
+        table.zero();
+        self.map_nth_entry::<Self::FlusherType>(index, frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);
+        table
     }
 }
 
 impl PagingOffDirectory {
-    /// Used at startup when creating the first page tables.
-    /// This function does two things :
-    ///     * simply allocates one child page table and fills it with identity mappings entries
-    ///       therefore identity mapping the first 4Mb of memory
-    ///     * makes the last directory entry a recursive mapping
+    /// Initializes the directory.
+    /// This function does two things:
+    ///     * zero out the whole directory
+    ///     * make its last entry point to itself to enable recursive mapping
     ///
     /// # Safety
     ///
     /// Paging **must** be disabled when calling this function.
-    unsafe fn paging_off_init_page_directory(&mut self) {
-        let first_table_frame = FrameAllocator::alloc_frame();
-        let first_table = first_table_frame
-            .dangerous_as_physical_ptr() as *mut PagingOffTable;
-
-        (*first_table).zero();
-        (*first_table).map_whole_table(PhysicalAddress(0x00000000), EntryFlags::PRESENT | EntryFlags::WRITABLE);
-
+    unsafe fn init_directory(&mut self) {
         self.zero();
-        self.entries_mut()[0].set(first_table_frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);
-
         let self_frame = Frame::from_physical_addr(PhysicalAddress(self as *mut _ as usize));
         // Make last entry of the directory point to the directory itself
         self.entries_mut()[ENTRY_COUNT - 1].set(self_frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);

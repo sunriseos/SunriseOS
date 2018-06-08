@@ -64,10 +64,13 @@ fn swap_cr3(page_directory_address: PhysicalAddress) -> PhysicalAddress {
     old_value
 }
 
-/// Creates an InactivePageTables set mapping the kernel sections with correct rights,
-/// and makes it active
-pub unsafe fn remap_kernel(boot_info : &BootInformation) {
-    let mut new_pages = InactivePageTables::new();
+/// Creates a set of page tables mapping the kernel sections with correct rights
+///
+/// # Safety
+///
+/// Paging must be off to call this function
+pub unsafe fn map_kernel(boot_info : &BootInformation) -> PagingOffPageSet {
+    let mut new_pages = PagingOffPageSet::paging_off_create_page_set();
 
     // Map the elf sections
     let elf_sections_tag = boot_info.elf_sections_tag()
@@ -95,19 +98,7 @@ pub unsafe fn remap_kernel(boot_info : &BootInformation) {
     // Reserve the very first frame for null pointers
     new_pages.identity_map(Frame::from_physical_addr(PhysicalAddress(0)), EntryFlags::GUARD_PAGE);
 
-    // Switch to the new tables set
-    let old_pages = new_pages.switch_to();
-
-    // Delete the page tables and directory of previous set
-    old_pages.delete();
-
-    // TODO do something for the stack
-}
-
-/// Used at startup to create the page tables and mapping the kernel
-pub unsafe fn init_paging() {
-    let tables = PagingOffPageSet::paging_off_create_page_set();
-    enable_paging(tables.directory_physical_address)
+    new_pages
 }
 
 /// A trait describing the splitting of virtual memory between Kernel and User.
