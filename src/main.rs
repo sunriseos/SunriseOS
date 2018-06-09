@@ -6,7 +6,7 @@
 //! Currently doesn't do much, besides booting and printing Hello World on the
 //! screen. But hey, that's a start.
 
-#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, repr_transparent, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, iterator_step_by)]
+#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, repr_transparent, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, iterator_step_by, used)]
 #![cfg_attr(target_os = "none", no_std)]
 #![cfg_attr(target_os = "none", no_main)]
 #![allow(unused)]
@@ -188,6 +188,7 @@ pub struct MultiBootHeader {
 }
 
 #[cfg_attr(target_os = "none", link_section = ".multiboot_header")]
+#[used]
 pub static MULTIBOOT_HEADER : MultiBootHeader = MultiBootHeader {
     magic: 0xe85250d6,
     architecture: 0,
