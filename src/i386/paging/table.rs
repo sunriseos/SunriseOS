@@ -1,4 +1,4 @@
-///! # Page table / directory
+//! i386 page table / directory
 
 use core::ops::{Index, IndexMut};
 
@@ -17,7 +17,7 @@ pub struct PageTable {
     entries: [Entry; ENTRY_COUNT]
 }
 
-/// The page directory
+/// A page directory
 pub struct PageDirectory(PageTable);
 
 // Assertions
@@ -102,11 +102,22 @@ pub trait PageTableTrait : HierarchicalTable {
     }
 }
 
+/// A trait describing all the things that a PageDirectory can do.
+///
+/// Implementer only has to provide functions to map a table and create one,
+/// and the trait does the rest.
+///
+/// Thanks to this we can have the same api for every kind of directories, the only difference is
+/// the way we access the page tables for writing :
+///
+/// * an ActivePageDirectory will want to use recursive mapping
+/// * an InactivePageDirectory will want to temporarily map the table
+/// * a  PagingOffPageDirectory will point to physical memory
 pub trait PageDirectoryTrait : HierarchicalTable {
     type PageTableType : PageTableTrait;
     type FlusherType : Flusher;
 
-    /// Gets a reference to a page table through recursive mapping
+    /// Gets a reference to a page table
     fn get_table(&mut self, index: usize) -> Option<SmartHierarchicalTable<Self::PageTableType>>;
 
     /// Allocates a page table, zero it and add an entry to the directory pointing to it
@@ -232,8 +243,19 @@ pub trait PageDirectoryTrait : HierarchicalTable {
 
 /* ********************************************************************************************** */
 
-/// A trait describing the interface of a PageTable hierarchy
-/// Implemented by ActivePageTables and InactivePageTables
+/// A trait describing the interface of a PageTable hierarchy.
+///
+/// Implemented by ActivePageTables, InactivePageTables and PagingOffPageSet
+///
+/// Implementer only has to provide the type of the directory it will provide, and a function
+/// to map it.
+///
+/// Thanks to this we can have the same api for every kind of page tables, the only difference is
+/// the way we access the page directory :
+///
+/// * an ActivePageDirectory will want to use recursive mapping
+/// * an InactivePageDirectory will want to temporarily map the directory
+/// * a  PagingOffPageDirectory will point to physical memory
 pub trait PageTablesSet {
     type PageDirectoryType: PageDirectoryTrait;
     /// Gets a reference to the directory
@@ -347,6 +369,7 @@ pub trait PageTablesSet {
         self.map_to(frame, VirtualAddress(frame.address().addr()), flags);
     }
 
+    /// Identity maps a range of frames
     fn identity_map_region(&mut self, start_address: PhysicalAddress, region_size: usize, flags: EntryFlags) {
         assert_eq!(start_address.addr() % PAGE_SIZE, 0, "Tried to map a non paged-aligned region");
         let start = round_to_page(start_address.addr());
@@ -419,9 +442,10 @@ macro_rules! impl_hierachical_table {
 
 /* ********************************************************************************************** */
 
-/// The page directory currently in use.
-/// This struct is used to manage rust ownership.
-/// Used when paging is already on (recursive mapping of the directory)
+/// The page tables set currently in use.
+///
+/// Used when paging is on.
+/// Uses recursive mapping to map the directory for modifying
 pub struct ActivePageTables ();
 
 impl PageTablesSet for ActivePageTables {
@@ -432,6 +456,7 @@ impl PageTablesSet for ActivePageTables {
 }
 
 /// The page directory currently in use.
+///
 /// Its last entry enables recursive mapping, which we use to access and modify it
 pub struct ActivePageDirectory(PageDirectory);
 inherit_deref_index!(ActivePageDirectory, PageDirectory);
@@ -484,7 +509,7 @@ impl PageTableTrait for ActivePageTable { type FlusherType = TlbFlush; }
 
 /* ********************************************************************************************** */
 
-/// This is just a wrapper for a pointer to a Table or a Directory
+/// This is just a wrapper for a pointer to a Table or a Directory.
 /// It enables us to do handle when it is dropped
 pub struct SmartHierarchicalTable<T: HierarchicalTable>(*mut T);
 
@@ -565,9 +590,9 @@ impl InactivePageTables {
         InactivePageTables { directory_physical_address: old_pages }
     }
 
-    /// Frees the userspace pages mapped by this set
-    /// Frees the userspace tables frames
-    /// Frees directory's frame
+    /// * Frees the userspace pages mapped by this set.
+    /// * Frees the userspace tables frames.
+    /// * Frees directory's frame.
     ///
     /// Does not free pages mapped in kernelspace and kernel space tables
     pub fn delete(mut self) {
@@ -591,6 +616,7 @@ impl PageDirectoryTrait for InactivePageDirectory {
     type PageTableType = InactivePageTable;
     type FlusherType = NoFlush;
 
+    /// Temporary map the table
     fn get_table(&mut self, index: usize) -> Option<SmartHierarchicalTable<Self::PageTableType>> {
         match self.entries()[index].pointed_frame() {
             None => None,
@@ -602,6 +628,8 @@ impl PageDirectoryTrait for InactivePageDirectory {
         }
     }
 
+    /// Allocates a page table, temporarily map it,
+    /// zero it and add an entry to the directory pointing to it
     fn create_table(&mut self, index: usize) -> SmartHierarchicalTable<Self::PageTableType> {
         assert!(self.entries()[index].is_unused());
         let mut table_frame = FrameAllocator::alloc_frame();
@@ -618,8 +646,8 @@ impl PageDirectoryTrait for InactivePageDirectory {
 }
 
 impl InactivePageDirectory {
-    /// Frees the userspace pages mapped by this set
-    /// Frees the userspace tables frames
+    /// * Frees the userspace pages mapped by this set
+    /// * Frees the userspace tables frames
     ///
     /// Does not free pages mapped in kernelspace and kernel space tables
     fn delete_userspace(&mut self) {
@@ -725,6 +753,7 @@ impl PageDirectoryTrait for PagingOffDirectory {
     type PageTableType = PagingOffTable;
     type FlusherType = NoFlush;
 
+    /// Simply cast pointed frame as PageTable
     fn get_table(&mut self, index: usize) -> Option<SmartHierarchicalTable<Self::PageTableType>> {
         match self.entries()[index].pointed_frame() {
             None => None,
@@ -733,6 +762,7 @@ impl PageDirectoryTrait for PagingOffDirectory {
             )
         }
     }
+    /// Allocates a page table, zero it and add an entry to the directory pointing to it
     fn create_table(&mut self, index: usize) -> SmartHierarchicalTable<Self::PageTableType> {
         let mut frame = FrameAllocator::alloc_frame();
         let mut table = SmartHierarchicalTable(
@@ -747,8 +777,9 @@ impl PageDirectoryTrait for PagingOffDirectory {
 impl PagingOffDirectory {
     /// Initializes the directory.
     /// This function does two things:
-    ///     * zero out the whole directory
-    ///     * make its last entry point to itself to enable recursive mapping
+    ///
+    /// * zero out the whole directory
+    /// * make its last entry point to itself to enable recursive mapping
     ///
     /// # Safety
     ///
@@ -761,6 +792,7 @@ impl PagingOffDirectory {
     }
 }
 
+/// A table we can modify by directly accessing physical memory because paging is off
 pub struct PagingOffTable(PageTable);
 inherit_deref_index!(PagingOffTable, PageTable);
 impl_hierachical_table!(PagingOffTable);

@@ -1,31 +1,31 @@
-///! Kernel stack
-/// ------------
-/// A kernel stack is structured as follow :
-///
-///          No Page Guard
-///     j--------------------j  < 0xaaaaffff
-///     | |  thread_info   | |  < current
-///     | j----------------j |
-///     |                    |
-///     |       STACK        |
-///     |                    |
-///     j--------------------j
-///     |                    |
-///     |        |||         |
-///     |        VVV         |
-///     |                    |
-///     |                    |
-///     j--------------------j
-///     |                    |
-///     |                    |
-///     |     PAGE_GUARD     |
-///     |                    |
-///     |                    |
-///     j--------------------j < 0xaaaa0000
-///
-///  The `current` macro retrieves the thread_info structure at the base of the stacks from $esp
-///  Since the stack is several pages long, we must ensure the stack respects some alignment
-///  in order to be able to find its bottom from any page.
+//! Kernel stack
+//!
+//! A kernel stack is structured as follow :
+//!
+//!          No Page Guard
+//!     j--------------------j  < 0xaaaaffff
+//!     | |  thread_info   | |  < current
+//!     | j----------------j |
+//!     |                    |
+//!     |       STACK        |
+//!     |                    |
+//!     j--------------------j
+//!     |                    |
+//!     |        |||         |
+//!     |        VVV         |
+//!     |                    |
+//!     |                    |
+//!     j--------------------j
+//!     |                    |
+//!     |                    |
+//!     |     PAGE_GUARD     |
+//!     |                    |
+//!     |                    |
+//!     j--------------------j < 0xaaaa0000
+//!
+//!  The `current` macro retrieves the thread_info structure at the base of the stacks from $esp.
+//!  Since the stack is several pages long, we must ensure the stack respects some alignment
+//!  in order to be able to find its bottom from any page.
 
 use ::core::mem::size_of;
 use paging::*;
@@ -98,11 +98,14 @@ impl KernelStack {
 
     // TODO get current stack pointer from $esp
 
+    // TODO the `current` macro
+
     // TODO destroy the stack ?
 }
 
 /* ********************************************************************************************** */
 
+/// The structure we keep at the end of the stack that points back to the current process
 // TODO move this to the scheduler
 #[repr(C)]
 #[derive(Debug)]

@@ -1,4 +1,4 @@
-///! # Paging on i386
+//! Paging on i386
 
 mod entry;
 mod table;

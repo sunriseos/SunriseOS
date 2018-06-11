@@ -1,3 +1,5 @@
+//! Generic useful functions
+
 use print::Printer;
 use core::fmt::Write;
 

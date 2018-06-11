@@ -1,5 +1,5 @@
-/// A module for printing text to screen using VGA compatible text mode
-/// by writing in the video memory
+//! A module for printing text to screen using VGA compatible text mode
+//! by writing in the video memory
 
 use spin::Mutex;
 use ascii::AsciiStr;

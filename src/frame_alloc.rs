@@ -1,14 +1,26 @@
-///! A module to allocate and free whole frames
-///! A frame is 4ko in size
+//! A module implementing a physical memory manager that allocates and frees memory frames
+//!
+//! We define a frame as the same size as a page, to make things easy for us.
+//! This module can only allocate and free whole frames.
+//!
+//! It keeps tracks of the allocated frames by mean of a giant bitmap mapping every
+//! physical memory frame in the address space to a bit representing if it is free or not.
+//! This works because the address space in 32 bits is only 4GB, so ~1 million frames only
+//!
+//! During init we initialize the bitmap by parsing the information that the bootloader gives us and
+//! marking some physical memory regions as reserved, either because of BIOS, MMIO
+//! or simply because our kernel is loaded in it
 
 use multiboot2::BootInformation;
 use spin::Mutex;
 use bit_field::BitArray;
 use utils::BitArrayExt;
 use utils::bit_array_first_zero;
+use paging::PAGE_SIZE;
 
 /// Represents a Physical address
-/// Can only be used when paging is off
+///
+/// Should only be used when paging is off
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PhysicalAddress(pub usize);
 /// Represents a Virtual address
@@ -18,20 +30,24 @@ pub struct VirtualAddress(pub usize);
 impl VirtualAddress  { pub fn addr(&self) -> usize { self.0 } }
 impl PhysicalAddress { pub fn addr(&self) -> usize { self.0 } }
 
-pub const MEMORY_FRAME_SIZE: usize = 4096;
+/// A memory frame is the same size as a page
+pub const MEMORY_FRAME_SIZE: usize = PAGE_SIZE;
 
 const FRAME_OFFSET_MASK: usize = 0xFFF;              // The offset part in a frame
 const FRAME_BASE_MASK:   usize = !FRAME_OFFSET_MASK; // The base part in a frame
 
 const FRAME_BASE_LOG: usize = 12; // frame_number = addr >> 12
 
+/// The size of the frames_bitmap (~128ko)
 const FRAMES_BITMAP_SIZE: usize = usize::max_value() / MEMORY_FRAME_SIZE / 8 + 1;
 
+/// Gets the frame number from a physical address
 #[inline]
 fn addr_to_frame(addr: usize) -> usize {
     addr >> FRAME_BASE_LOG
 }
 
+/// Gets the physical address from a frame number
 #[inline]
 unsafe fn frame_to_addr(frame: usize) -> Frame {
     let addr = frame << FRAME_BASE_LOG;
@@ -47,51 +63,78 @@ pub fn round_to_page(addr: usize) -> usize {
 }
 
 /// Rounds an address to the next page address except if its offset in that page is 0
-#[inline]
-pub fn round_to_page_upper(addr: usize) -> usize {
+#[inline] pub fn round_to_page_upper(addr: usize) -> usize {
     match addr & FRAME_OFFSET_MASK {
         0 => round_to_page(addr),
         _ => round_to_page(addr) + MEMORY_FRAME_SIZE
     }
 }
 
+/// A big bitmap denoting for every frame if it is free or not
+///
+/// 0 is free, 1 is already allocated/reserved
 struct AllocatorBitmap {
     memory_bitmap: [u8; FRAMES_BITMAP_SIZE],
     initialized: bool,
 }
 
+/// A big bitmap denoting for every frame if it is free or not
 static FRAMES_BITMAP: Mutex<AllocatorBitmap> = Mutex::new(AllocatorBitmap {
     memory_bitmap: [0x00; FRAMES_BITMAP_SIZE],
     initialized: false,
 });
 
+/// A pointer to a physical frame
+///
+/// A frame is 4ko in size
+///
+/// Should only be used when paging is off
 #[derive(Debug, Clone, Copy)]
 pub struct Frame {
     physical_addr: usize,
 }
 
 impl Frame {
-    /// This should only be called before the page table is setup.
+    /// Get the physical address of this Frame
+    pub fn address(&self) -> PhysicalAddress { PhysicalAddress(self.physical_addr) }
+
+    /// Get a pointer to this frame as a slice
+    ///
+    /// # Safety
+    ///
+    /// This should only be called when paging is off
+    ///
+    /// # Deprecated
+    ///
+    // TODO
+    /// We should consider removing this function altogether
+    /// as I don't see when we would need a slice anymore
+    #[deprecated(note="use address() instead")]
     pub fn dangerous_as_physical_ptr(&self) -> *mut [u8] {
         unsafe { ::core::slice::from_raw_parts_mut(self.physical_addr as *mut u8, MEMORY_FRAME_SIZE) as _ }
     }
 
+    /// Constructs a frame structure from a physical address
+    ///
+    /// This does not guaranty that the frame can be written to, or even exists at all
+    ///
+    /// # Panic
+    ///
+    /// Panics when the address is not framesize-aligned
+    // TODO make this function unsafe ?
     pub fn from_physical_addr(physical_addr: PhysicalAddress) -> Frame {
         assert_eq!(physical_addr.addr() % MEMORY_FRAME_SIZE, 0,
                    "Frame must be constructed from a framesize-aligned pointer");
         Frame { physical_addr: physical_addr.addr() }
     }
-
-    pub fn address(&self) -> PhysicalAddress { PhysicalAddress(self.physical_addr) }
 }
 
-/// A struct to allocate and free memory frames
-/// A frame is 4ko in size
+/// A physical memory manger to allocate and free memory frames
 pub struct FrameAllocator;
 
 impl FrameAllocator {
 
-    /// Initialize the FrameAllocator by parsing the multiboot informations
+    /// Initialize the FrameAllocator by parsing the multiboot information
     /// and marking some memory areas as unusable
     pub fn init(boot_info: &BootInformation) {
         let mut frames_bitmap = FRAMES_BITMAP.lock();
@@ -125,6 +168,11 @@ impl FrameAllocator {
         }
     }
 
+    /// Marks a physical memory area as reserved and will never give it when requesting a frame.
+    /// This is used to mark where memory holes are, or where the kernel was mapped
+    ///
+    /// # Panic
+    ///
     /// Does not panic if it overwrites an existing reservation
     fn mark_area_reserved(bitmap: &mut [u8],
                           start_addr: usize,
@@ -136,6 +184,10 @@ impl FrameAllocator {
             true);
     }
 
+    /// Marks a physical memory area as free for frame allocation
+    ///
+    /// # Panic
+    ///
     /// Does not panic if it overwrites an existing reservation
     fn mark_area_free(bitmap: &mut [u8],
                       start_addr: usize,
@@ -148,6 +200,12 @@ impl FrameAllocator {
     }
 
     /// Allocates a free frame
+    ///
+    /// # Panic
+    ///
+    /// Panics if it cannot find a free frame.
+    /// This is fine for now when we have plenty of memory and should not happen,
+    /// but in the future we should return an Error type
     pub fn alloc_frame() -> Frame {
         let mut frames_bitmap = FRAMES_BITMAP.lock();
 
@@ -163,6 +221,9 @@ impl FrameAllocator {
     }
 
     /// Frees an allocated frame.
+    ///
+    /// # Panic
+    ///
     /// Panics if the frame was not allocated
     pub fn free_frame(frame: Frame) {
         let mut frames_bitmap = FRAMES_BITMAP.lock();

@@ -1,8 +1,9 @@
-///! # Page table entry
+//! i386 page table entry
 
 use ::frame_alloc::{Frame, PhysicalAddress};
 
 bitflags! {
+    /// The flags of a table entry
     pub struct EntryFlags: u32 {
         const PRESENT =         1 << 0;
         const WRITABLE =        1 << 1;
@@ -49,6 +50,7 @@ impl Entry {
         }
     }
 
+    /// Sets the entry
     pub fn set(&mut self, frame: Frame, flags: EntryFlags) {
         let frame_phys_addr = frame.address();
         assert_eq!(frame_phys_addr.addr() & !ENTRY_PHYS_ADDRESS_MASK, 0);
