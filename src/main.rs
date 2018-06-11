@@ -29,6 +29,7 @@ extern crate linked_list_allocator;
 
 use ascii::AsAsciiStr;
 use core::fmt::Write;
+use alloc::*;
 
 mod print;
 pub use print::*;
@@ -80,6 +81,7 @@ fn main() {
     let page_active = ::paging::get_page::<::paging::UserLand>();
     writeln!(Printer, "Got page {:#x}", page_active.addr());
 
+    writeln!(Printer, "Testing some string heap alloc: {}", String::from("Hello World"));
 }
 
 #[repr(align(4096))]
