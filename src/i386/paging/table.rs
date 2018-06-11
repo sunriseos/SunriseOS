@@ -348,14 +348,12 @@ pub trait PageTablesSet {
 
         // Map beginning small pages.
         let start_address_end = ::core::cmp::min(address_end, ::utils::align_up(address.addr(), ENTRY_COUNT * PAGE_SIZE));
-        writeln!(Printer, "Mapping from {:#x} to {:#x}", address.addr(), start_address_end);
         for current_address in (address.addr()..start_address_end).step_by(PAGE_SIZE) {
             self.map_page_guard(VirtualAddress(current_address));
         }
 
         // Map middle big page guards.
         let middle_address_end = ::utils::align_down(address_end, ENTRY_COUNT * PAGE_SIZE);
-        writeln!(Printer, "Mapping from {:#x} to {:#x}", start_address_end, middle_address_end);
         let first_page_table = start_address_end / (ENTRY_COUNT * PAGE_SIZE);
         let last_page_table = middle_address_end / (ENTRY_COUNT * PAGE_SIZE);
         for table_nbr in first_page_table..last_page_table {
@@ -364,7 +362,6 @@ pub trait PageTablesSet {
         }
 
         // Map end small pages.
-        writeln!(Printer, "Mapping from {:#x} to {:#x}", middle_address_end, address_end);
         for current_address in (middle_address_end..address_end).step_by(PAGE_SIZE) {
             self.map_page_guard(VirtualAddress(current_address))
         }
