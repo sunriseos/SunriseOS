@@ -152,6 +152,12 @@ fn __land_assertions() {
     const_assert!(UserLand::start_addr().0   % (ENTRY_COUNT * PAGE_SIZE) == 0);
 }
 
+/// Creates a mapping in the page tables with the given flags.
+/// Allocates the pointed page and chooses the virtual address.
+///
+/// # Panics
+///
+/// Panics if we are out of memory.
 pub fn get_page<Land: VirtualSpaceLand>() -> VirtualAddress {
-    ACTIVE_PAGE_TABLES.lock().get_page::<Land>(table::entry::EntryFlags::PRESENT | table::entry::EntryFlags::WRITABLE)
+    ACTIVE_PAGE_TABLES.lock().get_page::<Land>()
 }

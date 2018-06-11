@@ -65,7 +65,7 @@ fn main() {
 
     let mut inactive_pages = InactivePageTables::new();
     writeln!(Printer, "Created new tables");
-    let page_innactive = inactive_pages.get_page::<paging::UserLand>(EntryFlags::PRESENT | EntryFlags::WRITABLE);
+    let page_innactive = inactive_pages.get_page::<paging::UserLand>();
     writeln!(Printer, "Mapped inactive page {:#x}", page_innactive.addr());
     unsafe { inactive_pages.switch_to() };
     writeln!(Printer, "Switched to new tables");

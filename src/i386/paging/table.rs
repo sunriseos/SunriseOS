@@ -271,9 +271,9 @@ pub trait PageTablesSet {
     /// # Panics
     ///
     /// Panics if we are out of memory.
-    fn get_page<Land: VirtualSpaceLand>(&mut self, flags: EntryFlags) -> VirtualAddress {
+    fn get_page<Land: VirtualSpaceLand>(&mut self) -> VirtualAddress {
         let va = self.find_available_virtual_space::<Land>(1).unwrap();
-        self.map_allocate_to(va, flags);
+        self.map_allocate_to(va, EntryFlags::WRITABLE | EntryFlags::PRESENT);
         va
     }
 
