@@ -100,6 +100,14 @@ pub trait PageTableTrait : HierarchicalTable {
         }
         Self::FlusherType::flush_cache();
     }
+
+    /// Used at startup when creating the first page tables.
+    fn map_guard_whole_table(&mut self) {
+        for entry in &mut self.entries_mut()[..] {
+            entry.set(Frame::from_physical_addr(PhysicalAddress(0)), EntryFlags::GUARD_PAGE);
+        }
+        Self::FlusherType::flush_cache();
+    }
 }
 
 /// A trait describing all the things that a PageDirectory can do.
@@ -162,10 +170,21 @@ pub trait PageDirectoryTrait : HierarchicalTable {
         assert_eq!(page.addr() % PAGE_SIZE, 0, "Address is not page aligned");
         let table_nbr = page.addr() / (ENTRY_COUNT * PAGE_SIZE);
         let table_off = page.addr() % (ENTRY_COUNT * PAGE_SIZE) / PAGE_SIZE;
-        let mut table = self.get_table(table_nbr)
-        // TODO: Return an Error if the table was not present
-            .unwrap();
-        // TODO: Return an Error if the address was not mapped
+
+        // First, handle big page guards.
+        let mut table = if self.entries()[table_nbr].is_guard() {
+            // Split the guard.
+            self.entries_mut()[table_nbr].set_unused();
+            let mut table = self.create_table(table_nbr);
+            table.map_guard_whole_table();
+            table
+        } else {
+            self.get_table(table_nbr)
+            // TODO: Return an Error if the table was not present
+                .unwrap()
+            // TODO: Return an Error if the address was not mapped
+        };
+
         let entry= &mut table.entries_mut()[table_off];
         assert_eq!(entry.is_unused(), false);
         if free_frame {
