@@ -113,8 +113,13 @@ pub trait PageDirectoryTrait : HierarchicalTable {
     fn create_table(&mut self, index: usize) -> SmartHierarchicalTable<Self::PageTableType>;
 
     /// Gets the page table at given index, or creates it if it does not exist
+    ///
+    /// # Panics
+    ///
+    /// Panics if the whole page table is guarded.
     fn get_table_or_create(&mut self, index: usize) -> SmartHierarchicalTable<Self::PageTableType> {
         if !self.entries()[index].is_unused() {
+            assert!(!self.entries()[index].is_guard(), "Table is guarded");
             self.get_table(index).unwrap()
         } else {
             self.create_table(index)
@@ -286,6 +291,42 @@ pub trait PageTablesSet {
     fn map_page_guard(&mut self, address: VirtualAddress) {
         // Just map to frame 0, it will page fault anyway since PRESENT is missing
         self.map_to(Frame::from_physical_addr(PhysicalAddress(0x00000000)), address,EntryFlags::GUARD_PAGE)
+    }
+
+    /// Reserve a given region as guard pages.
+    /// If the region spans more than ENTRY_COUNT pages, then the whole page
+    /// table will be page-guarded.
+    ///
+    /// # Panics
+    ///
+    /// Panics if address is not page-aligned.
+    fn map_range_page_guard(&mut self, address: VirtualAddress, page_nb: usize) {
+        assert_eq!(address.addr() % PAGE_SIZE, 0, "Address is not page aligned");
+
+        let address_end = address.addr() + (page_nb * PAGE_SIZE);
+
+        // Map beginning small pages.
+        let start_address_end = ::core::cmp::min(address_end, ::utils::align_up(address.addr(), ENTRY_COUNT * PAGE_SIZE));
+        writeln!(Printer, "Mapping from {:#x} to {:#x}", address.addr(), start_address_end);
+        for current_address in (address.addr()..start_address_end).step_by(PAGE_SIZE) {
+            self.map_page_guard(VirtualAddress(current_address));
+        }
+
+        // Map middle big page guards.
+        let middle_address_end = ::utils::align_down(address_end, ENTRY_COUNT * PAGE_SIZE);
+        writeln!(Printer, "Mapping from {:#x} to {:#x}", start_address_end, middle_address_end);
+        let first_page_table = start_address_end / (ENTRY_COUNT * PAGE_SIZE);
+        let last_page_table = middle_address_end / (ENTRY_COUNT * PAGE_SIZE);
+        for table_nbr in first_page_table..last_page_table {
+            assert!(self.get_directory().entries()[table_nbr].is_unused(), "Tried to map an already mapped entry");
+            self.get_directory().map_nth_entry::<<Self::PageDirectoryType as PageDirectoryTrait>::FlusherType>(table_nbr, Frame::from_physical_addr(PhysicalAddress(0)), EntryFlags::GUARD_PAGE);
+        }
+
+        // Map end small pages.
+        writeln!(Printer, "Mapping from {:#x} to {:#x}", middle_address_end, address_end);
+        for current_address in (middle_address_end..address_end).step_by(PAGE_SIZE) {
+            self.map_page_guard(VirtualAddress(current_address))
+        }
     }
 
     /// Maps a given number of consecutive pages at a given address
