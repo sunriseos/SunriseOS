@@ -39,10 +39,11 @@ impl Allocator {
         let mut active_pages = ACTIVE_PAGE_TABLES.lock();
         // Reserve 512MB of virtual memory for heap space. Don't actually allocate it.
         let heap_space = active_pages.find_available_virtual_space::<paging::KernelLand>(RESERVED_HEAP_SIZE / paging::PAGE_SIZE).expect("Kernel should have 512MB of virtual memory");
-        active_pages.map_range_page_guard(heap_space, RESERVED_HEAP_SIZE / paging::PAGE_SIZE);
+        active_pages.map_allocate_to(heap_space, EntryFlags::WRITABLE | EntryFlags::PRESENT);
+        active_pages.map_range_page_guard(VirtualAddress(heap_space.addr() + paging::PAGE_SIZE), (RESERVED_HEAP_SIZE / paging::PAGE_SIZE) - 1);
         unsafe {
             // Safety: Size is of 0, and the address is freshly guard-paged.
-            Mutex::new(Heap::new(heap_space.addr(), 0))
+            Mutex::new(Heap::new(heap_space.addr(), paging::PAGE_SIZE))
         }
     }
 
