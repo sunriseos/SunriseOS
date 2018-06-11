@@ -52,8 +52,16 @@ impl Entry {
 
     /// Sets the entry
     pub fn set(&mut self, frame: Frame, flags: EntryFlags) {
+        assert_eq!(flags.contains(EntryFlags::PRESENT)
+                && flags.contains(EntryFlags::GUARD_PAGE), false,
+                "a GUARD_PAGE cannot also be PRESENT");
         let frame_phys_addr = frame.address();
         assert_eq!(frame_phys_addr.addr() & !ENTRY_PHYS_ADDRESS_MASK, 0);
         self.0 = (frame_phys_addr.addr() as u32) | flags.bits();
+    }
+
+    /// Make this entry a page guard
+    pub fn set_guard(&mut self) {
+        self.0 = 0x00000000 | EntryFlags::GUARD_PAGE.bits;
     }
 }

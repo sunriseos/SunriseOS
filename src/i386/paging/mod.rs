@@ -97,7 +97,7 @@ pub unsafe fn map_kernel(boot_info : &BootInformation) -> PagingOffPageSet {
                                   EntryFlags::PRESENT | EntryFlags::WRITABLE);
 
     // Reserve the very first frame for null pointers
-    new_pages.identity_map(Frame::from_physical_addr(PhysicalAddress(0)), EntryFlags::GUARD_PAGE);
+    new_pages.map_page_guard(VirtualAddress(0x00000000));
 
     new_pages
 }
