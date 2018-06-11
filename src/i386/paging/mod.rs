@@ -29,7 +29,7 @@ unsafe fn enable_paging(page_directory_address: PhysicalAddress) {
           mov cr3, eax
 
           mov eax, cr0
-          or eax, 0x80000001
+          or eax, 0x80010001
           mov cr0, eax          "
 
             :
