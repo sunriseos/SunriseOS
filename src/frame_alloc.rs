@@ -98,22 +98,6 @@ impl Frame {
     /// Get the physical address of this Frame
     pub fn address(&self) -> PhysicalAddress { PhysicalAddress(self.physical_addr) }
 
-    /// Get a pointer to this frame as a slice
-    ///
-    /// # Safety
-    ///
-    /// This should only be called when paging is off
-    ///
-    /// # Deprecated
-    ///
-    // TODO
-    /// We should consider removing this function altogether
-    /// as I don't see when we would need a slice anymore
-    #[deprecated(note="use address() instead")]
-    pub fn dangerous_as_physical_ptr(&self) -> *mut [u8] {
-        unsafe { ::core::slice::from_raw_parts_mut(self.physical_addr as *mut u8, MEMORY_FRAME_SIZE) as _ }
-    }
-
     /// Constructs a frame structure from a physical address
     ///
     /// This does not guaranty that the frame can be written to, or even exists at all
@@ -121,7 +105,7 @@ impl Frame {
     /// # Panic
     ///
     /// Panics when the address is not framesize-aligned
-    // TODO make this function unsafe ?
+    ///
     pub fn from_physical_addr(physical_addr: PhysicalAddress) -> Frame {
         assert_eq!(physical_addr.addr() % MEMORY_FRAME_SIZE, 0,
                    "Frame must be constructed from a framesize-aligned pointer");
