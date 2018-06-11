@@ -33,6 +33,9 @@ impl Entry {
     /// Clear the entry
     pub fn set_unused(&mut self) { self.0 = 0; }
 
+    /// Is the entry a page guard ?
+    pub fn is_guard(&self) -> bool { self.flags().contains(EntryFlags::GUARD_PAGE) }
+
     /// Get the current entry flags
     pub fn flags(&self) -> EntryFlags { EntryFlags::from_bits_truncate(self.0) }
 
