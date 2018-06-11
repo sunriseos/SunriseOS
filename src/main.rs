@@ -6,7 +6,7 @@
 //! Currently doesn't do much, besides booting and printing Hello World on the
 //! screen. But hey, that's a start.
 
-#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, repr_transparent, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, iterator_step_by, used)]
+#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, repr_transparent, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, iterator_step_by, used, global_allocator, allocator_api, alloc)]
 #![cfg_attr(target_os = "none", no_std)]
 #![cfg_attr(target_os = "none", no_main)]
 #![allow(unused)]
@@ -24,6 +24,9 @@ extern crate multiboot2;
 extern crate bitflags;
 #[macro_use]
 extern crate static_assertions;
+extern crate alloc;
+extern crate linked_list_allocator;
+
 use ascii::AsAsciiStr;
 use core::fmt::Write;
 
@@ -35,6 +38,11 @@ mod i386;
 mod gdt;
 mod utils;
 mod frame_alloc;
+mod heap_allocator;
+
+#[global_allocator]
+static ALLOCATOR: heap_allocator::Allocator = heap_allocator::Allocator::new();
+
 pub use frame_alloc::FrameAllocator;
 pub use i386::paging;
 pub use i386::stack;
