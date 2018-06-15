@@ -25,6 +25,19 @@ const ENTRY_COUNT: usize = PAGE_SIZE / ::core::mem::size_of::<Entry>();
 
 pub static ACTIVE_PAGE_TABLES: Mutex<ActivePageTables> = Mutex::new(ActivePageTables());
 
+/// Check if the paging is currently active.
+///
+/// This is done by checking if we're in protected mode and if paging is
+/// enabled.
+fn is_paging_on() -> bool {
+    let cr0: usize;
+    unsafe {
+        // Safety: this is just getting the CR0 register
+        asm!("mov $0, cr0" : "=r"(cr0) ::: "intel" );
+    }
+    cr0 & 0x80000001 == 0x80000001 // PE | PG
+}
+
 unsafe fn enable_paging(page_directory_address: PhysicalAddress) {
     asm!("mov eax, $0
           mov cr3, eax

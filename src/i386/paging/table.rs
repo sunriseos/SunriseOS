@@ -509,6 +509,7 @@ pub struct ActivePageTables ();
 impl PageTablesSet for ActivePageTables {
     type PageDirectoryType = ActivePageDirectory;
     fn get_directory(&mut self) -> SmartHierarchicalTable<ActivePageDirectory> {
+        assert!(is_paging_on(), "Paging is disabled");
         SmartHierarchicalTable(DIRECTORY_RECURSIVE_ADDRESS.addr() as *mut ActivePageDirectory)
     }
 }
