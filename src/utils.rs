@@ -1,6 +1,6 @@
 //! Generic useful functions
 
-use print::Printer;
+use logger::Loggers;
 use core::fmt::Write;
 
 pub fn print_hexdump(addr: &[u8]) {
@@ -10,27 +10,27 @@ pub fn print_hexdump(addr: &[u8]) {
             arr[i] = Some(*elem);
         }
 
-        let _ = write!(Printer, "{:#0x}:", chunk.as_ptr() as usize);
+        let _ = write!(Loggers, "{:#0x}:", chunk.as_ptr() as usize);
 
         for pair in arr.chunks(2) {
-            let _ = write!(Printer, " ");
+            let _ = write!(Loggers, " ");
             for elem in pair {
                 if let &Some(i) = elem {
-                    let _ = write!(Printer, "{:02x}", i);
+                    let _ = write!(Loggers, "{:02x}", i);
                 } else {
-                    let _ = write!(Printer, "  ");
+                    let _ = write!(Loggers, "  ");
                 }
             }
         }
-        let _ = write!(Printer, "  ");
+        let _ = write!(Loggers, "  ");
         for i in chunk {
             if i.is_ascii_graphic() {
-                let _ = write!(Printer, "{}", *i as char);
+                let _ = write!(Loggers, "{}", *i as char);
             } else {
-                let _ = write!(Printer, ".");
+                let _ = write!(Loggers, ".");
             }
         }
-        let _ = writeln!(Printer, "");
+        let _ = writeln!(Loggers, "");
     }
 }
 

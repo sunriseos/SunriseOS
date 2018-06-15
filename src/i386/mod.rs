@@ -5,6 +5,7 @@
 
 pub mod paging;
 pub mod stack;
+pub mod pio;
 
 pub mod instructions {
     //! Low level functions for special i386 instructions.
@@ -24,22 +25,6 @@ pub mod instructions {
         /// Load GDT table.
         pub unsafe fn lgdt(gdt: &DescriptorTablePointer) {
             asm!("lgdt ($0)" :: "r" (gdt) : "memory");
-        }
-    }
-
-    pub mod port {
-        //! I/O port functionality.
-
-        /// Write 8 bits to I/O port.
-        pub unsafe fn outb(port: u16, val: u8) {
-            asm!("outb %al, %dx" :: "{dx}"(port), "{al}"(val));
-        }
-
-        /// Read 8 bits from I/O port.
-        pub unsafe fn inb(port: u16) -> u8 {
-            let ret: u8;
-            asm!("inb %dx, %al" : "={ax}"(ret) : "{dx}"(port) :: "volatile");
-            ret
         }
     }
 }

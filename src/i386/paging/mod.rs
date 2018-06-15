@@ -15,7 +15,7 @@ pub use frame_alloc::{round_to_page, round_to_page_upper};
 use spin::Mutex;
 use frame_alloc::{Frame, PhysicalAddress};
 pub use frame_alloc::VirtualAddress;
-use ::print::{Printer, VGA_SCREEN_ADDRESS, VGA_SCREEN_MEMORY_SIZE};
+use ::devices::vgatext::{VGA_SCREEN_ADDRESS, VGA_SCREEN_MEMORY_SIZE};
 use ::core::fmt::Write;
 use ::core::ops::Deref;
 

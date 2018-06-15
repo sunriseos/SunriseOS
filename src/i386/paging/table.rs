@@ -224,7 +224,7 @@ pub trait PageDirectoryTrait : HierarchicalTable {
     }
 
     /// Finds a virtual space hole that can contain page_nb consecutive pages
-    /// Alignment is a mask that the first page address must satisfy (ex: 16 for 0x....0000)
+    /// Alignment is the bitshift of a mask that the first page address must satisfy (ex: 24 for 0x**000000)
     fn find_available_virtual_space_aligned<Land: VirtualSpaceLand>(&mut self,
                                                             page_nb: usize,
                                                             alignement: usize) -> Option<VirtualAddress> {

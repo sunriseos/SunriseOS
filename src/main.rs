@@ -31,8 +31,10 @@ use ascii::AsAsciiStr;
 use core::fmt::Write;
 use alloc::*;
 
-mod print;
-pub use print::*;
+mod logger;
+pub use logger::*;
+pub use devices::vgatext::VGATextLogger;
+pub use devices::rs232::SerialLogger;
 
 mod i386;
 #[cfg(target_os = "none")]
@@ -40,6 +42,8 @@ mod gdt;
 mod utils;
 mod frame_alloc;
 mod heap_allocator;
+mod io;
+mod devices;
 
 #[global_allocator]
 static ALLOCATOR: heap_allocator::Allocator = heap_allocator::Allocator::new();
@@ -50,38 +54,39 @@ pub use i386::stack;
 use i386::paging::{InactivePageTables, PageTablesSet, EntryFlags};
 
 fn main() {
-    Printer::println(b"Hello world!      ".as_ascii_str().expect("ASCII"));
-    Printer::println_attr(b"Whoah, nice color".as_ascii_str().expect("ASCII"),
-                                  PrintAttribute::new(Color::Pink, Color::Cyan, false));
-    Printer::println_attr(b"such hues".as_ascii_str().expect("ASCII"),
-                                  PrintAttribute::new(Color::Magenta, Color::LightGreen, true));
-    Printer::println_attr(b"very polychromatic".as_ascii_str().expect("ASCII"),
-                           PrintAttribute::new(Color::Yellow, Color::Pink, true));
+    let loggers = &mut Loggers;
+    loggers.println("Hello world!      ");
+    loggers.println_attr("Whoah, nice color",
+                      LogAttributes::new_fg_bg(LogColor::Pink, LogColor::Cyan));
+    loggers.println_attr("such hues",
+                          LogAttributes::new_fg_bg(LogColor::Magenta, LogColor::LightGreen));
+    loggers.println_attr("very polychromatic",
+                           LogAttributes::new_fg_bg(LogColor::Yellow, LogColor::Pink));
 
     let mymem = FrameAllocator::alloc_frame();
-    writeln!(Printer, "Allocated frame {:x?}", mymem);
+    writeln!(Loggers, "Allocated frame {:x?}", mymem);
     FrameAllocator::free_frame(mymem);
-    writeln!(Printer, "Freed frame {:x?}", mymem);
+    writeln!(Loggers, "Freed frame {:x?}", mymem);
 
-    writeln!(Printer, "----------");
+    writeln!(Loggers, "----------");
 
     let page1 = ::paging::get_page::<::paging::UserLand>();
-    writeln!(Printer, "Got page {:#x}", page1.addr());
+    writeln!(Loggers, "Got page {:#x}", page1.addr());
     let page2 = ::paging::get_page::<::paging::UserLand>();
-    writeln!(Printer, "Got page {:#x}", page2.addr());
+    writeln!(Loggers, "Got page {:#x}", page2.addr());
 
-    writeln!(Printer, "----------");
+    writeln!(Loggers, "----------");
 
     let mut inactive_pages = InactivePageTables::new();
-    writeln!(Printer, "Created new tables");
+    writeln!(Loggers, "Created new tables");
     let page_innactive = inactive_pages.get_page::<paging::UserLand>();
-    writeln!(Printer, "Mapped inactive page {:#x}", page_innactive.addr());
+    writeln!(Loggers, "Mapped inactive page {:#x}", page_innactive.addr());
     unsafe { inactive_pages.switch_to() };
-    writeln!(Printer, "Switched to new tables");
+    writeln!(Loggers, "Switched to new tables");
     let page_active = ::paging::get_page::<::paging::UserLand>();
-    writeln!(Printer, "Got page {:#x}", page_active.addr());
+    writeln!(Loggers, "Got page {:#x}", page_active.addr());
 
-    writeln!(Printer, "Testing some string heap alloc: {}", String::from("Hello World"));
+    writeln!(Loggers, "Testing some string heap alloc: {}", String::from("Hello World"));
 }
 
 #[repr(align(4096))]
@@ -110,36 +115,44 @@ pub unsafe extern fn start() -> ! {
 pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     // Do whatever is necessary to have a proper environment here.
 
+    // Register some loggers
+    static mut VGATEXT: VGATextLogger = VGATextLogger;
+    Loggers::register_logger("VGA text mode", unsafe { &mut VGATEXT });
+    static mut SERIAL: SerialLogger = SerialLogger;
+    Loggers::register_logger("Serial", unsafe { &mut SERIAL });
 
-    write!(Printer, "Clearing screen...");
-    Printer::clear_screen();
+    write!(Loggers, "Clearing screen...");
+    let vga_screen = &mut VGATextLogger;
+    vga_screen.clear();
 
+
+    let loggers = &mut Loggers;
     // Say hello to the world
-    write!(Printer, "\n# Welcome to ");
-    Printer::print_attr("KFS".as_ascii_str().expect("ASCII"),
-                        PrintAttribute::new(Color::LightCyan, Color::Black, false));
-    writeln!(Printer, "!\n");
+    write!(Loggers, "\n# Welcome to ");
+    loggers.print_attr("KFS",
+                             LogAttributes::new_fg(LogColor::LightCyan));
+    writeln!(Loggers, "!\n");
 
     // Set up (read: inhibit) the GDT.
     gdt::init_gdt();
-    writeln!(Printer, "= Gdt initialized");
+    writeln!(Loggers, "= Gdt initialized");
 
     // Parse the multiboot infos
     let boot_info = unsafe { multiboot2::load(multiboot_info_addr) };
-    writeln!(Printer, "= Parsed multiboot informations");
+    writeln!(Loggers, "= Parsed multiboot informations");
 
     // Setup frame allocator
     FrameAllocator::init(&boot_info);
-    writeln!(Printer, "= Initialized frame allocator");
+    writeln!(Loggers, "= Initialized frame allocator");
 
     // Create page tables with the right access rights for each kernel section
     let page_tables =
     unsafe { paging::map_kernel(&boot_info) };
-    writeln!(Printer, "= Mapped the kernel");
+    writeln!(Loggers, "= Mapped the kernel");
 
     // Start using these page tables
     unsafe { page_tables.enable_paging() }
-    writeln!(Printer, "= Paging on");
+    writeln!(Loggers, "= Paging on");
 
     let new_stack = stack::KernelStack::allocate_stack()
         .expect("Failed to allocate new kernel stack");
@@ -153,9 +166,9 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 #[cfg(target_os = "none")]
 #[no_mangle]
 pub fn common_start_continue_stack() -> ! {
-    writeln!(Printer, "= Switched to new kernel stack");
+    writeln!(SerialLogger, "= Switched to new kernel stack");
 
-    writeln!(Printer, "= Calling main()");
+    writeln!(SerialLogger, "= Calling main()");
     main();
     // Die !
     #[cfg(target_os = "none")]
@@ -174,13 +187,15 @@ pub extern fn panic_fmt(msg: core::fmt::Arguments,
                         line: u32,
                         column: u32) -> ! {
 
-    let _ = writeln!(Printer, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\
+    unsafe { Loggers.force_unlock(); }
+    let _ = writeln!(Loggers, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\
                                ! Panic! at the disco\n\
                                ! file {} - line {} - col {}\n\
                                ! {}\n\
                                !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
                      file, line, column, msg);
-    loop { }
+
+    loop { unsafe { asm!("HLT"); } }
 }
 
 macro_rules! multiboot_header {

@@ -20,13 +20,13 @@ env RUST_TARGET_PATH=`pwd` cargo xbuild --target=i386-unknown-none --bin=kfs
 description = "Runs the bootable ISO in qemu."
 dependencies = ["iso"]
 command = "qemu-system-i386"
-args = ["-cdrom", "os.iso"]
+args = ["-cdrom", "os.iso", "-serial", "stdio"]
 
 [tasks.qemu-vnc]
 description = "Runs the bootable ISO in qemu in vnc mode."
 dependencies = ["iso"]
 command = "qemu-system-i386"
-args = ["-cdrom", "os.iso", "-vnc", ":0"]
+args = ["-cdrom", "os.iso", "-serial", "stdio", "-vnc", ":0"]
 
 [tasks.vb]
 description = "Fait tourner qemu sur le PC de l'animal bizarre"
