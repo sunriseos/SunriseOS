@@ -30,6 +30,22 @@ pub struct VirtualAddress(pub usize);
 impl VirtualAddress  { pub fn addr(&self) -> usize { self.0 } }
 impl PhysicalAddress { pub fn addr(&self) -> usize { self.0 } }
 
+impl ::core::ops::Add<usize> for VirtualAddress {
+    type Output = VirtualAddress;
+
+    fn add(self, other: usize) -> VirtualAddress {
+        VirtualAddress(self.0 + other)
+    }
+}
+
+impl ::core::ops::Add<usize> for PhysicalAddress {
+    type Output = PhysicalAddress;
+
+    fn add(self, other: usize) -> PhysicalAddress {
+        PhysicalAddress(self.0 + other)
+    }
+}
+
 /// A memory frame is the same size as a page
 pub const MEMORY_FRAME_SIZE: usize = PAGE_SIZE;
 

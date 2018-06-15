@@ -393,6 +393,19 @@ pub trait PageTablesSet {
         }
     }
 
+    /// Maps the given physical address range to the given virtual address
+    ///
+    /// # Panics
+    ///
+    /// Panics if address is not page-aligned.
+    // TODO: Take a frame ? a physical address? A list of frame? A banana ?
+    fn map_range(&mut self, phys_addr: PhysicalAddress, address: VirtualAddress, page_nb: usize, flags: EntryFlags) {
+        let address_end = VirtualAddress(address.addr() + (page_nb * PAGE_SIZE));
+        for addr_offset in (0..page_nb * PAGE_SIZE).step_by(PAGE_SIZE) {
+            self.map_to(Frame::from_physical_addr(phys_addr + addr_offset), address + addr_offset, flags);
+        }
+    }
+
     /// Maps a given number of consecutive pages at a given address
     /// Allocates the frames
     ///
