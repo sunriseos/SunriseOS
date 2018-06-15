@@ -136,7 +136,7 @@ pub trait PageDirectoryTrait : HierarchicalTable {
     type FlusherType : Flusher;
 
     /// Gets a reference to a page table
-    fn get_table(&mut self, index: usize) -> Option<SmartHierarchicalTable<Self::PageTableType>>;
+    fn get_table(&mut self, index: usize) -> PageState<SmartHierarchicalTable<Self::PageTableType>>;
 
     /// Allocates a page table, zero it and add an entry to the directory pointing to it
     fn create_table(&mut self, index: usize) -> SmartHierarchicalTable<Self::PageTableType>;
@@ -215,8 +215,8 @@ pub trait PageDirectoryTrait : HierarchicalTable {
         assert_eq!(entry.is_unused(), false);
         if free_frame {
            match entry.pointed_frame() {
-               Some(frame_addr) => { FrameAllocator::free_frame(frame_addr as Frame); }
-               None => {}
+               PageState::Present(frame_addr) => { FrameAllocator::free_frame(frame_addr as Frame); }
+               _ => {}
            };
         }
         entry.set_unused();
@@ -244,7 +244,7 @@ pub trait PageDirectoryTrait : HierarchicalTable {
         while counter_curr_table < Land::end_table() && (!considering_hole || hole_size < page_nb) {
             counter_curr_page = 0;
             match self.get_table(counter_curr_table) {
-                None => { // The whole page table is free, so add it to our hole_size
+                PageState::Available => { // The whole page table is free, so add it to our hole_size
                     if !considering_hole
                         && satisfies_alignement(counter_curr_page, 0, alignement) {
                         // This is the start of a hole
@@ -254,8 +254,11 @@ pub trait PageDirectoryTrait : HierarchicalTable {
                         hole_size = 0;
                     }
                     hole_size += ENTRY_COUNT;
-                }
-                Some(curr_table) => {
+                },
+                PageState::Guarded => {
+                    considering_hole = false;
+                },
+                PageState::Present(curr_table) => {
                     while counter_curr_page < ENTRY_COUNT && (!considering_hole || hole_size < page_nb) {
                         if curr_table.entries()[counter_curr_page].is_unused() {
                             if !considering_hole
@@ -522,7 +525,7 @@ impl PageDirectoryTrait for ActivePageDirectory {
     type FlusherType = TlbFlush;
 
     /// Gets a reference to a page table through recursive mapping
-    fn get_table(&mut self, index: usize) -> Option<SmartHierarchicalTable<Self::PageTableType>> {
+    fn get_table(&mut self, index: usize) -> PageState<SmartHierarchicalTable<Self::PageTableType>> {
         self.get_table_address(index)
             .map(|addr| SmartHierarchicalTable(unsafe { &mut * (addr as *mut _) }))
     }
@@ -543,14 +546,15 @@ impl PageDirectoryTrait for ActivePageDirectory {
 
 impl ActivePageDirectory {
     /// reduce recursive mapping by one time to get further down in table hierarchy
-    fn get_table_address(&self, index: usize) -> Option<usize> {
+    fn get_table_address(&self, index: usize) -> PageState<usize> {
         let entry_flags = self[index].flags();
         if entry_flags.contains(EntryFlags::PRESENT) {
             let table_address = self as *const _ as usize;
-            Some((table_address << 10) | (index << 12))
-        }
-        else {
-            None
+            PageState::Present((table_address << 10) | (index << 12))
+        } else if entry_flags.contains(EntryFlags::GUARD_PAGE) {
+            PageState::Guarded
+        } else {
+            PageState::Available
         }
     }
 }
@@ -673,15 +677,12 @@ impl PageDirectoryTrait for InactivePageDirectory {
     type FlusherType = NoFlush;
 
     /// Temporary map the table
-    fn get_table(&mut self, index: usize) -> Option<SmartHierarchicalTable<Self::PageTableType>> {
-        match self.entries()[index].pointed_frame() {
-            None => None,
-            Some(frame) => {
-                let mut active_pages = ACTIVE_PAGE_TABLES.lock();
-                let va = active_pages.map_frame::<KernelLand>(frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);
-                Some(SmartHierarchicalTable(unsafe {va.addr() as *mut InactivePageTable}))
-            }
-        }
+    fn get_table(&mut self, index: usize) -> PageState<SmartHierarchicalTable<Self::PageTableType>> {
+        self.entries()[index].pointed_frame().map(|frame| {
+            let mut active_pages = ACTIVE_PAGE_TABLES.lock();
+            let va = active_pages.map_frame::<KernelLand>(frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);
+            SmartHierarchicalTable(unsafe {va.addr() as *mut InactivePageTable})
+        })
     }
 
     /// Allocates a page table, temporarily map it,
@@ -708,7 +709,7 @@ impl InactivePageDirectory {
     /// Does not free pages mapped in kernelspace and kernel space tables
     fn delete_userspace(&mut self) {
         for table_index in UserLand::start_table()..KernelLand::end_table() {
-            if let Some(mut table) = self.get_table(table_index) {
+            if let PageState::Present(mut table) = self.get_table(table_index) {
                 // Free all pages
                 table.free_all_frames();
                 // Free the table
@@ -811,13 +812,10 @@ impl PageDirectoryTrait for PagingOffDirectory {
     type FlusherType = NoFlush;
 
     /// Simply cast pointed frame as PageTable
-    fn get_table(&mut self, index: usize) -> Option<SmartHierarchicalTable<Self::PageTableType>> {
-        match self.entries()[index].pointed_frame() {
-            None => None,
-            Some(frame) => Some(
-                SmartHierarchicalTable(unsafe {(frame.address().addr() as *mut PagingOffTable)})
-            )
-        }
+    fn get_table(&mut self, index: usize) -> PageState<SmartHierarchicalTable<Self::PageTableType>> {
+        self.entries()[index].pointed_frame().map(|frame| {
+            SmartHierarchicalTable(unsafe {(frame.address().addr() as *mut PagingOffTable)})
+        })
     }
     /// Allocates a page table, zero it and add an entry to the directory pointing to it
     fn create_table(&mut self, index: usize) -> SmartHierarchicalTable<Self::PageTableType> {

@@ -41,12 +41,14 @@ impl Entry {
     pub fn flags(&self) -> EntryFlags { EntryFlags::from_bits_truncate(self.0) }
 
     /// Get the associated frame, if available
-    pub fn pointed_frame(&self) -> Option<Frame> {
+    pub fn pointed_frame(&self) -> PageState<Frame> {
         if self.flags().contains(EntryFlags::PRESENT) {
             let frame_phys_addr = self.0 as usize & ENTRY_PHYS_ADDRESS_MASK;
-            Some( Frame::from_physical_addr(PhysicalAddress(frame_phys_addr)) )
+            PageState::Present( Frame::from_physical_addr(PhysicalAddress(frame_phys_addr)) )
+        } else if self.flags().contains(EntryFlags::GUARD_PAGE) {
+            PageState::Guarded
         } else {
-            None
+            PageState::Available
         }
     }
 
@@ -63,5 +65,44 @@ impl Entry {
     /// Make this entry a page guard
     pub fn set_guard(&mut self) {
         self.0 = 0x00000000 | EntryFlags::GUARD_PAGE.bits;
+    }
+}
+
+/// Represent the current state of this Page Table Entry: It can either be:
+///
+/// - Available, aka unused
+/// - Present, which is used and has a backing physical address
+/// - Guarded, which is reserved and will cause a pagefault on use.
+///
+/// PageState is generic over various kind of Present states, similar to the
+/// Option type.
+pub enum PageState<T> {
+    Available,
+    Guarded,
+    Present(T)
+}
+
+impl<T> PageState<T> {
+    /// Move the value T out of the PageState<T> if it is Present(T).
+    ///
+    /// # Panics
+    ///
+    /// Panics if the self value isn't Present.
+    pub fn unwrap(self) -> T {
+        match self {
+            PageState::Present(t) => t,
+            _ => panic!("Table was not present")
+        }
+    }
+
+    /// Maps a PageState<T> to PageState<U> by applying a function to a
+    /// contained value.
+    pub fn map<U, F>(self, f: F) -> PageState<U>
+        where F: FnOnce(T) -> U {
+        match self {
+            PageState::Present(t) => PageState::Present(f(t)),
+            PageState::Guarded => PageState::Guarded,
+            PageState::Available => PageState::Available
+        }
     }
 }
