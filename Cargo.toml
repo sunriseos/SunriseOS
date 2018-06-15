@@ -2,13 +2,19 @@
 authors = ["roblabla <unfiltered@roblab.la>", "orycterope <tvermeilh@gmail.com>"]
 name = "kfs"
 version = "0.1.0"
+
+[package.metadata.cargo-xbuild]
+memcpy = true
+sysroot_path = "target/sysroot"
 [dependencies]
 bit_field = "0.9.0"
 bitflags = "1.0"
-multiboot2 = "0.5.0"
+multiboot2 = { path = "../multiboot2-elf64" }
 spin = "0.4.6"
 static_assertions = "*"
 linked_list_allocator = "0.6.1"
+gif = { path = "../image-gif" }
+#lzw = { path = "../lzw" }
 
 [dependencies.arrayvec]
 default-features = false
@@ -25,7 +31,3 @@ version = "1.2.1"
 [dependencies.lazy_static]
 features = ["spin_no_std"]
 version = "1.0.0"
-
-[package.metadata.cargo-xbuild]
-memcpy = true
-sysroot_path = "target/sysroot"
