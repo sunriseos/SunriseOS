@@ -183,28 +183,72 @@ pub extern fn panic_fmt(msg: core::fmt::Arguments,
     loop { }
 }
 
-#[repr(C, packed)]
-#[allow(dead_code)]
-pub struct MultiBootHeader {
-    magic: u32,
-    architecture: u32,
-    header_length: u32,
-    checksum: u32,
+macro_rules! multiboot_header {
+    //($($expr:tt)*) => {
+    ($($name:ident: $tagty:ident :: $method:ident($($args:expr),*)),*) => {
+        #[repr(C)]
+        #[allow(dead_code)]
+        pub struct MultiBootHeader {
+            magic: u32,
+            architecture: u32,
+            header_length: u32,
+            checksum: u32,
+            $($name: $tagty),*
+        }
 
-    // TODO: This is technically a DST array...
+        #[used]
+        #[cfg_attr(target_os = "none", link_section = ".multiboot_header")]
+        pub static MULTIBOOT_HEADER: MultiBootHeader = MultiBootHeader {
+            magic: 0xe85250d6,
+            architecture: 0,
+            header_length: core::mem::size_of::<MultiBootHeader>() as u32,
+            checksum: u32::max_value() - (0xe85250d6 + 0 + core::mem::size_of::<MultiBootHeader>() as u32) + 1,
+            $($name: $tagty::$method($($args),*)),*
+        };
+    }
+}
+
+#[repr(C, align(8))]
+struct EndTag {
     tag: u16,
-    flags: u16,
+    flag: u16,
     size: u32
 }
 
-#[cfg_attr(target_os = "none", link_section = ".multiboot_header")]
-#[used]
-pub static MULTIBOOT_HEADER : MultiBootHeader = MultiBootHeader {
-    magic: 0xe85250d6,
-    architecture: 0,
-    header_length: core::mem::size_of::<MultiBootHeader>() as u32,
-    checksum: u32::max_value() - (0xe85250d6 + 0 + core::mem::size_of::<MultiBootHeader>() as u32) + 1,
-    tag: 0,
-    flags: 0,
-    size: 8
-};
+impl EndTag {
+    const fn default() -> EndTag {
+        EndTag {
+            tag: 0,
+            flag: 0,
+            size: ::core::mem::size_of::<Self>() as u32
+        }
+    }
+}
+
+#[repr(C, align(8))]
+struct FramebufferTag {
+    tag: u16,
+    flags: u16,
+    size: u32,
+    width: u32,
+    height: u32,
+    depth: u32
+}
+
+impl FramebufferTag {
+    const fn new(width: u32, height: u32, depth: u32) -> FramebufferTag {
+        FramebufferTag {
+            tag: 5,
+            flags: 0,
+            size: ::core::mem::size_of::<Self>() as u32,
+            width: width,
+            height: height,
+            depth: depth
+        }
+    }
+}
+
+multiboot_header! {
+    framebuffer: FramebufferTag::new(1280, 800, 32),
+    end: EndTag::default()
+}
