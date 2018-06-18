@@ -44,6 +44,9 @@ pub enum VGATextColor {
 impl VGATextColor {
     fn from_log_color(orig: LogColor) -> VGATextColor {
         match orig {
+            LogColor::DefaultBackground => VGATextColor::Black,
+            LogColor::DefaultForeground => VGATextColor::White,
+
             LogColor::Black         => VGATextColor::Black,
             LogColor::White         => VGATextColor::White,
             LogColor::Blue          => VGATextColor::Blue,

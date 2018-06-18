@@ -45,8 +45,11 @@ pub enum SerialColor {
 }
 
 impl SerialColor {
-    fn from_log_color(orig: LogColor) -> SerialColor {
+    fn from_log_color(orig: LogColor, ) -> SerialColor {
         match orig {
+            LogColor::DefaultForeground       => SerialColor::Default,
+            LogColor::DefaultBackground       => SerialColor::Default,
+
             LogColor::Black         => SerialColor::Black,
             LogColor::White         => SerialColor::White,
             LogColor::Blue          => SerialColor::Blue,

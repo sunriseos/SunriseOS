@@ -10,7 +10,8 @@ pub enum LogColor {
     White,
     Blue,
     Green,
-    Cyan, Red,
+    Cyan,
+    Red,
     Magenta,
     Brown,
     Pink,
@@ -23,6 +24,8 @@ pub enum LogColor {
     LightRed,
     LightYellow,
     LightMagenta,
+    DefaultForeground,
+    DefaultBackground,
 }
 
 /// The attributes of a log message
@@ -58,8 +61,8 @@ impl LogAttributes {
 /// Default attribute is white foreground on black background
 impl Default for LogAttributes {
     fn default() -> Self {
-        LogAttributes { foreground: LogColor::White,
-                        background: LogColor::Black,
+        LogAttributes { foreground: LogColor::DefaultForeground,
+                        background: LogColor::DefaultBackground,
                         bold: false, underlined: false, blink: false }
     }
 }

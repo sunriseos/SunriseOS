@@ -121,10 +121,9 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     static mut SERIAL: SerialLogger = SerialLogger;
     Loggers::register_logger("Serial", unsafe { &mut SERIAL });
 
-    write!(Loggers, "Clearing screen...");
+    writeln!(Loggers, "Clearing screen...");
     let vga_screen = &mut VGATextLogger;
     vga_screen.clear();
-
 
     let loggers = &mut Loggers;
     // Say hello to the world
