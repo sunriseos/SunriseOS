@@ -3,7 +3,8 @@
 //! Only handles the usual case of two PICs in a cascading setup, where the
 //! SLAVE is setup to cascade to the line 2 of the MASTER.
 
-use i386::instructions::port::*;
+use io::Io;
+use i386::pio::Pio;
 
 bitflags! {
     /// The first control word sent to the PIC.
@@ -36,47 +37,47 @@ pub static mut SLAVE: Pic = unsafe { Pic::new(0xA0) };
 
 /// A single PIC8259 device.
 pub struct Pic {
-    port_cmd: u16,
-    port_data: u16
+    port_cmd: Pio<u8>,
+    port_data: Pio<u8>
 }
 
 fn io_wait() {
     // Port 0x80 is used for 'checkpoints' during POST.
     // The Linux kernel seems to think it is free for use :-/
-    unsafe { outb(0x80, 0); }
+    Pio::<u8>::new(0x80).write(0);
 }
 
 /// setup the 8259 pic. redirect the IRQ to user interrupt 32+.
 pub unsafe fn init() {
     // save masks
-    let a1 = inb(MASTER.port_data);
-    let a2 = inb(SLAVE.port_data);
+    let a1 = MASTER.port_data.read();
+    let a2 = SLAVE.port_data.read();
 
     // starts the initialization sequence (in cascade mode)
-    outb(MASTER.port_cmd, (ICW1::INIT | ICW1::ICW4).bits());
+    MASTER.port_cmd.write((ICW1::INIT | ICW1::ICW4).bits());
     io_wait();
-    outb(SLAVE.port_cmd, (ICW1::INIT | ICW1::ICW4).bits());
+    SLAVE.port_cmd.write((ICW1::INIT | ICW1::ICW4).bits());
     io_wait();
     // ICW2: Master PIC vector offset
-    outb(MASTER.port_data, 0x20);
+    MASTER.port_data.write(0x20);
     io_wait();
     // ICW2: Slave PIC vector offset
-    outb(SLAVE.port_data, 0x28);
+    SLAVE.port_data.write(0x28);
     io_wait();
     // ICW3: tell Master PIC that there is a slave PIC at IRQ2 (0000 0100)
-    outb(MASTER.port_data, 4);
+    MASTER.port_data.write(4);
     io_wait();
     // ICW3: tell Slave PIC its cascade identity (0000 0010)
-    outb(SLAVE.port_data, 2);
+    SLAVE.port_data.write(2);
     io_wait();
 
-    outb(MASTER.port_data, ICW4_8086);
+    MASTER.port_data.write(ICW4_8086);
     io_wait();
-    outb(SLAVE.port_data, ICW4_8086);
+    SLAVE.port_data.write(ICW4_8086);
     io_wait();
 
-    outb(MASTER.port_data, a1);   // restore saved masks.
-    outb(SLAVE.port_data, a2);
+    MASTER.port_data.write(a1);   // restore saved masks.
+    SLAVE.port_data.write(a2);
 }
 
 impl Pic {
@@ -88,8 +89,8 @@ impl Pic {
     /// random device can lead to memory unsafety.
     const unsafe fn new(port_base: u16) -> Pic {
         Pic {
-            port_cmd: port_base,
-            port_data: port_base + 1
+            port_cmd: Pio::new(port_base),
+            port_data: Pio::new(port_base + 1)
         }
     }
 
@@ -97,7 +98,7 @@ impl Pic {
     /// cycle.
     pub fn acknowledge(&mut self) {
         unsafe {
-            outb(self.port_cmd, 0x20);
+            self.port_cmd.write(0x20);
         }
     }
 }

@@ -1,8 +1,9 @@
-use i386::instructions::port::*;
 use i386::structures::idt::ExceptionStackFrame;
-use print::Printer;
+use logger::Loggers;
 use core::fmt::Write;
 use devices::pic;
+use i386::pio::Pio;
+use io::Io;
 
 fn acknowledge_irq(irq: u8) {
     unsafe {
@@ -53,13 +54,13 @@ extern "x86-interrupt" fn keyboard_handler(stack_frame: &mut ExceptionStackFrame
         '\\', 'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', '\x00', '*',
         '\x00', ' ', '\x00'
     ];
-    //writeln!(Printer, "Keyboard! {:#?}", stack_frame);
+    //writeln!(Loggers, "Keyboard! {:#?}", stack_frame);
     unsafe {
-        let status = inb(0x64);
+        let status = Pio::<u8>::new(0x64).read();
         if status & 0x01 != 0 {
-            let keycode = inb(0x60);
+            let keycode = Pio::<u8>::new(0x60).read();
             if (keycode as usize) < KEYBOARD_MAP.len() && KEYBOARD_MAP[keycode as usize] != '\x00' {
-                write!(Printer, "{}", KEYBOARD_MAP[keycode as usize]);
+                write!(Loggers, "{}", KEYBOARD_MAP[keycode as usize]);
             }
         }
     }

@@ -1,9 +1,9 @@
 use i386::structures::idt::{ExceptionStackFrame, Idt};
-use i386::instructions::{port::{inb, outb}, interrupts::sti};
+use i386::instructions::interrupts::sti;
 
-use print::Printer;
+use logger::Loggers;
 use core::fmt::Write;
-use paging;
+use i386::paging;
 use spin::Mutex;
 use devices::pic;
 
@@ -12,7 +12,7 @@ mod irq;
 extern "x86-interrupt" fn ignore_handler(stack_frame: &mut ExceptionStackFrame) {}
 
 extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut ExceptionStackFrame) {
-    writeln!(Printer, "Interrupt is on! \\o/\n{:#?}", stack_frame);
+    writeln!(Loggers, "Interrupt is on! \\o/\n{:#?}", stack_frame);
 }
 
 extern "x86-interrupt" fn invalid_opcode(stack_frame: &mut ExceptionStackFrame) {
@@ -29,7 +29,7 @@ pub unsafe fn init() {
 
     {
         let page = paging::get_page::<paging::KernelLand>();
-        let idt = page as *mut u8 as *mut Idt;
+        let idt = page.addr() as *mut u8 as *mut Idt;
         (*idt).init();
         (*idt).breakpoint.set_handler_fn(breakpoint_handler);
         for interrupt in &mut (*idt).interrupts[0..16] {
