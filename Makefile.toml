@@ -22,6 +22,12 @@ dependencies = ["iso"]
 command = "qemu-system-i386"
 args = ["-cdrom", "os.iso", "-serial", "stdio"]
 
+[tasks.qemu-debug]
+description = "Runs the bootable ISO in qemu."
+dependencies = ["iso"]
+command = "qemu-system-i386"
+args = ["-cdrom", "os.iso", "-gdb", "tcp::9090", "-S"]
+
 [tasks.qemu-vnc]
 description = "Runs the bootable ISO in qemu in vnc mode."
 dependencies = ["iso"]
