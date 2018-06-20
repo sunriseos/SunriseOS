@@ -92,6 +92,9 @@ fn main() {
     writeln!(Loggers, "Testing some string heap alloc: {}", String::from("Hello World"));
 
     // Let's GIF.
+    let mut vbe = unsafe {
+        devices::vbe::Framebuffer::new(i386::multiboot::get_boot_information())
+    };
     let decoder = gif::Decoder::new(&LOUIS[..]);
     let mut reader = decoder.read_info().unwrap();
     loop {
@@ -105,6 +108,9 @@ fn main() {
             let cap = buf.capacity();
             buf.set_len(cap);
             reader.read_into_buffer(&mut buf[..]);
+            for (idx, i) in vbe.get_fb().iter_mut().enumerate() {
+                *i = idx as u8;
+            }
         };
         // Copy buf to the VBE buffer.
     }
@@ -189,12 +195,24 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     // Map the boot_info.
     let multiboot_info_vaddr = page_tables.map_frame::<KernelLand>(multiboot_info_frame, EntryFlags::PRESENT);
 
+    let tag = boot_info.framebuffer_info_tag().expect("Framebuffer to be provided");
+    let framebuffer_size = tag.framebuffer_bpp() as usize * tag.framebuffer_dimensions().0 as usize * tag.framebuffer_dimensions().1 as usize / 8;
+    let framebuffer_size_pages = utils::align_up(framebuffer_size, paging::PAGE_SIZE) / paging::PAGE_SIZE;
+    let framebuffer_vaddr = page_tables.find_available_virtual_space::<paging::KernelLand>(framebuffer_size_pages).expect("Hopefully there's some space");
+    page_tables.map_range(PhysicalAddress(tag.framebuffer_addr()), framebuffer_vaddr, framebuffer_size_pages, EntryFlags::PRESENT | EntryFlags::WRITABLE);
+
+
     // Start using these page tables
     unsafe { page_tables.enable_paging() }
     writeln!(Loggers, "= Paging on");
 
     unsafe {
         i386::multiboot::init(multiboot2::load(multiboot_info_vaddr.addr()));
+    }
+
+    let framebuffer = unsafe { slice::from_raw_parts_mut(framebuffer_vaddr.addr() as *mut u8, framebuffer_size) };
+    for i in framebuffer.iter_mut() {
+        *i = 0xFF;
     }
 
     let new_stack = stack::KernelStack::allocate_stack()
