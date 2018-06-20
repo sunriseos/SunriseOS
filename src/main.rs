@@ -26,6 +26,7 @@ extern crate bitflags;
 extern crate static_assertions;
 extern crate alloc;
 extern crate linked_list_allocator;
+extern crate gif;
 
 use ascii::AsAsciiStr;
 use core::fmt::Write;
@@ -89,7 +90,27 @@ fn main() {
     writeln!(Loggers, "Got page {:#x}", page_active.addr());
 
     writeln!(Loggers, "Testing some string heap alloc: {}", String::from("Hello World"));
+
+    // Let's GIF.
+    let decoder = gif::Decoder::new(&LOUIS[..]);
+    let mut reader = decoder.read_info().unwrap();
+    loop {
+        {
+            // Seriously...
+            let _ = reader.next_frame_info().unwrap().unwrap();
+        }
+        let buf = unsafe {
+            // Safety: This is safe because the whole buffer will be rewritten.
+            let mut buf = Vec::with_capacity(reader.buffer_size());
+            let cap = buf.capacity();
+            buf.set_len(cap);
+            reader.read_into_buffer(&mut buf[..]);
+        };
+        // Copy buf to the VBE buffer.
+    }
 }
+
+static LOUIS: &'static [u8; 7712339] = include_bytes!("../img/meme3.gif");
 
 #[repr(align(4096))]
 pub struct AlignedStack([u8; 4096 * 4]);

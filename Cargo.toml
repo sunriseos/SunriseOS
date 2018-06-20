@@ -13,6 +13,7 @@ multiboot2 = { path = "../multiboot2-elf64" }
 spin = "0.4.6"
 static_assertions = "*"
 linked_list_allocator = "0.6.1"
+gif = { git = "https://github.com/roblabla/image-gif" }
 
 [dependencies.arrayvec]
 default-features = false
