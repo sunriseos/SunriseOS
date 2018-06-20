@@ -7,11 +7,14 @@ pub mod paging;
 pub mod stack;
 pub mod pio;
 pub mod multiboot;
+pub mod structures;
 
 pub mod instructions {
     //! Low level functions for special i386 instructions.
     pub mod tables {
         //! Instructions for loading descriptor tables (GDT, IDT, etc.).
+
+        use i386::structures::gdt::SegmentSelector;
 
         /// A struct describing a pointer to a descriptor table (GDT / IDT).
         /// This is in a format suitable for giving to 'lgdt' or 'lidt'.
@@ -26,6 +29,17 @@ pub mod instructions {
         /// Load GDT table.
         pub unsafe fn lgdt(gdt: &DescriptorTablePointer) {
             asm!("lgdt ($0)" :: "r" (gdt) : "memory");
+        }
+
+        /// Load LDT table.
+        pub unsafe fn lldt(ldt: SegmentSelector) {
+            asm!("lldt $0" :: "r" (ldt.0) : "memory");
+        }
+
+        // TODO: Goes somewhere else.
+        /// Sets the task register to the given TSS segment.
+        pub unsafe fn ltr(segment: SegmentSelector) {
+            asm!("ltr $0" :: "r"(segment.0));
         }
     }
 }
@@ -117,7 +131,25 @@ pub struct TssStruct {
     _reserveda: u16,
     gs:         u16,
     _reservedb: u16,
-    ldtr:       u16,
+    ldt_selector: u16,
     iopboffset: u16,
     _reservedc: u16,
+}
+
+use i386::structures::gdt::SegmentSelector;
+
+impl TssStruct {
+    pub fn new(cr3: u32, sp0: (SegmentSelector, usize), sp1: (SegmentSelector, usize), sp2: (SegmentSelector, usize), ldt: SegmentSelector) -> TssStruct {
+        TssStruct {
+            esp0: sp0.1 as u32,
+            ss0: (sp0.0).0,
+            esp1: sp1.1 as u32,
+            ss1: (sp1.0).0,
+            esp2: sp2.1 as u32,
+            ss2: (sp2.0).0,
+            cr3: cr3 as u32,
+            ldt_selector: ldt.0,
+            ..Default::default()
+        }
+    }
 }
