@@ -4,9 +4,12 @@ use core::slice;
 use utils;
 use i386::paging::{self, EntryFlags, PageTablesSet};
 use frame_alloc::PhysicalAddress;
-use multiboot2::BootInformation;
+use multiboot2::{BootInformation, FramebufferInfoTag};
 
-pub struct Framebuffer(&'static mut [u8]);
+pub struct Framebuffer {
+    buf: &'static mut [u8],
+    tag: &'static FramebufferInfoTag
+}
 
 impl Framebuffer {
     /// Creates an instance of the linear framebuffer from a multiboot2 BootInfo.
@@ -24,10 +27,17 @@ impl Framebuffer {
         let framebuffer_vaddr = page_tables.find_available_virtual_space::<paging::KernelLand>(framebuffer_size_pages).expect("Hopefully there's some space");
         page_tables.map_range(PhysicalAddress(tag.framebuffer_addr()), framebuffer_vaddr, framebuffer_size_pages, EntryFlags::PRESENT | EntryFlags::WRITABLE);
 
-        Framebuffer(slice::from_raw_parts_mut(framebuffer_vaddr.addr() as *mut u8, framebuffer_size))
+        Framebuffer {
+            buf: slice::from_raw_parts_mut(framebuffer_vaddr.addr() as *mut u8, framebuffer_size),
+            tag
+        }
+    }
+
+    pub fn width(&self) -> usize {
+        self.tag.framebuffer_dimensions().0 as usize
     }
 
     pub fn get_fb(&mut self) -> &mut [u8] {
-        self.0
+        self.buf
     }
 }

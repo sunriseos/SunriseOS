@@ -108,8 +108,16 @@ fn main() {
             let cap = buf.capacity();
             buf.set_len(cap);
             reader.read_into_buffer(&mut buf[..]);
-            for (idx, i) in vbe.get_fb().iter_mut().enumerate() {
-                *i = idx as u8;
+            //writeln!(Loggers, "{}", reader.line_length());
+            for x in 0..(reader.width() as usize) {
+                for y in 0..(reader.height() as usize) {
+                    let frame_coord = (y * reader.width() as usize + x) * 4;
+                    let vbe_coord = (y * vbe.width() + x) * 4;
+                    vbe.get_fb()[vbe_coord] = buf[frame_coord];
+                    vbe.get_fb()[vbe_coord + 1] = buf[frame_coord + 1];
+                    vbe.get_fb()[vbe_coord + 2] = buf[frame_coord + 2];
+                    vbe.get_fb()[vbe_coord + 3] = buf[frame_coord + 3];
+                }
             }
         };
         // Copy buf to the VBE buffer.
