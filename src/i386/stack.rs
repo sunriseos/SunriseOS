@@ -32,11 +32,11 @@ use paging::*;
 use frame_alloc::VirtualAddress;
 
 /// The size of a kernel stack, not accounting for the page guard
-pub const STACK_SIZE: usize            = 2;
+pub const STACK_SIZE: usize            = 4;
 pub const STACK_SIZE_WITH_GUARD: usize = STACK_SIZE + 1;
 
-/// 3 pages of stack means it must be aligned on 2^14
-const STACK_ALIGNEMENT: usize = 14;
+/// The alignment of the stack. ceil(log2(STACK_SIZE_WITH_GUARD * PAGE_SIZE))
+const STACK_ALIGNEMENT: usize = 15;
 
 /// A structure representing a kernel stack
 #[derive(Debug)]
