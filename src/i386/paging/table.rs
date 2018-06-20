@@ -6,6 +6,7 @@ use core::ops::{Index, IndexMut};
 #[path = "entry.rs"]
 pub mod entry;
 
+use logger::Loggers;
 use self::entry::*;
 use super::*;
 use ::frame_alloc::{Frame, FrameAllocator, MEMORY_FRAME_SIZE, PhysicalAddress, VirtualAddress};
@@ -466,6 +467,32 @@ pub trait PageTablesSet {
     fn find_available_virtual_space<Land: VirtualSpaceLand>(&mut self, page_nb: usize) -> Option<VirtualAddress> {
         // find_available_available_virtual_space_aligned with any alignement
         self.get_directory().find_available_virtual_space_aligned::<Land>(page_nb, 0)
+    }
+
+    /// Prints the current mapping.
+    // TODO: Let the weird animal write the rest of the docs. #delegation
+    fn print_mapping(&mut self) {
+        let mut dir = self.get_directory();
+        // Don't print last entry because it's just the recursive entry.
+        for i in 0..ENTRY_COUNT - 1 {
+            match dir.get_table(i) {
+                PageState::Present(table) => {
+                    for (j, entry) in table.entries().iter().enumerate() {
+                        let vaddr = i * PAGE_SIZE * ENTRY_COUNT + j * PAGE_SIZE;
+                        match entry.pointed_frame() {
+                            PageState::Present(x) => { writeln!(Loggers, "{:#010x} - {:#010x} - MAPS {:#010x}", vaddr, vaddr.saturating_add(PAGE_SIZE), x.address().addr()); },
+                            PageState::Guarded => { writeln!(Loggers, "{:#010x} - {:#010x} - GUARDED", vaddr, vaddr.saturating_add(PAGE_SIZE)); },
+                            _ => ()
+                        }
+                    }
+                },
+                PageState::Guarded => {
+                    let vaddr = i * PAGE_SIZE * ENTRY_COUNT;
+                    writeln!(Loggers, "{:#010x} - {:#010x} - GUARDED TABLE", vaddr, vaddr.saturating_add(PAGE_SIZE * ENTRY_COUNT));
+                },
+                _ => ()
+            }
+        }
     }
 }
 
