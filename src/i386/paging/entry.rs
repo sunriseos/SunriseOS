@@ -76,6 +76,7 @@ impl Entry {
 ///
 /// PageState is generic over various kind of Present states, similar to the
 /// Option type.
+#[derive(Debug)]
 pub enum PageState<T> {
     Available,
     Guarded,
