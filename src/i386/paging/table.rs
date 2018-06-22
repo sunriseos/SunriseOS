@@ -317,6 +317,17 @@ pub trait PageTablesSet {
         self.get_directory().map_to(page, address, flags)
     }
 
+    fn get_phys(&mut self, address: VirtualAddress) -> PageState<Frame> {
+        let table_nbr = address.addr() / (ENTRY_COUNT * PAGE_SIZE);
+        let table_off = address.addr() % (ENTRY_COUNT * PAGE_SIZE) / PAGE_SIZE;
+        let table = match self.get_directory().get_table(table_nbr) {
+            PageState::Available => return PageState::Available,
+            PageState::Guarded => return PageState::Guarded,
+            PageState::Present(table) => table
+        };
+        table.entries()[table_off].pointed_frame()
+    }
+
     /// Creates a mapping in the page tables with the given flags.
     /// Allocates the pointed page
     ///
