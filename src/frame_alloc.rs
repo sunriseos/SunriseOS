@@ -96,7 +96,7 @@ struct AllocatorBitmap {
 
 /// A big bitmap denoting for every frame if it is free or not
 static FRAMES_BITMAP: Mutex<AllocatorBitmap> = Mutex::new(AllocatorBitmap {
-    memory_bitmap: [0x00; FRAMES_BITMAP_SIZE],
+    memory_bitmap: [0xFF; FRAMES_BITMAP_SIZE],
     initialized: false,
 });
 
