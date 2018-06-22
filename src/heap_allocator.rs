@@ -77,6 +77,14 @@ unsafe impl<'a> GlobalAlloc for Allocator {
     }
 
     unsafe fn dealloc(&self, ptr: *mut Opaque, layout: Layout) {
+        let p = ptr as usize;
+        for p in p..(p + layout.size()) {
+            *(p as *mut u8) = 0x7F;
+        }
+        let mybool = unsafe { ::core::mem::zeroed() };
+        if mybool {
+            paging::ACTIVE_PAGE_TABLES.lock().print_mapping();
+        }
         self.0.call_once(Self::init).lock().deallocate(NonNull::new(ptr).unwrap(), layout)
     }
 }
