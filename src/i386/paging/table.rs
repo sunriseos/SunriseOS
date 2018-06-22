@@ -472,7 +472,34 @@ pub trait PageTablesSet {
     /// Prints the current mapping.
     // TODO: Let the weird animal write the rest of the docs. #delegation
     fn print_mapping(&mut self) {
+        #[derive(Debug, Clone, Copy)]
+        enum State { Present(usize), Guarded(usize), Available(usize) }
+        impl State {
+            fn update(&mut self, newstate: State, curaddr: usize) {
+                let old_self = ::core::mem::replace(self, State::Present(0));
+                let mut real_newstate = match (old_self, newstate) {
+                    (State::Present(addr), State::Present(newaddr)) => State::Present(addr),
+                    (State::Guarded(addr), State::Guarded(newaddr)) => State::Guarded(addr),
+                    (State::Available(addr), State::Available(newaddr)) => State::Available(addr),
+                    (State::Present(_), new) => new, // Avoid printing present
+                    (old, new) => {
+                        old.print(curaddr);
+                        new
+                    }
+                };
+                *self = real_newstate;
+            }
+
+            fn print(&self, curaddr: usize) {
+                match *self {
+                    State::Present(addr) => writeln!(Loggers, "{:#010x} - {:#010x} - MAPS", addr, curaddr),
+                    State::Guarded(addr) => writeln!(Loggers, "{:#010x} - {:#010x} - GUARDED", addr, curaddr),
+                    State::Available(addr) => writeln!(Loggers, "{:#010x} - {:#010x} - AVAILABLE", addr, curaddr),
+                };
+            }
+        }
         let mut dir = self.get_directory();
+        let mut state = State::Present(0);
         // Don't print last entry because it's just the recursive entry.
         for i in 0..ENTRY_COUNT - 1 {
             match dir.get_table(i) {
@@ -480,19 +507,29 @@ pub trait PageTablesSet {
                     for (j, entry) in table.entries().iter().enumerate() {
                         let vaddr = i * PAGE_SIZE * ENTRY_COUNT + j * PAGE_SIZE;
                         match entry.pointed_frame() {
-                            PageState::Present(x) => { writeln!(Loggers, "{:#010x} - {:#010x} - MAPS {:#010x}", vaddr, vaddr.saturating_add(PAGE_SIZE), x.address().addr()); },
-                            PageState::Guarded => { writeln!(Loggers, "{:#010x} - {:#010x} - GUARDED", vaddr, vaddr.saturating_add(PAGE_SIZE)); },
-                            _ => ()
+                            PageState::Present(x) => {
+                                state.update(State::Present(vaddr), vaddr);
+                                writeln!(Loggers, "{:#010x} - {:#010x} - MAPS {:#010x}", vaddr, vaddr.saturating_add(PAGE_SIZE), x.address().addr());
+                            },
+                            PageState::Guarded => {
+                                state.update(State::Guarded(vaddr), vaddr);
+                            },
+                            _ => {
+                                state.update(State::Available(vaddr), vaddr);
+                            }
                         }
                     }
                 },
                 PageState::Guarded => {
-                    let vaddr = i * PAGE_SIZE * ENTRY_COUNT;
-                    writeln!(Loggers, "{:#010x} - {:#010x} - GUARDED TABLE", vaddr, vaddr.saturating_add(PAGE_SIZE * ENTRY_COUNT));
+                    state.update(State::Guarded(i * PAGE_SIZE * ENTRY_COUNT), i * PAGE_SIZE * ENTRY_COUNT);
                 },
-                _ => ()
+                PageState::Available => {
+                    state.update(State::Available(i * PAGE_SIZE * ENTRY_COUNT), i * PAGE_SIZE * ENTRY_COUNT);
+                }
             }
         }
+
+        state.print((ENTRY_COUNT - 1) * PAGE_SIZE * ENTRY_COUNT);
     }
 }
 
