@@ -95,32 +95,29 @@ fn main() {
     let mut vbe = unsafe {
         devices::vbe::Framebuffer::new(i386::multiboot::get_boot_information())
     };
-    let decoder = gif::Decoder::new(&LOUIS[..]);
-    let mut reader = decoder.read_info().unwrap();
+    let mut reader = gif::Decoder::new(&LOUIS[..]).read_info().unwrap();
+    let mut buf = Vec::new();
     loop {
         {
-            // Seriously...
-            let _ = reader.next_frame_info().unwrap().unwrap();
-        }
-        let buf = unsafe {
-            // Safety: This is safe because the whole buffer will be rewritten.
-            let mut buf = Vec::with_capacity(reader.buffer_size());
-            let cap = buf.capacity();
-            buf.set_len(cap);
-            reader.read_into_buffer(&mut buf[..]);
-            //writeln!(Loggers, "{}", reader.line_length());
-            for x in 0..(reader.width() as usize) {
-                for y in 0..(reader.height() as usize) {
-                    let frame_coord = (y * reader.width() as usize + x) * 4;
-                    let vbe_coord = (y * vbe.width() + x) * 4;
-                    vbe.get_fb()[vbe_coord] = buf[frame_coord];
-                    vbe.get_fb()[vbe_coord + 1] = buf[frame_coord + 1];
-                    vbe.get_fb()[vbe_coord + 2] = buf[frame_coord + 2];
-                    vbe.get_fb()[vbe_coord + 3] = buf[frame_coord + 3];
-                }
+            let end = reader.next_frame_info().unwrap().is_none();
+            if end {
+                reader = gif::Decoder::new(&LOUIS[..]).read_info().unwrap();
+                let _ = reader.next_frame_info().unwrap().unwrap();
             }
-        };
-        // Copy buf to the VBE buffer.
+        }
+        buf.resize(reader.buffer_size(), 0);
+        // simulate read into buffer
+        reader.read_into_buffer(&mut buf[..]);
+        for y in 0..(reader.height() as usize) {
+            for x in 0..(reader.width() as usize) {
+                let frame_coord = (y * reader.width() as usize + x) * 4;
+                let vbe_coord = (y * vbe.width() + x) * 4;
+                vbe.get_fb()[vbe_coord] = buf[frame_coord + 2];
+                vbe.get_fb()[vbe_coord + 1] = buf[frame_coord + 1];
+                vbe.get_fb()[vbe_coord + 2] = buf[frame_coord];
+                vbe.get_fb()[vbe_coord + 3] = 0xFF;
+            }
+        }
     }
 }
 
