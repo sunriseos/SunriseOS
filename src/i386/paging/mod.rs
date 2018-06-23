@@ -18,6 +18,7 @@ pub use frame_alloc::VirtualAddress;
 use ::devices::vgatext::{VGA_SCREEN_ADDRESS, VGA_SCREEN_MEMORY_SIZE};
 use ::core::fmt::Write;
 use ::core::ops::Deref;
+use logger::Loggers;
 
 pub const PAGE_SIZE: usize = 4096;
 
@@ -90,9 +91,13 @@ pub unsafe fn map_kernel(boot_info : &BootInformation) -> PagingOffPageSet {
     let elf_sections_tag = boot_info.elf_sections_tag()
         .expect("GRUB, you're drunk. Give us our elf_sections_tag.");
     for section in elf_sections_tag.sections() {
-        if !section.is_allocated() {
+        if !section.is_allocated() || section.name() == ".boot" {
             continue; // section is not loaded to memory
         }
+		writeln!(Loggers, "section {:#010x} - {:#010x} : {}",
+			section.start_address(), section.end_address(),
+			section.name()
+			);
         assert_eq!(section.start_address() as usize % PAGE_SIZE, 0, "sections must be page aligned");
 
         let mut map_flags = EntryFlags::PRESENT;
