@@ -27,12 +27,15 @@ extern crate static_assertions;
 extern crate alloc;
 extern crate linked_list_allocator;
 extern crate gif;
+#[macro_use]
+extern crate log;
 
 use ascii::AsAsciiStr;
 use core::fmt::Write;
 use alloc::*;
 
 mod logger;
+mod log_impl;
 pub use logger::*;
 pub use devices::vgatext::VGATextLogger;
 pub use devices::rs232::SerialLogger;
@@ -207,6 +210,8 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     unsafe {
         i386::multiboot::init(multiboot2::load(multiboot_info_vaddr.addr()));
     }
+
+    log_impl::init();
 
     let new_stack = stack::KernelStack::allocate_stack()
         .expect("Failed to allocate new kernel stack");

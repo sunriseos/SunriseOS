@@ -24,6 +24,8 @@ impl Allocator {
 
         assert!(new_heap_top - heap_bottom < RESERVED_HEAP_SIZE, "New heap grows over reserved heap size");
 
+        info!("EXTEND {:#010x}", new_heap_top);
+
         for new_page in (heap_top..new_heap_top).step_by(paging::PAGE_SIZE) {
             let mut active_pages = paging::ACTIVE_PAGE_TABLES.lock();
             active_pages.unmap(VirtualAddress(new_page));
@@ -41,6 +43,7 @@ impl Allocator {
         let heap_space = active_pages.find_available_virtual_space::<paging::KernelLand>(RESERVED_HEAP_SIZE / paging::PAGE_SIZE).expect("Kernel should have 512MB of virtual memory");
         active_pages.map_allocate_to(heap_space, EntryFlags::WRITABLE | EntryFlags::PRESENT);
         active_pages.map_range_page_guard(VirtualAddress(heap_space.addr() + paging::PAGE_SIZE), (RESERVED_HEAP_SIZE / paging::PAGE_SIZE) - 1);
+        info!("Reserving {} pages at {:#010x}", RESERVED_HEAP_SIZE / paging::PAGE_SIZE - 1, heap_space.addr() + paging::PAGE_SIZE);
         unsafe {
             // Safety: Size is of 0, and the address is freshly guard-paged.
             Mutex::new(Heap::new(heap_space.addr(), paging::PAGE_SIZE))
@@ -67,23 +70,25 @@ unsafe impl<'a> GlobalAlloc for Allocator {
         let allocation = self.0.call_once(Self::init).lock().allocate_first_fit(layout);
         let size = layout.size();
         // If the heap is exhausted, then extend and attempt the allocation another time.
-        match allocation {
+        let alloc = match allocation {
             Err(AllocErr) => {
                 self.expand(size); // TODO: how much should I *really* expand by?
                 self.0.call_once(Self::init).lock().allocate_first_fit(layout)
             }
             _ => allocation
-        }.ok().map_or(0 as *mut Opaque, |allocation| allocation.as_ptr())
+        }.ok().map_or(0 as *mut Opaque, |allocation| allocation.as_ptr());
+
+        info!("ALLOC  {:#010x?}, size {:#x}", alloc, layout.size());
+        alloc
     }
 
     unsafe fn dealloc(&self, ptr: *mut Opaque, layout: Layout) {
-        let p = ptr as usize;
-        for p in p..(p + layout.size()) {
-            *(p as *mut u8) = 0x7F;
-        }
-        let mybool = unsafe { ::core::mem::zeroed() };
-        if mybool {
-            paging::ACTIVE_PAGE_TABLES.lock().print_mapping();
+        info!("FREE   {:#010x?}, size {:#x}", ptr, layout.size());
+        if cfg!(debug_assertions) {
+            let p = ptr as usize;
+            for i in p..(p + layout.size()) {
+                *(i as *mut u8) = 0x7F;
+            }
         }
         self.0.call_once(Self::init).lock().deallocate(NonNull::new(ptr).unwrap(), layout)
     }
