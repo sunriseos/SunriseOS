@@ -67,6 +67,7 @@ use alloc::*;
 use alloc::string::ToString;
 use log::{Level, LevelFilter, Record, Metadata};
 use logger::Loggers;
+use smallvec::SmallVec;
 
 #[path = "string.rs"]
 mod inner;
@@ -79,7 +80,7 @@ mod inner;
 /// 
 /// [`Builder`]: struct.Builder.html
 pub struct Filter {
-    directives: Vec<Directive>,
+    directives: SmallVec<[Directive; 1]>,
     filter: Option<inner::Filter>,
 }
 
@@ -113,7 +114,7 @@ pub struct Filter {
 /// 
 /// [`Filter`]: struct.Filter.html
 pub struct Builder {
-    directives: Vec<Directive>,
+    directives: SmallVec<[Directive; 1]>,
     filter: Option<inner::Filter>,
 }
 
@@ -180,7 +181,7 @@ impl Builder {
     /// Initializes the filter builder with defaults.
     pub fn new() -> Builder {
         Builder {
-            directives: Vec::new(),
+            directives: SmallVec::new(),
             filter: None,
         }
     }
@@ -255,7 +256,7 @@ impl Builder {
         }
 
         Filter {
-            directives: mem::replace(&mut self.directives, Vec::new()),
+            directives: mem::replace(&mut self.directives, SmallVec::new()),
             filter: mem::replace(&mut self.filter, None),
         }
     }

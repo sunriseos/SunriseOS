@@ -16,6 +16,10 @@ linked_list_allocator = "=0.6.1"
 gif = { git = "https://github.com/roblabla/image-gif" }
 log = "0.4.2"
 
+[dependencies.smallvec]
+default-features = false
+version = "0.6.2"
+
 [dependencies.arrayvec]
 default-features = false
 version = "0.4.7"

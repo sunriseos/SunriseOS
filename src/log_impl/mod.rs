@@ -7,18 +7,19 @@ use logger::Loggers;
 use spin::Once;
 use core::fmt::Write;
 use i386::multiboot::get_boot_information;
+use spin::RwLock;
 
 struct Logger {
-    filter: filter::Filter
+    filter: RwLock<filter::Filter>
 }
 
 impl Log for Logger {
     fn enabled(&self, metadata: &Metadata) -> bool {
-        self.filter.enabled(metadata)
+        self.filter.read().enabled(metadata)
     }
 
     fn log(&self, record: &Record) {
-        if self.filter.matches(record) {
+        if self.filter.read().matches(record) {
             writeln!(Loggers, "[{}] - {} - {}", record.level(), record.target(), record.args());
         }
     }
@@ -28,11 +29,21 @@ impl Log for Logger {
 
 static LOGGER: Once<Logger> = Once::new();
 
-pub fn init() {
-    let cmdline = get_boot_information().command_line_tag().unwrap().command_line();
-    let filter = filter::Builder::new().parse(cmdline).build();
-    log::set_logger(LOGGER.call_once(|| Logger { filter: filter } ))
+/// Initializes the Logger in a heapless environment.
+pub fn early_init() {
+    let filter = filter::Builder::new()
+        .filter(None, LevelFilter::Info)
+        .build();
+    log::set_logger(LOGGER.call_once(|| Logger { filter: RwLock::new(filter) } ))
         .expect("log_impl::init to be called before logger is initialized");
     log::set_max_level(LevelFilter::Debug);
     info!("Logging enabled");
+}
+
+/// Reinitializes the logger using the cmdline. This requires the heap.
+pub fn init() {
+    let logger = LOGGER.try().expect("early_init to be called before init");
+    let cmdline = get_boot_information().command_line_tag().unwrap().command_line();
+    let newfilter = filter::Builder::new().parse(cmdline).build();
+    *logger.filter.write() = newfilter;
 }

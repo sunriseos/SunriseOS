@@ -29,6 +29,7 @@ extern crate linked_list_allocator;
 extern crate gif;
 #[macro_use]
 extern crate log;
+extern crate smallvec;
 
 use ascii::AsAsciiStr;
 use core::fmt::Write;
@@ -70,29 +71,29 @@ fn main() {
                            LogAttributes::new_fg_bg(LogColor::Yellow, LogColor::Pink));
 
     let mymem = FrameAllocator::alloc_frame();
-    writeln!(Loggers, "Allocated frame {:x?}", mymem);
+    info!("Allocated frame {:x?}", mymem);
     FrameAllocator::free_frame(mymem);
-    writeln!(Loggers, "Freed frame {:x?}", mymem);
+    info!("Freed frame {:x?}", mymem);
 
     writeln!(Loggers, "----------");
 
     let page1 = ::paging::get_page::<::paging::UserLand>();
-    writeln!(Loggers, "Got page {:#x}", page1.addr());
+    info!("Got page {:#x}", page1.addr());
     let page2 = ::paging::get_page::<::paging::UserLand>();
-    writeln!(Loggers, "Got page {:#x}", page2.addr());
+    info!("Got page {:#x}", page2.addr());
 
-    writeln!(Loggers, "----------");
+    info!("----------");
 
     let mut inactive_pages = InactivePageTables::new();
-    writeln!(Loggers, "Created new tables");
+    info!("Created new tables");
     let page_innactive = inactive_pages.get_page::<paging::UserLand>();
-    writeln!(Loggers, "Mapped inactive page {:#x}", page_innactive.addr());
+    info!("Mapped inactive page {:#x}", page_innactive.addr());
     unsafe { inactive_pages.switch_to() };
-    writeln!(Loggers, "Switched to new tables");
+    info!("Switched to new tables");
     let page_active = ::paging::get_page::<::paging::UserLand>();
-    writeln!(Loggers, "Got page {:#x}", page_active.addr());
+    info!("Got page {:#x}", page_active.addr());
 
-    writeln!(Loggers, "Testing some string heap alloc: {}", String::from("Hello World"));
+    info!("Testing some string heap alloc: {}", String::from("Hello World"));
 
     // Let's GIF.
     let mut vbe = unsafe {
@@ -150,6 +151,8 @@ pub unsafe extern fn start() -> ! {
 #[cfg(target_os = "none")]
 #[no_mangle]
 pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
+    log_impl::early_init();
+
     // Do whatever is necessary to have a proper environment here.
 
     // Register some loggers
@@ -158,7 +161,7 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     static mut SERIAL: SerialLogger = SerialLogger;
     Loggers::register_logger("Serial", unsafe { &mut SERIAL });
 
-    writeln!(Loggers, "Clearing screen...");
+    info!("Clearing screen...");
     let vga_screen = &mut VGATextLogger;
     vga_screen.clear();
 
@@ -171,15 +174,15 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 
     // Set up (read: inhibit) the GDT.
     gdt::init_gdt();
-    writeln!(Loggers, "= Gdt initialized");
+    info!("Gdt initialized");
 
     // Parse the multiboot infos
     let boot_info = unsafe { multiboot2::load(multiboot_info_addr) };
-    writeln!(Loggers, "= Parsed multiboot informations");
+    info!("Parsed multiboot informations");
 
     // Setup frame allocator
     FrameAllocator::init(&boot_info);
-    writeln!(Loggers, "= Initialized frame allocator");
+    info!("Initialized frame allocator");
 
     // Move the multiboot_header to a single page. Because GRUB sucks. Seriously.
     let multiboot_info_frame = FrameAllocator::alloc_frame();
@@ -198,14 +201,14 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     // Create page tables with the right access rights for each kernel section
     let mut page_tables =
     unsafe { paging::map_kernel(&boot_info) };
-    writeln!(Loggers, "= Mapped the kernel");
+    info!("Mapped the kernel");
 
     // Map the boot_info.
     let multiboot_info_vaddr = page_tables.map_frame::<KernelLand>(multiboot_info_frame, EntryFlags::PRESENT);
 
     // Start using these page tables
     unsafe { page_tables.enable_paging() }
-    writeln!(Loggers, "= Paging on");
+    info!("= Paging on");
 
     unsafe {
         i386::multiboot::init(multiboot2::load(multiboot_info_vaddr.addr()));
@@ -225,9 +228,9 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 #[cfg(target_os = "none")]
 #[no_mangle]
 pub fn common_start_continue_stack() -> ! {
-    writeln!(SerialLogger, "= Switched to new kernel stack");
+    info!("Switched to new kernel stack");
 
-    writeln!(SerialLogger, "= Calling main()");
+    info!("Calling main()");
     main();
     // Die !
     // We shouldn't reach this...

@@ -94,10 +94,10 @@ pub unsafe fn map_kernel(boot_info : &BootInformation) -> PagingOffPageSet {
         if !section.is_allocated() || section.name() == ".boot" {
             continue; // section is not loaded to memory
         }
-		writeln!(Loggers, "section {:#010x} - {:#010x} : {}",
-			section.start_address(), section.end_address(),
-			section.name()
-			);
+        writeln!(Loggers, "section {:#010x} - {:#010x} : {}",
+                 section.start_address(), section.end_address(),
+                 section.name()
+                );
         assert_eq!(section.start_address() as usize % PAGE_SIZE, 0, "sections must be page aligned");
 
         let mut map_flags = EntryFlags::PRESENT;

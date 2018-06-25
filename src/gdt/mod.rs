@@ -79,14 +79,12 @@ pub fn init_gdt() {
         gdt
     });
 
-    use logger::Loggers;
-    use core::fmt::Write;
-    writeln!(Loggers, "Loading GDT");
+    info!("Loading GDT");
     gdt.load_global(0x8, 0x10, 0x18);
     unsafe { 
-        writeln!(Loggers, "Loading LDT");
+        info!("Loading LDT");
         lldt(SegmentSelector(7 << 3));
-        writeln!(Loggers, "Loading Task");
+        info!("Loading Task");
         ltr(SegmentSelector(8 << 3));
     }
 }
