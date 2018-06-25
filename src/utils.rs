@@ -54,22 +54,43 @@ pub trait BitArrayExt<U: ::bit_field::BitField>: ::bit_field::BitArray<U> {
 
 impl<T: ?Sized, U: ::bit_field::BitField> BitArrayExt<U> for T where T: ::bit_field::BitArray<U> {}
 
-/// Returns the index of the first zero in a bit array
-/// If no zero is found, returns bitarray.len(), which is outside the set of valid indexes
-pub fn bit_array_first_zero(bitarray: &[u8]) -> usize {
+// We could have made a generic implementation of this two functions working for either 1 or 0,
+// but it will just be slower checking "what is our needle again ?" in every loop
+
+/// Returns the index of the first 0 in a bit array
+pub fn bit_array_first_zero(bitarray: &[u8]) -> Option<usize> {
     for (index, &byte) in bitarray.iter().enumerate() {
         if byte == 0xFF {
+            // not here
             continue;
         }
         // We've got a zero in this byte
         for offset in 0..7 {
             if (byte & (1 << offset)) == 0 {
-                return index * 8 + offset;
+                return Some(index * 8 + offset);
             }
         }
     }
     // not found
-    bitarray.len()
+    None
+}
+
+/// Returns the index of the first 1 in a bit array
+pub fn bit_array_first_one(bitarray: &[u8]) -> Option<usize> {
+    for (index, &byte) in bitarray.iter().enumerate() {
+        if byte == 0x00 {
+            // not here
+            continue;
+        }
+        // We've got a one in this byte
+        for offset in 0..7 {
+            if (byte & (1 << offset)) != 0 {
+                return Some(index * 8 + offset);
+            }
+        }
+    }
+    // not found
+    None
 }
 
 pub fn align_up(addr: usize, align: usize) -> usize {

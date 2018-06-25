@@ -210,10 +210,8 @@ impl FrameAllocator {
         let mut frames_bitmap = FRAMES_BITMAP.lock();
 
         FrameAllocator::check_initialized(&*frames_bitmap);
-        let frame = bit_array_first_zero(&frames_bitmap.memory_bitmap);
-        if frame == frames_bitmap.memory_bitmap.len() {
-            panic!("Cannot allocate frame: No available frame D:")
-        }
+        let frame = bit_array_first_zero(&frames_bitmap.memory_bitmap)
+            .expect("Cannot allocate frame: No available frame D:");
         frames_bitmap.memory_bitmap.set_bit(frame, true);
         unsafe {
             frame_to_addr(frame)
