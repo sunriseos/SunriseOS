@@ -230,10 +230,11 @@ pub fn common_start_continue_stack() -> ! {
     writeln!(SerialLogger, "= Calling main()");
     main();
     // Die !
-    #[cfg(target_os = "none")]
-    unsafe { asm!("HLT"); }
     // We shouldn't reach this...
-    loop {}
+    loop {
+        #[cfg(target_os = "none")]
+        unsafe { asm!("HLT"); }
+    }
 }
 
 #[cfg(target_os = "none")]
