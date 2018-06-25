@@ -15,7 +15,7 @@ use multiboot2::BootInformation;
 use spin::Mutex;
 use bit_field::BitArray;
 use utils::BitArrayExt;
-use utils::bit_array_first_zero;
+use utils::bit_array_first_one;
 use paging::PAGE_SIZE;
 
 /// Represents a Physical address
@@ -88,15 +88,20 @@ pub fn round_to_page(addr: usize) -> usize {
 
 /// A big bitmap denoting for every frame if it is free or not
 ///
-/// 0 is free, 1 is already allocated/reserved
+/// 1 is free, 0 is already allocated/reserved
+/// This may seem backward, but this way when we start the array is filled with 0(reserved)
+/// and it can be put in the bss by the compiler
 struct AllocatorBitmap {
     memory_bitmap: [u8; FRAMES_BITMAP_SIZE],
     initialized: bool,
 }
 
+const FRAME_FREE:     bool = true;
+const FRAME_OCCUPIED: bool = false;
+
 /// A big bitmap denoting for every frame if it is free or not
 static FRAMES_BITMAP: Mutex<AllocatorBitmap> = Mutex::new(AllocatorBitmap {
-    memory_bitmap: [0xFF; FRAMES_BITMAP_SIZE],
+    memory_bitmap: [0x00; FRAMES_BITMAP_SIZE],
     initialized: false,
 });
 
@@ -181,7 +186,7 @@ impl FrameAllocator {
                 addr_to_frame(round_to_page(start_addr))
                     ..
                 addr_to_frame(round_to_page_upper(end_addr)),
-            true);
+            FRAME_OCCUPIED);
     }
 
     /// Marks a physical memory area as free for frame allocation
@@ -196,7 +201,7 @@ impl FrameAllocator {
                 addr_to_frame(round_to_page_upper(start_addr))
                     ..
                 addr_to_frame(round_to_page(end_addr)),
-            false);
+            FRAME_FREE);
     }
 
     /// Allocates a free frame
@@ -210,9 +215,9 @@ impl FrameAllocator {
         let mut frames_bitmap = FRAMES_BITMAP.lock();
 
         FrameAllocator::check_initialized(&*frames_bitmap);
-        let frame = bit_array_first_zero(&frames_bitmap.memory_bitmap)
+        let frame = bit_array_first_one(&frames_bitmap.memory_bitmap)
             .expect("Cannot allocate frame: No available frame D:");
-        frames_bitmap.memory_bitmap.set_bit(frame, true);
+        frames_bitmap.memory_bitmap.set_bit(frame, FRAME_OCCUPIED);
         unsafe {
             frame_to_addr(frame)
         }
@@ -230,9 +235,9 @@ impl FrameAllocator {
         // Check addr is a multiple of MEMORY_FRAME_SIZE
         assert_eq!(frame.physical_addr & FRAME_OFFSET_MASK, 0x000);
         let frame = addr_to_frame(frame.physical_addr);
-        if frames_bitmap.memory_bitmap.get_bit(frame) == false {
+        if frames_bitmap.memory_bitmap.get_bit(frame) == FRAME_FREE {
             panic!("Frame being freed was not allocated");
         }
-        frames_bitmap.memory_bitmap.set_bit(frame, false);
+        frames_bitmap.memory_bitmap.set_bit(frame, FRAME_FREE);
     }
 }
