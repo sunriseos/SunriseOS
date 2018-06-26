@@ -65,7 +65,7 @@ pub fn bit_array_first_zero(bitarray: &[u8]) -> Option<usize> {
             continue;
         }
         // We've got a zero in this byte
-        for offset in 0..7 {
+        for offset in 0..8 {
             if (byte & (1 << offset)) == 0 {
                 return Some(index * 8 + offset);
             }
@@ -83,7 +83,7 @@ pub fn bit_array_first_one(bitarray: &[u8]) -> Option<usize> {
             continue;
         }
         // We've got a one in this byte
-        for offset in 0..7 {
+        for offset in 0..8 {
             if (byte & (1 << offset)) != 0 {
                 return Some(index * 8 + offset);
             }
