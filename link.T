@@ -45,7 +45,9 @@ SECTIONS {
 	} : data
 
 	.bss ALIGN(4K) : {
+		BSS_START = .;
 		*(.bss)
+		BSS_END = .;
 	} : data
 
 	.data.rel.ro ALIGN(4K) : {

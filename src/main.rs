@@ -137,6 +137,15 @@ pub static mut STACK: AlignedStack = AlignedStack([0; 4096 * 4]);
 #[no_mangle]
 pub unsafe extern fn start() -> ! {
     asm!("
+        // Memset the bss. Hopefully memset doesn't actually use the bss...
+        mov eax, BSS_END
+        sub eax, BSS_START
+        push eax
+        push 0
+        push BSS_START
+        call memset
+        add esp, 12
+
         // Create the stack
         mov esp, $0
         add esp, 16383
