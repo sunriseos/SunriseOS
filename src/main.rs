@@ -110,6 +110,7 @@ fn main() {
             }
         }
         buf.resize(reader.buffer_size(), 0);
+        info!("Buf: {:#010x}, len: {}", buf.as_ptr() as usize, buf.len());
         // simulate read into buffer
         reader.read_into_buffer(&mut buf[..]);
         for y in 0..(reader.height() as usize) {

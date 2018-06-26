@@ -166,6 +166,43 @@ impl FrameAllocator {
         FrameAllocator::mark_area_reserved(&mut frames_bitmap.memory_bitmap,
                                             0x00000000,
                                             0x00000001);
+
+
+
+        if log_enabled!(::log::Level::Info) {
+            let mut cur = None;
+            for (i, bitmap) in frames_bitmap.memory_bitmap.iter().enumerate() {
+                for j in 0..8 {
+                    let curaddr = (i * 8 + j) * ::paging::PAGE_SIZE;
+                    if bitmap & (1 << j) != 0 {
+                        // Area is available
+                        match cur {
+                            None => cur = Some((FRAME_FREE, curaddr)),
+                            Some((FRAME_OCCUPIED, last)) => {
+                                info!("{:#010x} - {:#010x} OCCUPIED", last, curaddr);
+                                cur = Some((FRAME_FREE, curaddr));
+                            },
+                            _ => ()
+                        }
+                    } else {
+                        // Area is occupied
+                        match cur {
+                            None => cur = Some((FRAME_OCCUPIED, curaddr)),
+                            Some((FRAME_FREE, last)) => {
+                                info!("{:#010x} - {:#010x} AVAILABLE", last, curaddr);
+                                cur = Some((FRAME_OCCUPIED, curaddr));
+                            },
+                            _ => ()
+                        }
+                    }
+                }
+            }
+            match cur {
+                Some((FRAME_FREE, last)) => info!("{:#010x} - {:#010x} AVAILABLE", last, 0xFFFFFFFFu32),
+                Some((FRAME_OCCUPIED, last)) => info!("{:#010x} - {:#010x} OCCUPIED", last, 0xFFFFFFFFu32),
+                _ => ()
+            }
+        }
         frames_bitmap.initialized = true
     }
 
@@ -185,6 +222,7 @@ impl FrameAllocator {
     fn mark_area_reserved(bitmap: &mut [u8],
                           start_addr: usize,
                           end_addr: usize) {
+        info!("Setting {:#010x}..{:#010x} to reserved", round_to_page(start_addr), round_to_page_upper(end_addr));
         bitmap.set_bits_area(
                 addr_to_frame(round_to_page(start_addr))
                     ..
@@ -200,6 +238,7 @@ impl FrameAllocator {
     fn mark_area_free(bitmap: &mut [u8],
                       start_addr: usize,
                       end_addr: usize) {
+        info!("Setting {:#010x}..{:#010x} to available", round_to_page(start_addr), round_to_page_upper(end_addr));
         bitmap.set_bits_area(
                 addr_to_frame(round_to_page_upper(start_addr))
                     ..

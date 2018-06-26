@@ -1,6 +1,6 @@
 //! i386 page table / directory
 
-use core::ops::{Index, IndexMut};
+use core::ops::{Index, IndexMut, Bound, RangeBounds};
 
 // Yeah, I'm ugly. Screw you.
 #[path = "entry.rs"]
@@ -482,7 +482,7 @@ pub trait PageTablesSet {
 
     /// Prints the current mapping.
     // TODO: Let the weird animal write the rest of the docs. #delegation
-    fn print_mapping(&mut self) {
+    fn print_mapping<T>(&mut self, range: T) where T: RangeBounds<usize> {
         #[derive(Debug, Clone, Copy)]
         enum State { Present(usize), Guarded(usize), Available(usize) }
         impl State {
@@ -512,10 +512,30 @@ pub trait PageTablesSet {
         let mut dir = self.get_directory();
         let mut state = State::Present(0);
         // Don't print last entry because it's just the recursive entry.
-        for i in 0..ENTRY_COUNT - 1 {
+        let start = match range.start_bound() {
+            Bound::Included(start) => *start,
+            Bound::Excluded(start) => *start + 1,
+            Bound::Unbounded => 0
+        };
+        let end = match range.end_bound() {
+            Bound::Included(end) => *end,
+            Bound::Excluded(end) => *end - 1,
+            Bound::Unbounded => (ENTRY_COUNT - 1) * PAGE_SIZE * ENTRY_COUNT
+        };
+
+        let first_table = start / (PAGE_SIZE * ENTRY_COUNT);
+        let last_table = ::utils::div_round_up(end, PAGE_SIZE * ENTRY_COUNT);
+        for i in first_table..last_table {
             match dir.get_table(i) {
                 PageState::Present(table) => {
-                    for (j, entry) in table.entries().iter().enumerate() {
+                    let mut entries = &table.entries()[..];
+                    if last_table == i {
+                        entries = &entries[..end % (PAGE_SIZE * ENTRY_COUNT) / PAGE_SIZE];
+                    }
+                    if first_table == i {
+                        entries = &entries[start % (PAGE_SIZE * ENTRY_COUNT) / PAGE_SIZE..];
+                    }
+                    for (j, entry) in entries.iter().enumerate().map(|(j, entry)| (j + (start % (PAGE_SIZE * ENTRY_COUNT) / PAGE_SIZE), entry)) {
                         let vaddr = i * PAGE_SIZE * ENTRY_COUNT + j * PAGE_SIZE;
                         match entry.pointed_frame() {
                             PageState::Present(x) => {
@@ -540,7 +560,7 @@ pub trait PageTablesSet {
             }
         }
 
-        state.print((ENTRY_COUNT - 1) * PAGE_SIZE * ENTRY_COUNT);
+        state.print(end);
     }
 }
 

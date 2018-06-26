@@ -27,6 +27,7 @@ impl Framebuffer {
         let framebuffer_vaddr = page_tables.find_available_virtual_space::<paging::KernelLand>(framebuffer_size_pages).expect("Hopefully there's some space");
         page_tables.map_range(PhysicalAddress(tag.framebuffer_addr()), framebuffer_vaddr, framebuffer_size_pages, EntryFlags::PRESENT | EntryFlags::WRITABLE);
 
+        info!("VBE vaddr: {:#010x}, paddr: {:#010x}", framebuffer_vaddr.addr(), tag.framebuffer_addr());
         Framebuffer {
             buf: slice::from_raw_parts_mut(framebuffer_vaddr.addr() as *mut u8, framebuffer_size),
             tag
