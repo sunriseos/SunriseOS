@@ -147,9 +147,12 @@ impl FrameAllocator {
         let memory_map_tag = boot_info.memory_map_tag()
             .expect("GRUB, you're drunk. Give us our memory_map_tag.");
         for memarea in memory_map_tag.memory_areas() {
+            if memarea.start_address() > u32::max_value() as u64 || memarea.end_address() > u32::max_value() as u64 {
+                continue;
+            }
             FrameAllocator::mark_area_free(&mut frames_bitmap.memory_bitmap,
-                                               memarea.start_address(),
-                                               memarea.end_address());
+                                               memarea.start_address() as usize,
+                                               memarea.end_address() as usize);
         }
         let elf_sections_tag = boot_info.elf_sections_tag()
             .expect("GRUB, you're drunk. Give us our elf_sections_tag.");
