@@ -92,7 +92,8 @@ impl SerialAttributes {
 static G_SERIAL: Once<Mutex<SerialInternal<Pio<u8>>>> = Once::new();
 
 pub struct SerialInternal<T> {
-    t: T
+    data_port: T,
+    status_port: T
 }
 
 impl <T> SerialInternal<T> {
@@ -106,6 +107,7 @@ impl <T> SerialInternal<T> {
         let mut fifo_port       = Pio::<u8>::new(com_port.0 + 2);
         let mut lcr_port        = Pio::<u8>::new(com_port.0 + 3);
         let mut mcr_port        = Pio::<u8>::new(com_port.0 + 4);
+        let mut status_port     = Pio::<u8>::new(com_port.0 + 5);
 
         interrupt_port .write(0x00); // Disable interrupts
         lcr_port       .write(0x80); // Enable DLAB (set baud rate divisor)
@@ -116,14 +118,16 @@ impl <T> SerialInternal<T> {
                                            // Note : no idea what this is
         //mcr_port     .write(0x0B);       // IRQs enabled, RTS/DSR set
 
-        SerialInternal { t: data_port}
+        SerialInternal { data_port, status_port }
     }
 }
 
 impl SerialInternal<Pio<u8>> {
     fn send_string(&mut self, string: &str) {
         for byte in string.bytes() {
-            self.t.write(byte);
+            // Wait for the transmit buffer to be empty.
+            while self.status_port.read() & 0x20 == 0 {}
+            self.data_port.write(byte);
         }
     }
 }
