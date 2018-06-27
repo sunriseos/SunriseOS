@@ -59,3 +59,17 @@ script = [
 scp -r Makefile.toml Cargo.toml link.T i386-unknown-none.json src root@192.168.56.101:/root/workspace/kfs
 ssh root@192.168.56.101 -t 'cd workspace/kfs ; exec ~/.cargo/bin/cargo make qemu-vnc'
 ''']
+
+[tasks.doc]
+description = "Document the kernel"
+script = [
+'''
+env RUST_TARGET_PATH=$PWD RUSTFLAGS=--sysroot=$PWD/target/sysroot RUSTDOCFLAGS=--sysroot=$PWD/target/sysroot cargo rustdoc --target=i386-unknown-none --bin=kfs
+''']
+
+[tasks.fulldoc]
+description = "Document the kernel"
+script = [
+'''
+env RUST_TARGET_PATH=$PWD RUSTFLAGS=--sysroot=$PWD/target/sysroot RUSTDOCFLAGS=--sysroot=$PWD/target/sysroot cargo rustdoc --target=i386-unknown-none --bin=kfs -- --document-private-items
+''']
