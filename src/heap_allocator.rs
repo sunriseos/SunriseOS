@@ -2,7 +2,7 @@
 //!
 //! A simple wrapper around linked_list_allocator. We catch the OomError, and
 //! try to expand the heap with more pages in that case.
-use core::alloc::{GlobalAlloc, Layout, AllocErr, Opaque};
+use core::alloc::{GlobalAlloc, Layout, AllocErr};
 use spin::{Mutex, Once};
 use core::ops::Deref;
 use core::ptr::NonNull;
@@ -65,7 +65,7 @@ impl Deref for Allocator {
 }
 
 unsafe impl<'a> GlobalAlloc for Allocator {
-    unsafe fn alloc(&self, layout: Layout) -> *mut Opaque {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         // TODO: Race conditions.
         let allocation = self.0.call_once(Self::init).lock().allocate_first_fit(layout);
         let size = layout.size();
@@ -76,13 +76,13 @@ unsafe impl<'a> GlobalAlloc for Allocator {
                 self.0.call_once(Self::init).lock().allocate_first_fit(layout)
             }
             _ => allocation
-        }.ok().map_or(0 as *mut Opaque, |allocation| allocation.as_ptr());
+        }.ok().map_or(0 as *mut u8, |allocation| allocation.as_ptr());
 
         info!("ALLOC  {:#010x?}, size {:#x}", alloc, layout.size());
         alloc
     }
 
-    unsafe fn dealloc(&self, ptr: *mut Opaque, layout: Layout) {
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         info!("FREE   {:#010x?}, size {:#x}", ptr, layout.size());
         if cfg!(debug_assertions) {
             let p = ptr as usize;

@@ -6,7 +6,7 @@
 //! Currently doesn't do much, besides booting and printing Hello World on the
 //! screen. But hey, that's a start.
 
-#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, repr_transparent, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, iterator_step_by, used, global_allocator, allocator_api, alloc)]
+#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, iterator_step_by, used, allocator_api, alloc, panic_implementation)]
 #![cfg_attr(target_os = "none", no_std)]
 #![cfg_attr(target_os = "none", no_main)]
 #![allow(unused)]
@@ -254,19 +254,15 @@ pub fn common_start_continue_stack() -> ! {
 #[lang = "eh_personality"] #[no_mangle] pub extern fn eh_personality() {}
 
 #[cfg(target_os = "none")]
-#[lang = "panic_fmt"] #[no_mangle]
-pub extern fn panic_fmt(msg: core::fmt::Arguments,
-                        file: &'static str,
-                        line: u32,
-                        column: u32) -> ! {
+#[panic_implementation] #[no_mangle]
+pub extern fn panic_fmt(p: &::core::panic::PanicInfo) -> ! {
 
     unsafe { Loggers.force_unlock(); }
     let _ = writeln!(Loggers, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\
                                ! Panic! at the disco\n\
-                               ! file {} - line {} - col {}\n\
                                ! {}\n\
                                !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
-                     file, line, column, msg);
+                     p);
 
     loop { unsafe { asm!("HLT"); } }
 }

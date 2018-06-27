@@ -145,11 +145,9 @@ impl Loggers {
     // TODO return an Error type
     pub fn deregister_logger(name: &'static str) {
         for slot in LOGGERS_ARRAY.lock().iter_mut() {
-            if let Some(registered) = slot {
-                if registered.name == name {
-                    ::core::mem::replace(slot, None);
-                    return;
-                }
+            if slot.is_some() && slot.as_ref().unwrap().name == name {
+                ::core::mem::replace(slot, None);
+                return;
             }
         }
         panic!("Logger was not registered");
