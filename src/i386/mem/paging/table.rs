@@ -13,6 +13,7 @@ use i386::mem::frame_alloc::{Frame, FrameAllocator, MEMORY_FRAME_SIZE};
 use i386::mem::{VirtualAddress, PhysicalAddress};
 use core::ops::Deref;
 use core::ops::DerefMut;
+use core::marker::PhantomData;
 
 /// A page table
 pub struct PageTable {
@@ -138,17 +139,17 @@ pub trait PageDirectoryTrait : HierarchicalTable {
     type FlusherType : Flusher;
 
     /// Gets a reference to a page table
-    fn get_table(&mut self, index: usize) -> PageState<SmartHierarchicalTable<Self::PageTableType>>;
+    fn get_table<'a>(&'a mut self, index: usize) -> PageState<SmartHierarchicalTable<'a, Self::PageTableType>>;
 
     /// Allocates a page table, zero it and add an entry to the directory pointing to it
-    fn create_table(&mut self, index: usize) -> SmartHierarchicalTable<Self::PageTableType>;
+    fn create_table<'a>(&'a mut self, index: usize) -> SmartHierarchicalTable<'a, Self::PageTableType>;
 
     /// Gets the page table at given index, or creates it if it does not exist
     ///
     /// # Panics
     ///
     /// Panics if the whole page table is guarded.
-    fn get_table_or_create(&mut self, index: usize) -> SmartHierarchicalTable<Self::PageTableType> {
+    fn get_table_or_create<'a>(&'a mut self, index: usize) -> SmartHierarchicalTable<'a, Self::PageTableType> {
         if !self.entries()[index].is_unused() {
             assert!(!self.entries()[index].is_guard(), "Table is guarded");
             self.get_table(index).unwrap()
@@ -305,7 +306,7 @@ pub trait PageDirectoryTrait : HierarchicalTable {
 pub trait PageTablesSet {
     type PageDirectoryType: PageDirectoryTrait;
     /// Gets a reference to the directory
-    fn get_directory(&mut self) -> SmartHierarchicalTable<Self::PageDirectoryType>;
+    fn get_directory<'a>(&'a mut self) -> SmartHierarchicalTable<'a, Self::PageDirectoryType>;
 
     /// Creates a mapping in the page tables with the given flags
     fn map_to(&mut self, page:    Frame,
@@ -317,7 +318,8 @@ pub trait PageTablesSet {
     fn get_phys(&mut self, address: VirtualAddress) -> PageState<PhysicalAddress> {
         let table_nbr = address.addr() / (ENTRY_COUNT * PAGE_SIZE);
         let table_off = address.addr() % (ENTRY_COUNT * PAGE_SIZE) / PAGE_SIZE;
-        let table = match self.get_directory().get_table(table_nbr) {
+        let mut directory = self.get_directory();
+        let table = match directory.get_table(table_nbr) {
             PageState::Available => return PageState::Available,
             PageState::Guarded => return PageState::Guarded,
             PageState::Present(table) => table
@@ -594,9 +596,9 @@ pub struct ActivePageTables ();
 
 impl PageTablesSet for ActivePageTables {
     type PageDirectoryType = ActivePageDirectory;
-    fn get_directory(&mut self) -> SmartHierarchicalTable<ActivePageDirectory> {
+    fn get_directory<'a>(&'a mut self) -> SmartHierarchicalTable<'a, ActivePageDirectory> {
         assert!(is_paging_on(), "Paging is disabled");
-        SmartHierarchicalTable(DIRECTORY_RECURSIVE_ADDRESS.addr() as *mut ActivePageDirectory)
+        SmartHierarchicalTable::new(DIRECTORY_RECURSIVE_ADDRESS.addr() as *mut ActivePageDirectory)
     }
 }
 
@@ -612,13 +614,13 @@ impl PageDirectoryTrait for ActivePageDirectory {
     type FlusherType = TlbFlush;
 
     /// Gets a reference to a page table through recursive mapping
-    fn get_table(&mut self, index: usize) -> PageState<SmartHierarchicalTable<Self::PageTableType>> {
+    fn get_table<'a>(&'a mut self, index: usize) -> PageState<SmartHierarchicalTable<'a, Self::PageTableType>> {
         self.get_table_address(index)
-            .map(|addr| SmartHierarchicalTable(unsafe { &mut * (addr as *mut _) }))
+            .map(|addr| SmartHierarchicalTable::new(unsafe { &mut * (addr as *mut _) }))
     }
 
     /// Allocates a page table, zero it and add an entry to the directory pointing to it
-    fn create_table(&mut self, index: usize) -> SmartHierarchicalTable<Self::PageTableType> {
+    fn create_table<'a>(&'a mut self, index: usize) -> SmartHierarchicalTable<'a, Self::PageTableType> {
         assert!(self.entries()[index].is_unused());
         let table_frame = FrameAllocator::alloc_frame();
 
@@ -657,9 +659,15 @@ impl PageTableTrait for ActivePageTable { type FlusherType = TlbFlush; }
 
 /// This is just a wrapper for a pointer to a Table or a Directory.
 /// It enables us to do handle when it is dropped
-pub struct SmartHierarchicalTable<T: HierarchicalTable>(*mut T);
+pub struct SmartHierarchicalTable<'a, T: HierarchicalTable>(*mut T, PhantomData<&'a ()>);
 
-impl<T: HierarchicalTable> Deref for SmartHierarchicalTable<T> {
+impl<'a, T: HierarchicalTable> SmartHierarchicalTable<'a, T> {
+    fn new(inner: *mut T) -> SmartHierarchicalTable<'a, T> {
+        SmartHierarchicalTable(inner, PhantomData)
+    }
+}
+
+impl<'a, T: HierarchicalTable> Deref for SmartHierarchicalTable<'a, T> {
     type Target = T;
     fn deref(&self) -> &T {
         unsafe {
@@ -668,7 +676,7 @@ impl<T: HierarchicalTable> Deref for SmartHierarchicalTable<T> {
     }
 }
 
-impl<T: HierarchicalTable> DerefMut for SmartHierarchicalTable<T> {
+impl<'a, T: HierarchicalTable> DerefMut for SmartHierarchicalTable<'a, T> {
     fn deref_mut(&mut self) -> &mut T {
         unsafe {
             self.0.as_mut().unwrap()
@@ -676,7 +684,7 @@ impl<T: HierarchicalTable> DerefMut for SmartHierarchicalTable<T> {
     }
 }
 
-impl<T: HierarchicalTable> Drop for SmartHierarchicalTable<T> {
+impl<'a, T: HierarchicalTable> Drop for SmartHierarchicalTable<'a, T> {
     fn drop(&mut self) {
         unsafe {
             ::core::ptr::drop_in_place(self.0);
@@ -696,11 +704,11 @@ impl PageTablesSet for InactivePageTables {
     type PageDirectoryType = InactivePageDirectory;
 
     /// Temporary map the directory
-    fn get_directory(&mut self) -> SmartHierarchicalTable<InactivePageDirectory> {
+    fn get_directory<'a>(&'a mut self) -> SmartHierarchicalTable<'a, InactivePageDirectory> {
         let frame = Frame::from_physical_addr(self.directory_physical_address.address());
         let mut active_pages = ACTIVE_PAGE_TABLES.lock();
         let va = active_pages.map_frame::<KernelLand>(frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);
-        SmartHierarchicalTable(va.addr() as *mut InactivePageDirectory)
+        SmartHierarchicalTable::new(va.addr() as *mut InactivePageDirectory)
     }
 }
 
@@ -767,19 +775,19 @@ impl PageDirectoryTrait for InactivePageDirectory {
     type FlusherType = NoFlush;
 
     /// Temporary map the table
-    fn get_table(&mut self, index: usize) -> PageState<SmartHierarchicalTable<Self::PageTableType>> {
+    fn get_table<'a>(&'a mut self, index: usize) -> PageState<SmartHierarchicalTable<'a, Self::PageTableType>> {
         self.entries()[index].pointed_frame().map(|frame| {
             let mut active_pages = ACTIVE_PAGE_TABLES.lock();
             // TODO: Is this valid ? We're "borrowing" the frame here, but nothing guarantees it
             // might not get freed.
             let va = active_pages.map_frame::<KernelLand>(Frame::from_physical_addr(frame), EntryFlags::PRESENT | EntryFlags::WRITABLE);
-            SmartHierarchicalTable(unsafe {va.addr() as *mut InactivePageTable})
+            SmartHierarchicalTable::new(unsafe {va.addr() as *mut InactivePageTable})
         })
     }
 
     /// Allocates a page table, temporarily map it,
     /// zero it and add an entry to the directory pointing to it
-    fn create_table(&mut self, index: usize) -> SmartHierarchicalTable<Self::PageTableType> {
+    fn create_table<'a>(&'a mut self, index: usize) -> SmartHierarchicalTable<'a, Self::PageTableType> {
         assert!(self.entries()[index].is_unused());
         let mut table_frame = FrameAllocator::alloc_frame();
         let mut active_pages = ACTIVE_PAGE_TABLES.lock();
@@ -787,7 +795,7 @@ impl PageDirectoryTrait for InactivePageDirectory {
         // TODO: Fix this.
         let dup = Frame::from_physical_addr(table_frame.address());
         let va = active_pages.map_frame::<KernelLand>(dup, EntryFlags::PRESENT | EntryFlags::WRITABLE);
-        let mut mapped_table = SmartHierarchicalTable(unsafe {va.addr() as *mut InactivePageTable});
+        let mut mapped_table = SmartHierarchicalTable::new(unsafe {va.addr() as *mut InactivePageTable});
         mapped_table.zero();
 
         self.map_nth_entry::<Self::FlusherType>(index, table_frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);
@@ -815,7 +823,8 @@ impl InactivePageDirectory {
     /// Copies all the entries in the directory mapping tables that fall in kernelspace
     /// from active page tables
     fn copy_active_kernelspace(&mut self) {
-        let mut active_dir = ACTIVE_PAGE_TABLES.lock().get_directory();
+        let mut lock = ACTIVE_PAGE_TABLES.lock();
+        let mut active_dir = lock.get_directory();
         for table in KernelLand::start_table()..=KernelLand::end_table() {
             self.entries_mut()[table] = active_dir.entries_mut()[table];
         }
@@ -864,8 +873,8 @@ pub struct PagingOffPageSet {
 
 impl PageTablesSet for PagingOffPageSet {
     type PageDirectoryType = PagingOffDirectory;
-    fn get_directory(&mut self) -> SmartHierarchicalTable<<Self as PageTablesSet>::PageDirectoryType> {
-        SmartHierarchicalTable(self.directory_physical_address.address().addr() as *mut PagingOffDirectory)
+    fn get_directory<'a>(&'a mut self) -> SmartHierarchicalTable<'a, <Self as PageTablesSet>::PageDirectoryType> {
+        SmartHierarchicalTable::new(self.directory_physical_address.address().addr() as *mut PagingOffDirectory)
     }
 }
 
@@ -905,15 +914,15 @@ impl PageDirectoryTrait for PagingOffDirectory {
     type FlusherType = NoFlush;
 
     /// Simply cast pointed frame as PageTable
-    fn get_table(&mut self, index: usize) -> PageState<SmartHierarchicalTable<Self::PageTableType>> {
+    fn get_table<'a>(&'a mut self, index: usize) -> PageState<SmartHierarchicalTable<'a, Self::PageTableType>> {
         self.entries()[index].pointed_frame().map(|addr| {
-            SmartHierarchicalTable(unsafe {(addr.addr() as *mut PagingOffTable)})
+            SmartHierarchicalTable::new(unsafe {(addr.addr() as *mut PagingOffTable)})
         })
     }
     /// Allocates a page table, zero it and add an entry to the directory pointing to it
-    fn create_table(&mut self, index: usize) -> SmartHierarchicalTable<Self::PageTableType> {
+    fn create_table<'a>(&'a mut self, index: usize) -> SmartHierarchicalTable<'a, Self::PageTableType> {
         let mut frame = FrameAllocator::alloc_frame();
-        let mut table = SmartHierarchicalTable(
+        let mut table = SmartHierarchicalTable::new(
             unsafe {(frame.address().addr() as *mut PagingOffTable)}
         );
         table.zero();
