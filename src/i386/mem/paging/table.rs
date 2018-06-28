@@ -9,7 +9,8 @@ pub mod entry;
 use logger::Loggers;
 use self::entry::*;
 use super::*;
-use ::frame_alloc::{Frame, FrameAllocator, MEMORY_FRAME_SIZE, PhysicalAddress, VirtualAddress};
+use i386::mem::frame_alloc::{Frame, FrameAllocator, MEMORY_FRAME_SIZE};
+use i386::mem::{VirtualAddress, PhysicalAddress};
 use core::ops::Deref;
 use core::ops::DerefMut;
 
@@ -62,7 +63,7 @@ pub trait HierarchicalTable {
     /// zero out the whole table
     fn zero(&mut self) {
         for entry in self.entries_mut().iter_mut() {
-            entry.set_unused();
+            entry.set(Frame::from_physical_addr(PhysicalAddress(0)), EntryFlags::empty());
         }
     }
 
@@ -168,8 +169,9 @@ pub trait PageDirectoryTrait : HierarchicalTable {
         assert_eq!(address.addr() % PAGE_SIZE, 0, "Address is not page aligned");
         let table_nbr = address.addr() / (ENTRY_COUNT * PAGE_SIZE);
         let table_off = address.addr() % (ENTRY_COUNT * PAGE_SIZE) / PAGE_SIZE;
+        info!("Mapping {} to {} ({}/{})", page.address(), address, table_nbr, table_off);
         let mut table = self.get_table_or_create(table_nbr);
-        assert!(table.entries()[table_off].is_unused(), "Tried to map an already mapped entry");
+        assert!(table.entries()[table_off].is_unused(), "Tried to map an already mapped entry: {:?}", table.entries()[table_off]);
         table.map_nth_entry::<Self::FlusherType>(table_off, page, flags);
     }
 
@@ -184,16 +186,16 @@ pub trait PageDirectoryTrait : HierarchicalTable {
         let table_nbr = address.addr() / (ENTRY_COUNT * PAGE_SIZE);
         let table_off = address.addr() % (ENTRY_COUNT * PAGE_SIZE) / PAGE_SIZE;
         let mut table = self.get_table_or_create(table_nbr);
-        assert!(table.entries()[table_off].is_unused(), "Tried to guard an already mapped entry");
+        assert!(table.entries()[table_off].is_unused(), "Tried to guard an already mapped entry {:#010x}: {:?}", address.addr(), table.entries()[table_off]);
         table.guard_nth_entry::<Self::FlusherType>(table_off);
     }
 
-    /// Deletes a mapping in the page tables, optionally free the pointed frame
+    /// Deletes a mapping in the page tables, returning the frame if it existed.
     ///
     /// # Panics
     ///
     /// Panics if address is not page-aligned.
-    fn __unmap(&mut self, page: VirtualAddress, free_frame: bool) {
+    fn __unmap(&mut self, page: VirtualAddress) -> PageState<Frame> {
         assert_eq!(page.addr() % PAGE_SIZE, 0, "Address is not page aligned");
         let table_nbr = page.addr() / (ENTRY_COUNT * PAGE_SIZE);
         let table_off = page.addr() % (ENTRY_COUNT * PAGE_SIZE) / PAGE_SIZE;
@@ -214,14 +216,9 @@ pub trait PageDirectoryTrait : HierarchicalTable {
 
         let entry= &mut table.entries_mut()[table_off];
         assert_eq!(entry.is_unused(), false);
-        if free_frame {
-           match entry.pointed_frame() {
-               PageState::Present(frame_addr) => { FrameAllocator::free_frame(frame_addr as Frame); }
-               _ => {}
-           };
-        }
-        entry.set_unused();
+        let ret = entry.set_unused();
         Self::FlusherType::flush_cache();
+        ret
     }
 
     /// Finds a virtual space hole that can contain page_nb consecutive pages
@@ -317,7 +314,7 @@ pub trait PageTablesSet {
         self.get_directory().map_to(page, address, flags)
     }
 
-    fn get_phys(&mut self, address: VirtualAddress) -> PageState<Frame> {
+    fn get_phys(&mut self, address: VirtualAddress) -> PageState<PhysicalAddress> {
         let table_nbr = address.addr() / (ENTRY_COUNT * PAGE_SIZE);
         let table_off = address.addr() % (ENTRY_COUNT * PAGE_SIZE) / PAGE_SIZE;
         let table = match self.get_directory().get_table(table_nbr) {
@@ -372,6 +369,7 @@ pub trait PageTablesSet {
     /// Panics if address is not page-aligned.
     fn map_page_guard(&mut self, address: VirtualAddress) {
         // Just map to frame 0, it will page fault anyway since PRESENT is missing
+        info!("Guarding {}", address);
         self.get_directory().guard(address);
     }
 
@@ -436,7 +434,8 @@ pub trait PageTablesSet {
 
     /// Maps a memory frame to the same virtual address
     fn identity_map(&mut self, frame: Frame, flags: EntryFlags) {
-        self.map_to(frame, VirtualAddress(frame.address().addr()), flags);
+        let addr = frame.address().addr();
+        self.map_to(frame, VirtualAddress(addr), flags);
     }
 
     /// Identity maps a range of frames
@@ -450,23 +449,15 @@ pub trait PageTablesSet {
         }
     }
 
-    /// Deletes a mapping in the page tables
+    /// Deletes a mapping in the page tables, returning the Frame if one was
+    /// mapped.
     ///
     /// # Panics
     ///
     /// Panics if page is not page-aligned.
-    fn unmap(&mut self, page: VirtualAddress) {
-       self.get_directory().__unmap(page, false)
-    }
-
-    /// Deletes a mapping in the page tables
-    /// Frees the pointed frame
-    ///
-    /// # Panics
-    ///
-    /// Panics if page is not page-aligned.
-    fn unmap_free(&mut self, page: VirtualAddress) {
-        self.get_directory().__unmap(page, true)
+    fn unmap(&mut self, page: VirtualAddress) -> PageState<Frame> {
+        info!("Unmapping {}", page);
+        self.get_directory().__unmap(page)
     }
 
     /// Finds a virtual space hole that can contain page_nb consecutive pages
@@ -538,9 +529,9 @@ pub trait PageTablesSet {
                     for (j, entry) in entries.iter().enumerate().map(|(j, entry)| (j + (start % (PAGE_SIZE * ENTRY_COUNT) / PAGE_SIZE), entry)) {
                         let vaddr = i * PAGE_SIZE * ENTRY_COUNT + j * PAGE_SIZE;
                         match entry.pointed_frame() {
-                            PageState::Present(x) => {
+                            PageState::Present(addr) => {
                                 state.update(State::Present(vaddr), vaddr);
-                                writeln!(Loggers, "{:#010x} - {:#010x} - MAPS {:#010x}", vaddr, vaddr.saturating_add(PAGE_SIZE), x.address().addr());
+                                writeln!(Loggers, "{:#010x} - {:#010x} - MAPS {:#010x}", vaddr, vaddr.saturating_add(PAGE_SIZE), addr.addr());
                             },
                             PageState::Guarded => {
                                 state.update(State::Guarded(vaddr), vaddr);
@@ -698,8 +689,7 @@ impl<T: HierarchicalTable> Drop for SmartHierarchicalTable<T> {
 /// map the directory and tables to make changes to them.
 pub struct InactivePageTables {
     // The address we must put in cr3 to switch to these pages
-    // TODO: This should be a Frame
-    directory_physical_address: PhysicalAddress,
+    directory_physical_address: Frame,
 }
 
 impl PageTablesSet for InactivePageTables {
@@ -707,7 +697,7 @@ impl PageTablesSet for InactivePageTables {
 
     /// Temporary map the directory
     fn get_directory(&mut self) -> SmartHierarchicalTable<InactivePageDirectory> {
-        let frame = Frame::from_physical_addr(self.directory_physical_address);
+        let frame = Frame::from_physical_addr(self.directory_physical_address.address());
         let mut active_pages = ACTIVE_PAGE_TABLES.lock();
         let va = active_pages.map_frame::<KernelLand>(frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);
         SmartHierarchicalTable(va.addr() as *mut InactivePageDirectory)
@@ -718,13 +708,14 @@ impl InactivePageTables {
     /// Creates a new set of inactive page tables
     pub fn new() -> InactivePageTables {
         let mut directory_frame = FrameAllocator::alloc_frame();
+        let mut directory_frame_dup = Frame::from_physical_addr(directory_frame.address());
         let mut pageset = InactivePageTables {
-            directory_physical_address: PhysicalAddress(directory_frame.address().addr())
+            directory_physical_address: directory_frame
         };
         {
             let mut dir = pageset.get_directory();
             dir.zero();
-            dir.map_nth_entry::<NoFlush>(ENTRY_COUNT - 1, directory_frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);
+            dir.map_nth_entry::<NoFlush>(ENTRY_COUNT - 1, directory_frame_dup, EntryFlags::PRESENT | EntryFlags::WRITABLE);
         };
         pageset
     }
@@ -739,11 +730,14 @@ impl InactivePageTables {
     /// # Safety
     ///
     /// All reference to userspace memory will be invalidated
-    pub unsafe fn switch_to(&mut self) -> InactivePageTables {
+    ///
+    /// The frame *must* have been alocated from the frame allocator.
+    pub unsafe fn switch_to(mut self) -> InactivePageTables {
         // Copy the kernel space tables
         self.get_directory().copy_active_kernelspace();
-        let old_pages = super::swap_cr3(self.directory_physical_address);
-        InactivePageTables { directory_physical_address: old_pages }
+        let old_pages = super::swap_cr3(self.directory_physical_address.address());
+        ::core::mem::forget(self.directory_physical_address);
+        InactivePageTables { directory_physical_address: Frame::from_allocated_addr(old_pages) }
     }
 
     /// * Frees the userspace pages mapped by this set.
@@ -753,7 +747,7 @@ impl InactivePageTables {
     /// Does not free pages mapped in kernelspace and kernel space tables
     pub fn delete(mut self) {
         self.get_directory().delete_userspace();
-        FrameAllocator::free_frame(Frame::from_physical_addr(self.directory_physical_address))
+        // Self goes out of scope, so directory frame gets unallocated
     }
 }
 
@@ -776,7 +770,9 @@ impl PageDirectoryTrait for InactivePageDirectory {
     fn get_table(&mut self, index: usize) -> PageState<SmartHierarchicalTable<Self::PageTableType>> {
         self.entries()[index].pointed_frame().map(|frame| {
             let mut active_pages = ACTIVE_PAGE_TABLES.lock();
-            let va = active_pages.map_frame::<KernelLand>(frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);
+            // TODO: Is this valid ? We're "borrowing" the frame here, but nothing guarantees it
+            // might not get freed.
+            let va = active_pages.map_frame::<KernelLand>(Frame::from_physical_addr(frame), EntryFlags::PRESENT | EntryFlags::WRITABLE);
             SmartHierarchicalTable(unsafe {va.addr() as *mut InactivePageTable})
         })
     }
@@ -788,7 +784,9 @@ impl PageDirectoryTrait for InactivePageDirectory {
         let mut table_frame = FrameAllocator::alloc_frame();
         let mut active_pages = ACTIVE_PAGE_TABLES.lock();
 
-        let va = active_pages.map_frame::<KernelLand>(table_frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);
+        // TODO: Fix this.
+        let dup = Frame::from_physical_addr(table_frame.address());
+        let va = active_pages.map_frame::<KernelLand>(dup, EntryFlags::PRESENT | EntryFlags::WRITABLE);
         let mut mapped_table = SmartHierarchicalTable(unsafe {va.addr() as *mut InactivePageTable});
         mapped_table.zero();
 
@@ -804,15 +802,12 @@ impl InactivePageDirectory {
     ///
     /// Does not free pages mapped in kernelspace and kernel space tables
     fn delete_userspace(&mut self) {
-        for table_index in UserLand::start_table()..KernelLand::end_table() {
+        for table_index in UserLand::start_table()..UserLand::end_table() {
             if let PageState::Present(mut table) = self.get_table(table_index) {
                 // Free all pages
                 table.free_all_frames();
-                // Free the table
-                let table_frame = self.entries_mut()[table_index].pointed_frame().unwrap();
-                FrameAllocator::free_frame(table_frame);
             }
-            // Zero the directory entry
+            // Zero the directory entry, frees the frame.
             self.entries_mut()[table_index].set_unused();
         }
     }
@@ -833,7 +828,6 @@ impl InactivePageTable {
     /// Frees all pages mapped by this table, and mark the frames as deallocated
     fn free_all_frames(&mut self) {
         for entry in self.entries_mut().iter_mut() {
-            entry.pointed_frame().map(|frame| {FrameAllocator::free_frame(frame)});
             entry.set_unused();
         }
     }
@@ -865,13 +859,13 @@ impl Drop for InactivePageTable {
 pub struct PagingOffPageSet {
     // The address we must put in cr3 to switch to these pages
     // TODO: This should be a frame.
-    pub directory_physical_address: PhysicalAddress,
+    pub directory_physical_address: Frame,
 }
 
 impl PageTablesSet for PagingOffPageSet {
     type PageDirectoryType = PagingOffDirectory;
     fn get_directory(&mut self) -> SmartHierarchicalTable<<Self as PageTablesSet>::PageDirectoryType> {
-        SmartHierarchicalTable(self.directory_physical_address.addr() as *mut PagingOffDirectory)
+        SmartHierarchicalTable(self.directory_physical_address.address().addr() as *mut PagingOffDirectory)
     }
 }
 
@@ -882,10 +876,12 @@ impl PagingOffPageSet {
     ///
     /// Paging **must** be disabled when calling this function.
     pub unsafe fn paging_off_create_page_set() -> Self {
-        let dir = FrameAllocator::alloc_frame().address().addr()
-            as *mut PagingOffDirectory;
-        (*dir).init_directory();
-        Self { directory_physical_address : PhysicalAddress(dir as usize) }
+        // Creates a frame and leak it.
+        let dir = FrameAllocator::alloc_frame();
+
+        let dir_addr = dir.address().addr() as *mut PagingOffDirectory;
+        (*dir_addr).init_directory();
+        Self { directory_physical_address : dir }
     }
 
     /// Enables paging with this tables as active tables
@@ -894,7 +890,8 @@ impl PagingOffPageSet {
     ///
     /// Paging **must** be disabled when calling this function.
     pub unsafe fn enable_paging(self) {
-        enable_paging(self.directory_physical_address)
+        enable_paging(self.directory_physical_address.address());
+        ::core::mem::forget(self.directory_physical_address);
     }
 }
 
@@ -909,8 +906,8 @@ impl PageDirectoryTrait for PagingOffDirectory {
 
     /// Simply cast pointed frame as PageTable
     fn get_table(&mut self, index: usize) -> PageState<SmartHierarchicalTable<Self::PageTableType>> {
-        self.entries()[index].pointed_frame().map(|frame| {
-            SmartHierarchicalTable(unsafe {(frame.address().addr() as *mut PagingOffTable)})
+        self.entries()[index].pointed_frame().map(|addr| {
+            SmartHierarchicalTable(unsafe {(addr.addr() as *mut PagingOffTable)})
         })
     }
     /// Allocates a page table, zero it and add an entry to the directory pointing to it

@@ -1,6 +1,8 @@
 //! i386 page table entry
 
-use ::frame_alloc::{Frame, PhysicalAddress};
+use i386::mem::frame_alloc::Frame;
+use i386::mem::PhysicalAddress;
+use core::fmt::{Debug, Formatter, Error};
 
 bitflags! {
     /// The flags of a table entry
@@ -15,7 +17,7 @@ bitflags! {
         const HUGE_PAGE =       1 << 7;
         const GLOBAL =          1 << 8;
         const GUARD_PAGE =      1 << 9;     // user_defined_1
-        const USER_DEFINED_2 =  1 << 10;    // user_defined_2
+        const IS_FRAME_ALLOC =  1 << 10;    // user_defined_2
         const USER_DEFINED_3 =  1 << 11;    // user_defined_3
     }
 }
@@ -24,15 +26,34 @@ const ENTRY_PHYS_ADDRESS_MASK: usize = 0xffff_f000;
 
 /// An entry in a page table or page directory. An unused entry is 0
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct Entry(u32);
+
+impl Debug for Entry {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        f.debug_struct("Entry")
+            .field("flags", &self.flags())
+            .field("frame", &self.pointed_frame().as_option())
+            .finish()
+    }
+}
 
 impl Entry {
     /// Is the entry unused ?
     pub fn is_unused(&self) -> bool { self.0 == 0 }
 
     /// Clear the entry
-    pub fn set_unused(&mut self) { self.0 = 0; }
+    pub fn set_unused(&mut self) -> PageState<Frame> {
+        let ret = self.pointed_frame().map(|addr| {
+            if self.flags().contains(EntryFlags::IS_FRAME_ALLOC) {
+                unsafe { Frame::from_allocated_addr(addr) }
+            } else {
+                Frame::from_physical_addr(addr)
+            }
+        });
+        self.0 = 0;
+        ret
+    }
 
     /// Is the entry a page guard ?
     pub fn is_guard(&self) -> bool { self.flags().contains(EntryFlags::GUARD_PAGE) }
@@ -40,11 +61,11 @@ impl Entry {
     /// Get the current entry flags
     pub fn flags(&self) -> EntryFlags { EntryFlags::from_bits_truncate(self.0) }
 
-    /// Get the associated frame, if available
-    pub fn pointed_frame(&self) -> PageState<Frame> {
+    /// Get the associated physical address, if available
+    pub fn pointed_frame(&self) -> PageState<PhysicalAddress> {
         if self.flags().contains(EntryFlags::PRESENT) {
             let frame_phys_addr = self.0 as usize & ENTRY_PHYS_ADDRESS_MASK;
-            PageState::Present( Frame::from_physical_addr(PhysicalAddress(frame_phys_addr)) )
+            PageState::Present(PhysicalAddress(frame_phys_addr))
         } else if self.flags().contains(EntryFlags::GUARD_PAGE) {
             PageState::Guarded
         } else {
@@ -53,13 +74,25 @@ impl Entry {
     }
 
     /// Sets the entry
-    pub fn set(&mut self, frame: Frame, flags: EntryFlags) {
+    pub fn set(&mut self, frame: Frame, mut flags: EntryFlags) {
         assert_eq!(flags.contains(EntryFlags::PRESENT)
                 && flags.contains(EntryFlags::GUARD_PAGE), false,
                 "a GUARD_PAGE cannot also be PRESENT");
+        assert!(!flags.contains(EntryFlags::IS_FRAME_ALLOC),
+                "IS_FRAME_ALLOC is handled internally");
         let frame_phys_addr = frame.address();
         assert_eq!(frame_phys_addr.addr() & !ENTRY_PHYS_ADDRESS_MASK, 0);
+
+        // Make sure we stay consistent.
+        if frame.is_allocated() {
+            flags.insert(EntryFlags::IS_FRAME_ALLOC);
+        } else {
+            flags.remove(EntryFlags::IS_FRAME_ALLOC);
+        }
+
         self.0 = (frame_phys_addr.addr() as u32) | flags.bits();
+
+        ::core::mem::forget(frame);
     }
 
     /// Make this entry a page guard
@@ -104,6 +137,16 @@ impl<T> PageState<T> {
             PageState::Present(t) => PageState::Present(f(t)),
             PageState::Guarded => PageState::Guarded,
             PageState::Available => PageState::Available
+        }
+    }
+
+    /// Turns the PageState into an Option, setting both Guarded and Available
+    /// state to None, and Present(t) state to Some(t).
+    pub fn as_option(&self) -> Option<&T> {
+        match *self {
+            PageState::Present(ref t) => Some(t),
+            PageState::Guarded => None,
+            PageState::Available => None,
         }
     }
 }

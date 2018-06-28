@@ -2,7 +2,7 @@
 
 use core::slice;
 use utils;
-use i386::paging::{self, EntryFlags, PageTablesSet};
+use i386::mem::paging::{self, EntryFlags, PageTablesSet};
 use frame_alloc::PhysicalAddress;
 use multiboot2::{BootInformation, FramebufferInfoTag};
 

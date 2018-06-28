@@ -37,17 +37,19 @@ use alloc::*;
 
 mod logger;
 mod log_impl;
+use i386::mem::paging;
+use i386::mem::frame_alloc;
 pub use logger::*;
 pub use devices::vgatext::VGATextLogger;
 pub use devices::rs232::SerialLogger;
-use frame_alloc::{PhysicalAddress, Frame};
+use i386::mem::PhysicalAddress;
+use i386::mem::frame_alloc::Frame;
 use paging::KernelLand;
 
 mod i386;
 #[cfg(target_os = "none")]
 mod gdt;
 mod utils;
-mod frame_alloc;
 mod heap_allocator;
 mod io;
 mod devices;
@@ -56,9 +58,8 @@ mod devices;
 static ALLOCATOR: heap_allocator::Allocator = heap_allocator::Allocator::new();
 
 pub use frame_alloc::FrameAllocator;
-pub use i386::paging;
 pub use i386::stack;
-use i386::paging::{InactivePageTables, PageTablesSet, EntryFlags};
+use paging::{InactivePageTables, PageTablesSet, EntryFlags};
 
 fn main() {
     let loggers = &mut Loggers;
@@ -70,10 +71,12 @@ fn main() {
     loggers.println_attr("very polychromatic",
                            LogAttributes::new_fg_bg(LogColor::Yellow, LogColor::Pink));
 
-    let mymem = FrameAllocator::alloc_frame();
-    info!("Allocated frame {:x?}", mymem);
-    FrameAllocator::free_frame(mymem);
-    info!("Freed frame {:x?}", mymem);
+    {
+        let mymem = FrameAllocator::alloc_frame();
+        info!("Allocated frame {:x?}", mymem);
+    }
+
+    info!("Freed frame");
 
     writeln!(Loggers, "----------");
 

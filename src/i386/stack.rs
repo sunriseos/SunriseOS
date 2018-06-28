@@ -29,7 +29,7 @@
 
 use ::core::mem::size_of;
 use paging::*;
-use frame_alloc::VirtualAddress;
+use i386::mem::VirtualAddress;
 
 /// The size of a kernel stack, not accounting for the page guard
 pub const STACK_SIZE: usize            = 4;

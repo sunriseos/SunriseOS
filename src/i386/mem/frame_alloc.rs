@@ -17,34 +17,7 @@ use bit_field::BitArray;
 use utils::BitArrayExt;
 use utils::bit_array_first_one;
 use paging::PAGE_SIZE;
-
-/// Represents a Physical address
-///
-/// Should only be used when paging is off
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct PhysicalAddress(pub usize);
-/// Represents a Virtual address
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct VirtualAddress(pub usize);
-
-impl VirtualAddress  { pub fn addr(&self) -> usize { self.0 } }
-impl PhysicalAddress { pub fn addr(&self) -> usize { self.0 } }
-
-impl ::core::ops::Add<usize> for VirtualAddress {
-    type Output = VirtualAddress;
-
-    fn add(self, other: usize) -> VirtualAddress {
-        VirtualAddress(self.0 + other)
-    }
-}
-
-impl ::core::ops::Add<usize> for PhysicalAddress {
-    type Output = PhysicalAddress;
-
-    fn add(self, other: usize) -> PhysicalAddress {
-        PhysicalAddress(self.0 + other)
-    }
-}
+pub use super::PhysicalAddress;
 
 /// A memory frame is the same size as a page
 pub const MEMORY_FRAME_SIZE: usize = PAGE_SIZE;
@@ -65,11 +38,8 @@ fn addr_to_frame(addr: usize) -> usize {
 
 /// Gets the physical address from a frame number
 #[inline]
-unsafe fn frame_to_addr(frame: usize) -> Frame {
-    let addr = frame << FRAME_BASE_LOG;
-    Frame {
-        physical_addr: addr,
-    }
+fn frame_to_addr(frame: usize) -> usize {
+    frame << FRAME_BASE_LOG
 }
 
 /// Rounds an address to its page address
@@ -110,14 +80,44 @@ static FRAMES_BITMAP: Mutex<AllocatorBitmap> = Mutex::new(AllocatorBitmap {
 /// A frame is 4ko in size
 ///
 /// Should only be used when paging is off
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub struct Frame {
     physical_addr: usize,
+    is_allocated: bool
+}
+
+impl Drop for Frame {
+    fn drop(&mut self) {
+        if self.is_allocated {
+            FrameAllocator::free_frame(self);
+        }
+    }
 }
 
 impl Frame {
     /// Get the physical address of this Frame
     pub fn address(&self) -> PhysicalAddress { PhysicalAddress(self.physical_addr) }
+
+    // TODO: this should be a private implementation detail of the paging stuff.
+    /// Gets the current allocation state
+    pub(super) fn is_allocated(&self) -> bool {
+        self.is_allocated
+    }
+
+    /// Constructs a frame structure from a physical address
+    ///
+    /// This does not guaranty that the frame can be written to, or even exists at all
+    ///
+    /// # Panic
+    ///
+    /// Panics when the address is not framesize-aligned
+    // TODO: This should almost certainly be unsafe.
+    pub fn from_physical_addr(physical_addr: PhysicalAddress) -> Frame {
+        assert_eq!(physical_addr.addr() % MEMORY_FRAME_SIZE, 0,
+                   "Frame must be constructed from a framesize-aligned pointer");
+        // TODO: Check that it falls in a Reserved zone ?
+        Frame { physical_addr: physical_addr.addr(), is_allocated: false }
+    }
 
     /// Constructs a frame structure from a physical address
     ///
@@ -127,10 +127,13 @@ impl Frame {
     ///
     /// Panics when the address is not framesize-aligned
     ///
-    pub fn from_physical_addr(physical_addr: PhysicalAddress) -> Frame {
-        assert_eq!(physical_addr.addr() % MEMORY_FRAME_SIZE, 0,
-                   "Frame must be constructed from a framesize-aligned pointer");
-        Frame { physical_addr: physical_addr.addr() }
+    /// # Safety
+    ///
+    /// This function should only be used on physical_addr that are reserved -
+    /// that is, addresses that the frame allocator will never give. Otherwise,
+    /// it is unsound.
+    pub unsafe fn from_allocated_addr(physical_addr: PhysicalAddress) -> Frame {
+        Frame { physical_addr: physical_addr.addr(), is_allocated: true }
     }
 }
 
@@ -260,8 +263,9 @@ impl FrameAllocator {
         let frame = bit_array_first_one(&frames_bitmap.memory_bitmap)
             .expect("Cannot allocate frame: No available frame D:");
         frames_bitmap.memory_bitmap.set_bit(frame, FRAME_OCCUPIED);
-        unsafe {
-            frame_to_addr(frame)
+        Frame {
+            physical_addr: frame_to_addr(frame),
+            is_allocated: true
         }
     }
 
@@ -270,7 +274,7 @@ impl FrameAllocator {
     /// # Panic
     ///
     /// Panics if the frame was not allocated
-    pub fn free_frame(frame: Frame) {
+    fn free_frame(frame: &Frame) {
         let mut frames_bitmap = FRAMES_BITMAP.lock();
         FrameAllocator::check_initialized(&*frames_bitmap);
 

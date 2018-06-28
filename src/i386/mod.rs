@@ -3,7 +3,7 @@
 
 #![cfg(target_arch = "x86")]
 
-pub mod paging;
+pub mod mem;
 pub mod stack;
 pub mod pio;
 pub mod multiboot;

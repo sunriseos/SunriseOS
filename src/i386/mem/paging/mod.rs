@@ -11,10 +11,11 @@ pub use self::table::entry::EntryFlags;
 
 use self::table::*;
 use self::table::entry::Entry;
-pub use frame_alloc::{round_to_page, round_to_page_upper};
+pub use i386::mem::frame_alloc::{round_to_page, round_to_page_upper};
 use spin::Mutex;
-use frame_alloc::{Frame, PhysicalAddress};
-pub use frame_alloc::VirtualAddress;
+use i386::mem::frame_alloc::Frame;
+use i386::mem::PhysicalAddress;
+pub use i386::mem::VirtualAddress;
 use ::devices::vgatext::{VGA_SCREEN_ADDRESS, VGA_SCREEN_MEMORY_SIZE};
 use ::core::fmt::Write;
 use ::core::ops::Deref;
@@ -94,6 +95,7 @@ pub unsafe fn map_kernel(boot_info : &BootInformation) -> PagingOffPageSet {
         if !section.is_allocated() || section.name() == ".boot" {
             continue; // section is not loaded to memory
         }
+
         info!("section {:#010x} - {:#010x} : {}",
                  section.start_address(), section.end_address(),
                  section.name()
@@ -109,6 +111,8 @@ pub unsafe fn map_kernel(boot_info : &BootInformation) -> PagingOffPageSet {
                                       section.size() as usize,
                                       map_flags);
     }
+
+
 
     // Map the vga screen memory
     new_pages.identity_map_region(VGA_SCREEN_ADDRESS, VGA_SCREEN_MEMORY_SIZE,
