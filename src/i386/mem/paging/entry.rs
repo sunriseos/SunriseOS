@@ -22,6 +22,19 @@ bitflags! {
     }
 }
 
+impl From<super::EntryFlags> for EntryFlags {
+    fn from(flags: super::EntryFlags) -> EntryFlags {
+        let mut newflags = EntryFlags::PRESENT;
+        if flags.contains(super::EntryFlags::WRITABLE) {
+            newflags |= EntryFlags::WRITABLE;
+        }
+        if flags.contains(super::EntryFlags::USER_ACCESSIBLE) {
+            newflags |= EntryFlags::USER_ACCESSIBLE;
+        }
+        newflags
+    }
+}
+
 const ENTRY_PHYS_ADDRESS_MASK: usize = 0xffff_f000;
 
 /// An entry in a page table or page directory. An unused entry is 0

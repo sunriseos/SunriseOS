@@ -51,7 +51,7 @@ impl KernelStack {
         tables.find_available_virtual_space_aligned::<KernelLand>(STACK_SIZE_WITH_GUARD, STACK_ALIGNEMENT)
             .map(|va| {
                 tables.map_range_allocate(VirtualAddress(va.addr() + PAGE_SIZE), STACK_SIZE,
-                                          EntryFlags::PRESENT | EntryFlags::WRITABLE);
+                                          EntryFlags::WRITABLE);
                 tables.map_page_guard(va);
 
                 let mut me = KernelStack { stack_address: va };

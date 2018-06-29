@@ -5,9 +5,8 @@ mod table;
 
 use multiboot2::{BootInformation, ElfSectionFlags};
 
-pub use self::table::{ActivePageTables, InactivePageTables};
+pub use self::table::{ActivePageTables, InactivePageTables, MappingType, EntryFlags};
 pub use self::table::PageTablesSet;
-pub use self::table::entry::EntryFlags;
 
 use self::table::*;
 use self::table::entry::Entry;
@@ -102,7 +101,7 @@ pub unsafe fn map_kernel(boot_info : &BootInformation) -> PagingOffPageSet {
                 );
         assert_eq!(section.start_address() as usize % PAGE_SIZE, 0, "sections must be page aligned");
 
-        let mut map_flags = EntryFlags::PRESENT;
+        let mut map_flags = EntryFlags::empty();
         if section.flags().contains(ElfSectionFlags::WRITABLE) {
             map_flags |= EntryFlags::WRITABLE
         }
@@ -116,7 +115,7 @@ pub unsafe fn map_kernel(boot_info : &BootInformation) -> PagingOffPageSet {
 
     // Map the vga screen memory
     new_pages.identity_map_region(VGA_SCREEN_ADDRESS, VGA_SCREEN_MEMORY_SIZE,
-                                  EntryFlags::PRESENT | EntryFlags::WRITABLE);
+                                  EntryFlags::WRITABLE);
 
     // Reserve the very first frame for null pointers
     new_pages.map_page_guard(VirtualAddress(0x00000000));

@@ -217,7 +217,7 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     info!("Mapped the kernel");
 
     // Map the boot_info.
-    let multiboot_info_vaddr = page_tables.map_frame::<KernelLand>(multiboot_info_frame, EntryFlags::PRESENT);
+    let multiboot_info_vaddr = page_tables.map_frame::<KernelLand>(multiboot_info_frame, EntryFlags::empty());
 
     // Start using these page tables
     unsafe { page_tables.enable_paging() }
