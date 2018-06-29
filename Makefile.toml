@@ -35,27 +35,13 @@ args = ["xbuild", "--target=i386-unknown-none", "--release", "--bin=kfs"]
 description = "Runs the bootable ISO in qemu."
 dependencies = ["iso-release"]
 command = "qemu-system-i386"
-args = ["-cdrom", "os.iso", "-serial", "stdio", "-no-reboot", "-enable-kvm"]
+args = ["-cdrom", "os.iso", "-serial", "stdio", "-vnc", ":0", "-no-reboot", "-enable-kvm"]
 
 [tasks.qemu-debug]
-description = "Runs the bootable ISO in qemu."
+description = "Runs the bootable ISO in qemu with gdb support"
 dependencies = ["iso"]
 command = "qemu-system-i386"
-args = ["-cdrom", "os.iso", "-gdb", "tcp::9090", "-S", "-serial", "stdio", "-no-reboot", "-d", "int,cpu_reset"]
-
-[tasks.qemu-vnc]
-description = "Runs the bootable ISO in qemu in vnc mode."
-dependencies = ["iso"]
-command = "qemu-system-i386"
-args = ["-cdrom", "os.iso", "-serial", "stdio", "-vnc", ":0"]
-
-[tasks.vb]
-description = "Fait tourner qemu sur le PC de l'animal bizarre"
-script = [
-'''
-scp -r Makefile.toml Cargo.toml link.T i386-unknown-none.json src root@192.168.56.101:/root/workspace/kfs
-ssh root@192.168.56.101 -t 'cd workspace/kfs ; exec ~/.cargo/bin/cargo make qemu-vnc'
-''']
+args = ["-cdrom", "os.iso", "-serial", "stdio", "-vnc", ":0", "-no-reboot", "-gdb", "tcp::9090", "-S", "-d", "int,cpu_reset"]
 
 [tasks.doc]
 description = "Document the kernel"
