@@ -1,3 +1,6 @@
+[env]
+RUST_TARGET_PATH = "${PWD}"
+
 [tasks.iso]
 description = "Creates a bootable ISO containing the kernel and grub."
 dependencies = ["xbuild"]
@@ -20,19 +23,13 @@ grub-mkrescue -o os.iso isofiles
 
 [tasks.xbuild]
 description = "Runs the rust compiler."
-script = [
-'''
-env RUST_TARGET_PATH=`pwd` cargo xbuild --target=i386-unknown-none --bin=kfs
-'''
-]
+command = "cargo"
+args = ["xbuild", "--target=i386-unknown-none", "--bin=kfs"]
 
 [tasks.xbuild-release]
 description = "Runs the rust compiler."
-script = [
-'''
-env RUST_TARGET_PATH=`pwd` cargo xbuild --release --target=i386-unknown-none --bin=kfs
-'''
-]
+command = "cargo"
+args = ["xbuild", "--target=i386-unknown-none", "--release", "--bin=kfs"]
 
 [tasks.qemu]
 description = "Runs the bootable ISO in qemu."
@@ -62,14 +59,14 @@ ssh root@192.168.56.101 -t 'cd workspace/kfs ; exec ~/.cargo/bin/cargo make qemu
 
 [tasks.doc]
 description = "Document the kernel"
-script = [
-'''
-env RUST_TARGET_PATH=$PWD RUSTFLAGS=--sysroot=$PWD/target/sysroot RUSTDOCFLAGS=--sysroot=$PWD/target/sysroot cargo rustdoc --target=i386-unknown-none --bin=kfs
-''']
+dependencies = ["xbuild"]
+env = { "RUSTFLAGS" = "--sysroot=${PWD}/target/sysroot",  "RUSTDOCFLAGS" = "--sysroot=${PWD}/target/sysroot"}
+command = "cargo"
+args = ["rustdoc", "--target=i386-unknown-none", "--bin=kfs"]
 
 [tasks.fulldoc]
 description = "Document the kernel"
-script = [
-'''
-env RUST_TARGET_PATH=$PWD RUSTFLAGS=--sysroot=$PWD/target/sysroot RUSTDOCFLAGS=--sysroot=$PWD/target/sysroot cargo rustdoc --target=i386-unknown-none --bin=kfs -- --document-private-items
-''']
+dependencies = ["xbuild"]
+env = { "RUSTFLAGS" = "--sysroot=${PWD}/target/sysroot",  "RUSTDOCFLAGS" = "--sysroot=${PWD}/target/sysroot"}
+command = "cargo"
+args = ["rustdoc", "--target=i386-unknown-none", "--bin=kfs", "--", "--document-private-items"]
