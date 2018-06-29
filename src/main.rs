@@ -221,7 +221,7 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 
     // Start using these page tables
     unsafe { page_tables.enable_paging() }
-    info!("= Paging on");
+    info!("Paging on");
 
     unsafe {
         i386::multiboot::init(multiboot2::load(multiboot_info_vaddr.addr()));
@@ -242,6 +242,9 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 #[no_mangle]
 pub fn common_start_continue_stack() -> ! {
     info!("Switched to new kernel stack");
+
+    unsafe { devices::pit::init_channel_0() };
+    info!("Initialized PIT");
 
     info!("Calling main()");
     main();
