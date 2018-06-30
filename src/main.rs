@@ -126,6 +126,7 @@ fn main() {
                 vbe.get_fb()[vbe_coord + 3] = 0xFF;
             }
         }
+        devices::pit::spin_wait_ms(100);
     }
 }
 
