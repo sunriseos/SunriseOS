@@ -28,10 +28,12 @@ impl Framebuffer {
         page_tables.map_range(PhysicalAddress(tag.framebuffer_addr()), framebuffer_vaddr, framebuffer_size_pages, EntryFlags::WRITABLE);
 
         info!("VBE vaddr: {:#010x}, paddr: {:#010x}", framebuffer_vaddr.addr(), tag.framebuffer_addr());
-        Framebuffer {
+        let mut fb = Framebuffer {
             buf: slice::from_raw_parts_mut(framebuffer_vaddr.addr() as *mut u8, framebuffer_size),
             tag
-        }
+        };
+        fb.clear();
+        fb
     }
 
     pub fn width(&self) -> usize {
@@ -40,5 +42,11 @@ impl Framebuffer {
 
     pub fn get_fb(&mut self) -> &mut [u8] {
         self.buf
+    }
+
+    /// Clears the whole screen
+    pub fn clear(&mut self) {
+        let fb = self.get_fb();
+        for i in fb.iter_mut() { *i = 0x00; }
     }
 }
