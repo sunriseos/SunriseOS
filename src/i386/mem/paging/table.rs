@@ -170,7 +170,7 @@ pub trait PageDirectoryTrait : HierarchicalTable {
         assert_eq!(address.addr() % PAGE_SIZE, 0, "Address is not page aligned");
         let table_nbr = address.addr() / (ENTRY_COUNT * PAGE_SIZE);
         let table_off = address.addr() % (ENTRY_COUNT * PAGE_SIZE) / PAGE_SIZE;
-        info!("Mapping {} to {} ({}/{})", page.address(), address, table_nbr, table_off);
+        debug!("Mapping {} to {} ({}/{})", page.address(), address, table_nbr, table_off);
         let mut table = self.get_table_or_create(table_nbr);
         assert!(table.entries()[table_off].is_unused(), "Tried to map an already mapped entry: {:?}", table.entries()[table_off]);
         table.map_nth_entry::<Self::FlusherType>(table_off, page, flags);
@@ -364,7 +364,7 @@ pub trait PageTablesSet {
     /// Panics if address is not page-aligned.
     fn map_page_guard(&mut self, address: VirtualAddress) {
         // Just map to frame 0, it will page fault anyway since PRESENT is missing
-        info!("Guarding {}", address);
+        debug!("Guarding {}", address);
         self.map_to(MappingType::Guard, address);
     }
 
@@ -499,7 +499,7 @@ impl<T: I386PageTablesSet> PageTablesSet for T {
     ///
     /// Panics if page is not page-aligned.
     fn unmap(&mut self, page: VirtualAddress) -> PageState<Frame> {
-        info!("Unmapping {}", page);
+        debug!("Unmapping {}", page);
         self.get_directory().__unmap(page)
     }
 }
