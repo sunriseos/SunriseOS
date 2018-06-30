@@ -5,7 +5,6 @@ PHDRS
 {
   boot PT_LOAD ;
   gdt  PT_LOAD ;
-  stack PT_LOAD ;
   text PT_LOAD ;
   data PT_LOAD ;
   dynamic PT_DYNAMIC ;
@@ -23,10 +22,6 @@ SECTIONS {
 	}
 
 	. = 1M;
-
-	.stack ALIGN(4K) : {
-		*(.stack)
-	} : stack
 
 	.text ALIGN(4K) : {
 		*(.text .text.*)
