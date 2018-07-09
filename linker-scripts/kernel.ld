@@ -3,7 +3,6 @@ OUTPUT_FORMAT(elf-i386)
 
 PHDRS
 {
-  boot PT_LOAD ;
   gdt  PT_LOAD ;
   text PT_LOAD ;
   data PT_LOAD ;
@@ -12,10 +11,6 @@ PHDRS
 
 SECTIONS {
 	. = 0;
-
-	.boot ALIGN(4K) : {
-		KEEP(*(.multiboot_header))
-	} : boot
 
 	.gdt ALIGN(4K) : {
 		*(.gdt)
