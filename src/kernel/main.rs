@@ -132,7 +132,7 @@ fn main() {
     }
 }
 
-static LOUIS: &'static [u8; 1318100] = include_bytes!("../img/meme3.gif");
+static LOUIS: &'static [u8; 1318100] = include_bytes!("../../img/meme3.gif");
 
 #[repr(align(4096))]
 pub struct AlignedStack([u8; 4096 * 4]);

@@ -3,8 +3,8 @@
 /bootstrap/target
 **/*.rs.bk
 Cargo.lock
-isofiles/boot/kernel.bin
-isofiles/boot/bootstrap.bin
+isofiles/boot/kfs-kernel
+isofiles/boot/kfs-bootstrap
 os.iso
 .idea
 .gdbinit
