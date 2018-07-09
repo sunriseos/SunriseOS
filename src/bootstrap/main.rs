@@ -40,10 +40,15 @@ extern crate static_assertions;
 
 use core::fmt::Write;
 
+mod utils;
 mod bootstrap_logging;
 mod gdt;
+mod address;
+mod paging;
+mod frame_alloc;
 
 use bootstrap_logging::Serial;
+use frame_alloc::FrameAllocator;
 
 #[repr(align(4096))]
 pub struct AlignedStack([u8; 4096 * 4]);
@@ -84,6 +89,14 @@ pub extern "C" fn do_bootstrap(multiboot_info_addr: usize) -> ! {
     // Set up (read: inhibit) the GDT.
     gdt::init_gdt();
     writeln!(Serial, "= Gdt initialized");
+
+    // Parse the multiboot infos
+    let boot_info = unsafe { multiboot2::load(multiboot_info_addr) };
+    writeln!(Serial, "= Parsed multiboot informations");
+
+    // Setup frame allocator
+    FrameAllocator::init(&boot_info);
+    writeln!(Serial, "= Initialized frame allocator");
 
     loop {};
 
