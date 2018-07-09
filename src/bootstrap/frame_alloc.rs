@@ -167,6 +167,13 @@ impl FrameAllocator {
                                     section.end_address() as usize);
         }
 
+        let module_tags = boot_info.module_tags();
+        for module in module_tags {
+            FrameAllocator::mark_area_reserved(&mut frames_bitmap.memory_bitmap,
+                                                module.start_address() as usize,
+                                                module.end_address() as usize);
+        }
+
         // Reserve the very first frame for null pointers when paging is off
         FrameAllocator::mark_area_reserved(&mut frames_bitmap.memory_bitmap,
                                             0x00000000,
