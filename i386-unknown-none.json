@@ -13,6 +13,7 @@
       "-Tlink.T"
     ]
   },
+  "relocation-model": "static",
   "executables": true,
   "features": "-mmx,-sse,+soft-float",
   "disable-redzone": true,
