@@ -1,10 +1,13 @@
 
 /target
+/bootstrap/target
 **/*.rs.bk
 Cargo.lock
 isofiles/boot/kernel.bin
+isofiles/boot/bootstrap.bin
 os.iso
 .idea
+.gdbinit
 /CMakeLists.txt
 /kfs.iml
 /cmake-build-debug
