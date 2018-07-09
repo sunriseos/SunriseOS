@@ -41,6 +41,8 @@ extern crate static_assertions;
 use core::fmt::Write;
 
 mod bootstrap_logging;
+mod gdt;
+
 use bootstrap_logging::Serial;
 
 #[repr(align(4096))]
@@ -75,9 +77,16 @@ pub unsafe extern fn bootstrap_start() -> ! {
 /// bootstrap stage and call kernel
 #[no_mangle]
 pub extern "C" fn do_bootstrap(multiboot_info_addr: usize) -> ! {
+
 	unsafe { bootstrap_logging::init_bootstrap_log() };
-    bootstrap_logging::bootstrap_log("Bootstrap logs !");
+    writeln!(Serial, "Bootstrap starts...");
+
+    // Set up (read: inhibit) the GDT.
+    gdt::init_gdt();
+    writeln!(Serial, "= Gdt initialized");
+
     loop {};
+
     unsafe { ::core::intrinsics::unreachable() }
 }
 
