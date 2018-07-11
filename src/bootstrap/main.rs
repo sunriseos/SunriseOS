@@ -99,6 +99,14 @@ pub extern "C" fn do_bootstrap(multiboot_info_addr: usize) -> ! {
     FrameAllocator::init(&boot_info);
     writeln!(Serial, "= Initialized frame allocator");
 
+    // Create a set of page tables
+    let mut page_tables = unsafe { paging::map_bootstrap(&boot_info) };
+    writeln!(Serial, "= Created page tables");
+
+    // Start using these page tables
+    unsafe { page_tables.enable_paging() }
+    writeln!(Serial, "= Paging on");
+
     loop {};
 
     unsafe { ::core::intrinsics::unreachable() }
