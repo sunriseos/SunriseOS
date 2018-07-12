@@ -9,14 +9,16 @@ PHDRS
   dynamic PT_DYNAMIC ;
 }
 
+/* The kernel should be mapped in high memory */
+KERNEL_OFFSET = 0xc0000000;
+
 SECTIONS {
-	. = 0;
+	/* Keep first page of KernelLand for guard ... */
+	. = KERNEL_OFFSET + 0x1000;
 
 	.gdt ALIGN(4K) : {
 		*(.gdt)
 	}
-
-	. = 1M;
 
 	.text ALIGN(4K) : {
 		*(.text .text.*)
