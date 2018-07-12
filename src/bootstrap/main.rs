@@ -37,6 +37,7 @@ extern crate multiboot2;
 extern crate bitflags;
 #[macro_use]
 extern crate static_assertions;
+extern crate xmas_elf;
 
 use core::fmt::Write;
 
@@ -46,6 +47,7 @@ mod gdt;
 mod address;
 mod paging;
 mod frame_alloc;
+mod elf_loader;
 
 use bootstrap_logging::Serial;
 use frame_alloc::FrameAllocator;
@@ -107,7 +109,19 @@ pub extern "C" fn do_bootstrap(multiboot_info_addr: usize) -> ! {
     unsafe { page_tables.enable_paging() }
     writeln!(Serial, "= Paging on");
 
-    loop {};
+    let kernel_entry_point = elf_loader::load_kernel(&boot_info);
+    writeln!(Serial, "= Loaded kernel");
+
+    writeln!(Serial, "= Jumping to kernel");
+    unsafe {
+        asm!("mov ebx, $0
+              jmp $1"
+              : // no output
+              : "r"(boot_info), "r"(kernel_entry_point)
+              : "ebx", "memory"
+              : "intel"
+              );
+    }
 
     unsafe { ::core::intrinsics::unreachable() }
 }
