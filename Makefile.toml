@@ -23,6 +23,7 @@ args = ["xbuild", "--target=i386-unknown-none", "--bin=kfs-kernel"]
 
 [tasks.kernel-release]
 description = "Compiles the kernel for release"
+env = { "RUSTFLAGS" = "-C link-arg=-Tlinker-scripts/kernel.ld" }
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--bin=kfs-kernel", "--release" ]
 
