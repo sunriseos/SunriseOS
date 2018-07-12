@@ -174,6 +174,11 @@ impl FrameAllocator {
                                                 module.end_address() as usize);
         }
 
+        // Reserve the frames of the boot_info itself
+        FrameAllocator::mark_area_reserved(&mut frames_bitmap.memory_bitmap,
+                                            boot_info.start_address() as usize,
+                                            boot_info.end_address() as usize);
+
         // Reserve the very first frame for null pointers when paging is off
         FrameAllocator::mark_area_reserved(&mut frames_bitmap.memory_bitmap,
                                             0x00000000,

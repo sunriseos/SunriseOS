@@ -199,35 +199,16 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     FrameAllocator::init(&boot_info);
     info!("Initialized frame allocator");
 
-    // Move the multiboot_header to a single page. Because GRUB sucks. Seriously.
-    let multiboot_info_frame = FrameAllocator::alloc_frame();
-    let total_size = unsafe {
-        // Safety: multiboot_info_addr should always be valid, provided the
-        // bootloader ಠ_ಠ
-        *(multiboot_info_addr as *const u32) as usize
-    };
-    assert!(total_size <= paging::PAGE_SIZE, "Expected multiboot info to fit in a frame");
-    unsafe {
-        // Safety: We just allocated this frame. What could go wrong?
-        core::ptr::copy(multiboot_info_addr as *const u8, multiboot_info_frame.address().addr() as *mut u8, total_size);
-    }
-    // TODO: Free the god damned multiboot frames.
-
     // Create page tables with the right access rights for each kernel section
     let mut page_tables =
     unsafe { paging::map_kernel(&boot_info) };
     info!("Mapped the kernel");
 
-    // Map the boot_info.
-    let multiboot_info_vaddr = page_tables.map_frame::<KernelLand>(multiboot_info_frame, EntryFlags::empty());
-
     // Start using these page tables
     unsafe { page_tables.enable_paging() }
     info!("Paging on");
 
-    unsafe {
-        i386::multiboot::init(multiboot2::load(multiboot_info_vaddr.addr()));
-    }
+    i386::multiboot::init(boot_info);
 
     log_impl::init();
 

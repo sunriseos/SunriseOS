@@ -51,6 +51,7 @@ mod elf_loader;
 
 use bootstrap_logging::Serial;
 use frame_alloc::FrameAllocator;
+use paging::KernelLand;
 
 #[repr(align(4096))]
 pub struct AlignedStack([u8; 4096 * 4]);
@@ -112,12 +113,28 @@ pub extern "C" fn do_bootstrap(multiboot_info_addr: usize) -> ! {
     let kernel_entry_point = elf_loader::load_kernel(&boot_info);
     writeln!(Serial, "= Loaded kernel");
 
+    // Move the multiboot_header to a single page in kernel space.
+    let multiboot_info_page = paging::get_page::<KernelLand>();
+    let total_size = unsafe {
+        // Safety: multiboot_info_addr should always be valid, provided the
+        // bootloader ಠ_ಠ
+        *(multiboot_info_addr as *const u32) as usize
+    };
+    assert!(total_size <= paging::PAGE_SIZE, "Expected multiboot info to fit in a page");
+    unsafe {
+        // Safety: We just allocated this page. What could go wrong?
+        core::ptr::copy(multiboot_info_addr as *const u8,
+                        multiboot_info_page.addr() as *mut u8,
+                        total_size);
+    }
+    writeln!(Serial, "= Copied multiboot info");
+
     writeln!(Serial, "= Jumping to kernel");
     unsafe {
         asm!("mov ebx, $0
               jmp $1"
               : // no output
-              : "r"(boot_info), "r"(kernel_entry_point)
+              : "r"(multiboot_info_page.addr()), "r"(kernel_entry_point)
               : "ebx", "memory"
               : "intel"
               );
