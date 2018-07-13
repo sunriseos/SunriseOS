@@ -144,12 +144,12 @@ pub struct  KernelLand;
 pub struct UserLand;
 
 impl KernelLand {
-    const fn start_addr() -> VirtualAddress { VirtualAddress(0x00000000) }
-    const fn end_addr()   -> VirtualAddress { VirtualAddress(0x3fffffff) }
+    const fn start_addr() -> VirtualAddress { VirtualAddress(0xc0000000) }
+    const fn end_addr()   -> VirtualAddress { VirtualAddress(0xffffffff) }
 }
 impl UserLand {
-    const fn start_addr() -> VirtualAddress { VirtualAddress(0x40000000) }
-    const fn end_addr()   -> VirtualAddress { VirtualAddress(0xffffffff) }
+    const fn start_addr() -> VirtualAddress { VirtualAddress(0x00000000) }
+    const fn end_addr()   -> VirtualAddress { VirtualAddress(0xbfffffff) }
 }
 
 impl VirtualSpaceLand for KernelLand {
