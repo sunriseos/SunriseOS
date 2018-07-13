@@ -549,6 +549,29 @@ impl I386PageTablesSet for ActivePageTables {
     }
 }
 
+impl ActivePageTables {
+    /// Marks all frames mapped in KernelLand as already allocated
+    /// This is used at startup to reserve frames mapped by the bootstrap
+    ///
+    /// # Panic
+    ///
+    /// Panics if it tries to overwrite an existing reservation
+    pub fn reserve_kernel_land_frames(&mut self) {
+        let mut directory = self.get_directory();
+        // since recursive entry is in KernelLand, this will also reserve the frames
+        // used by the paging itself
+        for table_index in KernelLand::start_table()..KernelLand::end_table() {
+            if let PageState::Present(table) = directory.get_table(table_index){
+                for entry in table.entries().iter() {
+                    if let PageState::Present(frame_addr) = entry.pointed_frame() {
+                        FrameAllocator::mark_frame_bootstrap_allocated(frame_addr);
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// The page directory currently in use.
 ///
 /// Its last entry enables recursive mapping, which we use to access and modify it

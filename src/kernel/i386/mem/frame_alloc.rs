@@ -8,15 +8,17 @@
 //! This works because the address space in 32 bits is only 4GB, so ~1 million frames only
 //!
 //! During init we initialize the bitmap by parsing the information that the bootloader gives us and
-//! marking some physical memory regions as reserved, either because of BIOS, MMIO
-//! or simply because our kernel is loaded in it
+//! marking some physical memory regions as reserved, either because of BIOS or MMIO.
+//!
+//! We also reserve everything that is mapped in KernelLand, assuming the bootstrap mapped it there
+//! for us, and we don't want to overwrite it.
 
 use multiboot2::BootInformation;
 use spin::Mutex;
 use bit_field::BitArray;
 use utils::BitArrayExt;
 use utils::bit_array_first_one;
-use paging::PAGE_SIZE;
+use paging::{PAGE_SIZE, ACTIVE_PAGE_TABLES, PageTablesSet};
 pub use super::PhysicalAddress;
 
 /// A memory frame is the same size as a page
@@ -157,13 +159,11 @@ impl FrameAllocator {
                                                memarea.start_address() as usize,
                                                memarea.end_address() as usize);
         }
-        let elf_sections_tag = boot_info.elf_sections_tag()
-            .expect("GRUB, you're drunk. Give us our elf_sections_tag.");
-        for section in elf_sections_tag.sections() {
-            FrameAllocator::mark_area_reserved(&mut frames_bitmap.memory_bitmap,
-                                    section.start_address() as usize,
-                                    section.end_address() as usize);
-        }
+
+        // Reserve everything mapped in KernelLand
+        drop(frames_bitmap); // prevent deadlock
+        ACTIVE_PAGE_TABLES.lock().reserve_kernel_land_frames();
+        let mut frames_bitmap = FRAMES_BITMAP.lock(); // retake the mutex
 
         // Reserve the very first frame for null pointers when paging is off
         FrameAllocator::mark_area_reserved(&mut frames_bitmap.memory_bitmap,
@@ -247,6 +247,23 @@ impl FrameAllocator {
                     ..
                 addr_to_frame(round_to_page(end_addr)),
             FRAME_FREE);
+    }
+
+    /// Marks a physical memory frame as already allocated
+    /// Currently used during init when paging marks KernelLand frames as alloc'ed by bootstrap
+    ///
+    /// # Panic
+    ///
+    /// Panics if it overwrites an existing reservation
+    pub fn mark_frame_bootstrap_allocated(addr: PhysicalAddress) {
+        debug!("Setting {:#010x} to boostrap allocked", addr.addr());
+        assert_eq!(addr.addr() & FRAME_OFFSET_MASK, 0x000);
+        let bit = addr_to_frame(addr.addr());
+        let mut frames_bitmap = FRAMES_BITMAP.lock();
+        if frames_bitmap.memory_bitmap.get_bit(bit) != FRAME_FREE {
+            panic!("Frame being marked reserved was already allocated");
+        }
+        frames_bitmap.memory_bitmap.set_bit(bit, FRAME_OCCUPIED);
     }
 
     /// Allocates a free frame
