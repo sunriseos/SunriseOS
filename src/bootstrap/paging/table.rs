@@ -434,6 +434,35 @@ pub trait PageTablesSet {
         self.find_available_virtual_space_aligned::<Land>(page_nb, 0)
     }
 
+    /// Sets a previously mapped page as readonly
+    ///
+    /// # Panics
+    ///
+    /// Panics if the page was not mapped or is a guard page
+    // Yes it's ugly, but it's a quick fix for bootstrap only, kernel paging will have a better interface
+    // This is bad because it invalidates the cache twice: when unmapping the page, and when mapping it again
+    // But i'm lazy, what you gonna do ?
+    fn set_page_readonly(&mut self, page_address: VirtualAddress) {
+        match self.unmap(page_address) {
+            PageState::Available => { panic!("Tried to set read-only on unmapped entry")}
+            PageState::Guarded   => { panic!("Tried to set read-only on guarded entry")}
+            PageState::Present(frame)   => {
+                self.map_to(MappingType::Present(frame, EntryFlags::WRITABLE), page_address);
+            }
+        }
+    }
+
+    /// Sets a previously mapped range of pages readonly
+    ///
+    /// # Panics
+    ///
+    /// Panics if any of the pages in the range was not mapped or is a guard page
+    // Still really bad and ugly, read above
+    fn set_region_readonly(&mut self, start_address: VirtualAddress, page_nb: usize) {
+        for i in (0..page_nb) {
+            self.set_page_readonly(start_address + i * PAGE_SIZE);
+        }
+    }
 }
 
 /* ********************************************************************************************** */

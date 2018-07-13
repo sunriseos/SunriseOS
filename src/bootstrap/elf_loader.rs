@@ -68,15 +68,12 @@ fn load_segment(segment: &ProgramHeader, elf_file: &ElfFile) {
         x => { panic ! ("Unexpected Segment data {:?}", x) }
     }
 
-    // Remap with the right flags
-    let mut map_flags = EntryFlags::empty();
-    if segment.flags().is_write() {
-        map_flags |= EntryFlags::WRITABLE;
+    // Remap as readonly if specified
+    if !segment.flags().is_write() {
+        ACTIVE_PAGE_TABLES.lock().set_region_readonly(
+            VirtualAddress(segment.virtual_addr() as usize),
+            mem_size_total / PAGE_SIZE);
     }
-    //if segment.flags().is_execute() {
-    //    map_flags |= EntryFlags::EXECUTABLE;
-    //}
-    //TODO remap with the right flags
 
     writeln!(Serial, "Loaded segment - VirtAddr {:#010x}, FileSize {:#010x}, MemSize {:#010x} {}{}{}",
         segment.virtual_addr(), segment.file_size(), segment.mem_size(),
