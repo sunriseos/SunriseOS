@@ -560,7 +560,7 @@ impl ActivePageTables {
         let mut directory = self.get_directory();
         // since recursive entry is in KernelLand, this will also reserve the frames
         // used by the paging itself
-        for table_index in KernelLand::start_table()..KernelLand::end_table() {
+        for table_index in KernelLand::start_table()..=KernelLand::end_table() {
             if let PageState::Present(table) = directory.get_table(table_index){
                 for entry in table.entries().iter() {
                     if let PageState::Present(frame_addr) = entry.pointed_frame() {
