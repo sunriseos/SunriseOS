@@ -795,7 +795,8 @@ impl InactivePageDirectory {
     fn copy_active_kernelspace(&mut self) {
         let mut lock = ACTIVE_PAGE_TABLES.lock();
         let mut active_dir = lock.get_directory();
-        for table in KernelLand::start_table()..=KernelLand::end_table() {
+        // do not copy the recursive entry
+        for table in KernelLand::start_table()..KernelLand::end_table() {
             self.entries_mut()[table] = active_dir.entries_mut()[table];
         }
     }
