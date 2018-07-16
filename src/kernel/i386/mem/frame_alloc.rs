@@ -280,6 +280,7 @@ impl FrameAllocator {
         let frame = bit_array_first_one(&frames_bitmap.memory_bitmap)
             .expect("Cannot allocate frame: No available frame D:");
         frames_bitmap.memory_bitmap.set_bit(frame, FRAME_OCCUPIED);
+        debug!("Alloc'ed frame P {:#010x}", frame_to_addr(frame));
         Frame {
             physical_addr: frame_to_addr(frame),
             is_allocated: true
@@ -292,6 +293,7 @@ impl FrameAllocator {
     ///
     /// Panics if the frame was not allocated
     fn free_frame(frame: &Frame) {
+        debug!("Freeing frame P {:#010x}", frame.address().addr());
         let mut frames_bitmap = FRAMES_BITMAP.lock();
         FrameAllocator::check_initialized(&*frames_bitmap);
 
