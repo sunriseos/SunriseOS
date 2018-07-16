@@ -695,6 +695,7 @@ impl InactivePageTables {
             dir.zero();
             dir.map_nth_entry::<NoFlush>(ENTRY_COUNT - 1, directory_frame_dup, I386EntryFlags::PRESENT | I386EntryFlags::WRITABLE);
         };
+        pageset.map_page_guard(VirtualAddress(0x00000000));
         pageset
     }
 
