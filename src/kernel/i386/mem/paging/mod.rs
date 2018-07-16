@@ -39,6 +39,7 @@ fn is_paging_on() -> bool {
     cr0 & 0x80000001 == 0x80000001 // PE | PG
 }
 
+/// Not used anymore, bootstrap's job
 unsafe fn enable_paging(page_directory_address: PhysicalAddress) {
     asm!("mov eax, $0
           mov cr3, eax
@@ -77,50 +78,6 @@ fn swap_cr3(page_directory_address: PhysicalAddress) -> PhysicalAddress {
               : "intel", "volatile");
     }
     old_value
-}
-
-/// Creates a set of page tables mapping the kernel sections with correct rights
-///
-/// # Safety
-///
-/// Paging must be off to call this function
-pub unsafe fn map_kernel(boot_info : &BootInformation) -> PagingOffPageSet {
-    let mut new_pages = PagingOffPageSet::paging_off_create_page_set();
-
-    // Map the elf sections
-    let elf_sections_tag = boot_info.elf_sections_tag()
-        .expect("GRUB, you're drunk. Give us our elf_sections_tag.");
-    for section in elf_sections_tag.sections() {
-        if !section.is_allocated() || section.name() == ".boot" {
-            continue; // section is not loaded to memory
-        }
-
-        info!("section {:#010x} - {:#010x} : {}",
-                 section.start_address(), section.end_address(),
-                 section.name()
-                );
-        assert_eq!(section.start_address() as usize % PAGE_SIZE, 0, "sections must be page aligned");
-
-        let mut map_flags = EntryFlags::empty();
-        if section.flags().contains(ElfSectionFlags::WRITABLE) {
-            map_flags |= EntryFlags::WRITABLE
-        }
-
-        new_pages.identity_map_region(PhysicalAddress(section.start_address() as usize),
-                                      section.size() as usize,
-                                      map_flags);
-    }
-
-
-
-    // Map the vga screen memory
-    new_pages.identity_map_region(VGA_SCREEN_ADDRESS, VGA_SCREEN_MEMORY_SIZE,
-                                  EntryFlags::WRITABLE);
-
-    // Reserve the very first frame for null pointers
-    new_pages.map_page_guard(VirtualAddress(0x00000000));
-
-    new_pages
 }
 
 /// A trait describing the splitting of virtual memory between Kernel and User.

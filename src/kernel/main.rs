@@ -171,8 +171,8 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     // Do whatever is necessary to have a proper environment here.
 
     // Register some loggers
-    static mut VGATEXT: VGATextLogger = VGATextLogger;
-    Loggers::register_logger("VGA text mode", unsafe { &mut VGATEXT });
+    //static mut VGATEXT: VGATextLogger = VGATextLogger;
+    //Loggers::register_logger("VGA text mode", unsafe { &mut VGATEXT });
     static mut SERIAL: SerialLogger = SerialLogger;
     Loggers::register_logger("Serial", unsafe { &mut SERIAL });
 
@@ -199,14 +199,14 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     FrameAllocator::init(&boot_info);
     info!("Initialized frame allocator");
 
-    // Create page tables with the right access rights for each kernel section
-    let mut page_tables =
-    unsafe { paging::map_kernel(&boot_info) };
-    info!("Mapped the kernel");
+    // Create a set of pages where the bootstrap is not mapped
+    let mut kernel_pages = paging::InactivePageTables::new();
+    info!("Created kernel pages");
 
     // Start using these page tables
-    unsafe { page_tables.enable_paging() }
-    info!("Paging on");
+    let bootstrap_pages = unsafe { kernel_pages.switch_to() };
+    info!("Switched to kernel pages");
+    bootstrap_pages.delete();
 
     i386::multiboot::init(boot_info);
 
