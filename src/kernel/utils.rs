@@ -34,16 +34,6 @@ pub fn print_hexdump(addr: &[u8]) {
     }
 }
 
-pub fn print_stack() {
-    unsafe {
-        // TODO: I hate this.
-        let sp: usize;
-        asm!("mov $0, esp" : "=r"(sp) : : : "intel");
-        let sp_start = sp - ::STACK.0.as_ptr() as usize;
-        print_hexdump(&::STACK.0[sp_start..]);
-    }
-}
-
 pub trait BitArrayExt<U: ::bit_field::BitField>: ::bit_field::BitArray<U> {
     fn set_bits_area(&mut self, range: ::core::ops::Range<usize>, value: bool) {
         for i in range {

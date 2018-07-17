@@ -40,6 +40,7 @@ extern crate static_assertions;
 extern crate xmas_elf;
 
 use core::fmt::Write;
+use spin::Once;
 
 mod utils;
 mod bootstrap_logging;
@@ -48,10 +49,13 @@ mod address;
 mod paging;
 mod frame_alloc;
 mod elf_loader;
+mod bootstrap_stack;
 
 use bootstrap_logging::Serial;
 use frame_alloc::FrameAllocator;
 use paging::KernelLand;
+use bootstrap_stack::BootstrapStack;
+use address::VirtualAddress;
 
 #[repr(align(4096))]
 pub struct AlignedStack([u8; 4096 * 4]);
@@ -85,8 +89,7 @@ pub unsafe extern fn bootstrap_start() -> ! {
 /// bootstrap stage and call kernel
 #[no_mangle]
 pub extern "C" fn do_bootstrap(multiboot_info_addr: usize) -> ! {
-
-	unsafe { bootstrap_logging::init_bootstrap_log() };
+    unsafe { bootstrap_logging::init_bootstrap_log() };
     writeln!(Serial, "Bootstrap starts...");
 
     // Set up (read: inhibit) the GDT.
@@ -129,12 +132,40 @@ pub extern "C" fn do_bootstrap(multiboot_info_addr: usize) -> ! {
     }
     writeln!(Serial, "= Copied multiboot info");
 
+    // Allocate a stack for the kernel
+    let mut new_stack = BootstrapStack::allocate_stack()
+        .expect("Cannot allocate bootstrap stack");
+    writeln!(Serial, "= Created kernel stack");
+
+    // Start using this stack
+    MULTIBOOT_INFO_PAGE.call_once(|| multiboot_info_page);
+    KERNEL_ENTRY_POINT.call_once(|| VirtualAddress(kernel_entry_point));
+    unsafe { new_stack.switch_to(do_bootstrap_continue_stack) }
+    unreachable!()
+}
+
+/// We're about to switch to a new stack, but we want to keep references to some value,
+/// so we make them global ...
+static MULTIBOOT_INFO_PAGE: Once<VirtualAddress> = Once::new();
+static KERNEL_ENTRY_POINT:  Once<VirtualAddress> = Once::new();
+
+/// When we switch to a new stack during init, we can't return now that the stack is empty
+/// so we need to call some function that will proceed with the end of the init procedure
+/// This is some function
+pub fn do_bootstrap_continue_stack() -> ! {
+    writeln!(Serial, "= Switched to new kernel stack");
+
+    let multiboot_info = MULTIBOOT_INFO_PAGE.try()
+        .expect("Multiboot info page was not propagated").addr();
+    let kernel_entry_point = KERNEL_ENTRY_POINT.try()
+        .expect("Kernel entry point was not propagated").addr();
+
     writeln!(Serial, "= Jumping to kernel");
     unsafe {
         asm!("mov ebx, $0
               jmp $1"
               : // no output
-              : "r"(multiboot_info_page.addr()), "r"(kernel_entry_point)
+              : "r"(multiboot_info), "r"(kernel_entry_point)
               : "ebx", "memory"
               : "intel"
               );

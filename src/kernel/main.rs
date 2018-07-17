@@ -134,11 +134,6 @@ fn main() {
 
 static LOUIS: &'static [u8; 1318100] = include_bytes!("../../img/meme3.gif");
 
-#[repr(align(4096))]
-pub struct AlignedStack([u8; 4096 * 4]);
-
-pub static mut STACK: AlignedStack = AlignedStack([0; 4096 * 4]);
-
 #[cfg(target_os = "none")]
 #[no_mangle]
 pub unsafe extern fn start() -> ! {
@@ -152,13 +147,9 @@ pub unsafe extern fn start() -> ! {
         call memset
         add esp, 12
 
-        // Create the stack
-        mov esp, $0
-        add esp, 16383
-        mov ebp, esp
         // Save multiboot infos addr present in ebx
         push ebx
-        call common_start" : : "m"(&STACK) : : "intel", "volatile");
+        call common_start" : : : : "intel", "volatile");
     core::intrinsics::unreachable()
 }
 
