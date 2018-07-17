@@ -10,7 +10,7 @@ pub use self::table::PageTablesSet;
 
 use self::table::*;
 use self::table::entry::Entry;
-pub use i386::mem::frame_alloc::{round_to_page, round_to_page_upper};
+pub use i386::mem::frame_alloc::{round_to_page, round_to_page_upper, count_pages};
 use spin::Mutex;
 use i386::mem::frame_alloc::Frame;
 use i386::mem::PhysicalAddress;

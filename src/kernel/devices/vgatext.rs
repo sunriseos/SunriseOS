@@ -1,23 +1,20 @@
 //! A module for printing text to screen using VGA compatible text mode
 //! by writing in the video memory
 
-use spin::Mutex;
+use spin::Once;
+use spin::{Mutex, MutexGuard};
 use ascii::AsciiStr;
 use ascii::AsAsciiStr;
 use frame_alloc::PhysicalAddress;
+use paging::VirtualAddress;
+use paging::{ACTIVE_PAGE_TABLES, PAGE_SIZE, PageTablesSet, EntryFlags, KernelLand, count_pages};
 use logger::{Logger, LogAttributes, LogColor};
 
 pub const VGA_SCREEN_ADDRESS: PhysicalAddress = PhysicalAddress(0xb8000);
 pub const VGA_SCREEN_SIZE: (usize, usize) = (25, 80); // y, x
 pub const VGA_SCREEN_MEMORY_SIZE: usize = 32 * 1024 / 2; // 32 ko in u16
 
-#[cfg(not(target_os = "none"))]
-/// When debugging we will write to this buffer instead
-static mut VGA_SPACE_DEBUG : [u16; VGA_SCREEN_MEMORY_SIZE] = [0; VGA_SCREEN_MEMORY_SIZE];
-
-lazy_static! {
-    static ref G_PRINTER: Mutex<VGATextLoggerInternal> = Mutex::new(VGATextLoggerInternal::new());
-}
+static G_VGATEXT: Once<Mutex<VGATextLoggerInternal>> = Once::new();
 
 #[allow(dead_code)]
 #[repr(u8)]
@@ -113,16 +110,21 @@ struct VGATextLoggerInternal {
 impl VGATextLoggerInternal {
 
     fn new() -> VGATextLoggerInternal {
-        #[cfg(target_os = "none")]
-        return VGATextLoggerInternal {
+        let mut page_tables = ACTIVE_PAGE_TABLES.lock();
+
+        let vga_vadr = page_tables.find_available_virtual_space::<KernelLand>(count_pages(VGA_SCREEN_MEMORY_SIZE))
+            .expect("Cannot map vga text mode mmio");
+        page_tables.map_range(VGA_SCREEN_ADDRESS,
+                              vga_vadr,
+                              count_pages(VGA_SCREEN_MEMORY_SIZE),
+                              EntryFlags::WRITABLE);
+
+        let mut ret = VGATextLoggerInternal {
             pos: (0, 0),
-            buffer: unsafe { ::core::slice::from_raw_parts_mut(VGA_SCREEN_ADDRESS.addr() as _, VGA_SCREEN_MEMORY_SIZE) }
+            buffer: unsafe { ::core::slice::from_raw_parts_mut(vga_vadr.addr() as _, VGA_SCREEN_MEMORY_SIZE) }
         };
-        #[cfg(not(target_os = "none"))]
-            VGATextLoggerInternal {
-            pos: (0, 0),
-            buffer: unsafe { ::core::slice::from_raw_parts_mut(VGA_SPACE_DEBUG.as_mut_ptr(), VGA_SCREEN_MEMORY_SIZE) }
-        }
+        ret.clear();
+        ret
     }
 
     #[inline]
@@ -170,7 +172,6 @@ impl VGATextLoggerInternal {
     fn print_attr(&mut self, string: &AsciiStr, attr: VGATextPrintAttribute) {
         let slice = string.as_bytes();
 
-        // TODO check max len
         for letter in slice {
             match *letter {
                 b'\n' => { self.line_feed() }
@@ -195,44 +196,53 @@ impl VGATextLoggerInternal {
 /// A class to print text to the screen
 pub struct VGATextLogger;
 
+impl VGATextLogger {
+    fn get_internal(&mut self) -> MutexGuard<VGATextLoggerInternal> {
+        G_VGATEXT.call_once(|| Mutex::new(VGATextLoggerInternal::new())).lock()
+    }
+
+    unsafe fn internal_force_unlock(&mut self) {
+        G_VGATEXT.call_once(|| Mutex::new(VGATextLoggerInternal::new())).force_unlock()
+    }
+}
+
 impl Logger for VGATextLogger {
 
     /// Prints a string to the screen
     fn print(&mut self, string: &str) {
         let string = string.as_ascii_str().expect("ASCII");
-        G_PRINTER.lock().print_attr(string, VGATextPrintAttribute::default());
+        self.get_internal().print_attr(string, VGATextPrintAttribute::default());
     }
 
     /// Prints a string to the screen and adds a line feed
     fn println(&mut self, string: &str) {
         let string = string.as_ascii_str().expect("ASCII");
-        let mut myprinter = G_PRINTER.lock();
-        myprinter.print_attr(string, VGATextPrintAttribute::default());
-        myprinter.line_feed();
+        let mut internal = self.get_internal();
+        internal.print_attr(string, VGATextPrintAttribute::default());
+        internal.line_feed();
     }
 
     /// Prints a string to the screen with attributes
     fn print_attr(&mut self, string: &str, attr: LogAttributes) {
         let string = string.as_ascii_str().expect("ASCII");
-        G_PRINTER.lock().print_attr(string, VGATextPrintAttribute::from_log_attr(&attr));
+        self.get_internal().print_attr(string, VGATextPrintAttribute::from_log_attr(&attr));
     }
 
     /// Prints a string to the screen with attributes and adds a line feed
     fn println_attr(&mut self, string: &str, attr: LogAttributes) {
         let string = string.as_ascii_str().expect("ASCII");
-        let mut myprinter = G_PRINTER.lock();
-        myprinter.print_attr(string, VGATextPrintAttribute::from_log_attr(&attr));
-        myprinter.line_feed();
+        let mut internal = self.get_internal();
+        internal.print_attr(string, VGATextPrintAttribute::from_log_attr(&attr));
+        internal.line_feed();
     }
 
     unsafe fn force_unlock(&mut self) {
-        G_PRINTER.force_unlock();
+        self.internal_force_unlock();
     }
 
     /// Clears the whole screen and resets cursor to top left
     fn clear(&mut self) {
-        let mut myprinter = G_PRINTER.lock();
-        myprinter.clear();
+        self.get_internal().clear();
     }
 }
 

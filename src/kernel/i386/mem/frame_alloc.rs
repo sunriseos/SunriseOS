@@ -58,6 +58,11 @@ pub fn round_to_page(addr: usize) -> usize {
     }
 }
 
+/// Counts the number of pages `size` takes
+#[inline] pub fn count_pages(size: usize) -> usize {
+    round_to_page_upper(size) / PAGE_SIZE
+}
+
 /// A big bitmap denoting for every frame if it is free or not
 ///
 /// 1 is free, 0 is already allocated/reserved

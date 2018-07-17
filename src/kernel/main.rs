@@ -168,17 +168,10 @@ pub unsafe extern fn start() -> ! {
 pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     log_impl::early_init();
 
-    // Do whatever is necessary to have a proper environment here.
-
     // Register some loggers
-    //static mut VGATEXT: VGATextLogger = VGATextLogger;
-    //Loggers::register_logger("VGA text mode", unsafe { &mut VGATEXT });
     static mut SERIAL: SerialLogger = SerialLogger;
     Loggers::register_logger("Serial", unsafe { &mut SERIAL });
 
-    info!("Clearing screen...");
-    let vga_screen = &mut VGATextLogger;
-    vga_screen.clear();
 
     let loggers = &mut Loggers;
     // Say hello to the world
@@ -207,6 +200,11 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     let bootstrap_pages = unsafe { kernel_pages.switch_to() };
     info!("Switched to kernel pages");
     bootstrap_pages.delete();
+
+    // Initialize the VGATEXT logger now that paging is in a stable state
+    static mut VGATEXT: VGATextLogger = VGATextLogger;
+    Loggers::register_logger("VGA text mode", unsafe { &mut VGATEXT });
+    info!("Initialized VGATEXT logger");
 
     i386::multiboot::init(boot_info);
 
