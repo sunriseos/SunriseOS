@@ -3,3 +3,4 @@ pub mod vgatext;
 pub mod vbe;
 pub mod pit;
 pub mod pic;
+pub mod ps2;

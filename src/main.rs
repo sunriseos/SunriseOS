@@ -35,6 +35,7 @@ use ascii::AsAsciiStr;
 use core::fmt::Write;
 use alloc::*;
 
+mod event;
 mod logger;
 mod log_impl;
 use i386::mem::paging;
@@ -100,8 +101,12 @@ fn main() {
 
     info!("Testing some string heap alloc: {}", String::from("Hello World"));
 
+    info!("Testing keyboard:");
+    loop {
+        write!(Loggers, "{}", devices::ps2::read_key());
+    }
     // Let's GIF.
-    let mut vbe = unsafe {
+    /*let mut vbe = unsafe {
         devices::vbe::Framebuffer::new(i386::multiboot::get_boot_information())
     };
     let mut reader = gif::Decoder::new(&LOUIS[..]).read_info().unwrap();
@@ -129,7 +134,7 @@ fn main() {
             }
         }
         devices::pit::spin_wait_ms(100);
-    }
+    }*/
 }
 
 static LOUIS: &'static [u8; 1318100] = include_bytes!("../img/meme3.gif");
