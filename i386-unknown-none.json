@@ -9,7 +9,8 @@
   "linker-flavor": "ld.lld",
   "pre-link-args": {
     "ld.lld": [
-      "--omagic"
+      "--omagic",
+      "-Tlink.T"
     ]
   },
   "relocation-model": "static",

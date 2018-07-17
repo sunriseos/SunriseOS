@@ -3,27 +3,33 @@ RUST_TARGET_PATH = "${PWD}"
 GDB_PORT = { script = ["echo ${GDB_PORT:-9090}"] }
 VNC_PORT = { script = ["echo ${VNC_PORT:-:0}"] }
 
+[tasks.bootstrap-linker]
+script = ["cp linker-scripts/bootstrap.ld link.T"]
+
+[tasks.kernel-linker]
+script = ["cp linker-scripts/kernel.ld    link.T"]
+
 [tasks.bootstrap]
 description = "Compiles the i386 bootstrap for debug"
-env = { "RUSTFLAGS" = "-C link-arg=-Tlinker-scripts/bootstrap.ld" }
+dependencies = ["bootstrap-linker"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--bin=kfs-bootstrap" ]
 
 [tasks.bootstrap-release]
 description = "Compiles the i386 bootstrap for release"
-env = { "RUSTFLAGS" = "-C link-arg=-Tlinker-scripts/bootstrap.ld" }
+dependencies = ["bootstrap-linker"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--bin=kfs-bootstrap", "--release" ]
 
 [tasks.kernel]
 description = "Compiles the kernel for debug"
-env = { "RUSTFLAGS" = "-C link-arg=-Tlinker-scripts/kernel.ld" }
+dependencies = ["kernel-linker"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--bin=kfs-kernel"]
 
 [tasks.kernel-release]
 description = "Compiles the kernel for release"
-env = { "RUSTFLAGS" = "-C link-arg=-Tlinker-scripts/kernel.ld" }
+dependencies = ["kernel-linker"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--bin=kfs-kernel", "--release" ]
 
