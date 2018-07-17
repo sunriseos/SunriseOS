@@ -180,10 +180,6 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
                              LogAttributes::new_fg(LogColor::LightCyan));
     writeln!(Loggers, "!\n");
 
-    // Set up (read: inhibit) the GDT.
-    gdt::init_gdt();
-    info!("Gdt initialized");
-
     // Parse the multiboot infos
     let boot_info = unsafe { multiboot2::load(multiboot_info_addr) };
     info!("Parsed multiboot informations");
@@ -200,6 +196,10 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     let bootstrap_pages = unsafe { kernel_pages.switch_to() };
     info!("Switched to kernel pages");
     bootstrap_pages.delete();
+
+    // Set up (read: inhibit) the GDT.
+    gdt::init_gdt();
+    info!("Gdt initialized");
 
     // Initialize the VGATEXT logger now that paging is in a stable state
     static mut VGATEXT: VGATextLogger = VGATextLogger;

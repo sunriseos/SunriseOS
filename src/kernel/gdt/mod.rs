@@ -12,8 +12,9 @@ use core::mem::size_of;
 
 use super::i386::{PrivilegeLevel, TssStruct};
 use i386::structures::gdt::SegmentSelector;
+use paging::{KernelLand, PAGE_SIZE, get_page};
+use alloc::vec::Vec;
 
-#[link_section = ".gdt"]
 static GDT: Once<DescriptorTable> = Once::new();
 
 /// The global LDT used by all the processes.
@@ -95,8 +96,10 @@ lazy_static! {
         TssStruct::new(0, (SegmentSelector(0), 0), (SegmentSelector(0), 0), (SegmentSelector(0), 0), SegmentSelector(7 << 3))
     };
     pub static ref FAULT_TASK: TssStruct = {
+        // allocate a dummy stack of 1 page
+        let stack_page = get_page::<KernelLand>();
         unsafe {
-            TssStruct::new(0, (SegmentSelector(0x18), (::STACK.0.as_ptr() as usize + ::STACK.0.len() - 1)), (SegmentSelector(0), 0), (SegmentSelector(0), 0), SegmentSelector(7 << 3))
+            TssStruct::new(0, (SegmentSelector(0x18), stack_page.addr() + PAGE_SIZE - 1), (SegmentSelector(0), 0), (SegmentSelector(0), 0), SegmentSelector(7 << 3))
         }
         //let tss = TssStruct::new(0, (SegmentSelector(0x18), ::STACK + ::STACK.len() - 1), (SegmentSelector(0), 0), (SegmentSelector(0), 0), SegmentSelector(7 << 3));
         //tss.ss0 = 0x18;
@@ -106,17 +109,15 @@ lazy_static! {
     };
 }
 
-/// A structure containing our GDT. We can have at most 16 segments, we should be
-/// more than enough.
+/// A structure containing our GDT.
 struct DescriptorTable {
-    table: ArrayVec<[DescriptorTableEntry; 16]>,
+    table: Vec<DescriptorTableEntry>,
 }
 
 impl DescriptorTable {
     pub fn new() -> DescriptorTable {
-        let mut vec = ArrayVec::new();
         DescriptorTable {
-            table: vec
+            table: Vec::new()
         }
     }
 

@@ -3,7 +3,6 @@ OUTPUT_FORMAT(elf-i386)
 
 PHDRS
 {
-  gdt  PT_LOAD ;
   text PT_LOAD ;
   data PT_LOAD ;
   dynamic PT_DYNAMIC ;
@@ -15,10 +14,6 @@ KERNEL_OFFSET = 0xc0000000;
 SECTIONS {
 	/* Keep first page of KernelLand for guard ... */
 	. = KERNEL_OFFSET + 0x1000;
-
-	.gdt ALIGN(4K) : {
-		*(.gdt)
-	}
 
 	.text ALIGN(4K) : {
 		*(.text .text.*)
