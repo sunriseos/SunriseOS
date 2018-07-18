@@ -27,6 +27,9 @@
 #[cfg(not(target_os = "none"))]
 use std as core;
 
+#[cfg(not(target_os = "none"))]
+compile_error!("WTF");
+
 extern crate arrayvec;
 extern crate bit_field;
 #[macro_use]

@@ -1,0 +1,39 @@
+[package]
+authors = ["roblabla <unfiltered@roblab.la>", "orycterope <tvermeilh@gmail.com>"]
+name = "kfs-bootstrap"
+version = "0.1.0"
+
+[package.metadata.cargo-xbuild]
+memcpy = true
+sysroot_path = "target/sysroot"
+
+[dependencies]
+bit_field = "0.9.0"
+bitflags = "1.0"
+multiboot2 = { git = "https://github.com/roblabla/multiboot2-elf64" }
+spin = "0.4.6"
+static_assertions = "*"
+linked_list_allocator = "0.6.2"
+gif = { git = "https://github.com/roblabla/image-gif" }
+log = "0.4.2"
+xmas-elf = "0.6.2"
+
+[dependencies.smallvec]
+default-features = false
+version = "0.6.2"
+
+[dependencies.arrayvec]
+default-features = false
+version = "0.4.7"
+
+[dependencies.ascii]
+default-features = false
+version = "0.8.6"
+
+[dependencies.byteorder]
+default-features = false
+version = "1.2.1"
+
+[dependencies.lazy_static]
+features = ["spin_no_std"]
+version = "1.0.0"

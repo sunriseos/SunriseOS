@@ -1,6 +1,5 @@
-
-/target
-/bootstrap/target
+.bochsrc
+target
 **/*.rs.bk
 Cargo.lock
 isofiles/boot/kfs-kernel
