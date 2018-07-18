@@ -549,6 +549,29 @@ impl I386PageTablesSet for ActivePageTables {
     }
 }
 
+impl ActivePageTables {
+    /// Marks all frames mapped in KernelLand as already allocated
+    /// This is used at startup to reserve frames mapped by the bootstrap
+    ///
+    /// # Panic
+    ///
+    /// Panics if it tries to overwrite an existing reservation
+    pub fn reserve_kernel_land_frames(&mut self) {
+        let mut directory = self.get_directory();
+        // since recursive entry is in KernelLand, this will also reserve the frames
+        // used by the paging itself
+        for table_index in KernelLand::start_table()..=KernelLand::end_table() {
+            if let PageState::Present(table) = directory.get_table(table_index){
+                for entry in table.entries().iter() {
+                    if let PageState::Present(frame_addr) = entry.pointed_frame() {
+                        FrameAllocator::mark_frame_bootstrap_allocated(frame_addr);
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// The page directory currently in use.
 ///
 /// Its last entry enables recursive mapping, which we use to access and modify it
@@ -672,6 +695,7 @@ impl InactivePageTables {
             dir.zero();
             dir.map_nth_entry::<NoFlush>(ENTRY_COUNT - 1, directory_frame_dup, I386EntryFlags::PRESENT | I386EntryFlags::WRITABLE);
         };
+        pageset.map_page_guard(VirtualAddress(0x00000000));
         pageset
     }
 
@@ -772,7 +796,8 @@ impl InactivePageDirectory {
     fn copy_active_kernelspace(&mut self) {
         let mut lock = ACTIVE_PAGE_TABLES.lock();
         let mut active_dir = lock.get_directory();
-        for table in KernelLand::start_table()..=KernelLand::end_table() {
+        // do not copy the recursive entry
+        for table in KernelLand::start_table()..KernelLand::end_table() {
             self.entries_mut()[table] = active_dir.entries_mut()[table];
         }
     }

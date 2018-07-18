@@ -4,21 +4,17 @@ mod entry;
 mod table;
 
 use multiboot2::{BootInformation, ElfSectionFlags};
+use ::address::{PhysicalAddress, VirtualAddress};
+use ::frame_alloc::{Frame, round_to_page, round_to_page_upper};
 
 pub use self::table::{ActivePageTables, InactivePageTables, MappingType, EntryFlags};
 pub use self::table::PageTablesSet;
 
 use self::table::*;
 use self::table::entry::Entry;
-pub use i386::mem::frame_alloc::{round_to_page, round_to_page_upper};
 use spin::Mutex;
-use i386::mem::frame_alloc::Frame;
-use i386::mem::PhysicalAddress;
-pub use i386::mem::VirtualAddress;
-use ::devices::vgatext::{VGA_SCREEN_ADDRESS, VGA_SCREEN_MEMORY_SIZE};
 use ::core::fmt::Write;
 use ::core::ops::Deref;
-use logger::Loggers;
 
 pub const PAGE_SIZE: usize = 4096;
 
@@ -79,46 +75,21 @@ fn swap_cr3(page_directory_address: PhysicalAddress) -> PhysicalAddress {
     old_value
 }
 
-/// Creates a set of page tables mapping the kernel sections with correct rights
+/// Creates a set of page tables identity mapping the first 32MB
 ///
 /// # Safety
 ///
 /// Paging must be off to call this function
-pub unsafe fn map_kernel(boot_info : &BootInformation) -> PagingOffPageSet {
+pub unsafe fn map_bootstrap(boot_info : &BootInformation) -> PagingOffPageSet {
     let mut new_pages = PagingOffPageSet::paging_off_create_page_set();
-
-    // Map the elf sections
-    let elf_sections_tag = boot_info.elf_sections_tag()
-        .expect("GRUB, you're drunk. Give us our elf_sections_tag.");
-    for section in elf_sections_tag.sections() {
-        if !section.is_allocated() || section.name() == ".boot" {
-            continue; // section is not loaded to memory
-        }
-
-        info!("section {:#010x} - {:#010x} : {}",
-                 section.start_address(), section.end_address(),
-                 section.name()
-                );
-        assert_eq!(section.start_address() as usize % PAGE_SIZE, 0, "sections must be page aligned");
-
-        let mut map_flags = EntryFlags::empty();
-        if section.flags().contains(ElfSectionFlags::WRITABLE) {
-            map_flags |= EntryFlags::WRITABLE
-        }
-
-        new_pages.identity_map_region(PhysicalAddress(section.start_address() as usize),
-                                      section.size() as usize,
-                                      map_flags);
-    }
-
-
-
-    // Map the vga screen memory
-    new_pages.identity_map_region(VGA_SCREEN_ADDRESS, VGA_SCREEN_MEMORY_SIZE,
-                                  EntryFlags::WRITABLE);
 
     // Reserve the very first frame for null pointers
     new_pages.map_page_guard(VirtualAddress(0x00000000));
+
+    // Identity map from page 1 to 32MB
+    new_pages.identity_map_region(PhysicalAddress(0x00000000 + PAGE_SIZE),
+                                      0x02000000 - PAGE_SIZE,
+                                      EntryFlags::WRITABLE);
 
     new_pages
 }
@@ -144,12 +115,12 @@ pub struct  KernelLand;
 pub struct UserLand;
 
 impl KernelLand {
-    const fn start_addr() -> VirtualAddress { VirtualAddress(0x00000000) }
-    const fn end_addr()   -> VirtualAddress { VirtualAddress(0x3fffffff) }
+    const fn start_addr() -> VirtualAddress { VirtualAddress(0xc0000000) }
+    const fn end_addr()   -> VirtualAddress { VirtualAddress(0xffffffff) }
 }
 impl UserLand {
-    const fn start_addr() -> VirtualAddress { VirtualAddress(0x40000000) }
-    const fn end_addr()   -> VirtualAddress { VirtualAddress(0xffffffff) }
+    const fn start_addr() -> VirtualAddress { VirtualAddress(0x00000000) }
+    const fn end_addr()   -> VirtualAddress { VirtualAddress(0xbfffffff) }
 }
 
 impl VirtualSpaceLand for KernelLand {

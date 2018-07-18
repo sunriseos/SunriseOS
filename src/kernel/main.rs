@@ -137,12 +137,7 @@ fn main() {
     }*/
 }
 
-static LOUIS: &'static [u8; 1318100] = include_bytes!("../img/meme3.gif");
-
-#[repr(align(4096))]
-pub struct AlignedStack([u8; 4096 * 4]);
-
-pub static mut STACK: AlignedStack = AlignedStack([0; 4096 * 4]);
+static LOUIS: &'static [u8; 1318100] = include_bytes!("../../img/meme3.gif");
 
 #[cfg(target_os = "none")]
 #[no_mangle]
@@ -157,13 +152,9 @@ pub unsafe extern fn start() -> ! {
         call memset
         add esp, 12
 
-        // Create the stack
-        mov esp, $0
-        add esp, 16383
-        mov ebp, esp
         // Save multiboot infos addr present in ebx
         push ebx
-        call common_start" : : "m"(&STACK) : : "intel", "volatile");
+        call common_start" : : : : "intel", "volatile");
     core::intrinsics::unreachable()
 }
 
@@ -173,17 +164,10 @@ pub unsafe extern fn start() -> ! {
 pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     log_impl::early_init();
 
-    // Do whatever is necessary to have a proper environment here.
-
     // Register some loggers
-    static mut VGATEXT: VGATextLogger = VGATextLogger;
-    Loggers::register_logger("VGA text mode", unsafe { &mut VGATEXT });
     static mut SERIAL: SerialLogger = SerialLogger;
     Loggers::register_logger("Serial", unsafe { &mut SERIAL });
 
-    info!("Clearing screen...");
-    let vga_screen = &mut VGATextLogger;
-    vga_screen.clear();
 
     let loggers = &mut Loggers;
     // Say hello to the world
@@ -191,10 +175,6 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     loggers.print_attr("KFS",
                              LogAttributes::new_fg(LogColor::LightCyan));
     writeln!(Loggers, "!\n");
-
-    // Set up (read: inhibit) the GDT.
-    gdt::init_gdt();
-    info!("Gdt initialized");
 
     // Parse the multiboot infos
     let boot_info = unsafe { multiboot2::load(multiboot_info_addr) };
@@ -204,35 +184,25 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     FrameAllocator::init(&boot_info);
     info!("Initialized frame allocator");
 
-    // Move the multiboot_header to a single page. Because GRUB sucks. Seriously.
-    let multiboot_info_frame = FrameAllocator::alloc_frame();
-    let total_size = unsafe {
-        // Safety: multiboot_info_addr should always be valid, provided the
-        // bootloader ಠ_ಠ
-        *(multiboot_info_addr as *const u32) as usize
-    };
-    assert!(total_size <= paging::PAGE_SIZE, "Expected multiboot info to fit in a frame");
-    unsafe {
-        // Safety: We just allocated this frame. What could go wrong?
-        core::ptr::copy(multiboot_info_addr as *const u8, multiboot_info_frame.address().addr() as *mut u8, total_size);
-    }
-    // TODO: Free the god damned multiboot frames.
-
-    // Create page tables with the right access rights for each kernel section
-    let mut page_tables =
-    unsafe { paging::map_kernel(&boot_info) };
-    info!("Mapped the kernel");
-
-    // Map the boot_info.
-    let multiboot_info_vaddr = page_tables.map_frame::<KernelLand>(multiboot_info_frame, EntryFlags::empty());
+    // Create a set of pages where the bootstrap is not mapped
+    let mut kernel_pages = paging::InactivePageTables::new();
+    info!("Created kernel pages");
 
     // Start using these page tables
-    unsafe { page_tables.enable_paging() }
-    info!("Paging on");
+    let bootstrap_pages = unsafe { kernel_pages.switch_to() };
+    info!("Switched to kernel pages");
+    bootstrap_pages.delete();
 
-    unsafe {
-        i386::multiboot::init(multiboot2::load(multiboot_info_vaddr.addr()));
-    }
+    // Set up (read: inhibit) the GDT.
+    gdt::init_gdt();
+    info!("Gdt initialized");
+
+    // Initialize the VGATEXT logger now that paging is in a stable state
+    static mut VGATEXT: VGATextLogger = VGATextLogger;
+    Loggers::register_logger("VGA text mode", unsafe { &mut VGATEXT });
+    info!("Initialized VGATEXT logger");
+
+    i386::multiboot::init(boot_info);
 
     log_impl::init();
 
@@ -283,74 +253,4 @@ pub extern fn panic_fmt(p: &::core::panic::PanicInfo) -> ! {
                      p);
 
     loop { unsafe { asm!("HLT"); } }
-}
-
-macro_rules! multiboot_header {
-    //($($expr:tt)*) => {
-    ($($name:ident: $tagty:ident :: $method:ident($($args:expr),*)),*) => {
-        #[repr(C)]
-        #[allow(dead_code)]
-        pub struct MultiBootHeader {
-            magic: u32,
-            architecture: u32,
-            header_length: u32,
-            checksum: u32,
-            $($name: $tagty),*
-        }
-
-        #[used]
-        #[cfg_attr(target_os = "none", link_section = ".multiboot_header")]
-        pub static MULTIBOOT_HEADER: MultiBootHeader = MultiBootHeader {
-            magic: 0xe85250d6,
-            architecture: 0,
-            header_length: core::mem::size_of::<MultiBootHeader>() as u32,
-            checksum: u32::max_value() - (0xe85250d6 + 0 + core::mem::size_of::<MultiBootHeader>() as u32) + 1,
-            $($name: $tagty::$method($($args),*)),*
-        };
-    }
-}
-
-#[repr(C, align(8))]
-struct EndTag {
-    tag: u16,
-    flag: u16,
-    size: u32
-}
-
-impl EndTag {
-    const fn default() -> EndTag {
-        EndTag {
-            tag: 0,
-            flag: 0,
-            size: ::core::mem::size_of::<Self>() as u32
-        }
-    }
-}
-
-#[repr(C, align(8))]
-struct FramebufferTag {
-    tag: u16,
-    flags: u16,
-    size: u32,
-    width: u32,
-    height: u32,
-    depth: u32
-}
-
-impl FramebufferTag {
-    const fn new(width: u32, height: u32, depth: u32) -> FramebufferTag {
-        FramebufferTag {
-            tag: 5,
-            flags: 0,
-            size: ::core::mem::size_of::<Self>() as u32,
-            width: width,
-            height: height,
-            depth: depth
-        }
-    }
-}
-
-multiboot_header! {
-    framebuffer: FramebufferTag::new(1280, 800, 32),
-    end: EndTag::default()
 }

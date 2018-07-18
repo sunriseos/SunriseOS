@@ -1,4 +1,4 @@
-ENTRY(start)
+ENTRY(bootstrap_start)
 OUTPUT_FORMAT(elf-i386)
 
 PHDRS

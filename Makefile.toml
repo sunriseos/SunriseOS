@@ -3,35 +3,57 @@ RUST_TARGET_PATH = "${PWD}"
 GDB_PORT = { script = ["echo ${GDB_PORT:-9090}"] }
 VNC_PORT = { script = ["echo ${VNC_PORT:-:0}"] }
 
+[tasks.bootstrap-linker]
+script = ["cp linker-scripts/bootstrap.ld link.T"]
+
+[tasks.kernel-linker]
+script = ["cp linker-scripts/kernel.ld    link.T"]
+
+[tasks.bootstrap]
+description = "Compiles the i386 bootstrap for debug"
+dependencies = ["bootstrap-linker"]
+command = "cargo"
+args = ["xbuild", "--target=i386-unknown-none", "--bin=kfs-bootstrap" ]
+
+[tasks.bootstrap-release]
+description = "Compiles the i386 bootstrap for release"
+dependencies = ["bootstrap-linker"]
+command = "cargo"
+args = ["xbuild", "--target=i386-unknown-none", "--bin=kfs-bootstrap", "--release" ]
+
+[tasks.kernel]
+description = "Compiles the kernel for debug"
+dependencies = ["kernel-linker"]
+command = "cargo"
+args = ["xbuild", "--target=i386-unknown-none", "--bin=kfs-kernel"]
+
+[tasks.kernel-release]
+description = "Compiles the kernel for release"
+dependencies = ["kernel-linker"]
+command = "cargo"
+args = ["xbuild", "--target=i386-unknown-none", "--bin=kfs-kernel", "--release" ]
+
 [tasks.iso]
 description = "Creates a bootable ISO containing the kernel and grub."
-dependencies = ["xbuild"]
+dependencies = ["bootstrap", "kernel"]
 script = [
 '''
-cp target/i386-unknown-none/debug/kfs isofiles/boot/kernel.bin
+cp target/i386-unknown-none/debug/kfs-bootstrap isofiles/boot/
+cp target/i386-unknown-none/debug/kfs-kernel    isofiles/boot/
 grub-mkrescue -o os.iso isofiles
 '''
 ]
 
 [tasks.iso-release]
 description = "Creates a bootable ISO containing the kernel and grub."
-dependencies = ["xbuild-release"]
+dependencies = ["bootstrap-release", "kernel-release"]
 script = [
 '''
-cp target/i386-unknown-none/release/kfs isofiles/boot/kernel.bin
+cp target/i386-unknown-none/release/kfs-bootstrap isofiles/boot/
+cp target/i386-unknown-none/release/kfs-kernel    isofiles/boot/
 grub-mkrescue -o os.iso isofiles
 '''
 ]
-
-[tasks.xbuild]
-description = "Runs the rust compiler."
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--bin=kfs"]
-
-[tasks.xbuild-release]
-description = "Runs the rust compiler."
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--release", "--bin=kfs"]
 
 [tasks.qemu]
 description = "Runs the bootable ISO in qemu."
@@ -46,15 +68,23 @@ command = "qemu-system-i386"
 args = ["-cdrom", "os.iso", "-serial", "stdio", "-vnc", "${VNC_PORT}", "-no-reboot", "-gdb", "tcp::${GDB_PORT}", "-S", "-d", "int,cpu_reset"]
 
 [tasks.doc]
-description = "Document the kernel"
-dependencies = ["xbuild"]
+description = "Document the project"
 env = { "RUSTFLAGS" = "--sysroot=${PWD}/target/sysroot",  "RUSTDOCFLAGS" = "--sysroot=${PWD}/target/sysroot"}
 command = "cargo"
-args = ["rustdoc", "--target=i386-unknown-none", "--bin=kfs"]
+args = ["rustdoc", "--target=i386-unknown-none" ]
+
+[tasks.fulldoc-bootstrap]
+description = "Document the bootstrap fully"
+env = { "RUSTFLAGS" = "--sysroot=${PWD}/target/sysroot",  "RUSTDOCFLAGS" = "--sysroot=${PWD}/target/sysroot"}
+command = "cargo"
+args = ["rustdoc", "--target=i386-unknown-none", "--bin=kfs-bootstrap", "--", "--document-private-items"]
+
+[tasks.fulldoc-kernel]
+description = "Document the kernel fully"
+env = { "RUSTFLAGS" = "--sysroot=${PWD}/target/sysroot",  "RUSTDOCFLAGS" = "--sysroot=${PWD}/target/sysroot"}
+command = "cargo"
+args = ["rustdoc", "--target=i386-unknown-none", "--bin=kfs-kernel", "--", "--document-private-items"]
 
 [tasks.fulldoc]
-description = "Document the kernel"
-dependencies = ["xbuild"]
-env = { "RUSTFLAGS" = "--sysroot=${PWD}/target/sysroot",  "RUSTDOCFLAGS" = "--sysroot=${PWD}/target/sysroot"}
-command = "cargo"
-args = ["rustdoc", "--target=i386-unknown-none", "--bin=kfs", "--", "--document-private-items"]
+description = "Document the project fully"
+dependencies = ["fulldoc-bootstrap", "fulldoc-kernel"]
