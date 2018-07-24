@@ -1,5 +1,7 @@
 [env]
 RUST_TARGET_PATH = "${PWD}"
+GDB_PORT = { script = ["echo ${GDB_PORT:-9090}"] }
+VNC_PORT = { script = ["echo ${VNC_PORT:-:0}"] }
 
 [tasks.bootstrap-linker]
 script = ["cp linker-scripts/bootstrap.ld link.T"]
@@ -57,7 +59,7 @@ grub-mkrescue -o os.iso isofiles
 description = "Runs the bootable ISO in qemu."
 dependencies = ["iso-release"]
 command = "qemu-system-i386"
-args = ["-cdrom", "os.iso", "-serial", "stdio", "-vnc", ":0", "-no-reboot", "-enable-kvm"]
+args = ["-cdrom", "os.iso", "-serial", "stdio", "-vnc", "${VNC_PORT}", "-no-reboot", "-enable-kvm"]
 
 [tasks.qemu-debug]
 description = "Runs the bootable ISO in qemu with gdb support"
