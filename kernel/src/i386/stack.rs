@@ -64,6 +64,19 @@ impl KernelStack {
             })
     }
 
+    /// Retrieves the current stack from $ebp
+    ///
+    /// # Safety
+    ///
+    /// We must be using a kernel stack ! Not any random stack
+    pub unsafe fn get_current_stack() -> KernelStack {
+        let ebp_ptr: usize;
+        asm!("mov $0, ebp" : "=r"(ebp_ptr) ::: "intel" );
+        let stack_bottom = ebp_ptr & (0xFFFFFFFF << STACK_ALIGNEMENT); // 0x....0000
+
+        KernelStack { stack_address: VirtualAddress(stack_bottom) }
+    }
+
     /// We keep 2 poison pointers for fake saved ebp and saved esp at the base of the stack
     const STACK_POISON_SIZE: usize = 2 * size_of::<usize>();
 
@@ -96,11 +109,91 @@ impl KernelStack {
         unreachable!();
     }
 
-    // TODO get current stack pointer from $esp
+    /// Gets the thread info struct at the top of the stack
+    pub fn get_thread_info(&mut self) -> *mut ThreadInfoInStack {
+        let stack_top = self.stack_address.addr() | (!(0xFFFFFFFF << STACK_ALIGNEMENT)); // 0x....ffff
+        stack_top as *mut ThreadInfoInStack
+    }
 
-    // TODO the `current` macro
+    /// Dumps the stack on all the Loggers, displaying it in a frame-by-frame format
+    ///
+    /// # Safety
+    ///
+    /// We must be using a kernel stack ! Not any random stack
+    pub unsafe fn dump_current_stack() {
+        let mut ebp;
+        let mut esp;
+        let mut eip;
+        asm!("      mov $0, ebp
+                    mov $1, esp
+
+                    // eip can only be read through the stack after a call instruction
+                    call read_eip
+              read_eip:
+                    pop $2"
+            : "=r"(ebp), "=r"(esp), "=r"(eip) ::: "volatile", "intel" );
+        let stack = Self::get_current_stack();
+
+        let stack_bottom = (stack.stack_address.addr() + PAGE_SIZE) as *const u8;
+        let stack_slice = ::core::slice::from_raw_parts(stack_bottom,
+                                                        STACK_SIZE * PAGE_SIZE - size_of::<ThreadInfoInStack>());
+
+        dump_stack(stack_slice, stack_bottom as usize, esp, ebp, eip);
+    }
 
     // TODO destroy the stack ?
+}
+
+/* ********************************************************************************************** */
+
+/// Dumps a stack on all the Loggers, displaying it in a frame-by-frame format
+/// The stack is passed as a slice. The function starts at given esp, and goes down, frame by frame.
+/// The original address of the stack must be given, this way it can even work on a stack that is not identity mapped,
+/// therefore it should even be possible to use it on a user stack
+///
+/// The function will stop if it encounters:
+/// * a null pointer as saved ebp/eip (expected at the bottom of the stack)
+/// * any ebp/esp falling outside of the stack
+///
+/// The data of every stack frame will be hexdumped
+pub fn dump_stack(stack: &[u8], orig_address: usize, mut esp: usize, mut ebp: usize, mut eip: usize) {
+    use logger::*;
+    use core::fmt::Write;
+    use utils::print_hexdump_as_if_at_addr;
+
+    writeln!(Loggers, "---------- Dumping stack ---------");
+    writeln!(Loggers, "# Stack start: {:#010x}, Stack end: {:#010x}", orig_address, orig_address + stack.len());
+    let mut frame_nb = 0;
+    loop {
+        if eip == 0x00000000 || ebp == 0x00000000 { break; } // reached end of stack
+
+        writeln!(Loggers, "> Frame #{} - eip: {:#010x} - esp: {:#010x} - ebp: {:#010x}", frame_nb, eip, esp, ebp);
+        let esp_off = esp - orig_address;
+        let ebp_off = ebp - orig_address;
+        if esp_off >= stack.len() { writeln!(Loggers, "Invalid esp"); break; }
+        if ebp_off >  stack.len() { writeln!(Loggers, "Invalid ebp"); break; }
+        let frame_slice = &stack[esp_off..ebp_off];
+        print_hexdump_as_if_at_addr(frame_slice, orig_address + esp_off);
+
+        // fetch saved ebp/eip at [ebp]
+        if ebp_off + 8 > stack.len() { writeln!(Loggers, "Cannot access saved ebp/eip"); break; }
+        let saved_ebp_addr = &stack[ebp_off + 0] as *const u8 as *const usize;
+        let saved_eip_addr = &stack[ebp_off + 4] as *const u8 as *const usize;
+
+        writeln!(Loggers, "Saved ebp: {:#010x} @ {:#010x} (ebp) - Saved eip: {:#010x} @ {:#010x} (ebp + 4)",
+                 unsafe {*saved_ebp_addr}, saved_ebp_addr as usize,
+                 unsafe {*saved_eip_addr}, saved_eip_addr as usize);
+
+        // move esp down one stack frame
+        esp = ebp;
+
+        // move ebp and eip to the saved value
+        ebp = unsafe { *saved_ebp_addr };
+        eip = unsafe { *saved_eip_addr };
+
+        frame_nb += 1;
+    }
+    writeln!(Loggers, "-------- End of stack dump --------");
 }
 
 /* ********************************************************************************************** */

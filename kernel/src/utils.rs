@@ -3,14 +3,23 @@
 use logger::Loggers;
 use core::fmt::Write;
 
-pub fn print_hexdump(addr: &[u8]) {
-    for chunk in addr.chunks(16) {
+/// Displays memory as hexdump
+pub fn print_hexdump(mem: &[u8]) {
+    // just print as if at its own address ... which it is
+    print_hexdump_as_if_at_addr(mem, mem.as_ptr() as usize)
+}
+
+/// Makes a hexdump of a slice, but display different addresses.
+/// Used for displaying memory areas which are not identity mapped in the current pages
+pub fn print_hexdump_as_if_at_addr(mem: &[u8], display_addr: usize) {
+    for chunk in mem.chunks(16) {
         let mut arr = [None; 16];
         for (i, elem) in chunk.iter().enumerate() {
             arr[i] = Some(*elem);
         }
 
-        let _ = write!(Loggers, "{:#0x}:", chunk.as_ptr() as usize);
+        let offset_in_mem = chunk.as_ptr() as usize - mem.as_ptr() as usize;
+        let _ = write!(Loggers, "{:#0x}:", display_addr + offset_in_mem);
 
         for pair in arr.chunks(2) {
             let _ = write!(Loggers, " ");

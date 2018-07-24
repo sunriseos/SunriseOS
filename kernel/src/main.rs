@@ -101,6 +101,9 @@ fn main() {
 
     info!("Testing some string heap alloc: {}", String::from("Hello World"));
 
+    info!("Dumping current stack");
+    unsafe { stack::KernelStack::dump_current_stack() };
+
     info!("Testing keyboard:");
     loop {
         write!(Loggers, "{}", devices::ps2::read_key());
