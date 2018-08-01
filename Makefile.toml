@@ -4,36 +4,43 @@ GDB_PORT = { script = ["echo ${GDB_PORT:-9090}"] }
 VNC_PORT = { script = ["echo ${VNC_PORT:-:0}"] }
 
 [tasks.bootstrap-linker]
+workspace = false
 script = ["cp linker-scripts/bootstrap.ld link.T"]
 
 [tasks.kernel-linker]
+workspace = false
 script = ["cp linker-scripts/kernel.ld    link.T"]
 
 [tasks.bootstrap]
+workspace = false
 description = "Compiles the i386 bootstrap for debug"
 dependencies = ["bootstrap-linker"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-bootstrap" ]
 
 [tasks.bootstrap-release]
+workspace = false
 description = "Compiles the i386 bootstrap for release"
 dependencies = ["bootstrap-linker"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-bootstrap", "--release" ]
 
 [tasks.kernel]
+workspace = false
 description = "Compiles the kernel for debug"
 dependencies = ["kernel-linker"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-kernel"]
 
 [tasks.kernel-release]
+workspace = false
 description = "Compiles the kernel for release"
 dependencies = ["kernel-linker"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-kernel", "--release" ]
 
 [tasks.iso]
+workspace = false
 description = "Creates a bootable ISO containing the kernel and grub."
 dependencies = ["bootstrap", "kernel"]
 script = [
@@ -45,6 +52,7 @@ grub-mkrescue -o os.iso isofiles
 ]
 
 [tasks.iso-release]
+workspace = false
 description = "Creates a bootable ISO containing the kernel and grub."
 dependencies = ["bootstrap-release", "kernel-release"]
 script = [
@@ -56,35 +64,41 @@ grub-mkrescue -o os.iso isofiles
 ]
 
 [tasks.qemu]
+workspace = false
 description = "Runs the bootable ISO in qemu."
 dependencies = ["iso-release"]
 command = "qemu-system-i386"
 args = ["-cdrom", "os.iso", "-serial", "stdio", "-vnc", "${VNC_PORT}", "-no-reboot", "-enable-kvm"]
 
 [tasks.qemu-debug]
+workspace = false
 description = "Runs the bootable ISO in qemu with gdb support"
 dependencies = ["iso"]
 command = "qemu-system-i386"
 args = ["-cdrom", "os.iso", "-serial", "stdio", "-vnc", "${VNC_PORT}", "-no-reboot", "-gdb", "tcp::${GDB_PORT}", "-S", "-d", "int,cpu_reset"]
 
 [tasks.doc]
+workspace = false
 description = "Document the project"
 env = { "RUSTFLAGS" = "--sysroot=${PWD}/target/sysroot",  "RUSTDOCFLAGS" = "--sysroot=${PWD}/target/sysroot"}
 command = "cargo"
 args = ["rustdoc", "--target=i386-unknown-none" ]
 
 [tasks.fulldoc-bootstrap]
+workspace = false
 description = "Document the bootstrap fully"
 env = { "RUSTFLAGS" = "--sysroot=${PWD}/target/sysroot",  "RUSTDOCFLAGS" = "--sysroot=${PWD}/target/sysroot"}
 command = "cargo"
 args = ["rustdoc", "--target=i386-unknown-none", "--package=kfs-bootstrap", "--", "--document-private-items"]
 
 [tasks.fulldoc-kernel]
+workspace = false
 description = "Document the kernel fully"
 env = { "RUSTFLAGS" = "--sysroot=${PWD}/target/sysroot",  "RUSTDOCFLAGS" = "--sysroot=${PWD}/target/sysroot"}
 command = "cargo"
 args = ["rustdoc", "--target=i386-unknown-none", "--package=kfs-kernel", "--", "--document-private-items"]
 
 [tasks.fulldoc]
+workspace = false
 description = "Document the project fully"
 dependencies = ["fulldoc-bootstrap", "fulldoc-kernel"]
