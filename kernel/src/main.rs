@@ -33,7 +33,7 @@ extern crate smallvec;
 
 use ascii::AsAsciiStr;
 use core::fmt::Write;
-use alloc::*;
+use alloc::prelude::*;
 
 mod event;
 mod logger;

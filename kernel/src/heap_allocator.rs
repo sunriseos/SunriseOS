@@ -98,6 +98,6 @@ unsafe impl<'a> GlobalAlloc for Allocator {
 // *if* no other crate has already defined `oom`
 #[lang = "oom"]
 #[no_mangle]
-pub fn rust_oom() -> ! {
+pub fn rust_oom(_: Layout) -> ! {
     panic!("OOM")
 }

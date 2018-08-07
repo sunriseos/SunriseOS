@@ -63,8 +63,7 @@
 //use std::env;
 use core::mem;
 use core::fmt::{self, Write};
-use alloc::*;
-use alloc::string::ToString;
+use alloc::prelude::*;
 use log::{Level, LevelFilter, Record, Metadata};
 use logger::Loggers;
 use smallvec::SmallVec;

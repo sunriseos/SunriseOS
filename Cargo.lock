@@ -34,12 +34,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "color_quant"
 version = "1.0.1"
-source = "git+https://github.com/roblabla/color_quant#84d11b386de5730680267e7267bff4467b4490cf"
+source = "git+https://github.com/roblabla/color_quant#2c2e9b715eed47f0130998d7fef3a4bc9f5da85f"
 
 [[package]]
 name = "gif"
 version = "0.10.0"
-source = "git+https://github.com/roblabla/image-gif#780f97f32157412d703430dfd4e87f93f198864e"
+source = "git+https://github.com/roblabla/image-gif#94bd7a854490f84be86a0334d271ff233eb49610"
 dependencies = [
  "color_quant 1.0.1 (git+https://github.com/roblabla/color_quant)",
  "lzw 0.10.0 (git+https://github.com/roblabla/lzw)",
@@ -56,10 +56,10 @@ dependencies = [
  "byteorder 1.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "gif 0.10.0 (git+https://github.com/roblabla/image-gif)",
  "lazy_static 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "linked_list_allocator 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "linked_list_allocator 0.6.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "multiboot2 0.5.0 (git+https://github.com/roblabla/multiboot2-elf64)",
- "smallvec 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "smallvec 0.6.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "spin 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "static_assertions 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "xmas-elf 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -76,10 +76,10 @@ dependencies = [
  "byteorder 1.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "gif 0.10.0 (git+https://github.com/roblabla/image-gif)",
  "lazy_static 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "linked_list_allocator 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "linked_list_allocator 0.6.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "multiboot2 0.5.0 (git+https://github.com/roblabla/multiboot2-elf64)",
- "smallvec 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "smallvec 0.6.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "spin 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "static_assertions 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "xmas-elf 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -95,7 +95,7 @@ dependencies = [
 
 [[package]]
 name = "linked_list_allocator"
-version = "0.6.2"
+version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "spin 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -112,7 +112,7 @@ dependencies = [
 [[package]]
 name = "lzw"
 version = "0.10.0"
-source = "git+https://github.com/roblabla/lzw#9f529267b1e8aa659a43d9444bc8257cd88998d8"
+source = "git+https://github.com/roblabla/lzw#8469a6710856967536b25aa5695ca26cadcab07c"
 
 [[package]]
 name = "multiboot2"
@@ -129,8 +129,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "smallvec"
-version = "0.6.2"
+version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "unreachable 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
 
 [[package]]
 name = "spin"
@@ -140,6 +143,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "static_assertions"
 version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "unreachable"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "void 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "void"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
@@ -165,13 +181,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum color_quant 1.0.1 (git+https://github.com/roblabla/color_quant)" = "<none>"
 "checksum gif 0.10.0 (git+https://github.com/roblabla/image-gif)" = "<none>"
 "checksum lazy_static 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "c8f31047daa365f19be14b47c29df4f7c3b581832407daabe6ae77397619237d"
-"checksum linked_list_allocator 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)" = "c8ff3122438431172229f65f54f3c7eb9924a9f14e0df1895756cb19834e3b93"
+"checksum linked_list_allocator 0.6.3 (registry+https://github.com/rust-lang/crates.io-index)" = "655d57c71827fe0891ce72231b6aa5e14033dae3f604609e6a6f807267c1678d"
 "checksum log 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)" = "6fddaa003a65722a7fb9e26b0ce95921fe4ba590542ced664d8ce2fa26f9f3ac"
 "checksum lzw 0.10.0 (git+https://github.com/roblabla/lzw)" = "<none>"
 "checksum multiboot2 0.5.0 (git+https://github.com/roblabla/multiboot2-elf64)" = "<none>"
 "checksum nodrop 0.1.12 (registry+https://github.com/rust-lang/crates.io-index)" = "9a2228dca57108069a5262f2ed8bd2e82496d2e074a06d1ccc7ce1687b6ae0a2"
-"checksum smallvec 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)" = "312a7df010092e73d6bbaf141957e868d4f30efd2bfd9bb1028ad91abec58514"
+"checksum smallvec 0.6.4 (registry+https://github.com/rust-lang/crates.io-index)" = "211a489e65e94b103926d2054ae515a1cdb5d515ea0ef414fee23b7e043ce748"
 "checksum spin 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)" = "7e4deb3c2455c73779e6d3eebceae9599fc70957e54c69fe88f93aa48e62f432"
 "checksum static_assertions 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)" = "c19be23126415861cb3a23e501d34a708f7f9b2183c5252d690941c2e69199d5"
+"checksum unreachable 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "382810877fe448991dfc7f0dd6e3ae5d58088fd0ea5e35189655f84e6814fa56"
+"checksum void 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
 "checksum xmas-elf 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)" = "22678df5df766e8d1e5d609da69f0c3132d794edf6ab5e75e7abcd2270d4cf58"
 "checksum zero 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "5f1bc8a6b2005884962297587045002d8cfb8dcec9db332f4ca216ddc5de82c5"
