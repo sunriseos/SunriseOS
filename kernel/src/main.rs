@@ -30,6 +30,8 @@ extern crate gif;
 #[macro_use]
 extern crate log;
 extern crate smallvec;
+extern crate font_rs;
+extern crate hashmap_core;
 
 use ascii::AsAsciiStr;
 use core::fmt::Write;
@@ -43,6 +45,7 @@ use i386::mem::frame_alloc;
 pub use logger::*;
 pub use devices::vgatext::VGATextLogger;
 pub use devices::rs232::SerialLogger;
+pub use devices::vbe::VBELogger;
 use i386::mem::PhysicalAddress;
 use i386::mem::frame_alloc::Frame;
 use paging::KernelLand;
@@ -72,7 +75,7 @@ fn main() {
     loggers.println_attr("such hues",
                           LogAttributes::new_fg_bg(LogColor::Magenta, LogColor::LightGreen));
     loggers.println_attr("very polychromatic",
-                           LogAttributes::new_fg_bg(LogColor::Yellow, LogColor::Pink));
+                           LogAttributes::new_fg_bg(LogColor::Yellow, LogColor::LightMagenta));
 
     {
         let mymem = FrameAllocator::alloc_frame();
@@ -228,6 +231,10 @@ pub fn common_start_continue_stack() -> ! {
 
     info!("Enabling interrupts");
     unsafe { interrupts::init(); }
+
+    info!("Registering VBE logger");
+    static mut VBE_LOGGER: VBELogger = VBELogger;
+    Loggers::register_logger("VBE", unsafe { &mut VBE_LOGGER });
 
     info!("Calling main()");
 

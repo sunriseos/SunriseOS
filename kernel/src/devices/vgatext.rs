@@ -20,22 +20,14 @@ static G_VGATEXT: Once<Mutex<VGATextLoggerInternal>> = Once::new();
 #[repr(u8)]
 /// The possible colors of VGA-compatible text mode
 pub enum VGATextColor {
-    Black      = 0,
-    Blue       = 1,
-    Green      = 2,
-    Cyan       = 3,
-    Red        = 4,
-    Magenta    = 5,
-    Brown      = 6,
-    LightGray  = 7,
-    DarkGray   = 8,
-    LightBlue  = 9,
-    LightGreen = 10,
-    LightCyan  = 11,
-    LightRed   = 12,
-    Pink       = 13,
-    Yellow     = 14,
-    White      = 15,
+    Black        = 0,   DarkGray     = 8,
+    Blue         = 1,   LightBlue    = 9,
+    Green        = 2,   LightGreen   = 10,
+    Cyan         = 3,   LightCyan    = 11,
+    Red          = 4,   LightRed     = 12,
+    Magenta      = 5,   LightMagenta = 13,
+    Brown        = 6,   Yellow       = 14,
+    LightGray    = 7,   White        = 15,
 }
 
 impl VGATextColor {
@@ -52,7 +44,6 @@ impl VGATextColor {
             LogColor::Red           => VGATextColor::Red,
             LogColor::Magenta       => VGATextColor::Magenta,
             LogColor::Brown         => VGATextColor::Brown,
-            LogColor::Pink          => VGATextColor::Pink,
             LogColor::Yellow        => VGATextColor::Yellow,
             LogColor::LightGray     => VGATextColor::LightGray,
             LogColor::DarkGray      => VGATextColor::DarkGray,
@@ -60,10 +51,11 @@ impl VGATextColor {
             LogColor::LightGreen    => VGATextColor::LightGreen,
             LogColor::LightCyan     => VGATextColor::LightCyan,
             LogColor::LightRed      => VGATextColor::LightRed,
+            LogColor::LightMagenta  => VGATextColor::Magenta,
 
             // fallback colors
             LogColor::LightYellow   => VGATextColor::Yellow,
-            LogColor::LightMagenta  => VGATextColor::Magenta,
+            LogColor::Pink          => VGATextColor::LightMagenta,
         }
     }
 }

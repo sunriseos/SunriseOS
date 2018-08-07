@@ -24,7 +24,7 @@ impl Allocator {
 
         assert!(new_heap_top - heap_bottom < RESERVED_HEAP_SIZE, "New heap grows over reserved heap size");
 
-        info!("EXTEND {:#010x}", new_heap_top);
+        debug!("EXTEND {:#010x}", new_heap_top);
 
         for new_page in (heap_top..new_heap_top).step_by(paging::PAGE_SIZE) {
             let mut active_pages = paging::ACTIVE_PAGE_TABLES.lock();
@@ -78,12 +78,12 @@ unsafe impl<'a> GlobalAlloc for Allocator {
             _ => allocation
         }.ok().map_or(0 as *mut u8, |allocation| allocation.as_ptr());
 
-        info!("ALLOC  {:#010x?}, size {:#x}", alloc, layout.size());
+        debug!("ALLOC  {:#010x?}, size {:#x}", alloc, layout.size());
         alloc
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        info!("FREE   {:#010x?}, size {:#x}", ptr, layout.size());
+        debug!("FREE   {:#010x?}, size {:#x}", ptr, layout.size());
         if cfg!(debug_assertions) {
             let p = ptr as usize;
             for i in p..(p + layout.size()) {
