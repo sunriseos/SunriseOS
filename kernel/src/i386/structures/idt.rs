@@ -473,7 +473,7 @@ pub struct IdtEntry<F> {
 pub type HandlerFunc = extern "x86-interrupt" fn(&mut ExceptionStackFrame);
 /// A handler function for an exception that pushes an error code.
 pub type HandlerFuncWithErrCode =
-    extern "x86-interrupt" fn(&mut ExceptionStackFrame, error_code: u64);
+    extern "x86-interrupt" fn(&mut ExceptionStackFrame, error_code: u32);
 /// A page fault handler function that pushes a page fault error code.
 pub type PageFaultHandlerFunc =
     extern "x86-interrupt" fn(&mut ExceptionStackFrame, error_code: PageFaultErrorCode);
@@ -498,7 +498,7 @@ impl<F> IdtEntry<F> {
     ///
     /// The function returns a mutable reference to the entry's options that allows
     /// further customization.
-    fn set_handler_addr(&mut self, addr: u32) -> &mut EntryOptions {
+    pub unsafe fn set_handler_addr(&mut self, addr: u32) -> &mut EntryOptions {
         use i386::instructions::segmentation;
 
         self.pointer_low = addr as u16;
@@ -522,7 +522,9 @@ macro_rules! impl_set_handler_fn {
             /// The function returns a mutable reference to the entry's options that allows
             /// further customization.
             pub fn set_handler_fn(&mut self, handler: $h) -> &mut EntryOptions {
-                self.set_handler_addr(handler as u32)
+                unsafe {
+                    self.set_handler_addr(handler as u32)
+                }
             }
         }
     }

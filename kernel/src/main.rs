@@ -107,6 +107,11 @@ fn main() {
     info!("Dumping current stack");
     unsafe { stack::KernelStack::dump_current_stack() };
 
+    info!("Testing syscalls");
+    let syscall_result =
+    unsafe { interrupts::syscall(42, 1, 2, 3, 4, 5, 6) };
+    info!("Syscall result: {}", syscall_result);
+
     info!("Testing keyboard:");
     loop {
         write!(Loggers, "{}", devices::ps2::read_key());
