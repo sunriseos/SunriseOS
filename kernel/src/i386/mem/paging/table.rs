@@ -364,7 +364,6 @@ pub trait PageTablesSet {
     /// Panics if address is not page-aligned.
     fn map_page_guard(&mut self, address: VirtualAddress) {
         // Just map to frame 0, it will page fault anyway since PRESENT is missing
-        debug!("Guarding {}", address);
         self.map_to(MappingType::Guard, address);
     }
 
@@ -484,6 +483,30 @@ impl<T: I386PageTablesSet> PageTablesSet for T {
             PageState::Present(table) => table
         };
         table.entries()[table_off].pointed_frame()
+    }
+
+    // Optimize map_range_page_guard, guard whole directory entries.
+    fn map_range_page_guard(&mut self, address: VirtualAddress, page_nb: usize) {
+        assert_eq!(address.addr() % PAGE_SIZE, 0, "Address is not page aligned");
+        let address_end = address.addr() + (page_nb * PAGE_SIZE);
+
+        // Map beginning small pages.
+        let start_address_end = ::core::cmp::min(address_end, ::utils::align_up(address.addr(), ENTRY_COUNT * PAGE_SIZE));
+        for current_address in (address.addr()..start_address_end).step_by(PAGE_SIZE) {
+            self.map_page_guard(VirtualAddress(current_address));
+        }
+        // Map middle big page guards.
+        let middle_address_end = ::utils::align_down(address_end, ENTRY_COUNT * PAGE_SIZE);
+        let first_page_table = start_address_end / (ENTRY_COUNT * PAGE_SIZE);
+        let last_page_table = middle_address_end / (ENTRY_COUNT * PAGE_SIZE);
+        for table_nbr in first_page_table..last_page_table {
+            assert!(self.get_directory().entries()[table_nbr].is_unused(), "Tried to map an already mapped entry");
+            self.get_directory().guard_nth_entry::<<<Self as I386PageTablesSet>::PageDirectoryType as PageDirectoryTrait>::FlusherType>(table_nbr);
+        }
+        // Map end small pages.
+        for current_address in (middle_address_end..address_end).step_by(PAGE_SIZE) {
+            self.map_page_guard(VirtualAddress(current_address))
+        }
     }
 
     /// Finds a virtual space hole that can contain page_nb consecutive pages
