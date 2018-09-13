@@ -47,8 +47,7 @@ extern "C" fn syscall_handler() {
     extern fn syscall_handler_inner(syscall_nr: u32, arg1: u32, arg2: u32, arg3: u32, arg4: u32, arg5: u32, arg6: u32) -> u32 {
         use logger::Logger;
         use ::devices::rs232::SerialLogger;
-        let serial = &mut SerialLogger;
-        writeln!(serial, "Handling syscall - {} - arg1: {}, arg2: {}, arg3: {}, arg4: {}, arg5: {}, arg6: {}",
+        info!("Handling syscall {} - arg1: {}, arg2: {}, arg3: {}, arg4: {}, arg5: {}, arg6: {}",
                 syscall_nr, arg1, arg2, arg3, arg4, arg5, arg6);
         match syscall_nr {
             1 => { info!("syscall 1 !"); 0},

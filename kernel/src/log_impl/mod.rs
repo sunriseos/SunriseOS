@@ -36,7 +36,7 @@ pub fn early_init() {
         .build();
     log::set_logger(LOGGER.call_once(|| Logger { filter: RwLock::new(filter) } ))
         .expect("log_impl::init to be called before logger is initialized");
-    log::set_max_level(LevelFilter::Debug);
+    log::set_max_level(LevelFilter::Trace);
     info!("Logging enabled");
 }
 
