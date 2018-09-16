@@ -34,6 +34,16 @@ pub mod instructions {
             asm!("lgdt ($0)" :: "r" (gdt) : "memory");
         }
 
+        /// Store GDT table.
+        pub fn sgdt() -> DescriptorTablePointer {
+            unsafe {
+                let mut out: DescriptorTablePointer = ::core::mem::uninitialized();
+                asm!("sgdt ($0)" : "=r" (&mut out));
+                out
+            }
+        }
+
+
         /// Load LDT table.
         pub unsafe fn lldt(ldt: SegmentSelector) {
             asm!("lldt $0" :: "r" (ldt.0) : "memory");
@@ -164,7 +174,7 @@ impl PrivilegeLevel {
 /// information about a task. The TSS is primarily suited for hardware multitasking,
 /// where each individual process has its own TSS.
 /// ([see OSDEV](https://wiki.osdev.org/TSS))
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct TssStruct {
     _reserved1: u16,
@@ -207,7 +217,10 @@ pub struct TssStruct {
     _reservedc: u16,
 }
 
+const_assert_eq!(tss_struct_size; ::core::mem::size_of::<TssStruct>(), 0x68);
+
 use i386::structures::gdt::SegmentSelector;
+use i386::mem::PhysicalAddress;
 
 impl TssStruct {
     pub fn new(cr3: u32, sp0: (SegmentSelector, usize), sp1: (SegmentSelector, usize), sp2: (SegmentSelector, usize), ldt: SegmentSelector) -> TssStruct {
@@ -222,5 +235,9 @@ impl TssStruct {
             ldt_selector: ldt.0,
             ..Default::default()
         }
+    }
+
+    pub fn set_ip(&mut self, eip: u32) {
+        self.eip = eip;
     }
 }

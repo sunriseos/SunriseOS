@@ -5,6 +5,7 @@
 
 use i386::pio::Pio;
 use io::Io;
+use spin::{Once, Mutex};
 
 bitflags! {
     /// The first control word sent to the PIC.
@@ -32,66 +33,103 @@ const ICW4_8086: u8     = 0x01;       /* 8086/88 (MCS-80/85) mode */
 //const icw4_buf_master   = 0x0C;       /* Buffered mode/master */
 //const icw4_sfnm         = 0x10;       /* Special fully nested (not) */
 
-pub static mut MASTER: Pic = unsafe { Pic::new(0x20) };
-pub static mut SLAVE: Pic = unsafe { Pic::new(0xA0) };
+static PIC: Once<Pic> = Once::new();
+
+/// Acquires a reference to the PIC, initializing it if it wasn't already setup.
+pub fn get() -> &'static Pic {
+    PIC.call_once(|| unsafe {
+        Pic::new()
+    })
+}
+
+/// Initializes the PIC if it has not yet been initialized. Otherwise, does nothing.
+pub fn init() {
+    PIC.call_once(|| unsafe {
+        Pic::new()
+    });
+}
 
 /// A single PIC8259 device.
-pub struct Pic {
+struct InternalPic {
     port_cmd: Pio<u8>,
     port_data: Pio<u8>
 }
 
-fn io_wait() {
-    // Port 0x80 is used for 'checkpoints' during POST.
-    // The Linux kernel seems to think it is free for use :-/
-    unsafe { Pio::<u8>::new(0x80).write(0); }
-}
-
-/// setup the 8259 pic. redirect the IRQ to user interrupt 32+.
-pub unsafe fn init() {
-    // save masks
-    let a1 = MASTER.port_data.read();
-    let a2 = SLAVE.port_data.read();
-
-    // starts the initialization sequence (in cascade mode)
-    MASTER.port_cmd.write((ICW1::INIT | ICW1::ICW4).bits());
-    io_wait();
-    SLAVE.port_cmd.write((ICW1::INIT | ICW1::ICW4).bits());
-    io_wait();
-    // ICW2: Master PIC vector offset
-    MASTER.port_data.write(0x20);
-    io_wait();
-    // ICW2: Slave PIC vector offset
-    SLAVE.port_data.write(0x28);
-    io_wait();
-    // ICW3: tell Master PIC that there is a slave PIC at IRQ2 (0000 0100)
-    MASTER.port_data.write(4);
-    io_wait();
-    // ICW3: tell Slave PIC its cascade identity (0000 0010)
-    SLAVE.port_data.write(2);
-    io_wait();
-
-    MASTER.port_data.write(ICW4_8086);
-    io_wait();
-    SLAVE.port_data.write(ICW4_8086);
-    io_wait();
-
-    MASTER.port_data.write(a1);   // restore saved masks.
-    SLAVE.port_data.write(a2);
+/// A master/slave PIC setup, as commonly found on IBM PCs.
+pub struct Pic {
+    master: Mutex<InternalPic>,
+    slave: Mutex<InternalPic>,
 }
 
 impl Pic {
-    /// Creates a new Pic device.
+    /// Creates a new PIC, and initializes it.
+    ///
+    /// Interrupts will be mapped to IRQ [32..48]
+    ///
+    /// # Safety
+    ///
+    /// This should only be called once! If called more than once, then both Pics instances
+    /// will share the same underlying Pios, but different mutexes protecting them!
+    unsafe fn new() -> Pic {
+        Pic {
+            master: Mutex::new(InternalPic::new(0x20, true, 32)),
+            slave: Mutex::new(InternalPic::new(0xA0, false, 32 + 8)),
+        }
+    }
+
+    /// Mask the given IRQ number. Will redirect the call to the right Pic device.
+    pub fn mask(&self, irq: u8) {
+        if irq < 8 {
+            self.master.lock().mask(irq);
+        } else {
+            self.slave.lock().mask(irq - 8);
+        }
+    }
+
+
+    /// Acknowledges an IRQ, allowing the PIC to send a new IRQ on the next
+    /// cycle.
+    pub fn acknowledge(&self, irq: u8) {
+        self.master.lock().acknowledge();
+        if irq >= 8 {
+            self.slave.lock().acknowledge();
+        }
+    }
+}
+
+impl InternalPic {
+    /// Setup the 8259 pic. Redirect the IRQ to the chosen interrupt vector.
     ///
     /// # Safety
     ///
     /// The port should map to a proper PIC device. Sending invalid data to a
-    /// random device can lead to memory unsafety.
-    const unsafe fn new(port_base: u16) -> Pic {
-        Pic {
+    /// random device can lead to memory unsafety. Furthermore, care should be
+    /// taken not to share the underlying Pio.
+    unsafe fn new(port_base: u16, is_master: bool, vector_offset: u8) -> InternalPic {
+        let mut pic = InternalPic {
             port_cmd: Pio::new(port_base),
             port_data: Pio::new(port_base + 1)
-        }
+        };
+
+        // save masks
+        let mask_backup = pic.port_data.read();
+
+        // starts the initialization sequence (in cascade mode)
+        pic.port_cmd.write((ICW1::INIT | ICW1::ICW4).bits());
+
+        // ICW2: Master PIC vector offset
+        pic.port_data.write(vector_offset);
+
+        // ICW3: tell Master PIC that there is a slave PIC at IRQ2 (0000 0100)
+        pic.port_data.write(if is_master { 4 } else { 2 });
+
+        // ICW4: ??
+        pic.port_data.write(ICW4_8086);
+
+        // restore saved masks.
+        pic.port_data.write(mask_backup);
+
+        pic
     }
 
     /// Acknowledges an IRQ, allowing the PIC to send a new IRQ on the next
@@ -100,5 +138,12 @@ impl Pic {
         unsafe {
             self.port_cmd.write(0x20);
         }
+    }
+
+    /// Mask the given IRQ
+    pub fn mask(&mut self, irq: u8) {
+        let mut data = self.port_data.read();
+        data |= (1 << irq);
+        self.port_data.write(data);
     }
 }

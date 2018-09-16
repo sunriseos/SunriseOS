@@ -5,17 +5,20 @@
 
 #![allow(dead_code)]
 
-use spin::Once;
+use spin::{Mutex, Once};
 use arrayvec::ArrayVec;
 use bit_field::BitField;
-use core::mem::size_of;
+use core::mem::{self, size_of};
+use core::ops::{Deref, DerefMut};
 
 use super::i386::{PrivilegeLevel, TssStruct};
 use i386::structures::gdt::SegmentSelector;
-use paging::{KernelLand, PAGE_SIZE, get_page};
+use i386::instructions::tables::{lgdt, sgdt, DescriptorTablePointer};
+
+use paging::{KernelLand, VirtualAddress, PAGE_SIZE, get_page};
 use alloc::vec::Vec;
 
-static GDT: Once<DescriptorTable> = Once::new();
+static GDT: Once<Mutex<GdtManager>> = Once::new();
 
 /// The global LDT used by all the processes.
 static GLOBAL_LDT: Once<DescriptorTable> = Once::new();
@@ -73,15 +76,18 @@ pub fn init_gdt() {
         ));
         // Global LDT
         gdt.push(DescriptorTableEntry::new_ldt(ldt, PrivilegeLevel::Ring0));
+
+        let main_task = unsafe {
+            (MAIN_TASK.addr() as *mut TssStruct).as_ref().unwrap()
+        };
+
         // Main task
-        gdt.push(DescriptorTableEntry::new_tss(&*MAIN_TASK, PrivilegeLevel::Ring0));
-        // Double Fault Task
-        gdt.push(DescriptorTableEntry::new_tss(&*FAULT_TASK, PrivilegeLevel::Ring0));
-        gdt
+        gdt.push(DescriptorTableEntry::new_tss(main_task, PrivilegeLevel::Ring0));
+
+        info!("Loading GDT");
+        Mutex::new(GdtManager::load(gdt, 0x8, 0x10, 0x18))
     });
 
-    info!("Loading GDT");
-    gdt.load_global(0x8, 0x10, 0x18);
     unsafe { 
         info!("Loading LDT");
         lldt(SegmentSelector(7 << 3));
@@ -90,26 +96,64 @@ pub fn init_gdt() {
     }
 }
 
-#[no_mangle]
-lazy_static! {
-    pub static ref MAIN_TASK: TssStruct = {
-        TssStruct::new(0, (SegmentSelector(0), 0), (SegmentSelector(0), 0), (SegmentSelector(0), 0), SegmentSelector(7 << 3))
-    };
-    pub static ref FAULT_TASK: TssStruct = {
-        // allocate a dummy stack of 1 page
-        let stack_page = get_page::<KernelLand>();
-        unsafe {
-            TssStruct::new(0, (SegmentSelector(0x18), stack_page.addr() + PAGE_SIZE - 1), (SegmentSelector(0), 0), (SegmentSelector(0), 0), SegmentSelector(7 << 3))
+struct GdtManager {
+    unloaded_table: Option<DescriptorTable>,
+}
+
+impl GdtManager {
+    pub fn load(cur_loaded: DescriptorTable, _new_cs: u16, new_ds: u16, new_ss: u16) -> GdtManager {
+        let clone = cur_loaded.clone();
+        cur_loaded.load_global(_new_cs, new_ds, new_ss);
+
+        GdtManager {
+            unloaded_table: Some(clone)
         }
-        //let tss = TssStruct::new(0, (SegmentSelector(0x18), ::STACK + ::STACK.len() - 1), (SegmentSelector(0), 0), (SegmentSelector(0), 0), SegmentSelector(7 << 3));
-        //tss.ss0 = 0x18;
-        //tss.esp0 = ::STACK + ::STACK.len() - 1;
-        //// TODO: What about CR3 ?
-        //tss.eip = ::interrupts::double_fault_handler;
+    }
+
+    pub fn commit(&mut self, _new_cs: u16, new_ds: u16, new_ss: u16) {
+        let old_table = self.unloaded_table.take().expect("Commit to not be called recursively").load_global(_new_cs, new_ds, new_ss);
+        unsafe {
+            self.unloaded_table = Some(DescriptorTable { table: Vec::from_raw_parts(old_table.base as *mut DescriptorTableEntry, old_table.limit as usize / size_of::<DescriptorTableEntry>(), old_table.limit as usize / size_of::<DescriptorTableEntry>()) });
+        }
+        self.set_from_loaded()
+    }
+}
+
+impl Deref for GdtManager {
+    type Target = DescriptorTable;
+
+    fn deref(&self) -> &DescriptorTable {
+        self.unloaded_table.as_ref().expect("Deref should not be called during commit")
+    }
+}
+
+impl DerefMut for GdtManager {
+    fn deref_mut(&mut self) -> &mut DescriptorTable {
+        self.unloaded_table.as_mut().expect("DerefMut should not be called during commit")
+    }
+}
+
+// Push a task segment.
+pub fn push_task_segment(task: &'static TssStruct) -> u16 {
+    let mut gdt = GDT.try().unwrap().lock();
+    let idx = gdt.push(DescriptorTableEntry::new_tss(task, PrivilegeLevel::Ring0));
+    gdt.commit(0x8, 0x10, 0x18);
+    idx
+}
+
+lazy_static! {
+    pub static ref MAIN_TASK: VirtualAddress = {
+        let vaddr = get_page::<KernelLand>();
+        let tss = vaddr.addr() as *mut TssStruct;
+        unsafe {
+            *tss = TssStruct::new(0, (SegmentSelector(0), 0), (SegmentSelector(0), 0), (SegmentSelector(0), 0), SegmentSelector(7 << 3));
+        }
+        vaddr
     };
 }
 
 /// A structure containing our GDT.
+#[derive(Debug, Clone)]
 struct DescriptorTable {
     table: Vec<DescriptorTableEntry>,
 }
@@ -121,23 +165,39 @@ impl DescriptorTable {
         }
     }
 
-    pub fn push(&mut self, entry: DescriptorTableEntry) {
-        self.table.push(entry);
+    pub fn set_from_loaded(&mut self) {
+        use core::slice;
+
+        let mut loaded_ptr = sgdt();
+        let loaded_table = unsafe {
+            slice::from_raw_parts(loaded_ptr.base as *mut DescriptorTableEntry, loaded_ptr.limit as usize / size_of::<DescriptorTableEntry>())
+        };
+
+        self.table.clear();
+        self.table.extend_from_slice(loaded_table);
     }
 
-    // TODO: make this configurable
-    pub fn load_global(&'static self, _new_cs: u16, new_ds: u16, new_ss: u16) {
-        use i386::instructions::tables::{lgdt, DescriptorTablePointer};
+    pub fn push(&mut self, entry: DescriptorTableEntry) -> u16 {
+        let ret = self.table.len() << 3;
+        self.table.push(entry);
+        ret as u16
+    }
+
+    fn load_global(mut self, _new_cs: u16, new_ds: u16, new_ss: u16) -> DescriptorTablePointer {
+        self.table.shrink_to_fit();
+        assert_eq!(self.table.len(), self.table.capacity());
 
         let ptr = DescriptorTablePointer {
             base: self.table.as_ptr() as u32,
             limit: (self.table.len() * size_of::<u64>() - 1) as u16,
         };
 
+        let oldptr = sgdt();
+
         // TODO: Figure out how to chose CS.
         unsafe {
-            lgdt(&ptr);
 
+            lgdt(&ptr);
 
             // For some reason, I can only far jmp using AT&T syntax... Which
             // makes me unbelievably sad. I should probably yell at LLVM for
@@ -158,6 +218,10 @@ impl DescriptorTable {
             MOV   SS, AX
             " : : "r"(new_ds), "r"(new_ss) : "EAX" : "intel");
         }
+
+        mem::forget(self.table);
+
+        oldptr
     }
 }
 

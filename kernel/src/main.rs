@@ -67,6 +67,12 @@ pub use frame_alloc::FrameAllocator;
 pub use i386::stack;
 use paging::{InactivePageTables, PageTablesSet, EntryFlags};
 
+unsafe fn force_double_fault() {
+    loop {
+        asm!("int 0x81" :::: "intel", "volatile");
+    }
+}
+
 fn main() {
     let loggers = &mut Loggers;
     loggers.println("Hello world!      ");
@@ -112,6 +118,10 @@ fn main() {
     unsafe { interrupts::syscall(42, 1, 2, 3, 4, 5, 6) };
     info!("Syscall result: {}", syscall_result);
 
+    info!("Forcing a double fault");
+    unsafe {
+        force_double_fault();
+    }
     info!("Testing keyboard:");
     loop {
         write!(Loggers, "{}", devices::ps2::read_key());
@@ -205,6 +215,7 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     bootstrap_pages.delete();
 
     // Set up (read: inhibit) the GDT.
+    info!("Initializing gdt...");
     gdt::init_gdt();
     info!("Gdt initialized");
 
@@ -236,6 +247,9 @@ pub fn common_start_continue_stack() -> ! {
 
     info!("Enabling interrupts");
     unsafe { interrupts::init(); }
+
+    info!("Disable timer interrupt");
+    devices::pic::get().mask(0);
 
     info!("Registering VBE logger");
     static mut VBE_LOGGER: VBELogger = VBELogger;

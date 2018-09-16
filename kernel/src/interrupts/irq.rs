@@ -6,13 +6,7 @@ use devices::pic;
 use logger::Loggers;
 
 fn acknowledge_irq(irq: u8) {
-    unsafe {
-        // TODO: this is probably very unsafe. Maybe. I don't really know.
-        pic::MASTER.acknowledge();
-        if irq >= 8 {
-            pic::SLAVE.acknowledge();
-        }
-    }
+    pic::get().acknowledge(irq)
 }
 
 extern "x86-interrupt" fn timer_handler(stack_frame: &mut ExceptionStackFrame) {

@@ -14,8 +14,12 @@ use core::marker::PhantomData;
 use core::mem;
 use core::ops::{Index, IndexMut};
 use bit_field::BitField;
-use i386::PrivilegeLevel;
+use i386::{TssStruct, PrivilegeLevel};
 use i386::mem::VirtualAddress;
+use i386::mem::paging::{PageTablesSet, KernelLand, ACTIVE_PAGE_TABLES};
+use i386::structures::gdt::SegmentSelector;
+use alloc::boxed::Box;
+use gdt;
 
 /// An Interrupt Descriptor Table with 256 entries.
 ///
@@ -491,14 +495,14 @@ impl<F> IdtEntry<F> {
         }
     }
 
-    /// Set the handler address for the IDT entry and sets the present bit.
+    /// Set an interrupt gate function for the IDT entry and sets the present bit.
     ///
     /// For the code selector field, this function uses the code segment selector currently
     /// active in the CPU.
     ///
     /// The function returns a mutable reference to the entry's options that allows
     /// further customization.
-    pub unsafe fn set_handler_addr(&mut self, addr: u32) -> &mut EntryOptions {
+    pub unsafe fn set_interrupt_gate_addr(&mut self, addr: u32) -> &mut EntryOptions {
         use i386::instructions::segmentation;
 
         self.pointer_low = addr as u16;
@@ -506,15 +510,38 @@ impl<F> IdtEntry<F> {
 
         self.gdt_selector = segmentation::cs().0;
 
-        self.options.set_present(true);
+        self.options.set_present_interrupt(true);
         &mut self.options
+    }
+
+    pub fn set_handler_task_gate_addr(&mut self, addr: u32) {
+        use i386::instructions::segmentation;
+
+        self.pointer_low = 0;
+        self.pointer_high = 0;
+
+        let cr3: u32;
+
+        unsafe {
+            // Totally safe
+            asm!("mov $0, cr3" : "=r"(cr3) ::: "intel");
+        }
+        let stack = ACTIVE_PAGE_TABLES.lock().get_page::<KernelLand>();
+
+        // Load tss segment with addr in IP.
+        let mut tss = Box::new(TssStruct::new(cr3, (SegmentSelector(3 << 3), stack.addr()), (SegmentSelector(0), 0), (SegmentSelector(0), 0), SegmentSelector(7 << 3)));
+        tss.eip = addr;
+        let tss = Box::leak(tss);
+
+        self.gdt_selector = gdt::push_task_segment(tss);
+        self.options.set_present_task(true);
     }
 }
 
 macro_rules! impl_set_handler_fn {
     ($h:ty) => {
         impl IdtEntry<$h> {
-            /// Set the handler function for the IDT entry and sets the present bit.
+            /// Set an interrupt gate function for the IDT entry and sets the present bit.
             ///
             /// For the code selector field, this function uses the code segment selector currently
             /// active in the CPU.
@@ -523,8 +550,19 @@ macro_rules! impl_set_handler_fn {
             /// further customization.
             pub fn set_handler_fn(&mut self, handler: $h) -> &mut EntryOptions {
                 unsafe {
-                    self.set_handler_addr(handler as u32)
+                    self.set_interrupt_gate_addr(handler as u32)
                 }
+            }
+
+            /// Set a task gate function for the IDT entry and sets the present bit.
+            ///
+            /// For the code selector field, this function uses the code segment selector currently
+            /// active in the CPU.
+            ///
+            /// The function returns a mutable reference to the entry's options that allows
+            /// further customization.
+            pub fn set_task_fn(&mut self, handler: $h) {
+                self.set_handler_task_gate_addr(handler as u32)
             }
         }
     }
@@ -547,7 +585,15 @@ impl EntryOptions {
     }
 
     /// Set or reset the preset bit.
-    pub fn set_present(&mut self, present: bool) -> &mut Self {
+    pub fn set_present_interrupt(&mut self, present: bool) -> &mut Self {
+        self.0.set_bits(0..4, 0b1110); // 'must-be-one' bits
+        self.0.set_bit(7, present);
+        self
+    }
+
+    /// Set or reset the preset bit.
+    pub fn set_present_task(&mut self, present: bool) -> &mut Self {
+        self.0.set_bits(0..4, 0b0101); // 'must-be-one' bits
         self.0.set_bit(7, present);
         self
     }

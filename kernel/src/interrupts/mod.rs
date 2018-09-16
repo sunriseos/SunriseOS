@@ -18,6 +18,10 @@ extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut ExceptionStackFra
     info!("Interrupt is on! \\o/\n{:#?}", stack_frame);
 }
 
+extern "x86-interrupt" fn invalid_tss_handler(stack_frame: &mut ExceptionStackFrame, errcode: u32) {
+    info!("Invalid TSS! {}", errcode);
+}
+
 extern "x86-interrupt" fn invalid_opcode(stack_frame: &mut ExceptionStackFrame) {
     loop {}
 }
@@ -86,6 +90,11 @@ pub unsafe fn syscall(syscall_nr: u32, arg1: u32, arg2: u32, arg3: u32, arg4: u3
     result
 }
 
+fn double_fault_handler() {
+    info!("Double fault!");
+    loop {}
+}
+
 lazy_static! {
     static ref IDT: Mutex<Option<VirtualAddress>> = Mutex::new(None);
 }
@@ -100,6 +109,7 @@ pub unsafe fn init() {
         unsafe {
             (*idt).init();
             (*idt).breakpoint.set_handler_fn(breakpoint_handler);
+            (*idt).invalid_tss.set_handler_fn(invalid_tss_handler);
             for (i, handler) in irq::IRQ_HANDLERS.iter().enumerate() {
                 (*idt).interrupts[i].set_handler_fn(*handler);
             }
@@ -107,6 +117,7 @@ pub unsafe fn init() {
             let syscall_int = (*idt)[0x80].set_handler_addr(syscall_handler as u32);
             syscall_int.set_privilege_level(PrivilegeLevel::Ring3);
             syscall_int.disable_interrupts(false);
+            (*idt).double_fault.set_handler_task_gate_addr(double_fault_handler as u32);
             let mut lock = IDT.lock();
             *lock = Some(page);
             (*idt).load();
