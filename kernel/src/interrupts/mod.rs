@@ -114,7 +114,7 @@ pub unsafe fn init() {
                 (*idt).interrupts[i].set_handler_fn(*handler);
             }
             // Add entry for syscalls
-            let syscall_int = (*idt)[0x80].set_handler_addr(syscall_handler as u32);
+            let syscall_int = (*idt)[0x80].set_interrupt_gate_addr(syscall_handler as u32);
             syscall_int.set_privilege_level(PrivilegeLevel::Ring3);
             syscall_int.disable_interrupts(false);
             (*idt).double_fault.set_handler_task_gate_addr(double_fault_handler as u32);
