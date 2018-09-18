@@ -14,7 +14,7 @@ use core::marker::PhantomData;
 use core::mem;
 use core::ops::{Index, IndexMut};
 use bit_field::BitField;
-use i386::{TssStruct, PrivilegeLevel};
+use i386::{AlignedTssStruct, TssStruct, PrivilegeLevel};
 use i386::mem::VirtualAddress;
 use i386::mem::paging::{PageTablesSet, KernelLand, ACTIVE_PAGE_TABLES};
 use i386::structures::gdt::SegmentSelector;
@@ -653,7 +653,7 @@ impl fmt::Debug for ExceptionStackFrame {
 
 bitflags! {
     /// Describes an page fault error code.
-    pub struct PageFaultErrorCode: u64 {
+    pub struct PageFaultErrorCode: u32 {
         /// If this flag is set, the page fault was caused by a page-protection violation,
         /// else the page fault was caused by a not-present page.
         const PROTECTION_VIOLATION = 1 << 0;
