@@ -124,6 +124,21 @@ pub mod instructions {
         pub unsafe fn cli() {
             asm!("cli" :::: "volatile");
         }
+
+        /// Get EFLAGS
+        pub fn flags() -> u16 {
+            unsafe {
+                let flags: u16;
+                asm!("pushf
+                      pop $0" : "=r"(flags) ::: "intel", "volatile");
+                flags
+            }
+        }
+
+        pub unsafe fn set_flags(flags: u16) {
+            asm!("push $0
+                  popf" :: "r"(flags) :: "intel", "volatile");
+        }
     }
 }
 

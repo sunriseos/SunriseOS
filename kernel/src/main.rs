@@ -59,6 +59,7 @@ mod utils;
 mod heap_allocator;
 mod io;
 mod devices;
+mod sync;
 
 #[global_allocator]
 static ALLOCATOR: heap_allocator::Allocator = heap_allocator::Allocator::new();

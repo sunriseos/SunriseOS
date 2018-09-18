@@ -5,7 +5,8 @@
 
 use i386::pio::Pio;
 use io::Io;
-use spin::{Once, Mutex};
+use spin::Once;
+use sync::SpinLock;
 
 bitflags! {
     /// The first control word sent to the PIC.
@@ -57,8 +58,8 @@ struct InternalPic {
 
 /// A master/slave PIC setup, as commonly found on IBM PCs.
 pub struct Pic {
-    master: Mutex<InternalPic>,
-    slave: Mutex<InternalPic>,
+    master: SpinLock<InternalPic>,
+    slave: SpinLock<InternalPic>,
 }
 
 impl Pic {
@@ -72,8 +73,8 @@ impl Pic {
     /// will share the same underlying Pios, but different mutexes protecting them!
     unsafe fn new() -> Pic {
         Pic {
-            master: Mutex::new(InternalPic::new(0x20, true, 32)),
-            slave: Mutex::new(InternalPic::new(0xA0, false, 32 + 8)),
+            master: SpinLock::new(InternalPic::new(0x20, true, 32)),
+            slave: SpinLock::new(InternalPic::new(0xA0, false, 32 + 8)),
         }
     }
 
