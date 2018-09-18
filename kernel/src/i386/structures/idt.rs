@@ -520,17 +520,15 @@ impl<F> IdtEntry<F> {
         self.pointer_low = 0;
         self.pointer_high = 0;
 
-        let cr3: u32;
-
-        unsafe {
-            // Totally safe
-            asm!("mov $0, cr3" : "=r"(cr3) ::: "intel");
-        }
         let stack = ACTIVE_PAGE_TABLES.lock().get_page::<KernelLand>();
 
         // Load tss segment with addr in IP.
-        let mut tss = Box::new(TssStruct::new(cr3, (SegmentSelector(3 << 3), stack.addr()), (SegmentSelector(0), 0), (SegmentSelector(0), 0), SegmentSelector(7 << 3)));
+        let mut tss = AlignedTssStruct::new(TssStruct::new());
+        //tss.ss0 = SegmentSelector(3 << 3);
+        tss.esp0 = stack.addr() as u32;
+        tss.esp = stack.addr() as u32;
         tss.eip = addr;
+
         let tss = Box::leak(tss);
 
         self.gdt_selector = gdt::push_task_segment(tss);

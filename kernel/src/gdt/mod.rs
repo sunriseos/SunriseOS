@@ -135,6 +135,7 @@ impl DerefMut for GdtManager {
 
 // Push a task segment.
 pub fn push_task_segment(task: &'static TssStruct) -> u16 {
+    info!("Pushing TSS: {:#?}", task);
     let mut gdt = GDT.try().unwrap().lock();
     let idx = gdt.push(DescriptorTableEntry::new_tss(task, PrivilegeLevel::Ring0));
     gdt.commit(0x8, 0x10, 0x18);
@@ -146,7 +147,7 @@ lazy_static! {
         let vaddr = get_page::<KernelLand>();
         let tss = vaddr.addr() as *mut TssStruct;
         unsafe {
-            *tss = TssStruct::new(0, (SegmentSelector(0), 0), (SegmentSelector(0), 0), (SegmentSelector(0), 0), SegmentSelector(7 << 3));
+            *tss = TssStruct::new();
         }
         vaddr
     };

@@ -5,6 +5,8 @@
 #![allow(dead_code)]
 
 use core::fmt;
+use alloc::boxed::Box;
+use core::ops::{Deref, DerefMut};
 
 pub mod mem;
 pub mod stack;
@@ -175,19 +177,19 @@ impl PrivilegeLevel {
 /// where each individual process has its own TSS.
 /// ([see OSDEV](https://wiki.osdev.org/TSS))
 #[repr(C)]
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug)]
 pub struct TssStruct {
-    _reserved1: u16,
     link: u16,
+    _reserved1: u16,
     esp0: u32,
-    _reserved2: u16,
     ss0: u16,
+    _reserved2: u16,
     esp1: u32,
-    _reserved3: u16,
     ss1: u16,
+    _reserved3: u16,
     esp2: u32,
-    _reserved4: u16,
     ss2: u16,
+    _reserved4: u16,
     cr3: u32,
     eip: u32,
     eflags: u32,
@@ -199,22 +201,67 @@ pub struct TssStruct {
     ebp: u32,
     esi: u32,
     edi: u32,
-    _reserved5: u16,
     es: u16,
-    _reserved6: u16,
+    _reserved5: u16,
     cs: u16,
-    _reserved7: u16,
+    _reserved6: u16,
     ss: u16,
-    _reserved8: u16,
+    _reserved7: u16,
     ds: u16,
-    _reserved9: u16,
+    _reserved8: u16,
     fs: u16,
-    _reserveda: u16,
+    _reserved9: u16,
     gs: u16,
-    _reservedb: u16,
+    _reserveda: u16,
     ldt_selector: u16,
+    _reservedb: u16,
     iopboffset: u16,
     _reservedc: u16,
+}
+
+impl Default for TssStruct {
+    fn default() -> TssStruct {
+        TssStruct {
+            _reserved1: 0,
+            link: 0,
+            esp0: 0,
+            _reserved2: 0,
+            ss0: 0,
+            esp1: 0,
+            _reserved3: 0,
+            ss1: 0,
+            esp2: 0,
+            _reserved4: 0,
+            ss2: 0,
+            cr3: 0,
+            eip: 0,
+            eflags: 0,
+            eax: 0,
+            ecx: 0,
+            edx: 0,
+            ebx: 0,
+            esp: 0,
+            ebp: 0,
+            esi: 0,
+            edi: 0,
+            _reserved5: 0,
+            es: 0,
+            _reserved6: 0,
+            cs: 0,
+            _reserved7: 0,
+            ss: 0,
+            _reserved8: 0,
+            ds: 0,
+            _reserved9: 0,
+            fs: 0,
+            _reserveda: 0,
+            gs: 0,
+            _reservedb: 0,
+            ldt_selector: 0,
+            iopboffset: ::core::mem::size_of::<TssStruct>() as u16,
+            _reservedc: 0,
+        }
+    }
 }
 
 const_assert_eq!(tss_struct_size; ::core::mem::size_of::<TssStruct>(), 0x68);
@@ -223,21 +270,74 @@ use i386::structures::gdt::SegmentSelector;
 use i386::mem::PhysicalAddress;
 
 impl TssStruct {
-    pub fn new(cr3: u32, sp0: (SegmentSelector, usize), sp1: (SegmentSelector, usize), sp2: (SegmentSelector, usize), ldt: SegmentSelector) -> TssStruct {
+    /// Creates a new TssStruct.
+    ///
+    /// The new struct inherits the current task's values (except registers, which are set to 0)
+    pub fn new() -> TssStruct {
+        let ds: u16;
+        let cs: u16;
+        let ss: u16;
+        let cr3: u32;
+        let ldt_selector: u16;
+
+        unsafe {
+            // Safety: this is perfectly safe. Maybe I should do safe wrappers for this however...
+            asm!("
+                 mov AX, DS
+                 mov $0, AX
+                 mov AX, CS
+                 mov $1, AX
+                 mov AX, SS
+                 mov $2, AX
+                 mov $3, CR3
+                 sldt $4
+             " : "=r"(ds), "=r"(cs), "=r"(ss), "=r"(cr3), "=r"(ldt_selector) ::: "intel");
+        }
+
         TssStruct {
-            esp0: sp0.1 as u32,
-            ss0: (sp0.0).0,
-            esp1: sp1.1 as u32,
-            ss1: (sp1.0).0,
-            esp2: sp2.1 as u32,
-            ss2: (sp2.0).0,
-            cr3: cr3 as u32,
-            ldt_selector: ldt.0,
+            ss0: ss,
+            ss1: ss,
+            ss2: ss,
+            cr3: cr3,
+            ldt_selector: ldt_selector,
+            es: ds,
+            cs: cs,
+            ss: ss,
+            ds: ds,
+            fs: ds,
+            gs: ds,
             ..Default::default()
         }
     }
 
+    pub fn set_esp0_stack(&mut self, esp: u32) {
+        self.esp0 = esp;
+    }
+
     pub fn set_ip(&mut self, eip: u32) {
         self.eip = eip;
+    }
+}
+
+#[repr(C, align(4096))]
+pub struct AlignedTssStruct(TssStruct);
+
+impl AlignedTssStruct {
+    pub fn new(tss: TssStruct) -> Box<AlignedTssStruct> {
+        box AlignedTssStruct(tss)
+    }
+}
+
+impl Deref for AlignedTssStruct {
+    type Target = TssStruct;
+
+    fn deref(&self) -> &TssStruct {
+        &self.0
+    }
+}
+
+impl DerefMut for AlignedTssStruct {
+    fn deref_mut(&mut self) -> &mut TssStruct {
+        &mut self.0
     }
 }
