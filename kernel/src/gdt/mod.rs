@@ -14,6 +14,7 @@ use core::ops::{Deref, DerefMut};
 use super::i386::{PrivilegeLevel, TssStruct};
 use i386::structures::gdt::SegmentSelector;
 use i386::instructions::tables::{lgdt, sgdt, DescriptorTablePointer};
+use i386::instructions::segmentation::*;
 
 use paging::{KernelLand, VirtualAddress, PAGE_SIZE, get_page};
 use alloc::vec::Vec;
@@ -184,7 +185,7 @@ impl DescriptorTable {
         ret as u16
     }
 
-    fn load_global(mut self, _new_cs: u16, new_ds: u16, new_ss: u16) -> DescriptorTablePointer {
+    fn load_global(mut self, new_cs: u16, new_ds: u16, new_ss: u16) -> DescriptorTablePointer {
         self.table.shrink_to_fit();
         assert_eq!(self.table.len(), self.table.capacity());
 
@@ -200,24 +201,13 @@ impl DescriptorTable {
 
             lgdt(&ptr);
 
-            // For some reason, I can only far jmp using AT&T syntax... Which
-            // makes me unbelievably sad. I should probably yell at LLVM for
-            // this one.
-            asm!("
-            // Reload CS through far jmp
-            ljmp $$0x8, $$reload_CS
-            reload_CS:");
-
-            asm!("
-            // Reload other selectors
-            MOV   AX, $0
-            MOV   DS, AX
-            MOV   ES, AX
-            MOV   FS, AX
-            MOV   GS, AX
-            MOV   AX, $1
-            MOV   SS, AX
-            " : : "r"(new_ds), "r"(new_ss) : "EAX" : "intel");
+            // Reload segment selectors
+            set_cs(SegmentSelector(new_cs));
+            load_ds(SegmentSelector(new_ds));
+            load_es(SegmentSelector(new_ds));
+            load_fs(SegmentSelector(new_ds));
+            load_gs(SegmentSelector(new_ds));
+            load_ss(SegmentSelector(new_ss));
         }
 
         mem::forget(self.table);
