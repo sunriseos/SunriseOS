@@ -16,7 +16,7 @@ use core::ops::{Index, IndexMut};
 use bit_field::BitField;
 use i386::{AlignedTssStruct, TssStruct, PrivilegeLevel};
 use i386::mem::VirtualAddress;
-use i386::mem::paging::{PageTablesSet, KernelLand, ACTIVE_PAGE_TABLES};
+use i386::mem::paging::{PageTablesSet, KernelLand, ACTIVE_PAGE_TABLES, PAGE_SIZE};
 use i386::structures::gdt::SegmentSelector;
 use alloc::boxed::Box;
 use gdt;
@@ -525,8 +525,8 @@ impl<F> IdtEntry<F> {
         // Load tss segment with addr in IP.
         let mut tss = AlignedTssStruct::new(TssStruct::new());
         //tss.ss0 = SegmentSelector(3 << 3);
-        tss.esp0 = stack.addr() as u32;
-        tss.esp = stack.addr() as u32;
+        tss.esp0 = (stack.addr() + PAGE_SIZE) as u32;
+        tss.esp = (stack.addr() + PAGE_SIZE) as u32;
         tss.eip = addr;
 
         let tss = Box::leak(tss);

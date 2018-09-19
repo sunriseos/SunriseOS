@@ -70,7 +70,7 @@ use paging::{InactivePageTables, PageTablesSet, EntryFlags};
 
 unsafe fn force_double_fault() {
     loop {
-        asm!("int 0x81" :::: "intel", "volatile");
+        asm!("push 0" :::: "intel", "volatile");
     }
 }
 
