@@ -80,6 +80,24 @@ fn swap_cr3(page_directory_address: PhysicalAddress) -> PhysicalAddress {
     old_value
 }
 
+/// Reads the value of cr3, retrieving the current page directory's physical address
+fn read_cr3() -> PhysicalAddress {
+    let cr3_value: usize;
+    unsafe {
+        asm!( "mov $0, cr3" : "=r"(cr3_value) : : : "intel", "volatile");
+    }
+    PhysicalAddress(cr3_value)
+}
+
+/// Reads the value of cr2, retrieving the address that caused a page fault
+pub fn read_cr2() -> VirtualAddress {
+    let cr2_value : usize;
+    unsafe {
+        asm!( "mov $0, cr2" : "=r"(cr2_value) : : : "intel", "volatile");
+    }
+    VirtualAddress(cr2_value)
+}
+
 /// A trait describing the splitting of virtual memory between Kernel and User.
 /// Implemented by UserLand and KernelLand
 pub trait VirtualSpaceLand {

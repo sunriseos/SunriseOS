@@ -63,7 +63,8 @@ extern "x86-interrupt" fn general_protection_fault_handler(stack_frame: &mut Exc
 }
 
 extern "x86-interrupt" fn page_fault_handler(stack_frame: &mut ExceptionStackFrame, page: PageFaultErrorCode) {
-    panic!("Page fault: {:?} {:?}", stack_frame, page);
+    let cause_address = ::paging::read_cr2();
+    panic!("Page fault: {:?} {:?} {:?}", cause_address, stack_frame, page);
 }
 
 extern "x86-interrupt" fn x87_floating_point_handler(stack_frame: &mut ExceptionStackFrame) {
