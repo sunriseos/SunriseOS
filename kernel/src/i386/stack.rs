@@ -30,6 +30,9 @@
 use ::core::mem::size_of;
 use paging::*;
 use i386::mem::VirtualAddress;
+use process::ProcessStruct;
+use spin::RwLock;
+use alloc::sync::{Arc, Weak};
 
 /// The size of a kernel stack, not accounting for the page guard
 pub const STACK_SIZE: usize            = 4;
@@ -45,8 +48,10 @@ pub struct KernelStack {
 }
 
 impl KernelStack {
-    /// Allocates the kernel stack
-    pub fn allocate_stack() -> Option<KernelStack> {
+    /// Allocates the kernel stack of a process.
+    /// Puts a weak link to the ProcessStruct at the base of the stack,
+    /// that can be used from anywhere to retrieve the current ProcessStruct.
+    pub fn allocate_stack(belonging_process: Weak<RwLock<ProcessStruct>>) -> Option<KernelStack> {
         let mut tables = ACTIVE_PAGE_TABLES.lock();
         tables.find_available_virtual_space_aligned::<KernelLand>(STACK_SIZE_WITH_GUARD, STACK_ALIGNEMENT)
             .map(|va| {
@@ -55,26 +60,94 @@ impl KernelStack {
                 tables.map_page_guard(va);
 
                 let mut me = KernelStack { stack_address: va };
+
                 unsafe {
+                    // it has just been allocated, we're not overwriting data
+                    ::core::ptr::write(
+                        (me.stack_address.addr() + ThreadInfoInStack::THREAD_INFO_OFFSET) as *mut ThreadInfoInStack,
+                        ThreadInfoInStack::new(belonging_process));
                     // This is safe because va points to valid memory
-                    ThreadInfoInStack::new(&mut me);
                     me.create_poison_pointers();
                 };
                 me
             })
     }
 
-    /// Retrieves the current stack from $ebp
+    /// Allocates a kernel stack without linking it to a process
+    ///
+    /// # Caution
+    ///
+    /// This does not link the ThreadInfoInStack at the bottom of the stack to a process,
+    /// this will be done when boot becomes the first process.
+    ///
+    /// This enables using KernelStacks early during boot, before we have processes
+    pub fn allocate_boot_stack() -> Option<KernelStack> {
+        Self::allocate_stack(Weak::new())
+    }
+
+    /// Finish initializing a boot stack by linking it to a ProcessStruct.
+    /// This is used only for when the boot becomes the first process.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a ProcessStruct is already linked in KernelStack
+    pub fn link_boot_stack_to_process(&mut self, process: Weak<RwLock<ProcessStruct>>) {
+        // Get the address of the ThreadInfoInStack in the stack
+        let ti_ptr = (self.stack_address.addr() + ThreadInfoInStack::THREAD_INFO_OFFSET) as *mut ThreadInfoInStack;
+        unsafe {
+            // safe because KernelStack is well defined so it points to valid memory
+            assert!((*ti_ptr).process_struct.upgrade().is_none(), "Trying to link an already linked KernelStack");
+            (*ti_ptr).process_struct = process;
+        }
+    }
+
+    /// Gets the bottom of the stack by and'ing $esp with STACK_ALIGNMENT
+    ///
+    /// extern "C" to make sure it is called with a sane ABI
+    extern "C" fn get_current_stack_bottom() -> usize {
+        let esp_ptr: usize;
+        unsafe { asm!("mov $0, esp" : "=r"(esp_ptr) ::: "intel" ) };
+        esp_ptr & (0xFFFFFFFF << STACK_ALIGNEMENT) // 0x....0000
+    }
+
+    /// Retrieves the current stack from $esp
     ///
     /// # Safety
     ///
-    /// We must be using a kernel stack ! Not any random stack
+    /// We must be using a KernelStack ! Not any random stack
+    ///
+    /// Also unsafe because it creates duplicates of the stack structure,
+    /// who's only owner should be the ProcessStruct it belongs to.
+    /// This enables having several mut references pointing to the same underlying memory.
+    /// Caller has to make sure no references to the stack exists when calling this function.
+    ///
+    /// The safe method of getting the stack is by getting current ProcessStruct, *lock it*,
+    /// and use its pstack.
+    // todo put a magic value in ThreadInfoInStack
+    // we could then check if we are using a KernelStack by :
+    // 1 - checking $esp & aligment + t_i_offset is readable memory
+    // 2 - read it and check it against the magic value
+    // then we know if we are using one or not.
     pub unsafe fn get_current_stack() -> KernelStack {
-        let ebp_ptr: usize;
-        asm!("mov $0, ebp" : "=r"(ebp_ptr) ::: "intel" );
-        let stack_bottom = ebp_ptr & (0xFFFFFFFF << STACK_ALIGNEMENT); // 0x....0000
-
+        let stack_bottom = Self::get_current_stack_bottom();
         KernelStack { stack_address: VirtualAddress(stack_bottom) }
+    }
+
+    /// Tries to get an Arc to the current ProcessStruct
+    /// from the weak link saved at the base of the current stack,
+    /// which is itself retrieved from $esp.
+    ///
+    /// # Safety
+    ///
+    /// We must be using a KernelStack ! Not any random stack
+    // todo see todo in get_current_stack()
+    pub unsafe fn get_current_linked_process() -> Option<Arc<RwLock<ProcessStruct>>> {
+        let stack_bottom = Self::get_current_stack_bottom();
+        let ti_ptr = (stack_bottom + ThreadInfoInStack::THREAD_INFO_OFFSET) as *const ThreadInfoInStack;
+        unsafe {
+            // safe because KernelStack is well defined so it points to valid memory
+            (*ti_ptr).process_struct.upgrade()
+        }
     }
 
     /// We keep 2 poison pointers for fake saved ebp and saved esp at the base of the stack
@@ -91,12 +164,18 @@ impl KernelStack {
         *saved_ebp = 0x00000000;
     }
 
+    /// Get the address of the beginning of usable stack.
+    /// Used for initializing $esp and $ebp of a newborn process
+    pub fn get_stack_start(&self) -> usize {
+         self.stack_address.addr() + STACK_SIZE_WITH_GUARD * PAGE_SIZE
+                                   - size_of::<ThreadInfoInStack>()
+                                   - Self::STACK_POISON_SIZE
+    }
+
     /// Switch to this kernel stack.
     /// The function passed as parameter will be called with the new stack, and should never return
     pub unsafe fn switch_to(self, f: fn() -> !) -> ! {
-        let new_ebp_esp: usize = self.stack_address.addr() + STACK_SIZE_WITH_GUARD * PAGE_SIZE
-                                                           - size_of::<ThreadInfoInStack>()
-                                                           - Self::STACK_POISON_SIZE;
+        let new_ebp_esp = self.get_stack_start();
         asm!("
         mov ebp, $0
         mov esp, $0
@@ -109,17 +188,12 @@ impl KernelStack {
         unreachable!();
     }
 
-    /// Gets the thread info struct at the top of the stack
-    pub fn get_thread_info(&mut self) -> *mut ThreadInfoInStack {
-        let stack_top = self.stack_address.addr() | (!(0xFFFFFFFF << STACK_ALIGNEMENT)); // 0x....ffff
-        stack_top as *mut ThreadInfoInStack
-    }
-
     /// Dumps the stack on all the Loggers, displaying it in a frame-by-frame format
     ///
     /// # Safety
     ///
     /// We must be using a kernel stack ! Not any random stack
+    // todo see todo on get_current_stack()
     pub unsafe fn dump_current_stack() {
         let mut ebp;
         let mut esp;
@@ -199,27 +273,17 @@ pub fn dump_stack(stack: &[u8], orig_address: usize, mut esp: usize, mut ebp: us
 /* ********************************************************************************************** */
 
 /// The structure we keep at the end of the stack that points back to the current process
-// TODO move this to the scheduler
 #[repr(C)]
 #[derive(Debug)]
-pub struct ThreadInfoInStack {
-    shitty_place_holder_field: usize,
+struct ThreadInfoInStack {
+    process_struct: Weak<RwLock<ProcessStruct>>
 }
 
-const THREAD_INFO_OFFSET: usize = STACK_SIZE_WITH_GUARD * PAGE_SIZE - size_of::<ThreadInfoInStack>();
-
 impl ThreadInfoInStack {
-    /// Initializes a ThreadInfoInStack in the kernel Stack
-    ///
-    /// # Safety
-    ///
-    /// This requires KernelStack's va to point to a valid memory region of at least
-    /// ThreadInfoInStack's size.
-    unsafe fn new(stack: &mut KernelStack) {
-        let ti = ThreadInfoInStack { shitty_place_holder_field: 0xabba1974 };
-
-        // Copy it to the kernel stack
-        let ti_ptr = (stack.stack_address.addr() + THREAD_INFO_OFFSET) as *mut ThreadInfoInStack;
-        *ti_ptr = ti;
+    /// Creates a ThreadInfoInStack with no associated process yet
+    fn new(link: Weak<RwLock<ProcessStruct>>) -> Self {
+        ThreadInfoInStack { process_struct: link }
     }
+
+    const THREAD_INFO_OFFSET: usize = STACK_SIZE_WITH_GUARD * PAGE_SIZE - size_of::<ThreadInfoInStack>();
 }

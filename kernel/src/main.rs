@@ -6,7 +6,7 @@
 //! Currently doesn't do much, besides booting and printing Hello World on the
 //! screen. But hey, that's a start.
 
-#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, iterator_step_by, used, allocator_api, alloc, panic_implementation, box_syntax, no_more_cas)]
+#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, iterator_step_by, used, allocator_api, alloc, panic_implementation, box_syntax, no_more_cas, option_replace)]
 #![cfg_attr(target_os = "none", no_std)]
 #![cfg_attr(target_os = "none", no_main)]
 #![allow(unused)]
@@ -63,6 +63,7 @@ mod heap_allocator;
 mod io;
 mod devices;
 mod sync;
+mod process;
 
 // Make rust happy about rust_oom being no_mangle...
 pub use heap_allocator::rust_oom;
@@ -121,6 +122,15 @@ fn main() {
     let syscall_result =
     unsafe { interrupts::syscall(42, 1, 2, 3, 4, 5, 6) };
     info!("Syscall result: {}", syscall_result);
+	
+	info!("Creating a new process");
+    let p1 = process::ProcessStruct::new();
+    info!("Created process {:#?}", p1);
+
+    let current = process::get_current_process();
+
+    let p1lock = p1.write();
+    let ctlock = current.write();
 
     shell();
 }
@@ -253,7 +263,7 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 
     log_impl::init();
 
-    let new_stack = stack::KernelStack::allocate_stack()
+    let new_stack = stack::KernelStack::allocate_boot_stack()
         .expect("Failed to allocate new kernel stack");
     unsafe { new_stack.switch_to(common_start_continue_stack) }
     unreachable!()
@@ -279,6 +289,12 @@ pub fn common_start_continue_stack() -> ! {
     info!("Registering VBE logger");
     static mut VBE_LOGGER: VBELogger = VBELogger;
     Loggers::register_logger("VBE", unsafe { &mut VBE_LOGGER });
+
+    info!("Becoming the first process");
+    let first_process = unsafe { process::ProcessStruct::create_first_process() };
+    // forget it so it's not dropped
+    // todo: put it in the scheduler queue
+    ::core::mem::forget(first_process);
 
     info!("Calling main()");
 
