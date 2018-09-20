@@ -150,7 +150,7 @@ pub unsafe fn syscall(syscall_nr: u32, arg1: u32, arg2: u32, arg3: u32, arg4: u3
     "
     : "={eax}"(result)
     : "{eax}"(syscall_nr), "{ebx}"(arg1), "{ecx}"(arg2), "{edx}"(arg3), "{esi}"(arg4), "{edi}"(arg5), "{ebp}"(arg6)
-    : // no clobbers left - we already clobbered the world
+    : "memory"
     : "volatile", "intel");
     result
 }
