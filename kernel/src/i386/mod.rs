@@ -33,14 +33,19 @@ pub mod instructions {
 
         /// Load GDT table.
         pub unsafe fn lgdt(gdt: &DescriptorTablePointer) {
-            asm!("lgdt ($0)" :: "r" (gdt) : "memory");
+            asm!("lgdt ($0)" :: "r" (gdt) : "memory" : "volatile");
         }
 
         /// Store GDT table.
         pub fn sgdt() -> DescriptorTablePointer {
             unsafe {
-                let mut out: DescriptorTablePointer = ::core::mem::uninitialized();
-                asm!("sgdt ($0)" : "=r" (&mut out));
+                let mut out: DescriptorTablePointer = DescriptorTablePointer {
+                    base: 0,
+                    limit: 0
+                };
+                // This *requires* the =*m bound. For whatever reason, using =r causes UB, the
+                // compiler starts wildly reordering SGDTs and LGDTs, even with volatile.
+                asm!("sgdt $0" : "=*m"(&mut out) :: "memory" : "volatile");
                 out
             }
         }

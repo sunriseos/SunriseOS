@@ -112,9 +112,16 @@ impl GdtManager {
     }
 
     pub fn commit(&mut self, _new_cs: u16, new_ds: u16, new_ss: u16) {
-        let old_table = self.unloaded_table.take().expect("Commit to not be called recursively").load_global(_new_cs, new_ds, new_ss);
+        let old_table = self.unloaded_table.take()
+            .expect("Commit to not be called recursively")
+            .load_global(_new_cs, new_ds, new_ss);
         unsafe {
-            self.unloaded_table = Some(DescriptorTable { table: Vec::from_raw_parts(old_table.base as *mut DescriptorTableEntry, old_table.limit as usize / size_of::<DescriptorTableEntry>(), old_table.limit as usize / size_of::<DescriptorTableEntry>()) });
+            self.unloaded_table = Some(DescriptorTable {
+                table: Vec::from_raw_parts(
+                    old_table.base as *mut DescriptorTableEntry,
+                    old_table.limit as usize / size_of::<DescriptorTableEntry>(),
+                    old_table.limit as usize / size_of::<DescriptorTableEntry>())
+            });
         }
         self.set_from_loaded()
     }
@@ -191,7 +198,7 @@ impl DescriptorTable {
 
         let ptr = DescriptorTablePointer {
             base: self.table.as_ptr() as u32,
-            limit: (self.table.len() * size_of::<u64>() - 1) as u16,
+            limit: (self.table.len() * size_of::<DescriptorTableEntry>() - 1) as u16,
         };
 
         let oldptr = sgdt();
