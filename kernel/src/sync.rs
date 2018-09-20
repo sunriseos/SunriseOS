@@ -4,6 +4,7 @@ use core::mem::ManuallyDrop;
 use core::ops::{Deref, DerefMut};
 use spin::{Mutex as SpinMutex, MutexGuard as SpinMutexGuard};
 use i386::instructions::interrupts::*;
+use core::sync::atomic::AtomicBool;
 
 /// Simple SpinLock.
 ///
@@ -17,15 +18,21 @@ use i386::instructions::interrupts::*;
 ///
 /// This means that locking a spinlock disables interrupts until all spinlocks
 /// have been dropped.
+#[derive(Debug)]
 pub struct SpinLock<T: ?Sized> {
     internal: SpinMutex<T>
 }
 
 impl<T> SpinLock<T> {
-    pub fn new(internal: T) -> SpinLock<T> {
+    pub const fn new(internal: T) -> SpinLock<T> {
         SpinLock {
             internal: SpinMutex::new(internal)
         }
+    }
+
+    /// Consumes this SpinLock, returning the underlying data.
+    pub fn into_inner(self) -> T {
+        self.internal.into_inner()
     }
 }
 
@@ -48,6 +55,7 @@ impl<T: ?Sized> SpinLock<T> {
 }
 
 
+#[derive(Debug)]
 pub struct SpinLockGuard<'a, T: ?Sized + 'a>(u16, ManuallyDrop<SpinMutexGuard<'a, T>>);
 
 impl<'a, T: ?Sized + 'a> Drop for SpinLockGuard<'a, T> {

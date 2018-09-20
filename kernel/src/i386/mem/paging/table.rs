@@ -688,6 +688,7 @@ impl<'a, T: HierarchicalTable> Drop for SmartHierarchicalTable<'a, T> {
 /// A set of PageTables that are not the ones currently in use.
 /// We can't use recursive mapping to modify them, so instead we have to temporarily
 /// map the directory and tables to make changes to them.
+#[derive(Debug)]
 pub struct InactivePageTables {
     // The address we must put in cr3 to switch to these pages
     directory_physical_address: Frame,
