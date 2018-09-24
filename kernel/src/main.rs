@@ -6,7 +6,7 @@
 //! Currently doesn't do much, besides booting and printing Hello World on the
 //! screen. But hey, that's a start.
 
-#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, iterator_step_by, used, allocator_api, alloc, panic_implementation, box_syntax)]
+#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, iterator_step_by, used, allocator_api, alloc, panic_implementation, box_syntax, no_more_cas)]
 #![cfg_attr(target_os = "none", no_std)]
 #![cfg_attr(target_os = "none", no_main)]
 #![allow(unused)]
@@ -24,6 +24,7 @@ extern crate multiboot2;
 extern crate bitflags;
 #[macro_use]
 extern crate static_assertions;
+#[macro_use]
 extern crate alloc;
 extern crate linked_list_allocator;
 extern crate gif;
@@ -36,6 +37,8 @@ extern crate hashmap_core;
 use ascii::AsAsciiStr;
 use core::fmt::Write;
 use alloc::prelude::*;
+
+use event::{Waitable, MultiWaiter};
 
 mod event;
 mod logger;
@@ -111,38 +114,52 @@ fn main() {
 
     info!("Testing some string heap alloc: {}", String::from("Hello World"));
 
-    info!("Dumping current stack");
-    unsafe { stack::KernelStack::dump_current_stack() };
-
     info!("Testing syscalls");
     let syscall_result =
     unsafe { interrupts::syscall(42, 1, 2, 3, 4, 5, 6) };
     info!("Syscall result: {}", syscall_result);
 
-    info!("Forcing a double fault");
-    unsafe {
-        force_double_fault();
-    }
-    info!("Testing keyboard:");
+    shell();
+}
+
+fn shell() -> ! {
     loop {
-        write!(Loggers, "{}", devices::ps2::read_key());
+        match &*devices::ps2::get_next_line() {
+            "gif3" => show_gif(&LOUIS3[..]),
+            "gif4" => show_gif(&LOUIS4[..]),
+            "stackdump" => unsafe { stack::KernelStack::dump_current_stack() },
+            "help" => {
+                info!("COMMANDS:");
+                info!("gif3: Print the KFS-3 meme");
+                info!("gif4: Print the KFS-4 meme");
+                info!("stackdump: Print a dump of the current stack");
+            }
+            _ => info!("Unknown command")
+        }
     }
-    // Let's GIF.
-    /*let mut vbe = unsafe {
+}
+
+fn show_gif(louis: &[u8]) {
+    let mut vbe = unsafe {
         devices::vbe::Framebuffer::new(i386::multiboot::get_boot_information())
     };
-    let mut reader = gif::Decoder::new(&LOUIS[..]).read_info().unwrap();
+    let mut reader = gif::Decoder::new(&louis[..]).read_info().unwrap();
     let mut buf = Vec::new();
+    let timer_event = devices::pit::wait_ms(100);
+    let keyboard_event = devices::ps2::get_waitable();
+
+    let events = [&timer_event, keyboard_event as &dyn Waitable];
+
+    let waiter = MultiWaiter::new(&events);
     loop {
         {
             let end = reader.next_frame_info().unwrap().is_none();
             if end {
-                reader = gif::Decoder::new(&LOUIS[..]).read_info().unwrap();
+                reader = gif::Decoder::new(&louis[..]).read_info().unwrap();
                 let _ = reader.next_frame_info().unwrap().unwrap();
             }
         }
         buf.resize(reader.buffer_size(), 0);
-        info!("Buf: {:#010x}, len: {}", buf.as_ptr() as usize, buf.len());
         // simulate read into buffer
         reader.read_into_buffer(&mut buf[..]);
         for y in 0..(reader.height() as usize) {
@@ -155,11 +172,15 @@ fn main() {
                 vbe.get_fb()[vbe_coord + 3] = 0xFF;
             }
         }
-        devices::pit::spin_wait_ms(100);
-    }*/
+        let waitable = waiter.wait();
+        if waitable as *const _ == events[1] as *const _ && devices::ps2::try_read_key().is_some() {
+            return;
+        }
+    }
 }
 
-static LOUIS: &'static [u8; 1318100] = include_bytes!("../img/meme3.gif");
+static LOUIS3: &'static [u8; 1318100] = include_bytes!("../img/meme3.gif");
+static LOUIS4: &'static [u8; 103803] = include_bytes!("../img/meme4.gif");
 
 #[cfg(target_os = "none")]
 #[no_mangle]
@@ -249,8 +270,8 @@ pub fn common_start_continue_stack() -> ! {
     info!("Enabling interrupts");
     unsafe { interrupts::init(); }
 
-    info!("Disable timer interrupt");
-    devices::pic::get().mask(0);
+    //info!("Disable timer interrupt");
+    //devices::pic::get().mask(0);
 
     info!("Registering VBE logger");
     static mut VBE_LOGGER: VBELogger = VBELogger;
