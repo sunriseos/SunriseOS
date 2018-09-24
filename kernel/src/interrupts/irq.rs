@@ -35,7 +35,7 @@ macro_rules! irq_handler {
 }
 
 pub static IRQ_HANDLERS : [extern "x86-interrupt" fn(stack_frame: &mut ExceptionStackFrame); 16] = [
-    irq_handler_none!(0, timer_handler),
+    irq_handler!(0, timer_handler),
     irq_handler!(1, keyboard_handler),
     irq_handler!(2, cascade_handler),
     irq_handler!(3, serial2_handler),

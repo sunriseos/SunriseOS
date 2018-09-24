@@ -55,6 +55,10 @@
 use spin::Mutex;
 use io::Io;
 use ::i386::pio::Pio;
+use event::{self, IRQEvent, Waitable};
+use utils::div_round_up;
+
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 /// The oscillator frequency when not divided, in hertz.
 const OSCILLATOR_FREQ: usize = 1193182;
@@ -186,6 +190,38 @@ pub fn spin_wait_ms(ms: usize) {
     let mut ports = PIT_PORTS.lock();
     let mut chan2 = PITChannel2::init(&mut ports);
     chan2.spin_wait_ms(ms);
+}
+
+#[derive(Debug)]
+struct WaitFor {
+    every_ms: usize,
+    parent_event: IRQEvent,
+    spins_needed: AtomicUsize
+}
+
+impl Waitable for WaitFor {
+    fn register(&self) {
+        self.parent_event.register()
+    }
+
+    fn is_signaled(&self) -> bool {
+        // First, reset the spins if necessary
+        self.spins_needed.compare_and_swap(0, div_round_up(self.every_ms * CHAN_0_FREQUENCY, 1000), Ordering::SeqCst);
+
+        // Then, check if it's us.
+        self.parent_event.is_signaled()
+            // Then, check if we need more spins.
+            && self.spins_needed.fetch_sub(1, Ordering::SeqCst) == 1
+    }
+}
+
+/// Returns a stream of event that trigger every `ms` amount of milliseconds
+pub fn wait_ms(ms: usize) -> impl Waitable {
+    WaitFor {
+        every_ms: ms,
+        parent_event: event::wait_event(0),
+        spins_needed: AtomicUsize::new(0)
+    }
 }
 
 /// Initialize the channel 0 to send recurring irqs

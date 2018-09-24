@@ -1,11 +1,14 @@
 use i386::pio::Pio;
 use io::Io;
 use core::sync::atomic::{AtomicBool, Ordering::SeqCst};
+use alloc::string::String;
+use event::{self, MultiWaiter, Waitable, IRQEvent};
+use logger::{Logger, Loggers};
 
 struct PS2 {
     status_port: Pio<u8>,
     data_port: Pio<u8>,
-    event_irq: usize,
+    event: IRQEvent,
     is_capslocked:  AtomicBool,
     is_shift:       AtomicBool
 }
@@ -280,8 +283,6 @@ impl PS2 {
 
     fn read_key(&self) -> char {
         loop {
-            ::event::wait_event(self.event_irq);
-
             unsafe {
                 let status = self.status_port.read();
                 if status & 0x01 != 0 {
@@ -292,21 +293,67 @@ impl PS2 {
                         KeyEvent {key: Key::Letter(l),  state: State::Released } => { /* ignore released letters */ },
                         KeyEvent {key: Key::Empty,      state: _               } => { /* ignore unknown keys */ },
                     }
+                } else {
+                    MultiWaiter::new(&[&self.event]).wait();
                 }
             }
         }
     }
+
+    fn try_read_key(&self) -> Option<char> {
+        loop {
+            let status = self.status_port.read();
+            if status & 0x01 != 0 {
+                let key = KeyEvent::read_key_event(&self.data_port);
+                match key {
+                    KeyEvent {key: Key::Control(k), state: s               } => self.handle_control_key(k, s),
+                    KeyEvent {key: Key::Letter(l),  state: State::Pressed  } => return Some(self.key_to_letter(l)),
+                    _ => ()
+                }
+            } else {
+                return None;
+            }
+        }
+    }
+
+    fn event_irq(&self) -> &IRQEvent {
+        &self.event
+    }
 }
 
-static PRIMARY_PS2 : PS2 = PS2 {
-    status_port: Pio::<u8>::new(0x64),
-    data_port: Pio::<u8>::new(0x60),
-    event_irq: 1,
-    is_capslocked:  AtomicBool::new(false),
-    is_shift:       AtomicBool::new(false)
-
-};
+lazy_static! {
+    static ref PRIMARY_PS2 : PS2 = PS2 {
+        status_port: Pio::<u8>::new(0x64),
+        data_port: Pio::<u8>::new(0x60),
+        event: event::wait_event(1),
+        is_capslocked:  AtomicBool::new(false),
+        is_shift:       AtomicBool::new(false)
+    };
+}
 
 pub fn read_key() -> char {
     PRIMARY_PS2.read_key()
+}
+
+pub fn try_read_key() -> Option<char> {
+    PRIMARY_PS2.try_read_key()
+}
+
+pub fn get_next_line() -> String {
+    let mut ret = String::from("");
+    loop {
+        let key = read_key();
+        Loggers.print(&format!("{}", key));
+        if key == '\n' {
+            return ret;
+        } else if key == '\x08' {
+            ret.pop();
+        } else {
+            ret.push(key);
+        }
+    }
+}
+
+pub fn get_waitable() -> &'static impl Waitable {
+    PRIMARY_PS2.event_irq()
 }
