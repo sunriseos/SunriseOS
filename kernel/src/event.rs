@@ -79,18 +79,18 @@ pub trait Waitable: Debug {
 ///
 /// Allows waiting on multiple Waitables at the same time.
 #[derive(Debug)]
-pub struct MultiWaiter<'WAIT> {
-    waitable: &'WAIT [&'WAIT Waitable]
+pub struct MultiWaiter<'wait> {
+    waitable: &'wait [&'wait Waitable]
 }
 
-impl<'WAIT> MultiWaiter<'WAIT> {
-    pub fn new(arr: &'WAIT [&'WAIT Waitable]) -> MultiWaiter<'WAIT> {
+impl<'wait> MultiWaiter<'wait> {
+    pub fn new(arr: &'wait [&'wait Waitable]) -> MultiWaiter<'wait> {
         MultiWaiter {
             waitable: arr
         }
     }
 
-    pub fn wait(&self) -> &'WAIT Waitable {
+    pub fn wait(&self) -> &'wait Waitable {
         loop {
             // Early-check for events that have already been signaled.
             for item in self.waitable {

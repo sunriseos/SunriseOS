@@ -360,10 +360,12 @@ pub struct Idt {
     pub interrupts: [IdtEntry<HandlerFunc>; 256 - 32],
 }
 
+const_assert_eq!(const_assert_idt; mem::size_of::<Idt>(), 256 * 8);
+
+
 impl Idt {
     /// Creates a new IDT filled with non-present entries.
     pub fn init(&mut self) {
-        debug_assert_eq!(mem::size_of::<Self>(), 256 * 8);
         self.divide_by_zero = IdtEntry::missing();
         self.debug = IdtEntry::missing();
         self.non_maskable_interrupt = IdtEntry::missing();
@@ -463,7 +465,7 @@ impl IndexMut<usize> for Idt {
 /// The generic parameter can either be `HandlerFunc` or `HandlerFuncWithErrCode`, depending
 /// on the interrupt vector.
 #[derive(Debug, Clone, Copy)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct IdtEntry<F> {
     pointer_low: u16,
     gdt_selector: u16,
@@ -472,6 +474,9 @@ pub struct IdtEntry<F> {
     pointer_high: u16,
     phantom: PhantomData<F>,
 }
+
+
+const_assert_eq!(const_assert_idtentry; mem::size_of::<IdtEntry<()>>(), 8);
 
 /// A handler function for an interrupt or an exception without error code.
 pub type HandlerFunc = extern "x86-interrupt" fn(&mut ExceptionStackFrame);

@@ -64,6 +64,9 @@ mod io;
 mod devices;
 mod sync;
 
+// Make rust happy about rust_oom being no_mangle...
+pub use heap_allocator::rust_oom;
+
 #[global_allocator]
 static ALLOCATOR: heap_allocator::Allocator = heap_allocator::Allocator::new();
 
