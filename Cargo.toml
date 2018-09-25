@@ -13,7 +13,7 @@ multiboot2 = { git = "https://github.com/roblabla/multiboot2-elf64" }
 spin = "0.4.6"
 static_assertions = "*"
 linked_list_allocator = "0.6.2"
-gif = { git = "https://github.com/roblabla/image-gif" }
+gif = { git = "https://github.com/roblabla/image-gif", rev = "780f97f32157412d703430dfd4e87f93f198864e" }
 log = "0.4.2"
 
 [dependencies.smallvec]
@@ -35,3 +35,9 @@ version = "1.2.1"
 [dependencies.lazy_static]
 features = ["spin_no_std"]
 version = "1.0.0"
+
+[patch.'https://github.com/roblabla/lzw']
+lzw = { git = "https://github.com/roblabla42/lzw", rev = "9f529267b1e8aa659a43d9444bc8257cd88998d8" }
+
+[patch.'https://github.com/roblabla/color_quant']
+color_quant = { git = "https://github.com/roblabla42/color_quant", rev = "84d11b386de5730680267e7267bff4467b4490cf" }
