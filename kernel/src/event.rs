@@ -90,7 +90,7 @@ impl<'WAIT> MultiWaiter<'WAIT> {
         }
     }
 
-    pub fn wait(waiter: &[&Waitable]) -> &'WAIT Waitable {
+    pub fn wait(&self) -> &'WAIT Waitable {
         loop {
             // Early-check for events that have already been signaled.
             for item in self.waitable {
