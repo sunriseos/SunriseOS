@@ -166,6 +166,7 @@ impl KernelStack {
 
     /// Get the address of the beginning of usable stack.
     /// Used for initializing $esp and $ebp of a newborn process
+    /// Points to the last poison pointer, for saved $ebp
     pub fn get_stack_start(&self) -> usize {
          self.stack_address.addr() + STACK_SIZE_WITH_GUARD * PAGE_SIZE
                                    - size_of::<ThreadInfoInStack>()

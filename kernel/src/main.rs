@@ -6,7 +6,7 @@
 //! Currently doesn't do much, besides booting and printing Hello World on the
 //! screen. But hey, that's a start.
 
-#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, iterator_step_by, used, allocator_api, alloc, panic_implementation, box_syntax, no_more_cas, option_replace)]
+#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, iterator_step_by, used, allocator_api, alloc, panic_implementation, box_syntax, no_more_cas, option_replace, const_vec_new)]
 #![cfg_attr(target_os = "none", no_std)]
 #![cfg_attr(target_os = "none", no_main)]
 #![allow(unused)]
@@ -64,6 +64,7 @@ mod io;
 mod devices;
 mod sync;
 mod process;
+mod scheduler;
 
 // Make rust happy about rust_oom being no_mangle...
 pub use heap_allocator::rust_oom;
@@ -127,10 +128,25 @@ fn main() {
     let p1 = process::ProcessStruct::new();
     info!("Created process {:#?}", p1);
 
+    {
+        info!("Adding it to the schedule queue");
+        use alloc::sync::Arc;
+        ::scheduler::SCHEDULE_QUEUE.lock().push(Arc::clone(&p1));
+    }
+
+    info!("Process switching to it");
     let current = process::get_current_process();
 
     let p1lock = p1.write();
     let ctlock = current.write();
+
+	unsafe {
+        // safe because current is current
+        process::process_switch(ctlock, p1lock)
+    };
+
+    // wow we came back from the dead :o
+    info!("Process 0 scheduled again !");
 
     shell();
 }
@@ -292,9 +308,8 @@ pub fn common_start_continue_stack() -> ! {
 
     info!("Becoming the first process");
     let first_process = unsafe { process::ProcessStruct::create_first_process() };
-    // forget it so it's not dropped
-    // todo: put it in the scheduler queue
-    ::core::mem::forget(first_process);
+
+    ::scheduler::SCHEDULE_QUEUE.lock().push(first_process);
 
     info!("Calling main()");
 
