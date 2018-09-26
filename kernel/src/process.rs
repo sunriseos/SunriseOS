@@ -1,5 +1,4 @@
-//! The Completly Unfair Scheduler
-// TODO: Write some more doc here
+///! Process
 
 use stack::KernelStack;
 use i386::mem::paging::InactivePageTables;
@@ -23,24 +22,14 @@ use core::mem::size_of;
 /// the bottom of every kernel stack, the ThreadInfoInStack structure.
 #[derive(Debug)]
 pub struct ProcessStruct {
-//    ptype:      ProcessType,
-    pstate:     ProcessState,
-    pmemory:    ProcessMemory,
+    pub pstate:     ProcessState,
+    pub pmemory:    ProcessMemory,
     pstack:     KernelStack,
     phwcontext: ProcessHardwareContext
 }
 
 /// Just a handy shortcut
 pub type ProcessStructArc = Arc<RwLock<ProcessStruct>>;
-
-// /// The type of the process, either a regular userspace process, or a kworker.
-// ///
-// /// In case of kworker, it contains a pointer to the function to be executed upon first scheduling.
-// /// Otherwise the generic fisrt-scheduling function for user processes will be called.
-// pub enum ProcessType {
-//     Regular,
-//     Kworker(fn() -> !)
-// }
 
 /// The state of a process.
 ///
@@ -49,7 +38,7 @@ pub type ProcessStructArc = Arc<RwLock<ProcessStruct>>;
 /// - Stopped: not in the scheduled queue, waiting for an event
 ///
 /// Since SMP is not supported, there is only one Running process.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ProcessState {
     Running,
     Scheduled,
@@ -138,27 +127,19 @@ impl ProcessStruct {
         }
 
         fn dummy_func () -> ! {
-            use scheduler::SCHEDULE_QUEUE;
+            unsafe {
+                // this is a new process, no SpinLock is held
+                ::i386::instructions::interrupts::sti();
+            }
+
             info!("Process switched to a new process");
             loop {
                 // just do something for a while
                 for i in 0..20 {
                     info!("i: {}", i);
                 }
-                // and process switch back to process
-                let process_current = get_current_process();
-                let process_0 =
-                    {
-                        // a scope to drop the queue's mutex guard
-                        Arc::clone(&SCHEDULE_QUEUE.lock()[0])
-                    };
-                let process_current_lock = process_current.write();
-                let process_0_lock = process_0.write();
-
-                unsafe {
-                    // safe because current is current
-                    process_switch(process_current_lock, process_0_lock)
-                }
+                // and re-schedule
+                ::scheduler::schedule();
             }
         }
 
@@ -313,47 +294,69 @@ impl ProcessStruct {
 ///
 /// The stack can be prepared for schedule-in by the function ProcessStruct::prepare_for_first_schedule().
 ///
+/// # Panics
+///
+/// Panics if the locks protecting the ProcessStruct of any of the parameters cannot be obtained
+/// Panics if B's strong count is 1, as it would be dropped as soon as we switch to it.
+///
 /// # Safety:
 ///
 /// Interrupts definitely must be masked when calling this function
 /// Process current **must be the current process**, otherwise Cthulhu is about to be unleashed
 // todo maybe panic if process_current's lock addr is not == get_current()'s lock
 #[inline(never)] // we need that sweet saved ebp + eip on the stack
-pub unsafe extern "C" fn process_switch(mut process_current:   RwLockWriteGuard<ProcessStruct>,
-                             mut process_b:         RwLockWriteGuard<ProcessStruct>) {
-    // Switch the state
-    process_current.pstate = ProcessState::Stopped;
-    process_b.pstate       = ProcessState::Running;
+pub unsafe extern "C" fn process_switch(process_current: ProcessStructArc,
+                                        process_b: ProcessStructArc) {
 
-    // Switch the memory pages
-    // B's memory will be the active one, switch it in place
-    match ::core::mem::replace(&mut process_b.pmemory, ProcessMemory::Active) {
-        ProcessMemory::Inactive(spinlck) => {
-            // Since the process is the only owner of pages, holding the pages' lock implies having
-            // a ref to the process, and we own a WriteGuard on the process,
-            // so the pages' spinlock cannot possibly be held by someone else.
-            let old_pages = spinlck.into_inner().switch_to();
-            process_current.pmemory = ProcessMemory::Inactive(SpinLock::new(old_pages));
-        }
-        ProcessMemory::Active => {
-            panic!("The process we were about to switch to had its memory marked as already active");
-        }
+    // check we won't drop the process before switching to it
+    assert!(Arc::strong_count(&process_b) > 1, "Process being switched to would be dropped");
+
+    let esp_to_load = {
+        let mut process_current_lock = process_current.try_write()
+            .expect("process_switch cannot get current process' lock for writing");
+        let mut process_b_lock = process_b.try_write()
+            .expect("process_switch cannot get destination process' lock for writing");
+
+        // Switch the state
+        process_current_lock.pstate = ProcessState::Stopped;
+        process_b_lock.pstate = ProcessState::Running;
+
+        // Switch the memory pages
+        // B's memory will be the active one, switch it in place
+        match ::core::mem::replace(&mut process_b_lock.pmemory, ProcessMemory::Active) {
+            ProcessMemory::Inactive(spinlck) => {
+                // Since the process is the only owner of pages, holding the pages' lock implies having
+                // a ref to the process, and we own a WriteGuard on the process,
+                // so the pages' spinlock cannot possibly be held by someone else.
+                let old_pages = spinlck.into_inner().switch_to();
+                process_current_lock.pmemory = ProcessMemory::Inactive(SpinLock::new(old_pages));
+            }
+            ProcessMemory::Active => {
+                panic!("The process we were about to switch to had its memory marked as already active");
+            }
+        };
+
+        let current_esp: usize;
+        asm!("mov $0, esp" : "=r"(current_esp) : : : "intel", "volatile");
+
+        // on restoring, esp will point to the top of the saved registers
+        let esp_to_save = current_esp - (8 + 1 + 1) * size_of::<usize>();
+        process_current_lock.phwcontext.esp = esp_to_save;
+
+        let esp_to_load = process_b_lock.phwcontext.esp;
+
+        // unlock the processes, they become available to be taken between now and when B will take
+        // them again on schedule in, but since there is no SMP and interrupts are off,
+        // this should be ok ...
+        drop(process_b_lock);
+        drop(process_current_lock);
+
+        esp_to_load
     };
 
-    let current_esp: usize;
-    asm!("mov $0, esp" : "=r"(current_esp) : : : "intel", "volatile");
-
-    // on restoring, esp will point to the top of the saved registers
-    let esp_to_save = current_esp - (8 + 1 + 1) * size_of::<usize>();
-    process_current.phwcontext.esp = esp_to_save;
-
-    let esp_to_load = process_b.phwcontext.esp;
-
-    // unlock the processes, they become available to be taken between now and when B will take
-    // them again on schedule in, but since there is no SMP and interrupts are off,
-    // this should be ok ...
-    drop(process_current);
+    // drop the Arcs, maybe destroying the current process
     drop(process_b);
+    drop(process_current);
 
     asm!("
     // Push all registers on the stack, swap to B's stack, and jump to B's schedule-in
