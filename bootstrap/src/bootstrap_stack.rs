@@ -2,29 +2,31 @@
 //!
 //! A bootstrap stack is structured as follow :
 //!
-//!          No Page Guard
-//!     j--------------------j  < 0xaaaaffff
+//!     j--------------------j  < 0xaaaa0000 = BootstrapStack.stack_address
 //!     |                    |
+//!     |                    |
+//!     |     PAGE GUARD     |
+//!     |                    |
+//!     |                    |
+//!     j--------------------j
+//!     |                    |
+//!     |                    |
+//!     |        AAA         |
+//!     |        |||         |
+//!     |                    |
+//!     j--------------------j
 //!     |                    |
 //!     |       STACK        |
 //!     |                    |
-//!     |                    |
-//!     j--------------------j
-//!     |                    |
-//!     |        |||         |
-//!     |        VVV         |
-//!     |                    |
-//!     |                    |
-//!     j--------------------j
-//!     |                    |
-//!     |                    |
-//!     |     PAGE_GUARD     |
-//!     |                    |
-//!     |                    |
-//!     j--------------------j < 0xaaaa0000
+//!     | j----------------j |
+//!     | |  poison value  | |
+//!     j-j----------------j-j < 0xaaaaffff
+//!          No Page Guard
 //!
 //!  Since the stack is several pages long, we must ensure the stack respects some alignment
 //!  in order to be able to find its bottom from any page.
+//!
+//! Must be consistent with KernelStack, as kernel considers it's already running on a KernelStack.
 
 use ::core::mem::size_of;
 use paging::*;
@@ -75,20 +77,11 @@ impl BootstrapStack {
         *saved_ebp = 0x00000000;
     }
 
-    /// Switch to this bootstrap stack.
-    /// The function passed as parameter will be called with the new stack, and should never return
-    pub unsafe fn switch_to(self, f: fn() -> !) -> ! {
-        let new_ebp_esp: usize = self.stack_address.addr() + STACK_SIZE_WITH_GUARD * PAGE_SIZE
-                                                           - Self::STACK_POISON_SIZE;
-        asm!("
-        mov ebp, $0
-        mov esp, $0
-        jmp $1"
-        :
-        : "r"(new_ebp_esp), "r"(f)
-        : "memory"
-        : "intel", "volatile");
-
-        unreachable!();
+    /// Get the address of the beginning of usable stack.
+    /// Used for initializing $esp and $ebp of a newborn process
+    /// Points to the last poison pointer, for saved $ebp
+    pub fn get_stack_start(&self) -> usize {
+         self.stack_address.addr() + STACK_SIZE_WITH_GUARD * PAGE_SIZE
+                                   - Self::STACK_POISON_SIZE
     }
 }

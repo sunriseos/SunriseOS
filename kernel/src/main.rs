@@ -269,20 +269,6 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 
     log_impl::init();
 
-    let new_stack = stack::KernelStack::allocate_stack()
-        .expect("Failed to allocate new kernel stack");
-    unsafe { new_stack.switch_to(common_start_continue_stack) }
-    unreachable!()
-}
-
-/// When we switch to a new valid kernel stack during init, we can't return now that the stack is empty
-/// so we need to call some function that will proceed with the end of the init procedure
-/// This is some function
-#[cfg(target_os = "none")]
-#[no_mangle]
-pub fn common_start_continue_stack() -> ! {
-    info!("Switched to new kernel stack");
-
     unsafe { devices::pit::init_channel_0() };
     info!("Initialized PIT");
 

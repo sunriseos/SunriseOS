@@ -2,7 +2,6 @@
 //!
 //! A kernel stack is structured as follow :
 //!
-//!          No Page Guard
 //!     j--------------------j  < 0xaaaa0000 = KernelStack.stack_address
 //!     |                    |
 //!     |                    |
@@ -22,6 +21,7 @@
 //!     | j----------------j |
 //!     | |  poison value  | |
 //!     j-j----------------j-j < 0xaaaaffff
+//!          No Page Guard
 //!
 //!  Since the stack is several pages long, we must ensure the stack respects some alignment
 //!  in order to be able to find its bottom from any page.
@@ -74,11 +74,11 @@ impl KernelStack {
 
     /// Retrieves the current stack from $esp
     ///
+    /// Should be used only to retrieve the KernelStack that was given to us by the bootstrap.
+    ///
     /// # Safety
     ///
-    /// We must be using a KernelStack ! Not any random stack
-    ///
-    /// Also unsafe because it creates duplicates of the stack structure,
+    /// Unsafe because it creates duplicates of the stack structure,
     /// whose only owner should be the ProcessStruct it belongs to.
     /// This enables having several mut references pointing to the same underlying memory.
     /// Caller has to make sure no references to the stack exists when calling this function.
@@ -111,49 +111,40 @@ impl KernelStack {
                                    - Self::STACK_POISON_SIZE
     }
 
-    /// Switch to this kernel stack.
-    /// The function passed as parameter will be called with the new stack, and should never return
-    pub unsafe fn switch_to(self, f: fn() -> !) -> ! {
-        let new_ebp_esp = self.get_stack_start();
-        asm!("
-        mov ebp, $0
-        mov esp, $0
-        jmp $1"
-        :
-        : "r"(new_ebp_esp), "r"(f)
-        : "memory"
-        : "intel", "volatile");
-
-        unreachable!();
-    }
-
     /// Dumps the stack on all the Loggers, displaying it in a frame-by-frame format
-    ///
-    /// # Safety
-    ///
-    /// We must be using a kernel stack ! Not any random stack
-    pub unsafe fn dump_current_stack() {
+    pub fn dump_current_stack() {
         let mut ebp;
         let mut esp;
         let mut eip;
-        asm!("      mov $0, ebp
-                    mov $1, esp
+        unsafe {
+            asm!("
+                mov $0, ebp
+                mov $1, esp
 
-                    // eip can only be read through the stack after a call instruction
-                    call read_eip
-              read_eip:
-                    pop $2"
+                // eip can only be read through the stack after a call instruction
+                call read_eip
+            read_eip:
+                pop $2"
             : "=r"(ebp), "=r"(esp), "=r"(eip) ::: "volatile", "intel" );
-        let stack = Self::get_current_stack();
+        }
 
-        let stack_bottom = (stack.stack_address.addr() + PAGE_SIZE) as *const u8;
-        let stack_slice = ::core::slice::from_raw_parts(stack_bottom,
-                                                        STACK_SIZE * PAGE_SIZE);
+        let stack_bottom = (Self::get_current_stack_bottom() + PAGE_SIZE) as *const u8;
+        let stack_slice = unsafe { ::core::slice::from_raw_parts(stack_bottom,
+                                                        STACK_SIZE * PAGE_SIZE) };
 
         dump_stack(stack_slice, stack_bottom as usize, esp, ebp, eip);
     }
+}
 
-    // TODO destroy the stack ?
+impl Drop for KernelStack {
+    /// We deallocate the stack when it is dropped
+    fn drop(&mut self) {
+        debug!("Dropping KernelStack {:?}", self);
+        let mut tables = ACTIVE_PAGE_TABLES.lock();
+        for i in 0..STACK_SIZE_WITH_GUARD {
+            tables.unmap(self.stack_address + i * PAGE_SIZE);
+        }
+    }
 }
 
 /* ********************************************************************************************** */

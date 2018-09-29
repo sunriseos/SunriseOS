@@ -9,10 +9,11 @@
 //! What the bootstrap stage does is :
 //! 1. create a set of pages
 //! 2. identity map bootstrap sections
-//! 2. enable paging
-//! 3. load kernel at the end of address space
+//! 3. enable paging
+//! 4. load kernel at the end of address space
 //! 5. construct a map of kernel sections that will be passed to kernel
-//! 4. jump to kernel
+//! 6. create a kernel stack
+//! 7. jump to kernel
 //!
 //! ## Logging
 //!
@@ -140,41 +141,28 @@ pub extern "C" fn do_bootstrap(multiboot_info_addr: usize) -> ! {
         .expect("Cannot allocate bootstrap stack");
     writeln!(Serial, "= Created kernel stack");
 
-    // Start using this stack
-    MULTIBOOT_INFO_PAGE.call_once(|| multiboot_info_page);
-    KERNEL_ENTRY_POINT.call_once(|| VirtualAddress(kernel_entry_point));
-    unsafe { new_stack.switch_to(do_bootstrap_continue_stack) }
-    unreachable!()
-}
-
-/// We're about to switch to a new stack, but we want to keep references to some value,
-/// so we make them global ...
-static MULTIBOOT_INFO_PAGE: Once<VirtualAddress> = Once::new();
-static KERNEL_ENTRY_POINT:  Once<VirtualAddress> = Once::new();
-
-/// When we switch to a new stack during init, we can't return now that the stack is empty
-/// so we need to call some function that will proceed with the end of the init procedure
-/// This is some function
-pub fn do_bootstrap_continue_stack() -> ! {
-    writeln!(Serial, "= Switched to new kernel stack");
-
-    let multiboot_info = MULTIBOOT_INFO_PAGE.try()
-        .expect("Multiboot info page was not propagated").addr();
-    let kernel_entry_point = KERNEL_ENTRY_POINT.try()
-        .expect("Kernel entry point was not propagated").addr();
+    let new_ebp_esp = new_stack.get_stack_start();
 
     writeln!(Serial, "= Jumping to kernel");
+
     unsafe {
-        asm!("mov ebx, $0
-              jmp $1"
-              : // no output
-              : "r"(multiboot_info), "r"(kernel_entry_point)
-              : "ebx", "memory"
-              : "intel"
-              );
+    asm!("
+        // save multiboot info pointer
+        mov ebx, $0
+
+        // switch to the new stack
+        mov ebp, $1
+        mov esp, $1
+
+        // jump to the kernel
+        jmp $2"
+        :
+        : "r"(multiboot_info_page), "r"(new_ebp_esp), "r"(kernel_entry_point)
+        : "memory"
+        : "intel", "volatile");
     }
 
-    unsafe { ::core::intrinsics::unreachable() }
+    unreachable!()
 }
 
 #[cfg(target_os = "none")]
