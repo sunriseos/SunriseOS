@@ -5,8 +5,25 @@ use alloc::sync::Arc;
 use spin::RwLock;
 use alloc::vec::Vec;
 
-use process::{ProcessStruct, ProcessStructArc, process_switch};
+use process::{ProcessStruct, ProcessStructArc};
+use i386::process_switch::process_switch;
 use sync::SpinLock;
+
+/// We always keep an Arc to the process currently running.
+/// This enables finding the current process from anywhere,
+/// and also prevents dropping the ProcessStruct of the process we're currently running
+// why isn't uninitialized() a const fn !? D:
+static mut CURRENT_PROCESS: Option<ProcessStructArc> = None;
+
+/// Gets the current ProcessStruct.
+pub fn get_current_process() -> ProcessStructArc {
+    unsafe {
+        // Safe because modifications only happens in the schedule() function,
+        // and outside of that function, seen from a process' perspective,
+        // CURRENT_PROCESS will always have the same value
+        Arc::clone(CURRENT_PROCESS.as_ref().unwrap())
+    }
+}
 
 /// The schedule queue
 ///
@@ -43,7 +60,7 @@ pub fn add_to_schedule_queue(process: ProcessStructArc) {
 }
 
 /// Creates the very first process at boot.
-/// The created process is added to the schedule queue.
+/// The created process is marked as the current process, and added to the schedule queue.
 ///
 /// # Safety
 ///
@@ -53,11 +70,14 @@ pub fn add_to_schedule_queue(process: ProcessStructArc) {
 /// # Panics
 ///
 /// Panics if the schedule queue was not empty
-/// ThreadInfoInStack will be initialized, it must not already have been
 pub unsafe fn create_first_process() {
     let mut queue = SCHEDULE_QUEUE.lock();
     assert!(queue.is_empty());
     let p0 = ProcessStruct::create_first_process();
+    unsafe {
+        // provided we only run this function once, it hasn't been initialized yet
+        CURRENT_PROCESS = Some(Arc::clone(&p0));
+    }
     queue.push(p0);
 }
 
@@ -118,23 +138,51 @@ pub fn schedule() {
             // 3. push current at the back of the queue
             queue.push(current);
 
-            // get the processes again
-            let current = Arc::clone(queue.last().unwrap());
+            // get the process again
             let process_b = Arc::clone(queue.first().unwrap());
 
             // unlock the queue
             drop(queue);
 
-            unsafe {
+            let whoami = unsafe {
                 // safety: interrupts are off
-                // safety: todo we never checked first is actually the current :/
-                process_switch(current, process_b);
-            }
+                process_switch(process_b)
+            };
 
             /* we were scheduled again */
+
+            // replace CURRENT_PROCESS with ourself.
+            // If previously running process had deleted all other references to itself, this
+            // is where its drop actually happens
+            unsafe { CURRENT_PROCESS = Some(whoami) };
         }
     }
 
     // might re-enable the interrupts here !
     drop(interrupt_lock);
+}
+
+
+/// The function called when a process was schedule for the first time,
+/// right after the arch-specific process switch was performed.
+pub fn scheduler_fisrt_schedule(current_process: ProcessStructArc) {
+    // replace CURRENT_PROCESS with ourself.
+    // If previously running process had deleted all other references to itself, this
+    // is where its drop actually happens
+    unsafe { CURRENT_PROCESS = Some(current_process) };
+
+    unsafe {
+        // this is a new process, no SpinLock is held
+        ::i386::instructions::interrupts::sti();
+    }
+
+    info!("Process switched to a new process");
+    loop {
+        // just do something for a while
+        for i in 0..20 {
+            info!("i: {}", i);
+        }
+        // and re-schedule
+        schedule();
+    }
 }

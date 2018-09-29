@@ -269,7 +269,7 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 
     log_impl::init();
 
-    let new_stack = stack::KernelStack::allocate_boot_stack()
+    let new_stack = stack::KernelStack::allocate_stack()
         .expect("Failed to allocate new kernel stack");
     unsafe { new_stack.switch_to(common_start_continue_stack) }
     unreachable!()

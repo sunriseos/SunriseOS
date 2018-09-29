@@ -13,6 +13,7 @@ pub mod stack;
 pub mod pio;
 pub mod multiboot;
 pub mod structures;
+pub mod process_switch;
 
 pub mod instructions {
     //! Low level functions for special i386 instructions.
