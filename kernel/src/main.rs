@@ -128,14 +128,18 @@ fn main() {
     let p1 = process::ProcessStruct::new();
     info!("Created process {:#?}", p1);
 
+    use ::alloc::sync::Arc;
     info!("Adding it to the schedule queue");
-    ::scheduler::add_to_schedule_queue(p1);
+    ::scheduler::add_to_schedule_queue(Arc::clone(&p1));
 
     info!("Scheduling to it");
     ::scheduler::schedule();
 
     // wow we came back from the dead :o
     info!("Process 0 scheduled again !");
+
+    info!("Removing other process from the schedule queue");
+    ::scheduler::unschedule(&p1);
 
     info!("Starting the shell");
     shell();

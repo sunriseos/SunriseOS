@@ -41,22 +41,49 @@ static SCHEDULE_QUEUE: SpinLock<Vec<ProcessStructArc>> = SpinLock::new(Vec::new(
 ///
 /// # Panics
 ///
-/// Panics if the process' lock cannot be obtained for writing.
+/// Panics if the process was already in the schedule queue
+/// Panics if the process' state was already "Scheduled"
 pub fn add_to_schedule_queue(process: ProcessStructArc) {
     let mut queue_lock = {
         // first lock the process, which might schedule if we can't, it's ok
         let mut process_lock = process.write();
         let queue_lock = SCHEDULE_QUEUE.lock();
 
+        // todo maybe delete this assert, it adds a lot of overhead
+        assert!(!is_in_schedule_queue(&process),
+                    "Process was already in schedule queue : {:?}", process);
+
         use process::ProcessState;
         assert_eq!(process_lock.pstate, ProcessState::Stopped,
                    "Process added to schedule queue was not stopped : {:?}", process_lock.pstate);
+
         process_lock.pstate = ProcessState::Scheduled;
         queue_lock
         // process' guard is dropped here
     };
 
     queue_lock.push(process)
+}
+
+/// Checks if a process is in the schedule queue
+pub fn is_in_schedule_queue(process: &ProcessStructArc) -> bool {
+    let queue = SCHEDULE_QUEUE.lock();
+    queue.iter().any(|elem| Arc::ptr_eq(process, elem))
+}
+
+/// Removes a process from the schedule queue.
+// todo /// Changes its state to "Stopped", except if it was "Running",
+//      /// in which case it stays "Running" until its next schedule().
+//      ... but this requires locking the ProcessStruct, and i hate this.
+//          Failing to lock means deadlocking since we hold the queue's lock
+///
+/// Returns the ProcessStructArc that was stored in the queue, or None if it was not found.
+pub fn unschedule(process: &ProcessStructArc) -> Option<ProcessStructArc> {
+    let mut queue = SCHEDULE_QUEUE.lock();
+    queue.iter().position(|elem| Arc::ptr_eq(process, elem))
+        .map(|index|
+            queue.remove(index)
+        )
 }
 
 /// Creates the very first process at boot.
@@ -85,24 +112,25 @@ pub unsafe fn create_first_process() {
 ///
 /// # Queue politics
 ///
-///                checking if process is locked
-///                =====================>
-/// j--------j j--------j j--------j j--------j
-/// | current| |    X   | |        | |        |
-/// j--------j j--------j j--------j j--------j    A
-///    | A       locked,       |                   |
-///    | |       skipped       |                   |
-///    | +---------------------+                   |
-///    +-------------------------------------------+
+///          checking if process is locked
+///          and also not the current one
+///          ===============================>
+///     j--------j j--------j j--------j j--------j
+///     | current| |    X   | |        | |        |
+///     j--------j j--------j j--------j j--------j    A
+///        | A       locked,       |                   |
+///        | |       skipped       |                   |
+///        | +---------------------+                   |
+///        +-------------------------------------------+
 ///
 /// 1. Tries to lock the next first process. If it fails to acquire its lock,
 ///    it is ignored for now, and we move on to the next one.
 /// 2. When a candidate is found, it is moved to the start of the queue, and
 ///    current process is pushed back at the end.
-/// 2. Rotates the current process at the end of the queue.
-/// 3. Performs the process switch
+/// 3. Rotates the current process at the end of the queue.
+/// 4. Performs the process switch
 ///  * as new process *
-/// 4. Drops the lock to the schedule queue, re-enabling interrupts
+/// 5. Drops the lock to the schedule queue, re-enabling interrupts
 pub fn schedule() {
 
     /// Parses the queue to find the first unlocked process.

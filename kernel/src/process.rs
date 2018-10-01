@@ -130,3 +130,10 @@ impl ProcessStruct {
         p
     }
 }
+
+impl Drop for ProcessStruct {
+    fn drop(&mut self) {
+        // todo this should be a debug !
+        info!("Dropped a process : {:?}", self)
+    }
+}
