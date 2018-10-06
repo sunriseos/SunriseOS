@@ -6,6 +6,40 @@ use spin::{Mutex as SpinMutex, MutexGuard as SpinMutexGuard};
 use i386::instructions::interrupts::*;
 use core::sync::atomic::AtomicBool;
 
+/// Interrupt disable counter.
+///
+/// # Description
+///
+/// Allows recursively disabling interrupts while keeping a sane behavior.
+/// Interrupts will be disabled when the counter goes from 0 to 1, and reenabled
+/// when it gets set back to 0.
+///
+/// Used by the SpinLock to implement recursive irqsave logic.
+// TODO: cpu_local macro
+static mut INTERRUPT_DISABLE_COUNTER: usize = 0;
+
+/// Decrement the interrupt disable counter.
+///
+/// Look at documentation for INTERRUPT_DISABLE_COUNTER to know more.
+unsafe fn enable_interrupts() {
+    // Safety: TODO: cpu_local
+    INTERRUPT_DISABLE_COUNTER -= 1;
+    if INTERRUPT_DISABLE_COUNTER == 0 {
+        sti();
+    }
+}
+
+/// Increment the interrupt disable counter.
+///
+/// Look at documentation for INTERRUPT_DISABLE_COUNTER to know more.
+unsafe fn disable_interrupts() {
+    // Safety: TODO: cpu_local
+    if INTERRUPT_DISABLE_COUNTER == 0 {
+        cli();
+    }
+    INTERRUPT_DISABLE_COUNTER += 1;
+}
+
 /// Simple SpinLock.
 ///
 /// # Description
@@ -18,6 +52,10 @@ use core::sync::atomic::AtomicBool;
 ///
 /// This means that locking a spinlock disables interrupts until all spinlocks
 /// have been dropped.
+///
+/// Note that it is allowed to lock/unlock the locks in a different order. It uses
+/// a global counter to disable/enable interrupts. View INTERRUPT_DISABLE_COUNTER
+/// documentation for more information.
 #[derive(Debug)]
 pub struct SpinLock<T: ?Sized> {
     internal: SpinMutex<T>
@@ -39,33 +77,30 @@ impl<T> SpinLock<T> {
 impl<T: ?Sized> SpinLock<T> {
     /// Disables interrupts and locks the mutex.
     pub fn lock(&self) -> SpinLockGuard<T> {
-        // Save eflags
-        let flags = flags();
-
         // Disable irqs
-        unsafe { cli(); }
+        unsafe { disable_interrupts(); }
 
         // TODO: Disable preemption.
         // TODO: Spin acquire
 
         // lock
         let internalguard = self.internal.lock();
-        SpinLockGuard(flags, ManuallyDrop::new(internalguard))
+        SpinLockGuard(ManuallyDrop::new(internalguard))
     }
 }
 
 
 #[derive(Debug)]
-pub struct SpinLockGuard<'a, T: ?Sized + 'a>(u16, ManuallyDrop<SpinMutexGuard<'a, T>>);
+pub struct SpinLockGuard<'a, T: ?Sized + 'a>(ManuallyDrop<SpinMutexGuard<'a, T>>);
 
 impl<'a, T: ?Sized + 'a> Drop for SpinLockGuard<'a, T> {
     fn drop(&mut self) {
         // TODO: Spin release
         // unlock
-        unsafe { ManuallyDrop::drop(&mut self.1); }
+        unsafe { ManuallyDrop::drop(&mut self.0); }
 
         // Restore irq
-        unsafe { set_flags(self.0); }
+        unsafe { enable_interrupts(); }
 
         // TODO: Enable preempt
     }
@@ -75,12 +110,12 @@ impl<'a, T: ?Sized + 'a> Deref for SpinLockGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        &*self.1
+        &*self.0
     }
 }
 
 impl<'a, T: ?Sized + 'a> DerefMut for SpinLockGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut T {
-        &mut *self.1
+        &mut *self.0
     }
 }
