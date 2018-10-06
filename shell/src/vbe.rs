@@ -2,15 +2,15 @@
 //! and VBE logger
 
 use alloc::prelude::*;
-use core::slice;
-use utils;
-use i386::mem::paging::{self, EntryFlags, PageTablesSet};
-use frame_alloc::PhysicalAddress;
-use multiboot2::{BootInformation, FramebufferInfoTag};
+//use utils;
+//use i386::mem::paging::{self, EntryFlags, PageTablesSet};
+//use frame_alloc::PhysicalAddress;
+//use multiboot2::{BootInformation, FramebufferInfoTag};
 use logger::{Logger, LogAttributes, LogColor};
 use font_rs::{font, font::{Font, GlyphBitmap}};
 use spin::{Mutex, MutexGuard, Once};
 use hashmap_core::HashMap;
+use syscalls;
 
 /// A rgb color
 #[derive(Copy, Clone, Debug)]
@@ -22,7 +22,9 @@ pub struct VBEColor {
 
 pub struct Framebuffer {
     buf: &'static mut [u8],
-    tag: &'static FramebufferInfoTag
+    width: usize,
+    height: usize,
+    bpp: usize
 }
 
 
@@ -33,34 +35,30 @@ impl Framebuffer {
     ///
     /// This function should only be called once, to ensure there is only a
     /// single mutable reference to the underlying framebuffer.
-    pub unsafe fn new(boot_info: &BootInformation) -> Framebuffer {
-        let tag = boot_info.framebuffer_info_tag().expect("Framebuffer to be provided");
-        let framebuffer_size = tag.framebuffer_bpp() as usize * tag.framebuffer_dimensions().0 as usize * tag.framebuffer_dimensions().1 as usize / 8;
-        let framebuffer_size_pages = utils::align_up(framebuffer_size, paging::PAGE_SIZE) / paging::PAGE_SIZE;
-        let mut page_tables = paging::ACTIVE_PAGE_TABLES.lock();
+    pub fn new() -> Result<Framebuffer, usize> {
+        let (buf, width, height, bpp) = syscalls::map_framebuffer()?;
 
-        let framebuffer_vaddr = page_tables.find_available_virtual_space::<paging::KernelLand>(framebuffer_size_pages).expect("Hopefully there's some space");
-        page_tables.map_range(PhysicalAddress(tag.framebuffer_addr()), framebuffer_vaddr, framebuffer_size_pages, EntryFlags::WRITABLE);
-
-        debug!("VBE vaddr: {:#010x}, paddr: {:#010x}", framebuffer_vaddr.addr(), tag.framebuffer_addr());
+        debug!("VBE vaddr: {:#010x}", buf.as_ptr() as usize);
         let mut fb = Framebuffer {
-            buf: slice::from_raw_parts_mut(framebuffer_vaddr.addr() as *mut u8, framebuffer_size),
-            tag
+            buf,
+            width,
+            height,
+            bpp
         };
         fb.clear();
-        fb
+        Ok(fb)
     }
 
     /// framebuffer width in pixels. Does not account for bpp
     #[inline]
     pub fn width(&self) -> usize {
-        self.tag.framebuffer_dimensions().0 as usize
+        self.width
     }
 
     /// framebuffer height in pixels. Does not account for bpp
     #[inline]
     pub fn height(&self) -> usize {
-        self.tag.framebuffer_dimensions().1 as usize
+        self.height
     }
 
     /// The number of bits that forms a pixel.
@@ -68,7 +66,7 @@ impl Framebuffer {
     /// px_offset = px_nbr * bpp
     #[inline]
     pub fn bpp(&self) -> usize {
-        self.tag.framebuffer_bpp() as usize
+        self.bpp
     }
 
     /// Gets the offset in memory of a pixel based on an x and y.
@@ -112,6 +110,10 @@ impl Framebuffer {
         let fb = self.get_fb();
         for i in fb.iter_mut() { *i = 0x00; }
     }
+}
+
+lazy_static! {
+    pub static ref FRAMEBUFFER: Mutex<Framebuffer> = Mutex::new(Framebuffer::new().unwrap());
 }
 
 /* ********************************************************************************************** */
@@ -164,7 +166,6 @@ struct Pos {
 /// A struct for logging text to the vbe screen.
 /// Renders characters from a .ttf font using the font-rs crate
 struct VBELoggerInternal {
-    framebuffer: Framebuffer,
     cursor_pos: Pos,        /* Cursor pos, in pixels. Does not account for bpp.
                                Reprensents the pen position on the baseline. */
     font: Font<'static>,
@@ -178,17 +179,13 @@ struct VBELoggerInternal {
 }
 
 /// The font we choose to render in
-static FONT:  &'static [u8] = include_bytes!("../../../shell/img/Monaco.ttf");
+static FONT:  &'static [u8] = include_bytes!("../img/Monaco.ttf");
 
 /// The size we choose to render in
 const FONT_SIZE: u32 = 10;
 
 impl VBELoggerInternal {
     fn new() -> Self {
-        // get the framebuffer
-        let mut vbe = unsafe {
-            Framebuffer::new(::i386::multiboot::get_boot_information())
-        };
 
         let my_font = font::parse(FONT)
             .expect("Failed parsing provided font");
@@ -199,9 +196,11 @@ impl VBELoggerInternal {
 
         let my_linespace = my_descent + my_ascent;
 
-        assert!(my_advance_width < vbe.width() && my_linespace < vbe.height(), "font size is too large");
+        {
+            let vbe = FRAMEBUFFER.lock();
+            assert!(my_advance_width < vbe.width() && my_linespace < vbe.height(), "font size is too large");
+        }
         VBELoggerInternal {
-            framebuffer: vbe,
             font: my_font,
             cached_glyphs: HashMap::with_capacity(128), // the ascii table
             advance_width: my_advance_width,
@@ -220,7 +219,7 @@ impl VBELoggerInternal {
     #[inline]
     fn line_feed(&mut self) {
         // Are we already on the last line ?
-        if self.cursor_pos.y + self.linespace + self.descent >= self.framebuffer.height() {
+        if self.cursor_pos.y + self.linespace + self.descent >= FRAMEBUFFER.lock().height() {
             self.scroll_screen();
         } else {
             self.cursor_pos.y += self.linespace;
@@ -232,7 +231,7 @@ impl VBELoggerInternal {
     fn advance_pos(&mut self) {
         self.cursor_pos.x += self.advance_width;
         // is next displayed char going to be cut out of screen ?
-        if self.cursor_pos.x + self.advance_width >= self.framebuffer.width() {
+        if self.cursor_pos.x + self.advance_width >= FRAMEBUFFER.lock().width() {
             self.line_feed();
         }
     }
@@ -247,28 +246,29 @@ impl VBELoggerInternal {
     /// scrolls the whole screen by one line.
     /// self.pos must be on last baseline.
     fn scroll_screen(&mut self) {
-        let linespace_size_in_framebuffer = self.framebuffer.get_px_offset(0, self.linespace);
-        let lastline_top_left_corner = self.framebuffer.get_px_offset(0, self.cursor_pos.y - self.ascent);
+        let mut framebuffer = FRAMEBUFFER.lock();
+        let linespace_size_in_framebuffer = framebuffer.get_px_offset(0, self.linespace);
+        let lastline_top_left_corner = framebuffer.get_px_offset(0, self.cursor_pos.y - self.ascent);
         // Copy up from the line under it
-        assert!(lastline_top_left_corner + linespace_size_in_framebuffer < self.framebuffer.buf.len(), "Framebuffer is drunk");
+        assert!(lastline_top_left_corner + linespace_size_in_framebuffer < framebuffer.buf.len(), "Framebuffer is drunk");
         unsafe {
             // memmove in the same slice. Should be safe with the assert above.
-            ::core::ptr::copy(self.framebuffer.buf[linespace_size_in_framebuffer..].as_ptr(),
-                              self.framebuffer.buf.as_mut_ptr(),
+            ::core::ptr::copy(framebuffer.buf[linespace_size_in_framebuffer..].as_ptr(),
+                              framebuffer.buf.as_mut_ptr(),
                               lastline_top_left_corner);
         }
         // Erase last line
         unsafe {
             // memset to 0x00. Should be safe with the assert above
-            ::core::ptr::write_bytes(self.framebuffer.buf[lastline_top_left_corner..].as_mut_ptr(),
+            ::core::ptr::write_bytes(framebuffer.buf[lastline_top_left_corner..].as_mut_ptr(),
                                     0x00,
-                                    self.framebuffer.buf[lastline_top_left_corner..].len());
+                                    framebuffer.buf[lastline_top_left_corner..].len());
         }
     }
 
     /// Clears the whole screen and reset cursor
     fn clear(&mut self) {
-        self.framebuffer.clear();
+        FRAMEBUFFER.lock().clear();
         self.cursor_pos = Pos { x: 0, y: self.ascent };
     }
 
@@ -280,14 +280,14 @@ impl VBELoggerInternal {
                 '\x08' => {
                     self.move_pos_back();
                     let empty_glyph = GlyphBitmap { width: 0, height: 0, top: 0, left: 0, data: Vec::new() };
-                    Self::display_glyph_in_box(&empty_glyph, &mut self.framebuffer,
+                    Self::display_glyph_in_box(&empty_glyph, &mut *FRAMEBUFFER.lock(),
                                                self.advance_width, self.ascent, self.descent,
                                                 &fg, &bg, self.cursor_pos);
                 }
                 mychar => {
                     {
                         let VBELoggerInternal {
-                            cached_glyphs, framebuffer, font, advance_width, ascent, descent, cursor_pos, ..
+                            cached_glyphs, font, advance_width, ascent, descent, cursor_pos, ..
                         } = self;
 
                         // Try to get the rendered char from the cache
@@ -299,7 +299,7 @@ impl VBELoggerInternal {
                                         .and_then(|glyphid| font.render_glyph(glyphid, FONT_SIZE))
                                         .unwrap_or(GlyphBitmap { width: 0, height: 0, top: 0, left: 0, data: Vec::new() })
                                 });
-                            Self::display_glyph_in_box(glyph, framebuffer,
+                            Self::display_glyph_in_box(glyph, &mut *FRAMEBUFFER.lock(),
                                                        *advance_width, *ascent, *descent,
                                                        &fg, &bg, *cursor_pos);
                         } else {
@@ -307,7 +307,7 @@ impl VBELoggerInternal {
                             let glyph = font.lookup_glyph_id(mychar as u32)
                                 .and_then(|glyphid| font.render_glyph(glyphid, FONT_SIZE))
                                 .unwrap_or(GlyphBitmap { width: 0, height: 0, top: 0, left: 0, data: Vec::new() });
-                            Self::display_glyph_in_box(&glyph, framebuffer,
+                            Self::display_glyph_in_box(&glyph, &mut *FRAMEBUFFER.lock(),
                                                        *advance_width, *ascent, *descent,
                                                        &fg, &bg, *cursor_pos);
                         }

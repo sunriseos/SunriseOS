@@ -11,6 +11,10 @@ script = ["cp linker-scripts/bootstrap.ld link.T"]
 workspace = false
 script = ["cp linker-scripts/kernel.ld    link.T"]
 
+[tasks.userspace-linker]
+workspace = false
+script = ["cp linker-scripts/userspace.ld    link.T"]
+
 [tasks.bootstrap]
 workspace = false
 description = "Compiles the i386 bootstrap for debug"
@@ -39,14 +43,29 @@ dependencies = ["kernel-linker"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-kernel", "--release" ]
 
+[tasks.userspace]
+workspace = false
+description = "Compiles userspace apps"
+dependencies = ["userspace-linker"]
+command = "cargo"
+args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-shell"]
+
+[tasks.userspace-release]
+workspace = false
+description = "Compiles userspace apps"
+dependencies = ["userspace-linker"]
+command = "cargo"
+args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-shell", "--release"]
+
 [tasks.iso]
 workspace = false
 description = "Creates a bootable ISO containing the kernel and grub."
-dependencies = ["bootstrap", "kernel"]
+dependencies = ["bootstrap", "kernel", "userspace"]
 script = [
 '''
 cp target/i386-unknown-none/debug/kfs-bootstrap isofiles/boot/
 cp target/i386-unknown-none/debug/kfs-kernel    isofiles/boot/
+cp target/i386-unknown-none/debug/kfs-shell     isofiles/boot/
 grub-mkrescue -o os.iso isofiles
 '''
 ]
@@ -54,11 +73,12 @@ grub-mkrescue -o os.iso isofiles
 [tasks.iso-release]
 workspace = false
 description = "Creates a bootable ISO containing the kernel and grub."
-dependencies = ["bootstrap-release", "kernel-release"]
+dependencies = ["bootstrap-release", "kernel-release", "userspace-release"]
 script = [
 '''
 cp target/i386-unknown-none/release/kfs-bootstrap isofiles/boot/
 cp target/i386-unknown-none/release/kfs-kernel    isofiles/boot/
+cp target/i386-unknown-none/release/kfs-shell     isofiles/boot/
 grub-mkrescue -o os.iso isofiles
 '''
 ]
