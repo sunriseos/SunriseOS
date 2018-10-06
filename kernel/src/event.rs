@@ -75,38 +75,32 @@ pub trait Waitable: Debug {
     fn register(&self);
 }
 
-/// A list of waitable objects.
-///
-/// Allows waiting on multiple Waitables at the same time.
-#[derive(Debug)]
-pub struct MultiWaiter<'wait> {
-    waitable: &'wait [&'wait Waitable]
-}
+/// Waits for an event to occur on one of the given Waitable objects.
+pub fn wait<'wait, INTOITER>(waitable_intoiter: INTOITER) -> &'wait Waitable
+where
+    INTOITER: IntoIterator<Item=&'wait Waitable>,
+    <INTOITER as IntoIterator>::IntoIter: Clone
+{
+    let waitable = waitable_intoiter.into_iter();
 
-impl<'wait> MultiWaiter<'wait> {
-    pub fn new(arr: &'wait [&'wait Waitable]) -> MultiWaiter<'wait> {
-        MultiWaiter {
-            waitable: arr
-        }
-    }
-
-    pub fn wait(&self) -> &'wait Waitable {
-        loop {
-            // Early-check for events that have already been signaled.
-            for item in self.waitable {
-                if item.is_signaled() {
-                    return *item;
-                }
+    loop {
+        // Early-check for events that have already been signaled.
+        for item in waitable.clone() {
+            if item.is_signaled() {
+                return item;
             }
-
-            // Register the process for wakeup on all the possible events
-            for item in self.waitable {
-                item.register();
-            }
-
-            // Schedule
-            unsafe { asm!("HLT" : : : : "volatile"); }
         }
+
+        // Register the process for wakeup on all the possible events
+        for item in waitable.clone() {
+            item.register();
+        }
+
+        // TODO: check that the current process is registered for an event,
+        // bug otherwise.
+
+        // Schedule
+        scheduler::unschedule();
     }
 }
 

@@ -71,19 +71,17 @@ pub fn is_in_schedule_queue(process: &ProcessStructArc) -> bool {
     queue.iter().any(|elem| Arc::ptr_eq(process, elem))
 }
 
-/// Removes a process from the schedule queue.
-// todo /// Changes its state to "Stopped", except if it was "Running",
-//      /// in which case it stays "Running" until its next schedule().
-//      ... but this requires locking the ProcessStruct, and i hate this.
-//          Failing to lock means deadlocking since we hold the queue's lock
+/// Removes the current process from the schedule queue, and schedule.
 ///
-/// Returns the ProcessStructArc that was stored in the queue, or None if it was not found.
-pub fn unschedule(process: &ProcessStructArc) -> Option<ProcessStructArc> {
-    let mut queue = SCHEDULE_QUEUE.lock();
-    queue.iter().position(|elem| Arc::ptr_eq(process, elem))
-        .map(|index|
-            queue.remove(index)
-        )
+/// The current process will not be ran again unless it was registered for rescheduling.
+pub fn unschedule() {
+    let process = get_current_process();
+    {
+        let mut plock = process.write();
+        plock.pstate = ProcessState::Stopped;
+    }
+
+    schedule()
 }
 
 /// Creates the very first process at boot.

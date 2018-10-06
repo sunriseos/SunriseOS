@@ -2,7 +2,7 @@ use i386::pio::Pio;
 use io::Io;
 use core::sync::atomic::{AtomicBool, Ordering::SeqCst};
 use alloc::string::String;
-use event::{self, MultiWaiter, Waitable, IRQEvent};
+use event::{self, Waitable, IRQEvent};
 use logger::{Logger, Loggers};
 
 struct PS2 {
@@ -59,7 +59,6 @@ struct KeyEvent {
 }
 
 impl KeyEvent {
-
     /// Reads one or more bytes from the port until it matches a known scancode sequence
     fn read_key_event(port: &Pio<u8>) -> KeyEvent {
         let scancode = port.read();
@@ -294,7 +293,7 @@ impl PS2 {
                         KeyEvent {key: Key::Empty,      state: _               } => { /* ignore unknown keys */ },
                     }
                 } else {
-                    MultiWaiter::new(&[&self.event]).wait();
+                    event::wait(Some(&self.event as &dyn Waitable));
                 }
             }
         }
