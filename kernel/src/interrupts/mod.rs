@@ -11,6 +11,7 @@ use paging::{KernelLand, get_page};
 use devices::pic;
 
 mod irq;
+mod syscalls;
 
 extern "x86-interrupt" fn divide_by_zero_handler(stack_frame: &mut ExceptionStackFrame) {
     panic!("Attempted to divide by zero: {:?}", stack_frame);
@@ -113,18 +114,6 @@ extern "x86-interrupt" fn security_exception_handler(stack_frame: &mut Exception
 /// It is the caller's job to save the one it needs.
 #[naked]
 extern "C" fn syscall_handler() {
-    extern fn syscall_handler_inner(syscall_nr: u32, arg1: u32, arg2: u32, arg3: u32, arg4: u32, arg5: u32, arg6: u32) -> u32 {
-        use logger::Logger;
-        use ::devices::rs232::SerialLogger;
-        info!("Handling syscall {} - arg1: {}, arg2: {}, arg3: {}, arg4: {}, arg5: {}, arg6: {}",
-                syscall_nr, arg1, arg2, arg3, arg4, arg5, arg6);
-        match syscall_nr {
-            1 => { info!("syscall 1 !"); 0},
-            2 => { info!("syscall 2 !"); 0},
-            u => { info!("unknown syscall_nr {}", u); 255 }
-        }
-    }
-
     unsafe {
         asm!("
         cld         // direction flag will be restored on return when iret pops EFLAGS
@@ -138,7 +127,7 @@ extern "C" fn syscall_handler() {
         call $0
         add esp, 28  // drop the pushed arguments
         iretd
-        " :: "i"(syscall_handler_inner as *const u8) :: "volatile", "intel" );
+        " :: "i"(syscalls::syscall_handler_inner as *const u8) :: "volatile", "intel" );
     }
 }
 

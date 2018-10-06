@@ -48,7 +48,7 @@ use core::fmt::Debug;
 ///     }
 /// }
 /// ```
-pub trait Waitable: Debug {
+pub trait Waitable: Debug + Send + Sync {
     /// Checks whether the Waitable was signalled.
     ///
     /// If it returns false, the register function will be called again, in order

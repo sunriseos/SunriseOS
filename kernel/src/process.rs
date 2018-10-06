@@ -5,6 +5,8 @@ use i386::process_switch::*;
 use i386::mem::paging::InactivePageTables;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
+use alloc::collections::BTreeMap;
+use event::Waitable;
 use spin::{RwLock, RwLockWriteGuard};
 use sync::SpinLock;
 
@@ -22,7 +24,43 @@ pub struct ProcessStruct {
     pub pstate:     ProcessState,
     pub pmemory:    ProcessMemory,
     pub pstack:     KernelStack,
-    pub phwcontext: ProcessHardwareContext
+    pub phwcontext: ProcessHardwareContext,
+    pub phandles:   HandleTable,
+}
+
+#[derive(Debug)]
+pub enum Handle {
+    ReadableEvent(Box<Waitable>),
+}
+
+#[derive(Debug)]
+pub struct HandleTable {
+    table: BTreeMap<u32, Arc<Handle>>,
+    counter: u32
+}
+
+impl HandleTable {
+    pub fn new() -> HandleTable {
+        HandleTable {
+            table: BTreeMap::new(),
+            counter: 1
+        }
+    }
+
+    pub fn add_handle(&mut self, handle: Arc<Handle>) -> u32 {
+        loop {
+            let handlenum = self.counter;
+            self.counter += 1;
+            if !self.table.contains_key(&handlenum) {
+                self.table.insert(handlenum, handle);
+                break handlenum;
+            }
+        }
+    }
+
+    pub fn get_handle(&self, handle: u32) -> Arc<Handle> {
+        self.table[&handle].clone()
+    }
 }
 
 /// Just a handy shortcut
@@ -80,7 +118,8 @@ impl ProcessStruct {
                     pstate,
                     pmemory,
                     pstack,
-                    phwcontext : empty_hwcontext
+                    phwcontext : empty_hwcontext,
+                    phandles: HandleTable::new(),
                 }
             )
         );
@@ -118,7 +157,8 @@ impl ProcessStruct {
                     pstate,
                     pmemory,
                     pstack,
-                    phwcontext
+                    phwcontext,
+                    phandles: HandleTable::new(),
                 }
             )
         );
