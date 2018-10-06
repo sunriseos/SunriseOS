@@ -222,6 +222,52 @@ pub trait PageDirectoryTrait : HierarchicalTable {
         ret
     }
 
+    /// Unmaps a range of virtual address, making sure to handle
+    /// big page guards efficiently.
+    ///
+    /// # Panics
+    ///
+    /// Panics if address is not page-aligned.
+    fn __unmap_range(&mut self, address: VirtualAddress, page_nb: usize) {
+        assert_eq!(address.addr() % PAGE_SIZE, 0, "Address is not page aligned");
+        let address_end = address.addr() + (page_nb * PAGE_SIZE);
+
+        // Unmap beginning small pages.
+        let start_address_end = ::core::cmp::min(address_end, ::utils::align_up(address.addr(), ENTRY_COUNT * PAGE_SIZE));
+        for current_address in (address.addr()..start_address_end).step_by(PAGE_SIZE) {
+            self.__unmap(VirtualAddress(current_address));
+        }
+
+        // Check if there's more work to be done.
+        let middle_address_end = ::utils::align_down(address_end, ENTRY_COUNT * PAGE_SIZE);
+        if middle_address_end > address.addr() {
+            // Unmap the middle big page guards.
+            let first_page_table = start_address_end / (ENTRY_COUNT * PAGE_SIZE);
+            let last_page_table = address_end / (ENTRY_COUNT * PAGE_SIZE);
+            for table_nbr in first_page_table..last_page_table {
+                assert!(!self.entries()[table_nbr].is_unused(), "Tried to unmap an already unmapped entry");
+                if self.entries()[table_nbr].is_guard() {
+                    // Unmap the whole guard table.
+                    self.entries_mut()[table_nbr].set_unused();
+                } else {
+                    // TODO: Return an Error if the table was not present
+                    // TODO: Return an Error if the address was not mapped
+                    for entry in self.get_table(table_nbr).unwrap().entries_mut().iter_mut() {
+                        assert_eq!(entry.is_unused(), false);
+                        let ret = entry.set_unused();
+                    }
+                };
+            }
+
+            // Unmap end small pages.
+            for current_address in (middle_address_end..address_end).step_by(PAGE_SIZE) {
+                self.__unmap(VirtualAddress(current_address));
+            }
+        }
+
+        Self::FlusherType::flush_cache();
+    }
+
     /// Finds a virtual space hole that can contain page_nb consecutive pages
     /// Alignment is the bitshift of a mask that the first page address must satisfy (ex: 24 for 0x**000000)
     fn find_available_virtual_space_aligned<Land: VirtualSpaceLand>(&mut self,
@@ -320,6 +366,13 @@ pub trait PageTablesSet {
     ///
     /// Panics if page is not page-aligned.
     fn unmap(&mut self, page: VirtualAddress) -> PageState<Frame>;
+
+    /// Deletes a range mapping in the page tables
+    ///
+    /// # Panics
+    ///
+    /// Panics if page is not page-aligned.
+    fn unmap_range(&mut self, page: VirtualAddress, page_nr: usize);
 
     /// Creates a mapping in the page tables with the given flags.
     /// Allocates the pointed page
@@ -495,17 +548,21 @@ impl<T: I386PageTablesSet> PageTablesSet for T {
         for current_address in (address.addr()..start_address_end).step_by(PAGE_SIZE) {
             self.map_page_guard(VirtualAddress(current_address));
         }
-        // Map middle big page guards.
+
+        // Check if there's more work to be done
         let middle_address_end = ::utils::align_down(address_end, ENTRY_COUNT * PAGE_SIZE);
-        let first_page_table = start_address_end / (ENTRY_COUNT * PAGE_SIZE);
-        let last_page_table = middle_address_end / (ENTRY_COUNT * PAGE_SIZE);
-        for table_nbr in first_page_table..last_page_table {
-            assert!(self.get_directory().entries()[table_nbr].is_unused(), "Tried to map an already mapped entry");
-            self.get_directory().guard_nth_entry::<<<Self as I386PageTablesSet>::PageDirectoryType as PageDirectoryTrait>::FlusherType>(table_nbr);
-        }
-        // Map end small pages.
-        for current_address in (middle_address_end..address_end).step_by(PAGE_SIZE) {
-            self.map_page_guard(VirtualAddress(current_address))
+        if middle_address_end > address.addr() {
+            // Map middle big page guards.
+            let first_page_table = start_address_end / (ENTRY_COUNT * PAGE_SIZE);
+            let last_page_table = middle_address_end / (ENTRY_COUNT * PAGE_SIZE);
+            for table_nbr in first_page_table..last_page_table {
+                assert!(self.get_directory().entries()[table_nbr].is_unused(), "Tried to map an already mapped entry");
+                self.get_directory().guard_nth_entry::<<<Self as I386PageTablesSet>::PageDirectoryType as PageDirectoryTrait>::FlusherType>(table_nbr);
+            }
+            // Map end small pages.
+            for current_address in (middle_address_end..address_end).step_by(PAGE_SIZE) {
+                self.map_page_guard(VirtualAddress(current_address))
+            }
         }
     }
 
@@ -513,7 +570,6 @@ impl<T: I386PageTablesSet> PageTablesSet for T {
     fn find_available_virtual_space_aligned<Land: VirtualSpaceLand>(&mut self, page_nb: usize, alignement: usize) -> Option<VirtualAddress> {
          self.get_directory().find_available_virtual_space_aligned::<Land>(page_nb, alignement)
     }
-
 
     /// Deletes a mapping in the page tables, returning the Frame if one was
     /// mapped.
@@ -524,6 +580,17 @@ impl<T: I386PageTablesSet> PageTablesSet for T {
     fn unmap(&mut self, page: VirtualAddress) -> PageState<Frame> {
         debug!("Unmapping {}", page);
         self.get_directory().__unmap(page)
+    }
+
+    /// Deletes a mapping in the page tables, returning the Frame if one was
+    /// mapped.
+    ///
+    /// # Panics
+    ///
+    /// Panics if page is not page-aligned.
+    fn unmap_range(&mut self, page: VirtualAddress, page_nr: usize) {
+        debug!("Unmapping range {}", page);
+        self.get_directory().__unmap_range(page, page_nr)
     }
 }
 
