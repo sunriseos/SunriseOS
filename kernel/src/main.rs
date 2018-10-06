@@ -33,12 +33,11 @@ extern crate log;
 extern crate smallvec;
 extern crate font_rs;
 extern crate hashmap_core;
+extern crate xmas_elf;
 
 use ascii::AsAsciiStr;
 use core::fmt::Write;
 use alloc::prelude::*;
-
-use event::{Waitable, MultiWaiter};
 
 mod event;
 mod logger;
@@ -52,6 +51,7 @@ pub use devices::vbe::VBELogger;
 use i386::mem::PhysicalAddress;
 use i386::mem::frame_alloc::Frame;
 use paging::KernelLand;
+use process::{ProcessStruct, ProcessMemory};
 
 mod i386;
 #[cfg(target_os = "none")]
@@ -65,6 +65,7 @@ mod devices;
 mod sync;
 mod process;
 mod scheduler;
+mod elf_loader;
 
 // Make rust happy about rust_oom being no_mangle...
 pub use heap_allocator::rust_oom;
@@ -83,127 +84,34 @@ unsafe fn force_double_fault() {
 }
 
 fn main() {
-    let loggers = &mut Loggers;
-    loggers.println("Hello world!      ");
-    loggers.println_attr("Whoah, nice color",
-                      LogAttributes::new_fg_bg(LogColor::Pink, LogColor::Cyan));
-    loggers.println_attr("such hues",
-                          LogAttributes::new_fg_bg(LogColor::Magenta, LogColor::LightGreen));
-    loggers.println_attr("very polychromatic",
-                           LogAttributes::new_fg_bg(LogColor::Yellow, LogColor::LightMagenta));
-
-    {
-        let mymem = FrameAllocator::alloc_frame();
-        info!("Allocated frame {:x?}", mymem);
-    }
-
-    info!("Freed frame");
-
-    writeln!(Loggers, "----------");
-
-    let page1 = ::paging::get_page::<::paging::UserLand>();
-    info!("Got page {:#x}", page1.addr());
-    let page2 = ::paging::get_page::<::paging::UserLand>();
-    info!("Got page {:#x}", page2.addr());
-
-    info!("----------");
-
-    let mut inactive_pages = InactivePageTables::new();
-    info!("Created new tables");
-    let page_innactive = inactive_pages.get_page::<paging::UserLand>();
-    info!("Mapped inactive page {:#x}", page_innactive.addr());
-    unsafe { inactive_pages.switch_to() };
-    info!("Switched to new tables");
-    let page_active = ::paging::get_page::<::paging::UserLand>();
-    info!("Got page {:#x}", page_active.addr());
-
-    info!("Testing some string heap alloc: {}", String::from("Hello World"));
-
-    info!("Testing syscalls");
-    let syscall_result =
-    unsafe { interrupts::syscall(42, 1, 2, 3, 4, 5, 6) };
-    info!("Syscall result: {}", syscall_result);
-	
-	info!("Creating a new process");
-    let p1 = process::ProcessStruct::new();
-    info!("Created process {:#?}", p1);
-
-    use ::alloc::sync::Arc;
-    info!("Adding it to the schedule queue");
-    ::scheduler::add_to_schedule_queue(Arc::clone(&p1));
-
-    info!("Scheduling to it");
-    ::scheduler::schedule();
-
-    // wow we came back from the dead :o
-    info!("Process 0 scheduled again !");
-
-    info!("Removing other process from the schedule queue");
-    ::scheduler::unschedule(&p1);
-
-    info!("Starting the shell");
-    shell();
-}
-
-fn shell() -> ! {
-    loop {
-        match &*devices::ps2::get_next_line() {
-            "gif3" => show_gif(&LOUIS3[..]),
-            "gif4" => show_gif(&LOUIS4[..]),
-            "stackdump" => unsafe { stack::KernelStack::dump_current_stack() },
-            "help" => {
-                info!("COMMANDS:");
-                info!("gif3: Print the KFS-3 meme");
-                info!("gif4: Print the KFS-4 meme");
-                info!("stackdump: Print a dump of the current stack");
-            }
-            _ => info!("Unknown command")
-        }
-    }
-}
-
-fn show_gif(louis: &[u8]) {
-    let mut vbe = unsafe {
-        devices::vbe::Framebuffer::new(i386::multiboot::get_boot_information())
-    };
-    let mut reader = gif::Decoder::new(&louis[..]).read_info().unwrap();
-    let mut buf = Vec::new();
-    let timer_event = devices::pit::wait_ms(100);
-    let keyboard_event = devices::ps2::get_waitable();
-
-    let events = [&timer_event, keyboard_event as &dyn Waitable];
-
-    let waiter = MultiWaiter::new(&events);
-    loop {
+    info!("Loading all the init processes");
+    for module in i386::multiboot::get_boot_information().module_tags().skip(1) {
+        info!("Loading {}", module.name());
+        let proc = ProcessStruct::new();
         {
-            let end = reader.next_frame_info().unwrap().is_none();
-            if end {
-                reader = gif::Decoder::new(&louis[..]).read_info().unwrap();
-                let _ = reader.next_frame_info().unwrap().unwrap();
-            }
+            let mut plock = proc.write();
+            let ep = {
+                let pmem = if let ProcessMemory::Inactive(ref pmem) = plock.pmemory {
+                    pmem
+                } else {
+                    panic!("newly created process has active pages?")
+                };
+
+                let mut pmem_lock = pmem.lock();
+
+                elf_loader::load_builtin(&mut *pmem_lock, module)
+            };
+            unsafe { plock.set_entrypoint(ep); }
         }
-        buf.resize(reader.buffer_size(), 0);
-        // simulate read into buffer
-        reader.read_into_buffer(&mut buf[..]);
-        for y in 0..(reader.height() as usize) {
-            for x in 0..(reader.width() as usize) {
-                let frame_coord = (y * reader.width() as usize + x) * 4;
-                let vbe_coord = (y * vbe.width() + x) * 4;
-                vbe.get_fb()[vbe_coord] = buf[frame_coord + 2];
-                vbe.get_fb()[vbe_coord + 1] = buf[frame_coord + 1];
-                vbe.get_fb()[vbe_coord + 2] = buf[frame_coord];
-                vbe.get_fb()[vbe_coord + 3] = 0xFF;
-            }
-        }
-        let waitable = waiter.wait();
-        if waitable as *const _ == events[1] as *const _ && devices::ps2::try_read_key().is_some() {
-            return;
-        }
+
+        scheduler::add_to_schedule_queue(proc);
+    }
+
+    loop {
+        // TODO: Exit process.
+        scheduler::unschedule();
     }
 }
-
-static LOUIS3: &'static [u8; 1318100] = include_bytes!("../img/meme3.gif");
-static LOUIS4: &'static [u8; 103803] = include_bytes!("../img/meme4.gif");
 
 #[cfg(target_os = "none")]
 #[no_mangle]
@@ -265,9 +173,9 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     info!("Gdt initialized");
 
     // Initialize the VGATEXT logger now that paging is in a stable state
-    static mut VGATEXT: VGATextLogger = VGATextLogger;
-    Loggers::register_logger("VGA text mode", unsafe { &mut VGATEXT });
-    info!("Initialized VGATEXT logger");
+    //static mut VGATEXT: VGATextLogger = VGATextLogger;
+    //Loggers::register_logger("VGA text mode", unsafe { &mut VGATEXT });
+    //info!("Initialized VGATEXT logger");
 
     i386::multiboot::init(boot_info);
 
@@ -282,9 +190,9 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     //info!("Disable timer interrupt");
     //devices::pic::get().mask(0);
 
-    info!("Registering VBE logger");
-    static mut VBE_LOGGER: VBELogger = VBELogger;
-    Loggers::register_logger("VBE", unsafe { &mut VBE_LOGGER });
+    //info!("Registering VBE logger");
+    //static mut VBE_LOGGER: VBELogger = VBELogger;
+    //Loggers::register_logger("VBE", unsafe { &mut VBE_LOGGER });
 
     info!("Becoming the first process");
     unsafe { scheduler::create_first_process() };

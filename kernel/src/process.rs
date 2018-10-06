@@ -33,13 +33,15 @@ pub type ProcessStructArc = Arc<RwLock<ProcessStruct>>;
 /// - Running: currently on the CPU
 /// - Scheduled: scheduled to be running
 /// - Stopped: not in the scheduled queue, waiting for an event
+/// - NotReady: never added to the schedule queue yet. Should be started with `scheduler::start_process`
 ///
 /// Since SMP is not supported, there is only one Running process.
 #[derive(Debug, PartialEq, Eq)]
 pub enum ProcessState {
     Running,
     Scheduled,
-    Stopped
+    Stopped,
+    NotReady
 }
 
 /// The memory pages of this process
@@ -69,8 +71,8 @@ impl ProcessStruct {
         // hardware context will be computed later in this function, write a dummy value for now
         let empty_hwcontext = ProcessHardwareContext::new();
 
-        // the state of the process, stopped (for now ...)
-        let pstate = ProcessState::Stopped;
+        // the state of the process, NotReady
+        let pstate = ProcessState::NotReady;
 
         let p = Arc::new(
            RwLock::new(
@@ -82,12 +84,6 @@ impl ProcessStruct {
                 }
             )
         );
-
-        // prepare the process's stack for its first schedule-in
-        unsafe {
-            // safe because stack is empty, p has never run
-            prepare_for_first_schedule(&mut p.write());
-        }
 
         p
     }
@@ -128,6 +124,28 @@ impl ProcessStruct {
         );
 
         p
+    }
+
+    /// Sets the entrypoint. Puts the Process in Stopped state.
+    ///
+    /// # Safety
+    ///
+    /// The given entrypoint *must* point to a mapped address in that process's address space.
+    /// The function makes no attempt at checking if it is kernel or userspace.
+    ///
+    /// # Panics
+    ///
+    /// Panics if state is not NotReady
+    pub unsafe fn set_entrypoint(&mut self, ep: usize) {
+        assert_eq!(self.pstate, ProcessState::NotReady);
+
+        // prepare the process's stack for its first schedule-in
+        unsafe {
+            // safe because stack is empty, p has never run
+            prepare_for_first_schedule(self, ep);
+        }
+
+        self.pstate = ProcessState::Stopped;
     }
 }
 

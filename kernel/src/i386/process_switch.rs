@@ -183,7 +183,7 @@ pub unsafe extern "C" fn process_switch(process_b: ProcessStructArc) -> ProcessS
 ///
 /// This function will definitely fuck up your stack, so make sure you're calling it on a
 /// never-scheduled process's empty-stack.
-pub unsafe fn prepare_for_first_schedule(p: &mut ProcessStruct) {
+pub unsafe fn prepare_for_first_schedule(p: &mut ProcessStruct, entrypoint: usize) {
     #[repr(packed)]
     struct RegistersOnStack {
         eflags: u32,
@@ -220,7 +220,7 @@ pub unsafe fn prepare_for_first_schedule(p: &mut ProcessStruct) {
         ebx: 0,                                   //  |
         edx: 0,                                   //  |
         ecx: 0,                                   //  |
-        eax: 0,                                   //  |
+        eax: entrypoint as u32,                   //  |
         callback_eip: first_schedule as u32       //  |
         // --------------                             |
         // poison ebp        <------------------------+    * 'stack_start' *
@@ -240,21 +240,31 @@ pub unsafe fn prepare_for_first_schedule(p: &mut ProcessStruct) {
 /// Interrupts are still off.
 #[naked]
 fn first_schedule() {
-    // just get the ProcessStruct pointer in $edi, and call a rust function
+    // just get the ProcessStruct pointer in $edi, the entrypoint in $eax, and call a rust function
     unsafe {
         asm!("
+        push eax
         push edi
         call $0
         " : : "i"(first_schedule_inner as *const u8) : : "volatile", "intel");
     }
 
-    extern "C" fn first_schedule_inner(whoami: *const RwLock<ProcessStruct>) -> ! {
+    extern "C" fn first_schedule_inner(whoami: *const RwLock<ProcessStruct>, entrypoint: usize) -> ! {
         // reconstruct an Arc to our ProcessStruct from the leaked pointer
         let current = unsafe { Arc::from_raw(whoami) };
 
         // call the scheduler to finish the high-level process switch mechanics
-        ::scheduler::scheduler_fisrt_schedule(current);
+        ::scheduler::scheduler_first_schedule(current, entrypoint);
 
         unreachable!()
+    }
+}
+
+pub fn jump_to_entrypoint(ep: usize) {
+    // TODO: Jump to ring 3.
+    // TODO: Exit the process
+    unsafe {
+        let f = *(&ep as *const _ as *const fn());
+        f()
     }
 }

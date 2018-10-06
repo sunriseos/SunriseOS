@@ -193,7 +193,7 @@ pub fn schedule() {
 
 /// The function called when a process was schedule for the first time,
 /// right after the arch-specific process switch was performed.
-pub fn scheduler_fisrt_schedule(current_process: ProcessStructArc) {
+pub fn scheduler_first_schedule(current_process: ProcessStructArc, entrypoint: usize) {
     // replace CURRENT_PROCESS with ourself.
     // If previously running process had deleted all other references to itself, this
     // is where its drop actually happens
@@ -204,13 +204,5 @@ pub fn scheduler_fisrt_schedule(current_process: ProcessStructArc) {
         ::i386::instructions::interrupts::sti();
     }
 
-    info!("Process switched to a new process");
-    loop {
-        // just do something for a while
-        for i in 0..20 {
-            info!("i: {}", i);
-        }
-        // and re-schedule
-        schedule();
-    }
+    ::i386::process_switch::jump_to_entrypoint(entrypoint)
 }

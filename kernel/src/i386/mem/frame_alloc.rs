@@ -170,12 +170,16 @@ impl FrameAllocator {
         ACTIVE_PAGE_TABLES.lock().reserve_kernel_land_frames();
         let mut frames_bitmap = FRAMES_BITMAP.lock(); // retake the mutex
 
+        // Don't free the modules, except the first one as that's the kernel.
+        for module in boot_info.module_tags().skip(1) {
+            FrameAllocator::mark_area_reserved(&mut frames_bitmap.memory_bitmap,
+                                               module.start_address() as usize, module.end_address() as usize);
+        }
+
         // Reserve the very first frame for null pointers when paging is off
         FrameAllocator::mark_area_reserved(&mut frames_bitmap.memory_bitmap,
                                             0x00000000,
-                                            0x00000001);
-
-
+                                           0x00000001);
 
         if log_enabled!(::log::Level::Info) {
             let mut cur = None;
