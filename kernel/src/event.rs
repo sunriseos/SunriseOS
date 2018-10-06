@@ -11,6 +11,11 @@
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::fmt::Debug;
+use alloc::sync::Arc;
+use sync::SpinLock;
+use alloc::vec::Vec;
+use process::ProcessStructArc;
+use scheduler;
 
 // TODO: maybe we should use the libcore's task:: stuff...
 
@@ -53,6 +58,16 @@ pub trait Waitable: Debug + Send + Sync {
     ///
     /// If it returns false, the register function will be called again, in order
     /// to get notified of the next wakeup.
+    ///
+    /// This will likely require to change state - and yet it takes self by value.
+    /// the reason for this is that it's possible for multiple threads, and
+    /// potentially multiple CPUs, to wait on the same Waitable. Think of servers:
+    /// you might want to wait for multiple threads for the arrival of a new socket.
+    /// When this happens, **only a single thread should return true**. Make extra
+    /// sure your Atomic operations are written properly!
+    ///
+    /// You'll probably want to check out AtomicUsize::fetch_update to make sure your
+    /// atomic update loops are correct.
     fn is_signaled(&self) -> bool;
 
     /// Register the waitable with the scheduler.
@@ -67,6 +82,7 @@ pub trait Waitable: Debug + Send + Sync {
     /// #impl Waitable for WaitFor5Ticks {
     /// #fn is_signaled(&self) -> bool {
     /// #self.0.is_signaled()
+    /// #}
     /// fn register(&self) {
     ///     self.0.register()
     /// }
@@ -112,14 +128,14 @@ where
 // TODO: Allow configuring edge vs level triggering.
 #[derive(Debug)]
 pub struct IRQEvent {
-    counter: &'static AtomicUsize,
+    state: &'static IRQState,
     ack: AtomicUsize,
 }
 
 impl Waitable for IRQEvent {
     fn is_signaled(&self) -> bool {
         if self.ack.fetch_update(|x| {
-            if x < self.counter.load(Ordering::SeqCst) {
+            if x < self.state.counter.load(Ordering::SeqCst) {
                 // TODO: If level-triggered, set this to the counter.
                 Some(x + 1)
             } else {
@@ -133,7 +149,13 @@ impl Waitable for IRQEvent {
     }
 
     fn register(&self) {
-        // TODO: Add process to wait queue.
+        let curproc = scheduler::get_current_process();
+        let mut veclock = self.state.waiting_processes.lock();
+        info!("Registering {:010x} for irq {}", &*curproc as *const _ as usize, self.state.irqnum);
+        if veclock.iter().find(|v| Arc::ptr_eq(&curproc, v)).is_some() {
+            panic!("Double registration!")
+        }
+        veclock.push(scheduler::get_current_process());
     }
 }
 
@@ -142,20 +164,41 @@ impl Waitable for IRQEvent {
 /// Usually, the IRQ handling code calls this. But it may be used to generate
 /// synthetic IRQs.
 pub fn dispatch_event(irq: usize) {
-    IRQ_COUNTERS[irq].fetch_add(1, Ordering::SeqCst);
-    // TODO: Wake up all the processes waiting on this event.
+    IRQ_STATES[irq].counter.fetch_add(1, Ordering::SeqCst);
+    let mut processes = IRQ_STATES[irq].waiting_processes.lock();
+    while let Some(process) = processes.pop() {
+        info!("Unregistering {:010x} for irq {}", &*process as *const _ as usize, irq);
+        scheduler::add_to_schedule_queue(process);
+    }
 }
 
 /// Creates an IRQEvent waiting for the given IRQ number.
 pub fn wait_event(irq: usize) -> IRQEvent {
     IRQEvent {
-        counter: &IRQ_COUNTERS[irq], ack: AtomicUsize::new(IRQ_COUNTERS[irq].load(Ordering::SeqCst))
+        state: &IRQ_STATES[irq], ack: AtomicUsize::new(IRQ_STATES[irq].counter.load(Ordering::SeqCst))
     }
 }
 
-static IRQ_COUNTERS: [AtomicUsize; 16] = [
-    AtomicUsize::new(0), AtomicUsize::new(0), AtomicUsize::new(0), AtomicUsize::new(0),
-    AtomicUsize::new(0), AtomicUsize::new(0), AtomicUsize::new(0), AtomicUsize::new(0),
-    AtomicUsize::new(0), AtomicUsize::new(0), AtomicUsize::new(0), AtomicUsize::new(0),
-    AtomicUsize::new(0), AtomicUsize::new(0), AtomicUsize::new(0), AtomicUsize::new(0),
+#[derive(Debug)]
+struct IRQState {
+    irqnum: usize,
+    counter: AtomicUsize,
+    waiting_processes: SpinLock<Vec<ProcessStructArc>>
+}
+
+impl IRQState {
+    pub const fn new(irqnum: usize) -> IRQState {
+        IRQState {
+            irqnum,
+            counter: AtomicUsize::new(0),
+            waiting_processes: SpinLock::new(Vec::new())
+        }
+    }
+}
+
+static IRQ_STATES: [IRQState; 16] = [
+    IRQState::new(20), IRQState::new(21), IRQState::new(22), IRQState::new(23),
+    IRQState::new(24), IRQState::new(25), IRQState::new(26), IRQState::new(27),
+    IRQState::new(28), IRQState::new(29), IRQState::new(30), IRQState::new(31),
+    IRQState::new(32), IRQState::new(33), IRQState::new(34), IRQState::new(35),
 ];
