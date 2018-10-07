@@ -312,7 +312,7 @@ impl TssStruct {
                  mov $2, AX
                  mov $3, CR3
                  sldt $4
-             " : "=r"(ds), "=r"(cs), "=r"(ss), "=r"(cr3), "=r"(ldt_selector) ::: "intel");
+             " : "=r"(ds), "=r"(cs), "=r"(ss), "=r"(cr3), "=r"(ldt_selector) :: "ax" : "intel");
         }
 
         TssStruct {
