@@ -148,7 +148,11 @@ lazy_static! {
     static ref IDT: Mutex<Option<VirtualAddress>> = Mutex::new(None);
 }
 
-/// initialize the interrupt subsystem. Sets up the PIC and the IDT.
+/// Initialize the interrupt subsystem. Sets up the PIC and the IDT.
+///
+/// # Safety
+///
+/// Should only be called once!
 pub unsafe fn init() {
     pic::init();
 
@@ -187,9 +191,6 @@ pub unsafe fn init() {
             let syscall_int = (*idt)[0x80].set_interrupt_gate_addr(syscall_handler as u32);
             syscall_int.set_privilege_level(PrivilegeLevel::Ring3);
             syscall_int.disable_interrupts(false);
-            let mut lock = IDT.lock();
-            *lock = Some(page);
-            (*idt).load();
         }
         let mut lock = IDT.lock();
         *lock = Some(page);
@@ -197,4 +198,6 @@ pub unsafe fn init() {
     }
 
     sti();
+
+    ::sync::init_interrupt_counter();
 }

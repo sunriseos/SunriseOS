@@ -11,21 +11,33 @@ use core::sync::atomic::AtomicBool;
 /// # Description
 ///
 /// Allows recursively disabling interrupts while keeping a sane behavior.
-/// Interrupts will be disabled when the counter goes from 0 to 1, and reenabled
-/// when it gets set back to 0.
+/// Interrupts will be disabled when the counter goes from 1 to 2, and reenabled
+/// when it gets set back to 1.
+///
+/// 0 signifies interrupts are disabled. init_interrupt_counter sets it to 1.
 ///
 /// Used by the SpinLock to implement recursive irqsave logic.
 // TODO: cpu_local macro
 static mut INTERRUPT_DISABLE_COUNTER: usize = 0;
+
+/// Enable the interrupt counter.
+///
+/// Look at the documentation for INTERRUPT_DISABLE_COUNTER to know more.
+pub(crate) unsafe fn init_interrupt_counter() {
+    assert_eq!(INTERRUPT_DISABLE_COUNTER, 0, "Called init_interrupt_counter twice");
+    INTERRUPT_DISABLE_COUNTER = 1;
+}
 
 /// Decrement the interrupt disable counter.
 ///
 /// Look at documentation for INTERRUPT_DISABLE_COUNTER to know more.
 unsafe fn enable_interrupts() {
     // Safety: TODO: cpu_local
-    INTERRUPT_DISABLE_COUNTER -= 1;
-    if INTERRUPT_DISABLE_COUNTER == 0 {
+    if INTERRUPT_DISABLE_COUNTER == 2 {
         sti();
+    }
+    if INTERRUPT_DISABLE_COUNTER != 0 {
+        INTERRUPT_DISABLE_COUNTER -= 1;
     }
 }
 
@@ -34,10 +46,12 @@ unsafe fn enable_interrupts() {
 /// Look at documentation for INTERRUPT_DISABLE_COUNTER to know more.
 unsafe fn disable_interrupts() {
     // Safety: TODO: cpu_local
-    if INTERRUPT_DISABLE_COUNTER == 0 {
+    if INTERRUPT_DISABLE_COUNTER == 1 {
         cli();
     }
-    INTERRUPT_DISABLE_COUNTER += 1;
+    if INTERRUPT_DISABLE_COUNTER != 0 {
+        INTERRUPT_DISABLE_COUNTER += 1;
+    }
 }
 
 /// Simple SpinLock.
