@@ -3,10 +3,10 @@
 //! Provides an allocator, various lang items.
 
 #![no_std]
-#![feature(asm, start, lang_items, panic_implementation, core_intrinsics)]
+#![feature(asm, start, lang_items, panic_implementation, core_intrinsics, const_fn)]
 
 pub mod syscalls;
-
+pub mod io;
 
 extern crate linked_list_allocator;
 use linked_list_allocator::LockedHeap;

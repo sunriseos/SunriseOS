@@ -15,10 +15,9 @@ extern crate libuser;
 
 mod vbe;
 mod ps2;
-mod io;
 mod logger;
 use libuser::syscalls;
-
+use libuser::io;
 
 use vbe::{Framebuffer, FRAMEBUFFER, VBELogger};
 use core::fmt::Write;
