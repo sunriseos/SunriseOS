@@ -98,6 +98,7 @@ where
     <INTOITER as IntoIterator>::IntoIter: Clone
 {
     let waitable = waitable_intoiter.into_iter();
+    let interrupt_manager = SpinLock::new(());
 
     loop {
         // Early-check for events that have already been signaled.
@@ -106,6 +107,9 @@ where
                 return item;
             }
         }
+
+        // Disable interrupts between registration and unschedule.
+        let lock = interrupt_manager.lock();
 
         // Register the process for wakeup on all the possible events
         for item in waitable.clone() {
@@ -116,7 +120,7 @@ where
         // bug otherwise.
 
         // Schedule
-        scheduler::unschedule();
+        scheduler::unschedule(&interrupt_manager, lock);
     }
 }
 

@@ -84,9 +84,7 @@ impl ProcessHardwareContext {
 ///
 /// Interrupts definitely must be masked when calling this function
 #[inline(never)] // we need that sweet saved ebp + eip on the stack
-pub unsafe extern "C" fn process_switch(process_b: ProcessStructArc) -> ProcessStructArc {
-
-    let process_current = ::scheduler::get_current_process();
+pub unsafe extern "C" fn process_switch(process_b: ProcessStructArc, process_current: ProcessStructArc) -> ProcessStructArc {
 
     let esp_to_load = {
         let mut process_current_lock = process_current.try_write()

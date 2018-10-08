@@ -5,9 +5,9 @@ use alloc::sync::Arc;
 use spin::RwLock;
 use alloc::vec::Vec;
 
-use process::{ProcessStruct, ProcessStructArc};
+use process::{ProcessStruct, ProcessState, ProcessStructArc};
 use i386::process_switch::process_switch;
-use sync::SpinLock;
+use sync::{SpinLock, SpinLockGuard};
 
 /// We always keep an Arc to the process currently running.
 /// This enables finding the current process from anywhere,
@@ -44,15 +44,13 @@ static SCHEDULE_QUEUE: SpinLock<Vec<ProcessStructArc>> = SpinLock::new(Vec::new(
 /// Panics if the process was already in the schedule queue
 /// Panics if the process' state was already "Scheduled"
 pub fn add_to_schedule_queue(process: ProcessStructArc) {
+    // todo maybe delete this assert, it adds a lot of overhead
+    assert!(!is_in_schedule_queue(&process),
+            "Process was already in schedule queue : {:?}", process);
+
     let mut queue_lock = {
-        // first lock the process, which might schedule if we can't, it's ok
         let mut process_lock = process.write();
         let queue_lock = SCHEDULE_QUEUE.lock();
-
-        // todo maybe delete this assert, it adds a lot of overhead
-        assert!(!is_in_schedule_queue(&process),
-                    "Process was already in schedule queue : {:?}", process);
-
         use process::ProcessState;
         assert_eq!(process_lock.pstate, ProcessState::Stopped,
                    "Process added to schedule queue was not stopped : {:?}", process_lock.pstate);
@@ -68,20 +66,26 @@ pub fn add_to_schedule_queue(process: ProcessStructArc) {
 /// Checks if a process is in the schedule queue
 pub fn is_in_schedule_queue(process: &ProcessStructArc) -> bool {
     let queue = SCHEDULE_QUEUE.lock();
-    queue.iter().any(|elem| Arc::ptr_eq(process, elem))
+    unsafe { CURRENT_PROCESS.iter() }.filter(|v| {
+        // TODO: State should really not need to lock
+        v.read().pstate == ProcessState::Running
+    }).chain(queue.iter()).any(|elem| Arc::ptr_eq(process, elem))
 }
 
 /// Removes the current process from the schedule queue, and schedule.
 ///
+/// The passed lock will be locked until the process is safely removed from the schedule queue.
+/// This can be used to avoid race conditions between registering for an event, and unscheduling.
+///
 /// The current process will not be ran again unless it was registered for rescheduling.
-pub fn unschedule() {
+pub fn unschedule<'a>(interrupt_manager: &'a SpinLock<()>, interrupt_lock: SpinLockGuard<'a, ()>) {
     let process = get_current_process();
     {
         let mut plock = process.write();
         plock.pstate = ProcessState::Stopped;
     }
 
-    schedule()
+    internal_schedule(interrupt_manager, interrupt_lock, true)
 }
 
 /// Creates the very first process at boot.
@@ -103,7 +107,6 @@ pub unsafe fn create_first_process() {
         // provided we only run this function once, it hasn't been initialized yet
         CURRENT_PROCESS = Some(Arc::clone(&p0));
     }
-    queue.push(p0);
 }
 
 /// Performs a process switch.
@@ -130,62 +133,86 @@ pub unsafe fn create_first_process() {
 ///  * as new process *
 /// 5. Drops the lock to the schedule queue, re-enabling interrupts
 pub fn schedule() {
-
-    /// Parses the queue to find the first unlocked process.
-    /// Returns the index of found process
-    fn find_next_process_to_run(queue: &Vec<ProcessStructArc>) -> Option<usize> {
-        // every process except the first one (current)
-        for (index, process) in queue.iter().enumerate().skip(1) {
-            if process.try_write().is_some() {
-                return Some(index)
-            }
-        }
-        None
-    }
-
     // We use a special SpinLock to disable the interruptions,
-    // which we drop only at the end of the function.
-    // We need it because we need to unlock the queue's spinlock before process switching
-    let mut interrupt_manager = SpinLock::new(());
+    // We pass it to the internal_schedule, which will drop it if it needs to HLT.
+    let interrupt_manager = SpinLock::new(());
     let interrupt_lock = interrupt_manager.lock();
 
-    let mut queue = SCHEDULE_QUEUE.lock();
+    internal_schedule(&interrupt_manager, interrupt_lock, false)
+}
 
-    let candidate_index = find_next_process_to_run(&queue);
-    match candidate_index {
-        None => { /* just return, we didn't schedule */ }
-        Some(index_b) => {
-            // 1. remove canditate from the queue, pushing remaining of the queue to the front
-            let process_b = queue.remove(index_b);
-
-            // 2. place it at the front of the queue, and remove current at the same time
-            let current = ::core::mem::replace(&mut queue[0], process_b);
-
-            // 3. push current at the back of the queue
-            queue.push(current);
-
-            // get the process again
-            let process_b = Arc::clone(queue.first().unwrap());
-
-            // unlock the queue
-            drop(queue);
-
-            let whoami = unsafe {
-                // safety: interrupts are off
-                process_switch(process_b)
-            };
-
-            /* we were scheduled again */
-
-            // replace CURRENT_PROCESS with ourself.
-            // If previously running process had deleted all other references to itself, this
-            // is where its drop actually happens
-            unsafe { CURRENT_PROCESS = Some(whoami) };
+/// Parses the queue to find the first unlocked process.
+/// Returns the index of found process
+fn find_next_process_to_run(queue: &Vec<ProcessStructArc>) -> Option<usize> {
+    for (index, process) in queue.iter().enumerate() {
+        if process.try_write().is_some() {
+            return Some(index)
         }
     }
+    None
+}
 
-    // might re-enable the interrupts here !
-    drop(interrupt_lock);
+/// Internal impl of the process switch, used by schedule and unschedule.
+///
+/// The passed lock will be locked until the process is safely process switched.
+///
+/// See schedule function for documentation on how scheduling works.
+fn internal_schedule<'a>(interrupt_manager: &'a SpinLock<()>, mut interrupt_lock: SpinLockGuard<'a, ()>, remove_self: bool) {
+    loop {
+        let mut queue = SCHEDULE_QUEUE.lock();
+
+        let candidate_index = find_next_process_to_run(&queue);
+        match (candidate_index, remove_self) {
+            (None, true) => {
+                // There's nobody to schedule. Let's drop all the locks, HLT, and run internal_schedule again.
+                // NOTE: There's nobody running at this point. :O
+                drop(queue);
+                drop(interrupt_lock);
+                unsafe { ::i386::instructions::interrupts::hlt(); }
+
+                // Relock interrupts, and rerun scheduler.
+                interrupt_lock = interrupt_manager.lock();
+
+                // Rerun internal_schedule.
+                continue;
+            },
+            (None, false) => {
+                // There's nobody else to run. Let's keep running ourselves...
+                drop(queue);
+            }
+            (Some(index_b), _) => {
+                // 1. remove canditate from the queue, pushing remaining of the queue to the front
+                let process_b = queue.remove(index_b);
+
+                // 2. push current at the back of the queue, unless we want to unschedule it.
+                let proc = get_current_process();
+                if !remove_self {
+                    queue.push(proc.clone());
+                }
+
+                // unlock the queue
+                drop(queue);
+
+                let whoami = if !Arc::ptr_eq(&process_b, &proc) {
+                    unsafe {
+                        // safety: interrupts are off
+                        process_switch(process_b, proc)
+                    }
+                } else {
+                    // Avoid process switching if we're just rescheduling ourselves.
+                    proc
+                };
+
+                /* we were scheduled again */
+
+                // replace CURRENT_PROCESS with ourself.
+                // If previously running process had deleted all other references to itself, this
+                // is where its drop actually happens
+                unsafe { CURRENT_PROCESS = Some(whoami) };
+            }
+        }
+        break;
+    }
 }
 
 

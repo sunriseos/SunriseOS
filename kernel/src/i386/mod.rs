@@ -131,6 +131,11 @@ pub mod instructions {
             asm!("cli" :::: "volatile");
         }
 
+        /// Waits until an interrupt is fired
+        pub unsafe fn hlt() {
+            asm!("hlt" :::: "volatile");
+        }
+
         /// Get EFLAGS
         pub fn flags() -> u16 {
             unsafe {
