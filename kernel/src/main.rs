@@ -111,7 +111,7 @@ fn main() {
     let lock = sync::SpinLock::new(());
     loop {
         // TODO: Exit process.
-        scheduler::unschedule(&lock, lock.lock());
+        scheduler::unschedule(lock.lock());
     }
 }
 

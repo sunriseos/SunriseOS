@@ -136,22 +136,59 @@ pub mod instructions {
             asm!("hlt" :::: "volatile");
         }
 
-        /// Get EFLAGS
-        pub fn flags() -> u16 {
-            unsafe {
-                let flags: u16;
-                asm!("pushf
-                      pop $0" : "=r"(flags) ::: "intel", "volatile");
-                flags
-            }
+        /// Returns whether interrupts are enabled.
+        pub fn are_enabled() -> bool {
+            use i386::registers::eflags::{self, EFlags};
+
+            eflags::read().contains(EFlags::INTERRUPT_FLAG)
         }
 
-        pub unsafe fn set_flags(flags: u16) {
-            asm!("push $0
-                  popf" :: "r"(flags) :: "intel", "volatile");
+        /// Run a closue with disabled interrupts.
+        ///
+        /// Run the given closure, disabling interrupts before running it (if they aren't already disabled).
+        /// Afterwards, interrupts are enabling again if they were enabled before.
+        ///
+        /// If you have other `sti` and `cli` calls _within_ the closure, things may not work as expected.
+        ///
+        /// # Examples
+        ///
+        /// ```ignore
+        /// // interrupts are enabled
+        /// without_interrupts(|| {
+        ///     // interrupts are disabled
+        ///     without_interrupts(|| {
+        ///         // interrupts are disabled
+        ///     });
+        ///     // interrupts are still disabled
+        /// });
+        /// // interrupts are enabled again
+        /// ```
+        pub fn without_interrupts<F, R>(f: F) -> R
+        where
+            F: FnOnce() -> R,
+        {
+            // true if the interrupt flag is set (i.e. interrupts are enabled)
+            let saved_intpt_flag = are_enabled();
+
+            // if interrupts are enabled, disable them for now
+            if saved_intpt_flag {
+                unsafe { cli(); }
+            }
+
+            // do `f` while interrupts are disabled
+            let ret = f();
+
+            // re-enable interrupts if they were previously enabled
+            if saved_intpt_flag {
+                unsafe { sti(); }
+            }
+
+            // return the result of `f` to the caller
+            ret
         }
     }
 }
+pub mod registers;
 
 /// Represents a protection ring level.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

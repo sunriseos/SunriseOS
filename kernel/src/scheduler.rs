@@ -78,14 +78,16 @@ pub fn is_in_schedule_queue(process: &ProcessStructArc) -> bool {
 /// This can be used to avoid race conditions between registering for an event, and unscheduling.
 ///
 /// The current process will not be ran again unless it was registered for rescheduling.
-pub fn unschedule<'a>(interrupt_manager: &'a SpinLock<()>, interrupt_lock: SpinLockGuard<'a, ()>) {
+pub fn unschedule<'a>(interrupt_lock: SpinLockGuard<'a, ()>) {
     let process = get_current_process();
     {
         let mut plock = process.write();
         plock.pstate = ProcessState::Stopped;
     }
 
-    internal_schedule(interrupt_manager, interrupt_lock, true)
+    drop(interrupt_lock);
+
+    internal_schedule(true)
 }
 
 /// Creates the very first process at boot.
@@ -133,12 +135,7 @@ pub unsafe fn create_first_process() {
 ///  * as new process *
 /// 5. Drops the lock to the schedule queue, re-enabling interrupts
 pub fn schedule() {
-    // We use a special SpinLock to disable the interruptions,
-    // We pass it to the internal_schedule, which will drop it if it needs to HLT.
-    let interrupt_manager = SpinLock::new(());
-    let interrupt_lock = interrupt_manager.lock();
-
-    internal_schedule(&interrupt_manager, interrupt_lock, false)
+    internal_schedule(false)
 }
 
 /// Parses the queue to find the first unlocked process.
@@ -154,65 +151,70 @@ fn find_next_process_to_run(queue: &Vec<ProcessStructArc>) -> Option<usize> {
 
 /// Internal impl of the process switch, used by schedule and unschedule.
 ///
-/// The passed lock will be locked until the process is safely process switched.
-///
 /// See schedule function for documentation on how scheduling works.
-fn internal_schedule<'a>(interrupt_manager: &'a SpinLock<()>, mut interrupt_lock: SpinLockGuard<'a, ()>, remove_self: bool) {
-    loop {
-        let mut queue = SCHEDULE_QUEUE.lock();
+fn internal_schedule<'a>(remove_self: bool) {
+    use i386::instructions::interrupts::{without_interrupts, sti, cli};
+    // TODO: Ensure the global counter is <= 1
+    without_interrupts(|| {
+        loop {
+            let mut queue = SCHEDULE_QUEUE.lock();
 
-        let candidate_index = find_next_process_to_run(&queue);
-        match (candidate_index, remove_self) {
-            (None, true) => {
-                // There's nobody to schedule. Let's drop all the locks, HLT, and run internal_schedule again.
-                // NOTE: There's nobody running at this point. :O
-                drop(queue);
-                drop(interrupt_lock);
-                unsafe { ::i386::instructions::interrupts::hlt(); }
+            let candidate_index = find_next_process_to_run(&queue);
+            match (candidate_index, remove_self) {
+                (None, true) => {
+                    // There's nobody to schedule. Let's drop all the locks, HLT, and run internal_schedule again.
+                    // NOTE: There's nobody running at this point. :O
+                    drop(queue);
 
-                // Relock interrupts, and rerun scheduler.
-                interrupt_lock = interrupt_manager.lock();
-
-                // Rerun internal_schedule.
-                continue;
-            },
-            (None, false) => {
-                // There's nobody else to run. Let's keep running ourselves...
-                drop(queue);
-            }
-            (Some(index_b), _) => {
-                // 1. remove canditate from the queue, pushing remaining of the queue to the front
-                let process_b = queue.remove(index_b);
-
-                // 2. push current at the back of the queue, unless we want to unschedule it.
-                let proc = get_current_process();
-                if !remove_self {
-                    queue.push(proc.clone());
-                }
-
-                // unlock the queue
-                drop(queue);
-
-                let whoami = if !Arc::ptr_eq(&process_b, &proc) {
                     unsafe {
-                        // safety: interrupts are off
-                        process_switch(process_b, proc)
+                        // Temporarily revive interrupts for hlt.
+                        sti();
+                        ::i386::instructions::interrupts::hlt();
+                        // Kill interrupts again.
+                        cli();
                     }
-                } else {
-                    // Avoid process switching if we're just rescheduling ourselves.
-                    proc
-                };
 
-                /* we were scheduled again */
+                    // Rerun internal_schedule.
+                    continue;
+                },
+                (None, false) => {
+                    // There's nobody else to run. Let's keep running ourselves...
+                    drop(queue);
+                }
+                (Some(index_b), _) => {
+                    // 1. remove canditate from the queue, pushing remaining of the queue to the front
+                    let process_b = queue.remove(index_b);
 
-                // replace CURRENT_PROCESS with ourself.
-                // If previously running process had deleted all other references to itself, this
-                // is where its drop actually happens
-                unsafe { CURRENT_PROCESS = Some(whoami) };
+                    // 2. push current at the back of the queue, unless we want to unschedule it.
+                    let proc = get_current_process();
+                    if !remove_self {
+                        queue.push(proc.clone());
+                    }
+
+                    // unlock the queue
+                    drop(queue);
+
+                    let whoami = if !Arc::ptr_eq(&process_b, &proc) {
+                        unsafe {
+                            // safety: interrupts are off
+                            process_switch(process_b, proc)
+                        }
+                    } else {
+                        // Avoid process switching if we're just rescheduling ourselves.
+                        proc
+                    };
+
+                    /* we were scheduled again */
+
+                    // replace CURRENT_PROCESS with ourself.
+                    // If previously running process had deleted all other references to itself, this
+                    // is where its drop actually happens
+                    unsafe { CURRENT_PROCESS = Some(whoami) };
+                }
             }
+            break;
         }
-        break;
-    }
+    })
 }
 
 
