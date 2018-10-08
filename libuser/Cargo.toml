@@ -1,0 +1,7 @@
+[package]
+name = "libuser"
+version = "0.1.0"
+authors = ["roblabla <unfiltered@roblab.la>"]
+
+[dependencies]
+linked_list_allocator = "0.6.2"

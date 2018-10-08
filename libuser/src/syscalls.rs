@@ -1,4 +1,4 @@
-//! Userspace syscall wrappers
+//! Syscall Wrappers
 
 use core::slice;
 use core::marker::PhantomData;
