@@ -156,10 +156,9 @@ impl Waitable for IRQEvent {
         let curproc = scheduler::get_current_process();
         let mut veclock = self.state.waiting_processes.lock();
         info!("Registering {:010x} for irq {}", &*curproc as *const _ as usize, self.state.irqnum);
-        if veclock.iter().find(|v| Arc::ptr_eq(&curproc, v)).is_some() {
-            panic!("Double registration!")
+        if veclock.iter().find(|v| Arc::ptr_eq(&curproc, v)).is_none() {
+            veclock.push(scheduler::get_current_process());
         }
-        veclock.push(scheduler::get_current_process());
     }
 }
 
