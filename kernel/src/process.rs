@@ -27,6 +27,17 @@ pub struct ProcessStruct {
     pub pstack:               KernelStack,
     pub phwcontext:           SpinLock<ProcessHardwareContext>,
     pub phandles:             SpinLock<HandleTable>,
+
+    /// Interrupt disable counter.
+    ///
+    /// # Description
+    ///
+    /// Allows recursively disabling interrupts while keeping a sane behavior.
+    /// Should only be manipulated through sync::enable_interrupts and
+    /// sync::disable_interrupts.
+    ///
+    /// Used by the SpinLock to implement recursive irqsave logic.
+    pub pint_disable_counter: AtomicUsize,
 }
 
 #[derive(Debug)]
@@ -187,6 +198,7 @@ impl ProcessStruct {
                 pstack,
                 phwcontext : empty_hwcontext,
                 phandles: SpinLock::new(HandleTable::new()),
+                pint_disable_counter: AtomicUsize::new(0),
             }
         );
 
@@ -224,6 +236,7 @@ impl ProcessStruct {
                 pstack,
                 phwcontext,
                 phandles: SpinLock::new(HandleTable::new()),
+                pint_disable_counter: AtomicUsize::new(0),
             }
         );
 

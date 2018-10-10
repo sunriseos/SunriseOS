@@ -198,6 +198,4 @@ pub unsafe fn init() {
     }
 
     sti();
-
-    ::sync::init_interrupt_counter();
 }

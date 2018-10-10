@@ -120,7 +120,7 @@ where
         // bug otherwise.
 
         // Schedule
-        scheduler::unschedule(lock);
+        scheduler::unschedule(&interrupt_manager, lock);
     }
 }
 
