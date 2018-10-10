@@ -85,6 +85,6 @@ pub mod eflags {
     ///
     /// Does not preserve any bits, including reserved bits.
     pub fn write_raw(val: u32) {
-        unsafe { asm!("pushd $0; popd" :: "r"(val) : "memory" "flags") };
+        unsafe { asm!("pushd $0; popfd" :: "r"(val) : "memory" "flags") };
     }
 }
