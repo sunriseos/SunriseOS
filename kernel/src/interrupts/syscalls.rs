@@ -10,6 +10,7 @@ use scheduler;
 use utils;
 use devices::pit;
 use alloc::boxed::Box;
+use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::mem;
@@ -87,6 +88,11 @@ fn wait_synchronization(mut handle_idx: UserSpacePtrMut<usize>, handles_ptr: Use
     unreachable!("No waitable triggered??!?");
 }
 
+fn output_debug_string(s: UserSpacePtr<[u8]>) -> usize {
+    info!("{}", String::from_utf8_lossy(&*s));
+    0
+}
+
 pub extern fn syscall_handler_inner(syscall_nr: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize, arg5: usize, arg6: usize) -> usize {
     use logger::Logger;
     use devices::rs232::SerialLogger;
@@ -98,6 +104,10 @@ pub extern fn syscall_handler_inner(syscall_nr: usize, arg1: usize, arg2: usize,
             data: arg2,
             len: arg3
         })}), arg4),
+        0x27 => output_debug_string(UserSpacePtr(unsafe {mem::transmute(FatPtr {
+            data: arg1,
+            len: arg2
+        })})),
         0x53 => create_interrupt_event(UserSpacePtrMut(arg1 as _), arg2, arg3 as u32),
         //0x79 => create_process(arg1, arg2),
 

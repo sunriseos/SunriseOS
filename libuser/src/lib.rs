@@ -3,12 +3,16 @@
 //! Provides an allocator, various lang items.
 
 #![no_std]
-#![feature(asm, start, lang_items, panic_implementation, core_intrinsics, const_fn)]
+#![feature(asm, start, lang_items, panic_implementation, core_intrinsics, const_fn, alloc)]
 
 pub mod syscalls;
 pub mod io;
 
 extern crate linked_list_allocator;
+
+#[macro_use]
+extern crate alloc;
+
 use linked_list_allocator::LockedHeap;
 
 #[global_allocator]
@@ -33,6 +37,7 @@ use core::panic::PanicInfo;
 #[cfg(target_os = "none")]
 #[panic_implementation] #[no_mangle]
 pub extern fn panic_fmt(p: &::core::panic::PanicInfo) -> ! {
+    syscalls::output_debug_string(&format!("{}", p));
     loop { unsafe { asm!("HLT"); } }
 }
 
@@ -68,7 +73,7 @@ pub unsafe extern fn start() -> ! {
     main(0, core::ptr::null());
 
     // TODO: Exit
-    loop {}
+    panic!("Done");
 }
 
 #[lang = "termination"]
@@ -82,6 +87,6 @@ impl Termination for () {
 }
 
 #[lang = "start"]
-fn main<T: Termination>(main: fn(), argc: isize, argv: *const *const u8) {
-    main()
+fn main<T: Termination>(main: fn(), argc: isize, argv: *const *const u8) -> isize {
+    main().report() as isize
 }

@@ -123,3 +123,14 @@ pub fn map_framebuffer() -> Result<(&'static mut [u8], usize, usize, usize), usi
         }
     }
 }
+
+pub fn output_debug_string(s: &str) -> Result<(), usize> {
+    unsafe {
+        let ret = syscall!(0x27, s as *const str as *const u8 as usize, s.len());
+        if ret != 0 {
+            Err(ret)
+        } else {
+            Ok(())
+        }
+    }
+}
