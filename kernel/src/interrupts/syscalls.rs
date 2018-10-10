@@ -41,8 +41,7 @@ fn map_framebuffer(mut addr: UserSpacePtrMut<usize>, mut width: UserSpacePtrMut<
 fn create_interrupt_event(mut irqhandle: UserSpacePtrMut<u32>, irq_num: usize, flag: u32) -> usize {
     // TODO: Flags?
     let curproc = scheduler::get_current_process();
-    *irqhandle = curproc.write()
-        .phandles.add_handle(Arc::new(Handle::ReadableEvent(Box::new(event::wait_event(irq_num)))));
+    *irqhandle = curproc.phandles.lock().add_handle(Arc::new(Handle::ReadableEvent(Box::new(event::wait_event(irq_num)))));
     0
 }
 
@@ -53,9 +52,9 @@ fn wait_synchronization(mut handle_idx: UserSpacePtrMut<usize>, handles_ptr: Use
     let proc = scheduler::get_current_process();
     {
         // Make sure we drop proclock before waiting.
-        let proclock = proc.read();
+        let handleslock = proc.phandles.lock();
         for handle in handles_ptr.iter() {
-            handle_arr.push(proclock.phandles.get_handle(*handle));
+            handle_arr.push(handleslock.get_handle(*handle));
         }
     }
 

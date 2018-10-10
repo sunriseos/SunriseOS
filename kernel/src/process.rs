@@ -9,6 +9,7 @@ use alloc::collections::BTreeMap;
 use event::Waitable;
 use spin::{RwLock, RwLockWriteGuard};
 use sync::SpinLock;
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 /// The struct representing a process. There's one for every process.
 ///
@@ -21,11 +22,11 @@ use sync::SpinLock;
 /// - Its hardware context, to be restored on rescheduling
 #[derive(Debug)]
 pub struct ProcessStruct {
-    pub pstate:     ProcessState,
-    pub pmemory:    ProcessMemory,
-    pub pstack:     KernelStack,
-    pub phwcontext: ProcessHardwareContext,
-    pub phandles:   HandleTable,
+    pub pstate:               ProcessStateAtomic,
+    pub pmemory:              SpinLock<ProcessMemory>,
+    pub pstack:               KernelStack,
+    pub phwcontext:           SpinLock<ProcessHardwareContext>,
+    pub phandles:             SpinLock<HandleTable>,
 }
 
 #[derive(Debug)]
@@ -64,22 +65,89 @@ impl HandleTable {
 }
 
 /// Just a handy shortcut
-pub type ProcessStructArc = Arc<RwLock<ProcessStruct>>;
+pub type ProcessStructArc = Arc<ProcessStruct>;
 
 /// The state of a process.
 ///
 /// - Running: currently on the CPU
 /// - Scheduled: scheduled to be running
 /// - Stopped: not in the scheduled queue, waiting for an event
+/// - Readying: In the process of getting ready. Should go to the Stopped state soon.
 /// - NotReady: never added to the schedule queue yet. Should be started with `scheduler::start_process`
 ///
 /// Since SMP is not supported, there is only one Running process.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(usize)]
 pub enum ProcessState {
-    Running,
-    Scheduled,
-    Stopped,
-    NotReady
+    Running = 0,
+    Scheduled = 1,
+    Stopped = 2,
+    Readying = 3,
+    NotReady = 4,
+}
+
+impl ProcessState {
+    fn from_primitive(v: usize) -> ProcessState {
+        match v {
+            0 => ProcessState::Running,
+            1 => ProcessState::Scheduled,
+            2 => ProcessState::Stopped,
+            3 => ProcessState::Readying,
+            4 => ProcessState::NotReady,
+            _ => panic!("Invalid process state"),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ProcessStateAtomic(AtomicUsize);
+
+impl ProcessStateAtomic {
+    pub fn new(state: ProcessState) -> ProcessStateAtomic {
+        ProcessStateAtomic(AtomicUsize::new(state as usize))
+    }
+
+    pub fn into_inner(self) -> ProcessState {
+        ProcessState::from_primitive(self.0.into_inner())
+    }
+
+    pub fn load(&self, order: Ordering) -> ProcessState {
+        ProcessState::from_primitive(self.0.load(order))
+    }
+
+    pub fn store(&self, val: ProcessState, order: Ordering) {
+        self.0.store(val as usize, order)
+    }
+
+    pub fn swap(&self, val: ProcessState, order: Ordering) -> ProcessState {
+        ProcessState::from_primitive(self.0.swap(val as usize, order))
+    }
+
+    pub fn compare_and_swap(&self, current: ProcessState, new: ProcessState, order: Ordering) -> ProcessState {
+        ProcessState::from_primitive(self.0.compare_and_swap(current as usize, new as usize, order))
+    }
+
+    pub fn compare_exchange(&self, current: ProcessState, new: ProcessState, success: Ordering, failure: Ordering) -> Result<ProcessState, ProcessState> {
+        self.0.compare_exchange(current as usize, new as usize, success, failure)
+            .map(ProcessState::from_primitive)
+            .map_err(ProcessState::from_primitive)
+    }
+
+    pub fn compare_exchange_weak(&self, current: ProcessState, new: ProcessState, success: Ordering, failure: Ordering) -> Result<ProcessState, ProcessState> {
+        self.0.compare_exchange_weak(current as usize, new as usize, success, failure)
+            .map(ProcessState::from_primitive)
+            .map_err(ProcessState::from_primitive)
+    }
+
+    pub fn fetch_update<F>(&self, mut f: F, fetch_order: Ordering, set_order: Ordering) -> Result<ProcessState, ProcessState>
+    where
+        F: FnMut(ProcessState) -> Option<ProcessState>
+    {
+        self.0.fetch_update(|v| f(ProcessState::from_primitive(v)).map(|v| v as usize),
+                            fetch_order, set_order)
+            .map(ProcessState::from_primitive)
+            .map_err(ProcessState::from_primitive)
+    }
 }
 
 /// The memory pages of this process
@@ -96,32 +164,30 @@ pub enum ProcessMemory {
 
 impl ProcessStruct {
     /// Creates a new process.
-    pub fn new() -> Arc<RwLock<ProcessStruct>> {
+    pub fn new() -> ProcessStructArc {
         use ::core::mem::ManuallyDrop;
 
         // allocate its memory space
-        let pmemory = ProcessMemory::Inactive(SpinLock::new(InactivePageTables::new()));
+        let pmemory = SpinLock::new(ProcessMemory::Inactive(SpinLock::new(InactivePageTables::new())));
 
         // allocate its kernel stack
         let pstack = KernelStack::allocate_stack()
             .expect("Couldn't allocate a kernel stack");
 
         // hardware context will be computed later in this function, write a dummy value for now
-        let empty_hwcontext = ProcessHardwareContext::new();
+        let empty_hwcontext = SpinLock::new(ProcessHardwareContext::new());
 
         // the state of the process, NotReady
-        let pstate = ProcessState::NotReady;
+        let pstate = ProcessStateAtomic::new((ProcessState::NotReady));
 
         let p = Arc::new(
-           RwLock::new(
-                ProcessStruct {
-                    pstate,
-                    pmemory,
-                    pstack,
-                    phwcontext : empty_hwcontext,
-                    phandles: HandleTable::new(),
-                }
-            )
+            ProcessStruct {
+                pstate,
+                pmemory,
+                pstack,
+                phwcontext : empty_hwcontext,
+                phandles: SpinLock::new(HandleTable::new()),
+            }
         );
 
         p
@@ -137,30 +203,28 @@ impl ProcessStruct {
     /// # Panics
     ///
     /// ThreadInfoInStack will be initialized, it must not already have been
-    pub unsafe fn create_first_process() -> Arc<RwLock<ProcessStruct>> {
+    pub unsafe fn create_first_process() -> Arc<ProcessStruct> {
 
         // the state of the process, currently running
-        let pstate = ProcessState::Running;
+        let pstate = ProcessStateAtomic::new(ProcessState::Running);
 
         // use the already allocated stack
         let pstack = KernelStack::get_current_stack();
 
         // the saved esp will be overwritten on schedule-out anyway
-        let phwcontext = ProcessHardwareContext::new();
+        let phwcontext = SpinLock::new(ProcessHardwareContext::new());
 
         // the already currently active pages
-        let pmemory = ProcessMemory::Active;
+        let pmemory = SpinLock::new(ProcessMemory::Active);
 
         let p = Arc::new(
-            RwLock::new(
-                ProcessStruct {
-                    pstate,
-                    pmemory,
-                    pstack,
-                    phwcontext,
-                    phandles: HandleTable::new(),
-                }
-            )
+            ProcessStruct {
+                pstate,
+                pmemory,
+                pstack,
+                phwcontext,
+                phandles: SpinLock::new(HandleTable::new()),
+            }
         );
 
         p
@@ -176,16 +240,21 @@ impl ProcessStruct {
     /// # Panics
     ///
     /// Panics if state is not NotReady
-    pub unsafe fn set_entrypoint(&mut self, ep: usize) {
-        assert_eq!(self.pstate, ProcessState::NotReady);
+    pub unsafe fn set_entrypoint(&self, ep: usize) {
+        let oldval = self.pstate.compare_and_swap(ProcessState::NotReady, ProcessState::Readying, Ordering::SeqCst);
+
+        assert_eq!(oldval, ProcessState::NotReady);
 
         // prepare the process's stack for its first schedule-in
         unsafe {
-            // safe because stack is empty, p has never run
+            // Safety: With the compare_and_swap above, we ensure that this can only
+            // be run exactly *once*.
+            // Furthermore, since we're in readying state (and were in NotReady before),
+            // we can ensure that we have never been scheduled, and cannot be scheduled.
             prepare_for_first_schedule(self, ep);
         }
 
-        self.pstate = ProcessState::Stopped;
+        self.pstate.store(ProcessState::Stopped, Ordering::SeqCst);
     }
 }
 

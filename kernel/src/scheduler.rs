@@ -8,6 +8,7 @@ use alloc::vec::Vec;
 use process::{ProcessStruct, ProcessState, ProcessStructArc};
 use i386::process_switch::process_switch;
 use sync::{SpinLock, SpinLockGuard};
+use core::sync::atomic::Ordering;
 
 /// We always keep an Arc to the process currently running.
 /// This enables finding the current process from anywhere,
@@ -49,13 +50,11 @@ pub fn add_to_schedule_queue(process: ProcessStructArc) {
             "Process was already in schedule queue : {:?}", process);
 
     let mut queue_lock = {
-        let mut process_lock = process.write();
         let queue_lock = SCHEDULE_QUEUE.lock();
         use process::ProcessState;
-        assert_eq!(process_lock.pstate, ProcessState::Stopped,
-                   "Process added to schedule queue was not stopped : {:?}", process_lock.pstate);
-
-        process_lock.pstate = ProcessState::Scheduled;
+        let mut oldstate = process.pstate.compare_and_swap(ProcessState::Stopped, ProcessState::Scheduled, Ordering::SeqCst);
+        assert_eq!(oldstate, ProcessState::Stopped,
+                   "Process added to schedule queue was not stopped : {:?}", oldstate);
         queue_lock
         // process' guard is dropped here
     };
@@ -67,8 +66,7 @@ pub fn add_to_schedule_queue(process: ProcessStructArc) {
 pub fn is_in_schedule_queue(process: &ProcessStructArc) -> bool {
     let queue = SCHEDULE_QUEUE.lock();
     unsafe { CURRENT_PROCESS.iter() }.filter(|v| {
-        // TODO: State should really not need to lock
-        v.read().pstate == ProcessState::Running
+        v.pstate.load(Ordering::SeqCst) == ProcessState::Running
     }).chain(queue.iter()).any(|elem| Arc::ptr_eq(process, elem))
 }
 
@@ -81,8 +79,7 @@ pub fn is_in_schedule_queue(process: &ProcessStructArc) -> bool {
 pub fn unschedule<'a>(interrupt_lock: SpinLockGuard<'a, ()>) {
     let process = get_current_process();
     {
-        let mut plock = process.write();
-        plock.pstate = ProcessState::Stopped;
+        process.pstate.store(ProcessState::Stopped, Ordering::SeqCst);
     }
 
     drop(interrupt_lock);
@@ -142,7 +139,7 @@ pub fn schedule() {
 /// Returns the index of found process
 fn find_next_process_to_run(queue: &Vec<ProcessStructArc>) -> Option<usize> {
     for (index, process) in queue.iter().enumerate() {
-        if process.try_write().is_some() {
+        if process.phwcontext.try_lock().is_some() {
             return Some(index)
         }
     }

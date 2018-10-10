@@ -90,19 +90,20 @@ fn main() {
         info!("Loading {}", module.name());
         let proc = ProcessStruct::new();
         {
-            let mut plock = proc.write();
             let ep = {
-                let pmem = if let ProcessMemory::Inactive(ref pmem) = plock.pmemory {
+                let pmemlock = proc.pmemory.lock();
+
+                let pmem = if let &ProcessMemory::Inactive(ref pmem) = &*pmemlock {
                     pmem
                 } else {
                     panic!("newly created process has active pages?")
                 };
 
-                let mut pmem_lock = pmem.lock();
+                let mut pmeminnerlock = pmem.lock();
 
-                elf_loader::load_builtin(&mut *pmem_lock, module)
+                elf_loader::load_builtin(&mut *pmeminnerlock, module)
             };
-            unsafe { plock.set_entrypoint(ep); }
+            unsafe { proc.set_entrypoint(ep); }
         }
 
         scheduler::add_to_schedule_queue(proc);

@@ -87,20 +87,24 @@ impl ProcessHardwareContext {
 pub unsafe extern "C" fn process_switch(process_b: ProcessStructArc, process_current: ProcessStructArc) -> ProcessStructArc {
 
     let esp_to_load = {
-        let mut process_current_lock = process_current.try_write()
+        let mut process_current_lock_pmemory = process_current.pmemory.try_lock()
             .expect("process_switch cannot get current process' lock for writing");
-        let mut process_b_lock = process_b.try_write()
+        let mut process_b_lock_pmemory = process_b.pmemory.try_lock()
+            .expect("process_switch cannot get destination process' lock for writing");
+        let mut process_current_lock_phwcontext = process_current.phwcontext.try_lock()
+            .expect("process_switch cannot get current process' lock for writing");
+        let mut process_b_lock_phwcontext = process_b.phwcontext.try_lock()
             .expect("process_switch cannot get destination process' lock for writing");
 
         // Switch the memory pages
         // B's memory will be the active one, switch it in place
-        match ::core::mem::replace(&mut process_b_lock.pmemory, ProcessMemory::Active) {
+        match ::core::mem::replace(&mut *process_b_lock_pmemory, ProcessMemory::Active) {
             ProcessMemory::Inactive(spinlck) => {
                 // Since the process is the only owner of pages, holding the pages' lock implies having
                 // a ref to the process, and we own a WriteGuard on the process,
                 // so the pages' spinlock cannot possibly be held by someone else.
                 let old_pages = spinlck.into_inner().switch_to();
-                process_current_lock.pmemory = ProcessMemory::Inactive(SpinLock::new(old_pages));
+                *process_current_lock_pmemory = ProcessMemory::Inactive(SpinLock::new(old_pages));
             }
             ProcessMemory::Active => {
                 panic!("The process we were about to switch to had its memory marked as already active");
@@ -112,15 +116,17 @@ pub unsafe extern "C" fn process_switch(process_b: ProcessStructArc, process_cur
 
         // on restoring, esp will point to the top of the saved registers
         let esp_to_save = current_esp - (8 + 1 + 1) * size_of::<usize>();
-        process_current_lock.phwcontext.esp = esp_to_save;
+        process_current_lock_phwcontext.esp = esp_to_save;
 
-        let esp_to_load = process_b_lock.phwcontext.esp;
+        let esp_to_load = process_b_lock_phwcontext.esp;
 
         // unlock the processes, they become available to be taken between now and when B will take
         // them again on schedule in, but since there is no SMP and interrupts are off,
         // this should be ok ...
-        drop(process_b_lock);
-        drop(process_current_lock);
+        drop(process_b_lock_pmemory);
+        drop(process_current_lock_pmemory);
+        drop(process_b_lock_phwcontext);
+        drop(process_current_lock_phwcontext);
 
         esp_to_load
     };
@@ -132,7 +138,7 @@ pub unsafe extern "C" fn process_switch(process_b: ProcessStructArc, process_cur
     // Arc::into_raw does not decrement the reference count, so it's temporarily leaked.
     // This also prevents process B to be dropped when we're about to switch to it.
     let process_b_whoami = Arc::into_raw(process_b);
-    let whoami: *const RwLock<ProcessStruct>;
+    let whoami: *const ProcessStruct;
 
     asm!("
     // Push all registers on the stack, swap to B's stack, and jump to B's schedule-in
@@ -181,7 +187,7 @@ pub unsafe extern "C" fn process_switch(process_b: ProcessStructArc, process_cur
 ///
 /// This function will definitely fuck up your stack, so make sure you're calling it on a
 /// never-scheduled process's empty-stack.
-pub unsafe fn prepare_for_first_schedule(p: &mut ProcessStruct, entrypoint: usize) {
+pub unsafe fn prepare_for_first_schedule(p: &ProcessStruct, entrypoint: usize) {
     #[repr(packed)]
     struct RegistersOnStack {
         eflags: u32,
@@ -231,7 +237,7 @@ pub unsafe fn prepare_for_first_schedule(p: &mut ProcessStruct, entrypoint: usiz
     ::core::ptr::write(initial_registers_stack_top, initial_registers);
 
     // put the pointer to the top of the structure as the $esp to be loaded on schedule-in
-    p.phwcontext.esp = initial_registers_stack_top as usize;
+    p.phwcontext.lock().esp = initial_registers_stack_top as usize;
 }
 
 /// The function ret'd on, on a process' first schedule.
@@ -247,7 +253,7 @@ fn first_schedule() {
         " : : "i"(first_schedule_inner as *const u8) : : "volatile", "intel");
     }
 
-    extern "C" fn first_schedule_inner(whoami: *const RwLock<ProcessStruct>, entrypoint: usize) -> ! {
+    extern "C" fn first_schedule_inner(whoami: *const ProcessStruct, entrypoint: usize) -> ! {
         // reconstruct an Arc to our ProcessStruct from the leaked pointer
         let current = unsafe { Arc::from_raw(whoami) };
 

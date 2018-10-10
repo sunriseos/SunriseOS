@@ -101,6 +101,29 @@ impl<T: ?Sized> SpinLock<T> {
         let internalguard = self.internal.lock();
         SpinLockGuard(ManuallyDrop::new(internalguard))
     }
+
+    /// Disables interrupts and locks the mutex.
+    pub fn try_lock(&self) -> Option<SpinLockGuard<T>> {
+        // Disable irqs
+        unsafe { disable_interrupts(); }
+
+        // TODO: Disable preemption.
+        // TODO: Spin acquire
+
+        // lock
+        match self.internal.try_lock() {
+            Some(internalguard) => Some(SpinLockGuard(ManuallyDrop::new(internalguard))),
+            None => {
+                // We couldn't lock. Restore irqs and return None
+                unsafe { enable_interrupts(); }
+                None
+            }
+        }
+    }
+
+    pub unsafe fn force_unlock(&self) {
+        self.internal.force_unlock()
+    }
 }
 
 
