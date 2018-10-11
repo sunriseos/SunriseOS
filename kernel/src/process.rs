@@ -10,6 +10,7 @@ use event::Waitable;
 use spin::{RwLock, RwLockWriteGuard};
 use sync::SpinLock;
 use core::sync::atomic::{AtomicUsize, Ordering};
+use core::fmt::{self, Debug};
 
 /// The struct representing a process. There's one for every process.
 ///
@@ -110,8 +111,13 @@ impl ProcessState {
     }
 }
 
-#[derive(Debug)]
 pub struct ProcessStateAtomic(AtomicUsize);
+
+impl Debug for ProcessStateAtomic {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        Debug::fmt(&self.load(Ordering::SeqCst), f)
+    }
+}
 
 impl ProcessStateAtomic {
     pub fn new(state: ProcessState) -> ProcessStateAtomic {
