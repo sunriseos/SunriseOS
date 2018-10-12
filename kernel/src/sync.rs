@@ -4,20 +4,22 @@ use core::mem::ManuallyDrop;
 use core::ops::{Deref, DerefMut};
 use spin::{Mutex as SpinMutex, MutexGuard as SpinMutexGuard};
 use i386::instructions::interrupts::*;
-use core::sync::atomic::Ordering;
+use core::sync::atomic::{AtomicBool, Ordering};
 use scheduler;
 
 /// Decrement the interrupt disable counter.
 ///
 /// Look at documentation for ProcessStruct::pint_disable_counter to know more.
 fn enable_interrupts() {
-    if let Some(proc) = scheduler::try_get_current_process() {
-        if proc.pint_disable_counter.fetch_sub(1, Ordering::SeqCst) == 1 {
-            unsafe { sti() }
+    if !INTERRUPT_DISARM.load(Ordering::SeqCst) {
+        if let Some(proc) = scheduler::try_get_current_process() {
+            if proc.pint_disable_counter.fetch_sub(1, Ordering::SeqCst) == 1 {
+                unsafe { sti() }
+            }
+        } else {
+            // TODO: Safety???
+            // don't do anything.
         }
-    } else {
-        // TODO: Safety???
-        // don't do anything.
     }
 }
 
@@ -25,14 +27,26 @@ fn enable_interrupts() {
 ///
 /// Look at documentation for INTERRUPT_DISABLE_COUNTER to know more.
 fn disable_interrupts() {
-    if let Some(proc) = scheduler::try_get_current_process() {
-        if proc.pint_disable_counter.fetch_add(1, Ordering::SeqCst) == 0 {
-            unsafe { cli() }
+    if !INTERRUPT_DISARM.load(Ordering::SeqCst) {
+        if let Some(proc) = scheduler::try_get_current_process() {
+            if proc.pint_disable_counter.fetch_add(1, Ordering::SeqCst) == 0 {
+                unsafe { cli() }
+            }
+        } else {
+            // TODO: Safety???
+            // don't do anything.
         }
-    } else {
-        // TODO: Safety???
-        // don't do anything.
     }
+}
+
+static INTERRUPT_DISARM: AtomicBool = AtomicBool::new(false);
+
+/// Permanently disables the interrupts. Forever.
+///
+/// Only used by the panic handlers!
+pub unsafe fn permanently_disable_interrupts() {
+    INTERRUPT_DISARM.store(true, Ordering::SeqCst);
+    unsafe { cli() }
 }
 
 /// Simple SpinLock.

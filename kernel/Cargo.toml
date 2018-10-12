@@ -19,6 +19,7 @@ log = "0.4.2"
 xmas-elf = "0.6.2"
 font-rs = { git = "https://github.com/orycterope/font-rs" }
 hashmap_core = "0.1.9"
+rustc-demangle = "0.1"
 
 [dependencies.smallvec]
 default-features = false

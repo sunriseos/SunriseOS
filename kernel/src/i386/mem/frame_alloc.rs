@@ -170,8 +170,8 @@ impl FrameAllocator {
         ACTIVE_PAGE_TABLES.lock().reserve_kernel_land_frames();
         let mut frames_bitmap = FRAMES_BITMAP.lock(); // retake the mutex
 
-        // Don't free the modules, except the first one as that's the kernel.
-        for module in boot_info.module_tags().skip(1) {
+        // Don't free the modules. We need to keep the kernel around so we get symbols in panics!
+        for module in boot_info.module_tags() {
             FrameAllocator::mark_area_reserved(&mut frames_bitmap.memory_bitmap,
                                                module.start_address() as usize, module.end_address() as usize);
         }

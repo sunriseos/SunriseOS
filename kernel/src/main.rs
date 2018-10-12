@@ -34,6 +34,7 @@ extern crate smallvec;
 extern crate font_rs;
 extern crate hashmap_core;
 extern crate xmas_elf;
+extern crate rustc_demangle;
 
 use ascii::AsAsciiStr;
 use core::fmt::Write;

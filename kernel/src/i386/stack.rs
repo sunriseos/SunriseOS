@@ -30,6 +30,9 @@ use ::core::mem::size_of;
 use paging::*;
 use i386::mem::VirtualAddress;
 use spin::RwLock;
+use xmas_elf::ElfFile;
+use xmas_elf::symbol_table::{Entry32, Entry};
+use rustc_demangle::demangle as rustc_demangle;
 
 /// The size of a kernel stack, not accounting for the page guard
 pub const STACK_SIZE: usize            = 4;
@@ -63,13 +66,17 @@ impl KernelStack {
             })
     }
 
+    fn get_stack_bottom(esp: usize) -> usize {
+        esp & (0xFFFFFFFF << STACK_ALIGNEMENT) // 0x....0000
+    }
+
     /// Gets the bottom of the stack by and'ing $esp with STACK_ALIGNMENT
     ///
     /// extern "C" to make sure it is called with a sane ABI
     extern "C" fn get_current_stack_bottom() -> usize {
         let esp_ptr: usize;
         unsafe { asm!("mov $0, esp" : "=r"(esp_ptr) ::: "intel" ) };
-        esp_ptr & (0xFFFFFFFF << STACK_ALIGNEMENT) // 0x....0000
+        Self::get_stack_bottom(esp_ptr)
     }
 
     /// Retrieves the current stack from $esp
@@ -128,11 +135,32 @@ impl KernelStack {
             : "=r"(ebp), "=r"(esp), "=r"(eip) ::: "volatile", "intel" );
         }
 
-        let stack_bottom = (Self::get_current_stack_bottom() + PAGE_SIZE) as *const u8;
-        let stack_slice = unsafe { ::core::slice::from_raw_parts(stack_bottom,
-                                                        STACK_SIZE * PAGE_SIZE) };
+        Self::dump_stack(esp, ebp, eip, None);
+    }
 
-        dump_stack(stack_slice, stack_bottom as usize, esp, ebp, eip);
+    /// Dumps the stack from the given information on all the Loggers, displaying it
+    /// in a frame-by-frame format.
+    ///
+    /// This function is "relatively" safe. It checks whether the stack is properly mapped
+    /// before attempting to access it. It does create a &[u8] from a technically "shared"
+    /// resource. However, the compiler shouldn't know about this, so UB shouldn't be met.
+    pub fn dump_stack<'a>(mut esp: usize, ebp: usize, eip: usize, elf: Option<(&ElfFile<'a>, &'a [Entry32])>) {
+        let stack_bottom = (Self::get_stack_bottom(esp) + PAGE_SIZE) as *const u8;
+
+        // Check we have STACK_SIZE pages mapped as readable (at least) from stack_bottom.
+        for i in 0..STACK_SIZE {
+            if let PageState::Present(_) = ACTIVE_PAGE_TABLES.lock().get_phys(VirtualAddress(stack_bottom as usize + i * PAGE_SIZE)) {
+                // All good
+            } else {
+                // Welp! Let's stop here.
+                return dump_stack(&[], stack_bottom as usize, esp, ebp, eip, elf);
+            }
+        }
+
+        let stack_slice = unsafe { ::core::slice::from_raw_parts(stack_bottom,
+                                                                 STACK_SIZE * PAGE_SIZE) };
+
+        dump_stack(stack_slice, stack_bottom as usize, esp, ebp, eip, elf);
     }
 }
 
@@ -159,18 +187,35 @@ impl Drop for KernelStack {
 /// * any ebp/esp falling outside of the stack
 ///
 /// The data of every stack frame will be hexdumped
-pub fn dump_stack(stack: &[u8], orig_address: usize, mut esp: usize, mut ebp: usize, mut eip: usize) {
+pub fn dump_stack<'a>(stack: &[u8], orig_address: usize, mut esp: usize, mut ebp: usize, mut eip: usize, elf: Option<(&ElfFile<'a>, &'a [Entry32])>) {
     use logger::*;
     use core::fmt::Write;
     use utils::print_hexdump_as_if_at_addr;
 
     writeln!(Loggers, "---------- Dumping stack ---------");
     writeln!(Loggers, "# Stack start: {:#010x}, Stack end: {:#010x}", orig_address, orig_address + stack.len());
+
+    // Check if ESP is in page guard.
+    if esp < (KernelStack::get_stack_bottom(esp) + PAGE_SIZE) {
+        writeln!(Loggers, "# Stack overflow detected! Using EBP as esp.");
+        esp = ebp;
+    }
+
     let mut frame_nb = 0;
     loop {
         if eip == 0x00000000 || ebp == 0x00000000 { break; } // reached end of stack
 
-        writeln!(Loggers, "> Frame #{} - eip: {:#010x} - esp: {:#010x} - ebp: {:#010x}", frame_nb, eip, esp, ebp);
+        let mut funcname = "unknown";
+        if let Some((elf, symbol_section)) = elf {
+            if let Some(entry) = symbol_section.iter()
+                .find(|entry| entry.value() <= (eip as u64) && (eip as u64) < entry.value() + entry.size())
+            {
+                if let Ok(s) = entry.get_name(elf) {
+                    funcname = s;
+                }
+            }
+        }
+        writeln!(Loggers, "> Frame #{} - {}, eip: {:#010x} - esp: {:#010x} - ebp: {:#010x}", frame_nb, rustc_demangle(funcname), eip, esp, ebp);
         let esp_off = esp - orig_address;
         let ebp_off = ebp - orig_address;
         if esp_off >= stack.len() { writeln!(Loggers, "Invalid esp"); break; }

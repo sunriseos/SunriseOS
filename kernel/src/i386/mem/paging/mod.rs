@@ -1,12 +1,13 @@
 //! Paging on i386
 
-mod entry;
 mod table;
+use self::table::entry;
 
 use multiboot2::{BootInformation, ElfSectionFlags};
 
 pub use self::table::{ActivePageTables, InactivePageTables, MappingType, EntryFlags};
 pub use self::table::PageTablesSet;
+pub use self::entry::PageState;
 
 use self::table::*;
 use self::table::entry::Entry;

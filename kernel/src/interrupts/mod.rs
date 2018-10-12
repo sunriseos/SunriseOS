@@ -2,12 +2,20 @@ use i386::structures::idt::{ExceptionStackFrame, PageFaultErrorCode, Idt};
 use i386::instructions::interrupts::sti;
 use i386::pio::Pio;
 use io::Io;
-use i386::mem::VirtualAddress;
-use i386::PrivilegeLevel;
+use i386::mem::{VirtualAddress, PhysicalAddress};
+use i386::mem::paging::{PageTablesSet, ACTIVE_PAGE_TABLES, EntryFlags};
+use i386::{stack, TssStruct, PrivilegeLevel};
+use i386;
+use gdt;
+use xmas_elf::ElfFile;
+use xmas_elf::sections::SectionData;
 
 use core::fmt::Write;
+use core::slice;
 use spin::Mutex;
-use paging::{KernelLand, get_page};
+use sync::{self, SpinLock};
+use paging::{self, KernelLand, get_page};
+use utils;
 use devices::pic;
 
 mod irq;
@@ -44,7 +52,55 @@ extern "x86-interrupt" fn device_not_available_handler(stack_frame: &mut Excepti
 }
 
 fn double_fault_handler() {
-    panic!("Double fault!");
+    // Disable interrupts forever!
+    unsafe {
+        sync::permanently_disable_interrupts();
+    }
+
+    // Acquire kernel elf.
+    let info = i386::multiboot::get_boot_information();
+    let kernel = info.module_tags().nth(0).unwrap();
+
+    // Find a place to map the full ELF
+    let pagenb = utils::div_round_up((kernel.end_address() - kernel.start_address()) as usize, paging::PAGE_SIZE);
+
+    let vmem = {
+        let mut pagetable = ACTIVE_PAGE_TABLES.lock();
+        let vmem = pagetable.find_available_virtual_space::<KernelLand>(pagenb).unwrap();
+        pagetable.map_range(PhysicalAddress(utils::align_down(kernel.start_address() as usize, paging::PAGE_SIZE)), vmem, pagenb, EntryFlags::empty());
+
+        vmem.addr() + ((kernel.start_address() as usize) % paging::PAGE_SIZE)
+    };
+
+    // Parse the ELF.
+    let elf = ElfFile::new(unsafe { slice::from_raw_parts(vmem as *mut u8, (kernel.end_address() - kernel.start_address()) as usize) }).unwrap();
+
+    // Get the Main TSS so I can recover some information about what happened.
+    unsafe {
+        // Safety: gdt::MAIN_TASK should always point to a valid TssStruct.
+        if let Some(tss_main) = (gdt::MAIN_TASK.addr() as *const TssStruct).as_ref() {
+            // First print the registers
+            info!("Double fault!
+                    EIP={:#010x} CR3={:#010x}
+                    EAX={:#010x} EBX={:#010x} ECX={:#010x} EDX={:#010x}
+                    ESI={:#010x} EDI={:#010X} ESP={:#010x} EBP={:#010x}",
+                   tss_main.eip, tss_main.cr3,
+                   tss_main.eax, tss_main.ebx, tss_main.ecx, tss_main.edx,
+                   tss_main.esi, tss_main.edi, tss_main.esp, tss_main.ebp);
+
+            // Then print the stack
+            let st = match elf.find_section_by_name(".symtab").expect("Missing .symtab").get_data(&elf).expect("Missing .symtab") {
+                SectionData::SymbolTable32(st) => st,
+                _ => panic!(".symtab is not a SymbolTable32"),
+            };
+
+            stack::KernelStack::dump_stack(tss_main.esp as usize, tss_main.ebp as usize, tss_main.eip as usize, Some((&elf, st)));
+        }
+
+        // And finally, panic
+        panic!("Double fault!")
+    }
+
 }
 
 extern "x86-interrupt" fn invalid_tss_handler(stack_frame: &mut ExceptionStackFrame, errcode: u32) {
