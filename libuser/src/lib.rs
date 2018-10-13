@@ -29,14 +29,12 @@ fn init_heap() {
     }
 }
 
-use core::panic::PanicInfo;
-
 
 #[lang = "eh_personality"] #[no_mangle] pub extern fn eh_personality() {}
 
 #[cfg(target_os = "none")]
 #[panic_implementation] #[no_mangle]
-pub extern fn panic_fmt(p: &::core::panic::PanicInfo) -> ! {
+pub extern fn panic_fmt(p: &core::panic::PanicInfo) -> ! {
     syscalls::output_debug_string(&format!("{}", p));
     loop { unsafe { asm!("HLT"); } }
 }
@@ -85,6 +83,6 @@ impl Termination for () {
 }
 
 #[lang = "start"]
-fn main<T: Termination>(main: fn(), argc: isize, argv: *const *const u8) -> isize {
+fn main<T: Termination>(main: fn(), _argc: isize, _argv: *const *const u8) -> isize {
     main().report() as isize
 }

@@ -64,8 +64,8 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 const OSCILLATOR_FREQ: usize = 1193182;
 
 /// The frequency of channel 0 irqs, in hertz.
-/// One every millisecond
-pub const CHAN_0_FREQUENCY: usize = 1000;
+/// One every 10 millisecond
+pub const CHAN_0_FREQUENCY: usize = 100;
 
 /// The channel 0 reset value
 const CHAN_0_DIVISOR: u16 = (OSCILLATOR_FREQ / CHAN_0_FREQUENCY) as u16;

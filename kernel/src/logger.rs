@@ -1,6 +1,6 @@
 //! The kernel loggers
 
-use spin::Mutex;
+use sync::SpinLock;
 
 /// The possible colors for logging.
 /// If the logger does not implement some colors they should fallback to the nearest color
@@ -106,8 +106,8 @@ pub struct RegisteredLogger {
 /// We keep an array of 8 possible loggers
 lazy_static! {
     //static ref LOGGERS_ARRAY : Mutex<[Option<(&str, &'static mut (Logger + Send + Sync))>; 8]>
-    static ref LOGGERS_ARRAY : Mutex<[Option<RegisteredLogger>; 8]>
-        = Mutex::new([None, None, None, None, None, None, None, None]);
+    static ref LOGGERS_ARRAY : SpinLock<[Option<RegisteredLogger>; 8]>
+        = SpinLock::new([None, None, None, None, None, None, None, None]);
 }
 
 pub struct Loggers;

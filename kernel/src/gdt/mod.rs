@@ -102,19 +102,19 @@ struct GdtManager {
 }
 
 impl GdtManager {
-    pub fn load(cur_loaded: DescriptorTable, _new_cs: u16, new_ds: u16, new_ss: u16) -> GdtManager {
+    pub fn load(cur_loaded: DescriptorTable, new_cs: u16, new_ds: u16, new_ss: u16) -> GdtManager {
         let clone = cur_loaded.clone();
-        cur_loaded.load_global(_new_cs, new_ds, new_ss);
+        cur_loaded.load_global(new_cs, new_ds, new_ss);
 
         GdtManager {
             unloaded_table: Some(clone)
         }
     }
 
-    pub fn commit(&mut self, _new_cs: u16, new_ds: u16, new_ss: u16) {
+    pub fn commit(&mut self, new_cs: u16, new_ds: u16, new_ss: u16) {
         let old_table = self.unloaded_table.take()
             .expect("Commit to not be called recursively")
-            .load_global(_new_cs, new_ds, new_ss);
+            .load_global(new_cs, new_ds, new_ss);
         unsafe {
             self.unloaded_table = Some(DescriptorTable {
                 table: Vec::from_raw_parts(
