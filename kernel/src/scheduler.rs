@@ -4,6 +4,7 @@ use spin::Mutex;
 use alloc::sync::Arc;
 use spin::RwLock;
 use alloc::vec::Vec;
+use core::mem;
 
 use process::{ProcessStruct, ProcessState, ProcessStructArc};
 use i386::process_switch::process_switch;
@@ -13,6 +14,11 @@ use core::sync::atomic::Ordering;
 /// We always keep an Arc to the process currently running.
 /// This enables finding the current process from anywhere,
 /// and also prevents dropping the ProcessStruct of the process we're currently running
+///
+/// # Safety
+///
+/// Setting this value should be done through set_current_process, otherwise Bad Things:tm:
+/// will happen.
 // why isn't uninitialized() a const fn !? D:
 static mut CURRENT_PROCESS: Option<ProcessStructArc> = None;
 
@@ -28,6 +34,17 @@ pub fn try_get_current_process() -> Option<ProcessStructArc> {
 /// Gets the current ProcessStruct.
 pub fn get_current_process() -> ProcessStructArc {
     try_get_current_process().unwrap()
+}
+
+/// Sets the current ProcessStruct.
+///
+/// Setting the current process should *always* go through this function, and never
+/// by setting CURRENT_PROCESS directly. This function uses mem::replace to ensure
+/// that the ProcessStruct's Drop is run with CURRENT_PROCESS set to the *new* value.
+unsafe fn set_current_process(p: ProcessStructArc) {
+    mem::replace(&mut CURRENT_PROCESS, Some(p.clone()));
+
+    p.pstate.compare_and_swap(ProcessState::Scheduled, ProcessState::Running, Ordering::SeqCst);
 }
 
 /// The schedule queue
@@ -106,7 +123,7 @@ pub unsafe fn create_first_process() {
     let p0 = ProcessStruct::create_first_process();
     unsafe {
         // provided we only run this function once, it hasn't been initialized yet
-        CURRENT_PROCESS = Some(Arc::clone(&p0));
+        set_current_process(Arc::clone(&p0));
     }
 }
 
@@ -211,7 +228,7 @@ fn internal_schedule<'a>(interrupt_manager: &'a SpinLock<()>, mut interrupt_lock
                 // replace CURRENT_PROCESS with ourself.
                 // If previously running process had deleted all other references to itself, this
                 // is where its drop actually happens
-                unsafe { CURRENT_PROCESS = Some(whoami) };
+                unsafe { set_current_process(whoami.clone()) };
             }
         }
         break;
@@ -225,7 +242,7 @@ pub fn scheduler_first_schedule(current_process: ProcessStructArc, entrypoint: u
     // replace CURRENT_PROCESS with ourself.
     // If previously running process had deleted all other references to itself, this
     // is where its drop actually happens
-    unsafe { CURRENT_PROCESS = Some(current_process) };
+    unsafe { set_current_process(current_process) };
 
     unsafe {
         // this is a new process, no SpinLock is held
