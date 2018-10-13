@@ -4,7 +4,7 @@ use i386;
 use i386::mem::PhysicalAddress;
 use i386::mem::paging::{self, PageTablesSet};
 use mem::{FatPtr, UserSpacePtr, UserSpacePtrMut};
-use process::Handle;
+use process::{Handle, ProcessState, ProcessStruct};
 use event::{self, Waitable};
 use scheduler;
 use utils;
@@ -14,6 +14,8 @@ use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::mem;
+use core::sync::atomic::Ordering;
+use sync::SpinLock;
 
 extern fn ignore_syscall(nr: usize) -> usize {
     // TODO: Trigger "unknown syscall" signal, for userspace signal handling.
@@ -70,7 +72,10 @@ fn wait_synchronization(mut handle_idx: UserSpacePtrMut<usize>, handles_ptr: Use
     }).chain(timeout_waitable.iter().map(|v| v as &dyn Waitable));
 
     // And now, wait!
-    let val = event::wait(waitables.clone());
+    let val = match event::wait(waitables.clone()) {
+        Some(v) => v,
+        None => return 0xEC01
+    };
 
     // Figure out which waitable got triggered.
     for (idx, handle) in waitables.enumerate() {
@@ -92,13 +97,19 @@ fn output_debug_string(s: UserSpacePtr<[u8]>) -> usize {
     0
 }
 
+fn exit_process() -> usize {
+    let proc = ProcessStruct::kill(scheduler::get_current_process());
+    0
+}
+
 pub extern fn syscall_handler_inner(syscall_nr: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize, arg5: usize, arg6: usize) -> usize {
     use logger::Logger;
     use devices::rs232::SerialLogger;
     info!("Handling syscall {} - arg1: {}, arg2: {}, arg3: {}, arg4: {}, arg5: {}, arg6: {}",
           syscall_nr, arg1, arg2, arg3, arg4, arg5, arg6);
-    match syscall_nr {
+    let ret = match syscall_nr {
         // Horizon-inspired syscalls!
+        0x07 => exit_process(),
         0x18 => wait_synchronization(UserSpacePtrMut(arg1 as _), UserSpacePtr(unsafe {mem::transmute(FatPtr {
             data: arg2,
             len: arg3
@@ -115,5 +126,14 @@ pub extern fn syscall_handler_inner(syscall_nr: usize, arg1: usize, arg2: usize,
 
         // Unknown syscall. Should probably crash.
         u => ignore_syscall(u)
+    };
+
+    if scheduler::get_current_process().pstate.load(Ordering::SeqCst) == ProcessState::Killed {
+        let lock = SpinLock::new(());
+        scheduler::unschedule(&lock, lock.lock());
+        //unreachable!();
+        ret
+    } else {
+        ret
     }
 }

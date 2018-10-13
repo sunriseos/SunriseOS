@@ -27,7 +27,7 @@ pub fn try_get_current_process() -> Option<ProcessStructArc> {
         // Safe because modifications only happens in the schedule() function,
         // and outside of that function, seen from a process' perspective,
         // CURRENT_PROCESS will always have the same value
-        CURRENT_PROCESS.as_ref().map(Arc::clone)
+        CURRENT_PROCESS.clone()
     }
 }
 
@@ -61,14 +61,19 @@ static SCHEDULE_QUEUE: SpinLock<Vec<ProcessStructArc>> = SpinLock::new(Vec::new(
 ///
 /// Note that if the lock protecting process was not available, this function might schedule
 ///
+/// If the process was already scheduled, this function is a Noop.
+///
 /// # Panics
 ///
-/// Panics if the process was already in the schedule queue
 /// Panics if the process' state was already "Scheduled"
 pub fn add_to_schedule_queue(process: ProcessStructArc) {
     // todo maybe delete this assert, it adds a lot of overhead
-    assert!(!is_in_schedule_queue(&process),
-            "Process was already in schedule queue : {:?}", process);
+    //assert!(!is_in_schedule_queue(&process),
+    //        "Process was already in schedule queue : {:?}", process);
+
+    if is_in_schedule_queue(&process) {
+        return;
+    }
 
     let mut queue_lock = {
         let queue_lock = SCHEDULE_QUEUE.lock();
@@ -87,7 +92,7 @@ pub fn add_to_schedule_queue(process: ProcessStructArc) {
 pub fn is_in_schedule_queue(process: &ProcessStructArc) -> bool {
     let queue = SCHEDULE_QUEUE.lock();
     unsafe { CURRENT_PROCESS.iter() }.filter(|v| {
-        v.pstate.load(Ordering::SeqCst) == ProcessState::Running
+        v.pstate.load(Ordering::SeqCst) != ProcessState::Stopped
     }).chain(queue.iter()).any(|elem| Arc::ptr_eq(process, elem))
 }
 
@@ -98,9 +103,10 @@ pub fn is_in_schedule_queue(process: &ProcessStructArc) -> bool {
 ///
 /// The current process will not be ran again unless it was registered for rescheduling.
 pub fn unschedule<'a>(interrupt_manager: &'a SpinLock<()>, interrupt_lock: SpinLockGuard<'a, ()>) {
-    let process = get_current_process();
     {
-        process.pstate.store(ProcessState::Stopped, Ordering::SeqCst);
+        let process = get_current_process();
+        let old = process.pstate.compare_and_swap(ProcessState::Running, ProcessState::Stopped, Ordering::SeqCst);
+        assert!(old == ProcessState::Killed || old == ProcessState::Running, "Old was in invalid state {:?} before unscheduling", old);
     }
 
     internal_schedule(&interrupt_manager, interrupt_lock, true)

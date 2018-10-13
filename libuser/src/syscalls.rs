@@ -134,3 +134,11 @@ pub fn output_debug_string(s: &str) -> Result<(), usize> {
         }
     }
 }
+
+pub fn exit_process() -> ! {
+    unsafe {
+        let ret = syscall!(0x7);
+        let _ = output_debug_string(&format!("Failed to exit: {}", ret));
+        loop {}
+    }
+}

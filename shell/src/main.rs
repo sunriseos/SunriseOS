@@ -40,12 +40,13 @@ pub fn main() {
         match &*ps2::get_next_line() {
             "gif3" => show_gif(&mut *FRAMEBUFFER.lock(), &LOUIS3[..]),
             "gif4" => show_gif(&mut *FRAMEBUFFER.lock(), &LOUIS4[..]),
+            "exit" => return,
             //"stackdump" => unsafe { stack::KernelStack::dump_current_stack() },
             "help" => {
                 writeln!(&mut VBELogger, "COMMANDS:");
+                writeln!(&mut VBELogger, "exit: Exit this process");
                 writeln!(&mut VBELogger, "gif3: Print the KFS-3 meme");
                 writeln!(&mut VBELogger, "gif4: Print the KFS-4 meme");
-                writeln!(&mut VBELogger, "stackdump: Print a dump of the current stack");
             }
             _ => { writeln!(&mut VBELogger, "Unknown command"); }
         }

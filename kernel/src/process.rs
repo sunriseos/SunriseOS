@@ -11,6 +11,7 @@ use spin::{RwLock, RwLockWriteGuard};
 use sync::SpinLock;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::fmt::{self, Debug};
+use scheduler;
 
 /// The struct representing a process. There's one for every process.
 ///
@@ -96,6 +97,7 @@ pub enum ProcessState {
     Stopped = 2,
     Readying = 3,
     NotReady = 4,
+    Killed = 5,
 }
 
 impl ProcessState {
@@ -106,6 +108,7 @@ impl ProcessState {
             2 => ProcessState::Stopped,
             3 => ProcessState::Readying,
             4 => ProcessState::NotReady,
+            5 => ProcessState::Killed,
             _ => panic!("Invalid process state"),
         }
     }
@@ -274,6 +277,15 @@ impl ProcessStruct {
         }
 
         self.pstate.store(ProcessState::Stopped, Ordering::SeqCst);
+    }
+
+    /// Sets the process to the Killed state.
+    ///
+    /// We reschedule the process (cancelling any waiting it was doing).
+    /// In this state, the process will die when attempting to return to userspace.
+    pub fn kill(this: Arc<Self>) {
+        this.pstate.store(ProcessState::Killed, Ordering::SeqCst);
+        scheduler::add_to_schedule_queue(this);
     }
 }
 

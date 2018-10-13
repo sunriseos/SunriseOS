@@ -70,10 +70,8 @@ pub unsafe extern fn start() -> ! {
     }
 
     init_heap();
-    main(0, core::ptr::null());
-
-    // TODO: Exit
-    panic!("Done");
+    let _ret = main(0, core::ptr::null());
+    syscalls::exit_process();
 }
 
 #[lang = "termination"]
