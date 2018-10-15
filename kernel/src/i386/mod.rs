@@ -278,8 +278,8 @@ pub struct TssStruct {
     _reserveda: u16,
     pub ldt_selector: u16,
     _reservedb: u16,
-    pub iopboffset: u16,
     _reservedc: u16,
+    pub iopboffset: u16,
 }
 
 impl Default for TssStruct {
@@ -382,10 +382,26 @@ impl TssStruct {
     }
 }
 
+/// Wrapper around TssStruct ensuring it is kept at the page boundary.
+///
+/// According to the IA32-E PDF, volume 3, 7.2.1:
+///
+/// If paging is used:
+/// - Avoid placing a page boundary in the part of the TSS that the processor
+///   reads during a task switch (the first 104 bytes). The processor may not
+///   correctly perform address translations if a boundary occurs in this area.
+///   During a task switch, the processor reads and writes into the first 104
+///   bytes of each TSS (using contiguous physical addresses beginning with the
+///   physical address of the first byte of the TSS). So, after TSS access
+///   begins, if part of the 104 bytes is not physically contiguous, the
+///   processor will access incorrect information without generating a
+///   page-fault exception.
 #[repr(C, align(4096))]
 pub struct AlignedTssStruct(TssStruct);
 
 impl AlignedTssStruct {
+    /// Create a new AlignedTssStruct, using boxing to avoid putting a ridiculously large
+    /// object (4kb) on the stack.
     pub fn new(tss: TssStruct) -> Box<AlignedTssStruct> {
         box AlignedTssStruct(tss)
     }

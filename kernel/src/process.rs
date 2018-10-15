@@ -252,7 +252,7 @@ impl ProcessStruct {
         p
     }
 
-    /// Sets the entrypoint. Puts the Process in Stopped state.
+    /// Sets the entrypoint and userspace stack pointer. Puts the Process in Stopped state.
     ///
     /// # Safety
     ///
@@ -262,7 +262,7 @@ impl ProcessStruct {
     /// # Panics
     ///
     /// Panics if state is not NotReady
-    pub unsafe fn set_entrypoint(&self, ep: usize) {
+    pub unsafe fn set_start_arguments(&self, ep: usize, stack: usize) {
         let oldval = self.pstate.compare_and_swap(ProcessState::NotReady, ProcessState::Readying, Ordering::SeqCst);
 
         assert_eq!(oldval, ProcessState::NotReady);
@@ -273,7 +273,7 @@ impl ProcessStruct {
             // be run exactly *once*.
             // Furthermore, since we're in readying state (and were in NotReady before),
             // we can ensure that we have never been scheduled, and cannot be scheduled.
-            prepare_for_first_schedule(self, ep);
+            prepare_for_first_schedule(self, ep, stack);
         }
 
         self.pstate.store(ProcessState::Stopped, Ordering::SeqCst);

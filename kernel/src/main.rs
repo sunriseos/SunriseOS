@@ -51,7 +51,7 @@ pub use devices::rs232::SerialLogger;
 pub use devices::vbe::VBELogger;
 use i386::mem::PhysicalAddress;
 use i386::mem::frame_alloc::Frame;
-use paging::KernelLand;
+use paging::{KernelLand, UserLand};
 use process::{ProcessStruct, ProcessMemory};
 
 mod i386;
@@ -91,7 +91,7 @@ fn main() {
         info!("Loading {}", module.name());
         let proc = ProcessStruct::new();
         {
-            let ep = {
+            let (ep, sp) = {
                 let pmemlock = proc.pmemory.lock();
 
                 let pmem = if let &ProcessMemory::Inactive(ref pmem) = &*pmemlock {
@@ -102,9 +102,13 @@ fn main() {
 
                 let mut pmeminnerlock = pmem.lock();
 
-                elf_loader::load_builtin(&mut *pmeminnerlock, module)
+                let ep = elf_loader::load_builtin(&mut *pmeminnerlock, module);
+
+                // TODO: Page guard.
+                let sp = pmeminnerlock.get_pages::<UserLand>(4);
+                (ep, sp + 4 * paging::PAGE_SIZE)
             };
-            unsafe { proc.set_entrypoint(ep); }
+            unsafe { proc.set_start_arguments(ep, sp.addr()); }
         }
 
         scheduler::add_to_schedule_queue(proc);

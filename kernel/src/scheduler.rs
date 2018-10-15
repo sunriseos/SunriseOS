@@ -81,6 +81,7 @@ pub fn add_to_schedule_queue(process: ProcessStructArc) {
         let mut oldstate = process.pstate.compare_and_swap(ProcessState::Stopped, ProcessState::Scheduled, Ordering::SeqCst);
         assert_eq!(oldstate, ProcessState::Stopped,
                    "Process added to schedule queue was not stopped : {:?}", oldstate);
+        // TODO: Check ProcessState is Scheduled (was Stopped) or Killed
         queue_lock
         // process' guard is dropped here
     };
@@ -244,7 +245,7 @@ fn internal_schedule<'a>(interrupt_manager: &'a SpinLock<()>, mut interrupt_lock
 
 /// The function called when a process was schedule for the first time,
 /// right after the arch-specific process switch was performed.
-pub fn scheduler_first_schedule(current_process: ProcessStructArc, entrypoint: usize) {
+pub fn scheduler_first_schedule(current_process: ProcessStructArc, entrypoint: usize, stack: usize) {
     // replace CURRENT_PROCESS with ourself.
     // If previously running process had deleted all other references to itself, this
     // is where its drop actually happens
@@ -255,5 +256,5 @@ pub fn scheduler_first_schedule(current_process: ProcessStructArc, entrypoint: u
         ::i386::instructions::interrupts::sti();
     }
 
-    ::i386::process_switch::jump_to_entrypoint(entrypoint)
+    ::i386::process_switch::jump_to_entrypoint(entrypoint, stack)
 }

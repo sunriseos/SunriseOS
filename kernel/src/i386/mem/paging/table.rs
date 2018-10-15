@@ -403,8 +403,17 @@ pub trait PageTablesSet {
     ///
     /// Panics if we are out of memory.
     fn get_page<Land: VirtualSpaceLand>(&mut self) -> VirtualAddress {
-        let va = self.find_available_virtual_space::<Land>(1).unwrap();
-        self.map_allocate_to(va, EntryFlags::WRITABLE);
+        self.get_pages::<Land>(1)
+    }
+
+    /// Allocates the given number of pages, chosing a spot in VMEM for it.
+    ///
+    /// # Panics
+    ///
+    /// Panics if we are out of memory.
+    fn get_pages<Land: VirtualSpaceLand>(&mut self, page_nb: usize) -> VirtualAddress {
+        let va = self.find_available_virtual_space::<Land>(page_nb).unwrap();
+        self.map_range_allocate(va, page_nb, EntryFlags::WRITABLE);
         va
     }
 

@@ -116,6 +116,11 @@ extern "x86-interrupt" fn stack_segment_fault_handler(stack_frame: &mut Exceptio
 }
 
 extern "x86-interrupt" fn general_protection_fault_handler(stack_frame: &mut ExceptionStackFrame, errcode: u32) {
+    // Disable interrupts forever!
+    unsafe {
+        sync::permanently_disable_interrupts();
+    }
+
     panic!("General Protection Fault: {:?} {}", stack_frame, errcode);
 }
 

@@ -4,10 +4,12 @@
 
 use process::{ProcessStruct, ProcessState, ProcessMemory, ProcessStructArc};
 use scheduler::get_current_process;
+use gdt;
 use sync::SpinLock;
 use alloc::sync::Arc;
 use spin::RwLock;
 use core::mem::size_of;
+use i386::TssStruct;
 
 /// The hardware context of a paused process. It contains just enough registers to get the process
 /// running again.
@@ -174,7 +176,13 @@ pub unsafe extern "C" fn process_switch(process_b: ProcessStructArc, process_cur
     // ends up here if it was not our first schedule-in
 
     // recreate the Arc to our ProcessStruct from the pointer that was passed to us
-    unsafe { Arc::from_raw(whoami) }
+    let me = unsafe { Arc::from_raw(whoami) };
+
+    // Set the ESP0
+    let tss = gdt::MAIN_TASK.addr() as *mut TssStruct;
+    (*tss).esp0 = me.pstack.get_stack_start() as u32;
+
+    me
 }
 
 
@@ -187,7 +195,7 @@ pub unsafe extern "C" fn process_switch(process_b: ProcessStructArc, process_cur
 ///
 /// This function will definitely fuck up your stack, so make sure you're calling it on a
 /// never-scheduled process's empty-stack.
-pub unsafe fn prepare_for_first_schedule(p: &ProcessStruct, entrypoint: usize) {
+pub unsafe fn prepare_for_first_schedule(p: &ProcessStruct, entrypoint: usize, userspace_stack: usize) {
     #[repr(packed)]
     struct RegistersOnStack {
         eflags: u32,
@@ -221,7 +229,7 @@ pub unsafe fn prepare_for_first_schedule(p: &ProcessStruct, entrypoint: usize) {
         esi: 0,
         ebp: stack_start,                         // -+
         esp: 0, // ignored by the popad anyway    //  |
-        ebx: 0,                                   //  |
+        ebx: userspace_stack as u32,              //  |
         edx: 0,                                   //  |
         ecx: 0,                                   //  |
         eax: entrypoint as u32,                   //  |
@@ -247,28 +255,47 @@ fn first_schedule() {
     // just get the ProcessStruct pointer in $edi, the entrypoint in $eax, and call a rust function
     unsafe {
         asm!("
+        push ebx
         push eax
         push edi
         call $0
         " : : "i"(first_schedule_inner as *const u8) : : "volatile", "intel");
     }
 
-    extern "C" fn first_schedule_inner(whoami: *const ProcessStruct, entrypoint: usize) -> ! {
+    extern "C" fn first_schedule_inner(whoami: *const ProcessStruct, entrypoint: usize, userspace_stack: usize) -> ! {
         // reconstruct an Arc to our ProcessStruct from the leaked pointer
         let current = unsafe { Arc::from_raw(whoami) };
 
+        // Set the ESP0
+        let tss = gdt::MAIN_TASK.addr() as *mut TssStruct;
+        unsafe {
+            // Safety: TSS is always valid.
+            (*tss).esp0 = current.pstack.get_stack_start() as u32;
+        }
+
         // call the scheduler to finish the high-level process switch mechanics
-        ::scheduler::scheduler_first_schedule(current, entrypoint);
+        ::scheduler::scheduler_first_schedule(current, entrypoint, userspace_stack);
 
         unreachable!()
     }
 }
 
-pub fn jump_to_entrypoint(ep: usize) {
-    // TODO: Jump to ring 3.
-    // TODO: Exit the process
+pub fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize) {
     unsafe {
-        let f = *(&ep as *const _ as *const fn());
-        f()
+        asm!("
+        mov ax,0x2B // Set data segment selector to Userland Data, Ring 3
+        mov ds,ax
+        mov es,ax
+        mov fs,ax
+        mov gs,ax
+
+        // Build the fake stack for IRET
+        push 0x33   // Userland Stack, Ring 3
+        push $1     // Userspace ESP
+        pushfd
+        push 0x23   // Userland Code, Ring 3
+        push $0     // Entrypoint
+        iretd
+        " :: "r"(ep), "r"(userspace_stack_ptr) :: "intel", "volatile");
     }
 }

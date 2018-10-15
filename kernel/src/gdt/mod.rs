@@ -89,7 +89,7 @@ pub fn init_gdt() {
         Mutex::new(GdtManager::load(gdt, 0x8, 0x10, 0x18))
     });
 
-    unsafe { 
+    unsafe {
         info!("Loading LDT");
         lldt(SegmentSelector(7 << 3));
         info!("Loading Task");
@@ -290,13 +290,13 @@ impl DescriptorTableEntry {
 
     /// Creates a new LDT descriptor.
     pub fn new_ldt(base: &'static DescriptorTable, priv_level: PrivilegeLevel) -> DescriptorTableEntry {
-        Self::new_system(SystemDescriptorTypes::Ldt, base as *const _ as u32, (base.table.len() * size_of::<DescriptorTableEntry>()) as u32, priv_level)
+        Self::new_system(SystemDescriptorTypes::Ldt, base as *const _ as u32, (base.table.len() * size_of::<DescriptorTableEntry>() - 1) as u32, priv_level)
     }
 
 
     /// Creates a GDT descriptor pointing to a TSS segment
     pub fn new_tss(base: &'static TssStruct, priv_level: PrivilegeLevel) -> DescriptorTableEntry {
-        Self::new_system(SystemDescriptorTypes::AvailableTss32, base as *const _ as u32, size_of::<TssStruct>() as u32, priv_level)
+        Self::new_system(SystemDescriptorTypes::AvailableTss32, base as *const _ as u32, (size_of::<TssStruct>() - 1) as u32, priv_level)
     }
 
     fn get_limit(&self) -> u32 {
