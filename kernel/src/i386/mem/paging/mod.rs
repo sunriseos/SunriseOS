@@ -137,6 +137,10 @@ impl VirtualSpaceLand for UserLand {
     fn end_addr()   -> VirtualAddress { Self::end_addr() }
 }
 
+fn is_in_user_land(address: VirtualAddress) -> bool {
+    UserLand::start_addr() <= address && address <= UserLand::end_addr()
+}
+
 // Assertions to check that Kernel/User pages falls on distinct page tables
 // and also that they do not overlap
 fn __land_assertions() {

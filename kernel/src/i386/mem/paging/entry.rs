@@ -28,9 +28,6 @@ impl From<super::EntryFlags> for EntryFlags {
         if flags.contains(super::EntryFlags::WRITABLE) {
             newflags |= EntryFlags::WRITABLE;
         }
-        if flags.contains(super::EntryFlags::USER_ACCESSIBLE) {
-            newflags |= EntryFlags::USER_ACCESSIBLE;
-        }
         newflags
     }
 }

@@ -337,7 +337,6 @@ bitflags! {
     /// The flags of a table entry
     pub struct EntryFlags : u32 {
         const WRITABLE =        1 << 0;
-        const USER_ACCESSIBLE = 1 << 1;
     }
 }
 
@@ -521,7 +520,13 @@ impl<T: I386PageTablesSet> PageTablesSet for T {
     fn map_to(&mut self, mapping: MappingType, address: VirtualAddress) {
         let mut dir = self.get_directory();
         match mapping {
-            MappingType::Present(frame, flags) => dir.map_to(frame, address, flags.into()),
+            MappingType::Present(frame, flags) => {
+                let mut flags: I386EntryFlags = flags.into();
+                if super::is_in_user_land(address) {
+                    flags |= I386EntryFlags::USER_ACCESSIBLE
+                }
+                dir.map_to(frame, address, flags);
+            }
             MappingType::Guard => dir.guard(address)
         }
     }
@@ -684,7 +689,13 @@ impl PageDirectoryTrait for ActivePageDirectory {
         assert!(self.entries()[index].is_unused());
         let table_frame = FrameAllocator::alloc_frame();
 
-        self.map_nth_entry::<Self::FlusherType>(index, table_frame, I386EntryFlags::PRESENT | I386EntryFlags::WRITABLE);
+        // If we're in user land, we should create the table as USER_ACCESSIBLE.
+        let mut flags = I386EntryFlags::PRESENT | I386EntryFlags::WRITABLE;
+        if super::is_in_user_land(VirtualAddress(index * ENTRY_COUNT * PAGE_SIZE)) {
+            flags |= I386EntryFlags::USER_ACCESSIBLE;
+        }
+
+        self.map_nth_entry::<Self::FlusherType>(index, table_frame, flags);
 
         // Now that table is mapped in page directory we can write to it through recursive mapping
         let mut table= self.get_table(index).unwrap();
@@ -860,7 +871,13 @@ impl PageDirectoryTrait for InactivePageDirectory {
         let mut mapped_table = SmartHierarchicalTable::new(unsafe {va.addr() as *mut InactivePageTable});
         mapped_table.zero();
 
-        self.map_nth_entry::<Self::FlusherType>(index, table_frame, I386EntryFlags::PRESENT | I386EntryFlags::WRITABLE);
+        // If we're in user land, we should create the table as USER_ACCESSIBLE.
+        let mut flags = I386EntryFlags::PRESENT | I386EntryFlags::WRITABLE;
+        if super::is_in_user_land(VirtualAddress(index * ENTRY_COUNT * PAGE_SIZE)) {
+            flags |= I386EntryFlags::USER_ACCESSIBLE;
+        }
+
+        self.map_nth_entry::<Self::FlusherType>(index, table_frame, flags);
 
         mapped_table
     }
@@ -989,7 +1006,14 @@ impl PageDirectoryTrait for PagingOffDirectory {
             unsafe {(frame.address().addr() as *mut PagingOffTable)}
         );
         table.zero();
-        self.map_nth_entry::<Self::FlusherType>(index, frame, I386EntryFlags::PRESENT | I386EntryFlags::WRITABLE);
+
+        // If we're in user land, we should create the table as USER_ACCESSIBLE.
+        let mut flags = I386EntryFlags::PRESENT | I386EntryFlags::WRITABLE;
+        if super::is_in_user_land(VirtualAddress(index * ENTRY_COUNT * PAGE_SIZE)) {
+            flags |= I386EntryFlags::USER_ACCESSIBLE;
+        }
+
+        self.map_nth_entry::<Self::FlusherType>(index, frame, flags);
         table
     }
 }

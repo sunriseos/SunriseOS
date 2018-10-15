@@ -110,9 +110,9 @@ fn load_segment(page_table: &mut InactivePageTables, segment: &ProgramHeader, el
 
         // Remap as readonly if specified
         let flags = if !segment.flags().is_write() {
-            EntryFlags::USER_ACCESSIBLE
+            EntryFlags::empty()
         } else {
-            EntryFlags::WRITABLE | EntryFlags::USER_ACCESSIBLE
+            EntryFlags::WRITABLE
         };
 
         page_table.map_to(MappingType::Present(frame, flags), VirtualAddress(addr));
