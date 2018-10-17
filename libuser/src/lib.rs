@@ -54,11 +54,12 @@ pub fn rust_oom(_: Layout) -> ! {
 pub unsafe extern fn start() -> ! {
     asm!("
         // Memset the bss. Hopefully memset doesn't actually use the bss...
-        mov eax, BSS_END
-        sub eax, BSS_START
+        lea eax, BSS_END
+        lea ebx, BSS_START
+        sub eax, ebx
         push eax
         push 0
-        push BSS_START
+        push ebx
         call memset
         add esp, 12
         " : : : : "intel", "volatile");
