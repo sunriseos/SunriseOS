@@ -75,6 +75,15 @@ SECTIONS
    BSS_END = .;
   }
 
+  /* Kernel caps and ioports access control */
+  .kernel_caps : {
+    KEEP(*(.kernel_caps .kernel_caps.*))
+  } :NONE
+
+  .kernel_ioports : {
+    KEEP(*(.kernel_ioports .kernel_ioports.*))
+  } :NONE
+
   /* Stabs debugging sections.  */
   .stab          0 : { *(.stab) }
   .stabstr       0 : { *(.stabstr) }

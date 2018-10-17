@@ -6,6 +6,7 @@ use i386::mem::paging::InactivePageTables;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
 use event::Waitable;
 use spin::{RwLock, RwLockWriteGuard};
 use sync::SpinLock;
@@ -40,6 +41,13 @@ pub struct ProcessStruct {
     ///
     /// Used by the SpinLock to implement recursive irqsave logic.
     pub pint_disable_counter: AtomicUsize,
+
+    /// A vector of readable IO ports.
+    ///
+    /// When task switching, the IOPB will be changed to take this into account.
+    // TODO: This is i386-specific. Sucks, but it should *really* go somewhere else.
+    // Maybe in ProcessMemory?
+    pub ioports: Vec<u16>
 }
 
 #[derive(Debug)]
@@ -184,7 +192,7 @@ pub enum ProcessMemory {
 
 impl ProcessStruct {
     /// Creates a new process.
-    pub fn new() -> ProcessStructArc {
+    pub fn new(ioports: Vec<u16>) -> ProcessStructArc {
         use ::core::mem::ManuallyDrop;
 
         // allocate its memory space
@@ -208,6 +216,7 @@ impl ProcessStruct {
                 phwcontext : empty_hwcontext,
                 phandles: SpinLock::new(HandleTable::new()),
                 pint_disable_counter: AtomicUsize::new(0),
+                ioports
             }
         );
 
@@ -246,6 +255,7 @@ impl ProcessStruct {
                 phwcontext,
                 phandles: SpinLock::new(HandleTable::new()),
                 pint_disable_counter: AtomicUsize::new(0),
+                ioports: Vec::new(),
             }
         );
 

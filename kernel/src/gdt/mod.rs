@@ -10,14 +10,16 @@ use arrayvec::ArrayVec;
 use bit_field::BitField;
 use core::mem::{self, size_of};
 use core::ops::{Deref, DerefMut};
+use core::slice;
 
 use super::i386::{PrivilegeLevel, TssStruct};
 use i386::structures::gdt::SegmentSelector;
 use i386::instructions::tables::{lgdt, sgdt, DescriptorTablePointer};
 use i386::instructions::segmentation::*;
 
-use paging::{KernelLand, VirtualAddress, PAGE_SIZE, get_page};
+use paging::{self, KernelLand, VirtualAddress, PAGE_SIZE, ACTIVE_PAGE_TABLES, PageTablesSet};
 use alloc::vec::Vec;
+use utils::div_round_up;
 
 static GDT: Once<Mutex<GdtManager>> = Once::new();
 
@@ -83,7 +85,7 @@ pub fn init_gdt() {
         };
 
         // Main task
-        gdt.push(DescriptorTableEntry::new_tss(main_task, PrivilegeLevel::Ring0));
+        gdt.push(DescriptorTableEntry::new_tss(main_task, PrivilegeLevel::Ring0, 0x2001));
 
         info!("Loading GDT");
         Mutex::new(GdtManager::load(gdt, 0x8, 0x10, 0x18))
@@ -145,20 +147,31 @@ impl DerefMut for GdtManager {
 pub fn push_task_segment(task: &'static TssStruct) -> u16 {
     info!("Pushing TSS: {:#?}", task);
     let mut gdt = GDT.try().unwrap().lock();
-    let idx = gdt.push(DescriptorTableEntry::new_tss(task, PrivilegeLevel::Ring0));
+    let idx = gdt.push(DescriptorTableEntry::new_tss(task, PrivilegeLevel::Ring0, 0));
     gdt.commit(0x8, 0x10, 0x18);
     idx
 }
 
 lazy_static! {
     pub static ref MAIN_TASK: VirtualAddress = {
-        let vaddr = get_page::<KernelLand>();
+        // We need TssStruct + 0x2001 bytes of IOPB.
+        let vaddr = ACTIVE_PAGE_TABLES.lock().get_pages::<KernelLand>(div_round_up(size_of::<TssStruct>() + 0x2001, paging::PAGE_SIZE));
         let tss = vaddr.addr() as *mut TssStruct;
         unsafe {
             *tss = TssStruct::new();
+
+            // Now, set the IOPB to 0xFF to prevent all userland accesses
+            slice::from_raw_parts_mut(tss.offset(1) as *mut u8, 0x2001).iter_mut().for_each(|v| *v = 0xFF);
         }
         vaddr
     };
+}
+
+// TODO: There's currently no guarantee that we don't create multiple &mut pointer to the IOPB.
+// In practice, it should only be used by i386::process_switch, and as such, observed only there.
+// TODO: Find a way to restrict usage there.
+pub unsafe fn get_main_iopb() -> &'static mut [u8] {
+    slice::from_raw_parts_mut((MAIN_TASK.addr() as *mut TssStruct).offset(1) as *mut u8, 0x2001)
 }
 
 /// A structure containing our GDT.
@@ -295,8 +308,8 @@ impl DescriptorTableEntry {
 
 
     /// Creates a GDT descriptor pointing to a TSS segment
-    pub fn new_tss(base: &'static TssStruct, priv_level: PrivilegeLevel) -> DescriptorTableEntry {
-        Self::new_system(SystemDescriptorTypes::AvailableTss32, base as *const _ as u32, (size_of::<TssStruct>() - 1) as u32, priv_level)
+    pub fn new_tss(base: &'static TssStruct, priv_level: PrivilegeLevel, iobp_size: usize) -> DescriptorTableEntry {
+        Self::new_system(SystemDescriptorTypes::AvailableTss32, base as *const _ as u32, (size_of::<TssStruct>() + iobp_size - 1) as u32, priv_level)
     }
 
     fn get_limit(&self) -> u32 {

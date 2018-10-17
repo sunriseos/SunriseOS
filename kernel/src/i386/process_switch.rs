@@ -133,6 +133,13 @@ pub unsafe extern "C" fn process_switch(process_b: ProcessStructArc, process_cur
         esp_to_load
     };
 
+    // Set IOPB back to "nothing allowed" state
+    let iopb = gdt::get_main_iopb();
+    for ioport in process_current.ioports.iter() {
+        let ioport = *ioport as usize;
+        iopb[ioport / 8] = 0xFF;
+    }
+
     // current is still stored in scheduler's global CURRENT_PROCESS, so it's not dropped yet.
     drop(process_current);
 
@@ -181,6 +188,12 @@ pub unsafe extern "C" fn process_switch(process_b: ProcessStructArc, process_cur
     // Set the ESP0
     let tss = gdt::MAIN_TASK.addr() as *mut TssStruct;
     (*tss).esp0 = me.pstack.get_stack_start() as u32;
+
+    // Set IOPB
+    for ioport in me.ioports.iter() {
+        let ioport = *ioport as usize;
+        iopb[ioport / 8] &= !(1 << (ioport % 8));
+    }
 
     me
 }
@@ -271,6 +284,15 @@ fn first_schedule() {
         unsafe {
             // Safety: TSS is always valid.
             (*tss).esp0 = current.pstack.get_stack_start() as u32;
+        }
+
+        // Set IOPB
+        let iopb = unsafe {
+            gdt::get_main_iopb()
+        };
+        for ioport in current.ioports.iter() {
+            let ioport = *ioport as usize;
+            iopb[ioport / 8] &= !(1 << (ioport % 8));
         }
 
         // call the scheduler to finish the high-level process switch mechanics

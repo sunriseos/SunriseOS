@@ -21,6 +21,39 @@ use xmas_elf::program::{ProgramHeader, Type::Load, SegmentData};
 use paging::{ACTIVE_PAGE_TABLES, PAGE_SIZE, PageTablesSet, EntryFlags, MappingType, InactivePageTables, KernelLand};
 use i386::mem::{VirtualAddress, PhysicalAddress};
 use utils::{self, align_up};
+use alloc::vec::Vec;
+use byteorder::{LittleEndian, ByteOrder};
+
+pub fn get_iopb(module: &ModuleTag) -> Vec<u16> {
+
+    let start_address_aligned = utils::align_down(module.start_address() as usize, PAGE_SIZE);
+    // Use start_address_aligned to calculate the number of pages, to avoid an off-by-one.
+    let module_len_pages = utils::div_round_up(module.end_address() as usize - start_address_aligned, PAGE_SIZE);
+
+    // Temporarily map the modules, which live in physical mem, into current process virtual mem.
+    let module_addr = {
+        let mut page_table = ACTIVE_PAGE_TABLES.lock();
+        let vaddr = page_table.find_available_virtual_space::<KernelLand>(module_len_pages)
+            .expect(&format!("Unable to find available memory for module {}", module.name()));
+
+        page_table.map_range(PhysicalAddress(start_address_aligned), vaddr, module_len_pages, EntryFlags::WRITABLE);
+
+        vaddr
+    };
+
+    let module_len = module.end_address() - module.start_address();
+    let kernel_elf = ElfFile::new(unsafe {
+        slice::from_raw_parts((module_addr.addr() + (module.start_address() as usize % PAGE_SIZE)) as *const u8, module_len as usize)
+    }).expect("Failed parsing multiboot module as elf");
+
+    if let Some(section) = kernel_elf.find_section_by_name(".kernel_ioports") {
+        let mut iopb = vec![0u16; section.raw_data(&kernel_elf).len() / 2];
+        LittleEndian::read_u16_into(section.raw_data(&kernel_elf), &mut *iopb);
+        iopb
+    } else {
+        Vec::new()
+    }
+}
 
 /// Loads the given kernel built-in into the given page table.
 /// Returns address of entry point

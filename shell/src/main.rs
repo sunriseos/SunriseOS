@@ -1,4 +1,4 @@
-#![feature(asm, const_fn, alloc, panic_implementation, core_intrinsics, lang_items)]
+#![feature(asm, const_fn, alloc, panic_implementation, core_intrinsics, lang_items, used)]
 #![no_std]
 
 extern crate gif;
@@ -93,3 +93,7 @@ fn show_gif(fb: &mut Framebuffer, louis: &[u8]) {
 
 static LOUIS3: &'static [u8; 1318100] = include_bytes!("../img/meme3.gif");
 static LOUIS4: &'static [u8; 103803] = include_bytes!("../img/meme4.gif");
+
+#[link_section = ".kernel_ioports"]
+#[used]
+pub static IOPORTS_PERMS: [u16; 2] = [0x60, 0x64];
