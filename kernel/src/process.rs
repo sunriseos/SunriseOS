@@ -6,6 +6,7 @@ use i386::mem::paging::InactivePageTables;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::collections::BTreeMap;
+use alloc::string::String;
 use alloc::vec::Vec;
 use event::Waitable;
 use spin::{RwLock, RwLockWriteGuard};
@@ -25,6 +26,7 @@ use scheduler;
 /// - Its hardware context, to be restored on rescheduling
 #[derive(Debug)]
 pub struct ProcessStruct {
+    pub name:                 String,
     pub pstate:               ProcessStateAtomic,
     pub pmemory:              SpinLock<ProcessMemory>,
     pub pstack:               KernelStack,
@@ -192,7 +194,7 @@ pub enum ProcessMemory {
 
 impl ProcessStruct {
     /// Creates a new process.
-    pub fn new(ioports: Vec<u16>) -> ProcessStructArc {
+    pub fn new(name: String, ioports: Vec<u16>) -> ProcessStructArc {
         use ::core::mem::ManuallyDrop;
 
         // allocate its memory space
@@ -210,6 +212,7 @@ impl ProcessStruct {
 
         let p = Arc::new(
             ProcessStruct {
+                name,
                 pstate,
                 pmemory,
                 pstack,
@@ -249,6 +252,7 @@ impl ProcessStruct {
 
         let p = Arc::new(
             ProcessStruct {
+                name: String::from("init"),
                 pstate,
                 pmemory,
                 pstack,

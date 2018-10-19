@@ -90,7 +90,7 @@ fn main() {
     info!("Loading all the init processes");
     for module in i386::multiboot::get_boot_information().module_tags().skip(1) {
         info!("Loading {}", module.name());
-        let proc = ProcessStruct::new(elf_loader::get_iopb(module));
+        let proc = ProcessStruct::new(String::from(module.name()), elf_loader::get_iopb(module));
         {
             let (ep, sp) = {
                 let pmemlock = proc.pmemory.lock();
