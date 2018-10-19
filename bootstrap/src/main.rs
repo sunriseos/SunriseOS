@@ -247,7 +247,25 @@ impl FramebufferTag {
     }
 }
 
+#[repr(C, align(8))]
+struct ModuleAlignmentTag {
+    tag: u16,
+    flags: u16,
+    size: u32,
+}
+
+impl ModuleAlignmentTag {
+    const fn new() -> ModuleAlignmentTag {
+        ModuleAlignmentTag {
+            tag: 6,
+            flags: 0,
+            size: ::core::mem::size_of::<Self>() as u32,
+        }
+    }
+}
+
 multiboot_header! {
     framebuffer: FramebufferTag::new(1280, 800, 32),
+    //module_alignment: ModuleAlignmentTag::new(),
     end: EndTag::default()
 }
