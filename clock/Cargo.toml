@@ -1,0 +1,14 @@
+[package]
+name = "kfs-clock"
+version = "0.1.0"
+authors = ["roblabla <unfiltered@roblab.la>"]
+
+[dependencies]
+libuser = { path = "../libuser" }
+font-rs = { git = "https://github.com/orycterope/font-rs" }
+spin = { git = "https://github.com/Orycterope/spin-rs.git" }
+hashmap_core = "0.1.9"
+
+[dependencies.lazy_static]
+features = ["spin_no_std"]
+version = "1.0.0"

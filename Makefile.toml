@@ -43,19 +43,43 @@ dependencies = ["kernel-linker"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-kernel", "--release" ]
 
-[tasks.userspace]
+[tasks.shell]
 workspace = false
-description = "Compiles userspace apps"
+description = "Compiles kfs-shell"
 dependencies = ["userspace-linker"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-shell"]
 
-[tasks.userspace-release]
+[tasks.shell-release]
 workspace = false
-description = "Compiles userspace apps"
+description = "Compiles kfs-shell"
 dependencies = ["userspace-linker"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-shell", "--release"]
+
+[tasks.clock]
+workspace = false
+description = "Compiles kfs-clock"
+dependencies = ["userspace-linker"]
+command = "cargo"
+args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-clock"]
+
+[tasks.clock-release]
+workspace = false
+description = "Compiles kfs-clock"
+dependencies = ["userspace-linker"]
+command = "cargo"
+args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-clock", "--release"]
+
+[tasks.userspace]
+workspace = false
+description = "Compiles userspace apps"
+dependencies = ["shell", "clock"]
+
+[tasks.userspace-release]
+workspace = false
+description = "Compiles userspace apps"
+dependencies = ["shell-release", "clock-release"]
 
 [tasks.iso]
 workspace = false
@@ -66,6 +90,7 @@ script = [
 cp target/i386-unknown-none/debug/kfs-bootstrap isofiles/boot/
 cp target/i386-unknown-none/debug/kfs-kernel    isofiles/boot/
 cp target/i386-unknown-none/debug/kfs-shell     isofiles/boot/
+cp target/i386-unknown-none/debug/kfs-clock     isofiles/boot/
 grub-mkrescue -o os.iso isofiles
 '''
 ]
@@ -79,6 +104,7 @@ script = [
 cp target/i386-unknown-none/release/kfs-bootstrap isofiles/boot/
 cp target/i386-unknown-none/release/kfs-kernel    isofiles/boot/
 cp target/i386-unknown-none/release/kfs-shell     isofiles/boot/
+cp target/i386-unknown-none/release/kfs-clock     isofiles/boot/
 grub-mkrescue -o os.iso isofiles
 '''
 ]
