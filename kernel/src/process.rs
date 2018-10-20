@@ -14,6 +14,7 @@ use sync::SpinLockIRQ;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::fmt::{self, Debug};
 use scheduler;
+use error::Error;
 
 /// The struct representing a process. There's one for every process.
 ///
@@ -268,18 +269,18 @@ impl ProcessStruct {
 
     /// Sets the entrypoint and userspace stack pointer. Puts the Process in Stopped state.
     ///
+    /// If the process is not in the NotReady state, it will fail with ProcessAlreadyStarted.
+    ///
     /// # Safety
     ///
     /// The given entrypoint *must* point to a mapped address in that process's address space.
     /// The function makes no attempt at checking if it is kernel or userspace.
-    ///
-    /// # Panics
-    ///
-    /// Panics if state is not NotReady
-    pub unsafe fn set_start_arguments(&self, ep: usize, stack: usize) {
+    pub unsafe fn set_start_arguments(&self, ep: usize, stack: usize) -> Result<(), Error> {
         let oldval = self.pstate.compare_and_swap(ProcessState::NotReady, ProcessState::Readying, Ordering::SeqCst);
 
-        assert_eq!(oldval, ProcessState::NotReady);
+        if oldval != ProcessState::NotReady {
+            return Err(Error::ProcessAlreadyStarted);
+        }
 
         // prepare the process's stack for its first schedule-in
         unsafe {
@@ -291,6 +292,7 @@ impl ProcessStruct {
         }
 
         self.pstate.store(ProcessState::Stopped, Ordering::SeqCst);
+        Ok(())
     }
 
     /// Sets the process to the Killed state.

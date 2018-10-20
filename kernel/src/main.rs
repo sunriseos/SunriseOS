@@ -42,6 +42,7 @@ use core::fmt::Write;
 use alloc::prelude::*;
 
 mod event;
+mod error;
 mod logger;
 mod log_impl;
 use i386::mem::paging;
