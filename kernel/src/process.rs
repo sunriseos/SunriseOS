@@ -10,7 +10,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use event::Waitable;
 use spin::{RwLock, RwLockWriteGuard};
-use sync::SpinLock;
+use sync::SpinLockIRQ;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::fmt::{self, Debug};
 use scheduler;
@@ -28,10 +28,10 @@ use scheduler;
 pub struct ProcessStruct {
     pub name:                 String,
     pub pstate:               ProcessStateAtomic,
-    pub pmemory:              SpinLock<ProcessMemory>,
+    pub pmemory:              SpinLockIRQ<ProcessMemory>,
     pub pstack:               KernelStack,
-    pub phwcontext:           SpinLock<ProcessHardwareContext>,
-    pub phandles:             SpinLock<HandleTable>,
+    pub phwcontext:           SpinLockIRQ<ProcessHardwareContext>,
+    pub phandles:             SpinLockIRQ<HandleTable>,
 
     /// Interrupt disable counter.
     ///
@@ -41,7 +41,7 @@ pub struct ProcessStruct {
     /// Should only be manipulated through sync::enable_interrupts and
     /// sync::disable_interrupts.
     ///
-    /// Used by the SpinLock to implement recursive irqsave logic.
+    /// Used by the SpinLockIRQ to implement recursive irqsave logic.
     pub pint_disable_counter: AtomicUsize,
 
     /// A vector of readable IO ports.
@@ -188,7 +188,7 @@ impl ProcessStateAtomic {
 /// A ProcessMemory should be the only owner of a process' pages
 #[derive(Debug)]
 pub enum ProcessMemory {
-    Inactive(SpinLock<InactivePageTables>),
+    Inactive(SpinLockIRQ<InactivePageTables>),
     Active
 }
 
@@ -198,14 +198,14 @@ impl ProcessStruct {
         use ::core::mem::ManuallyDrop;
 
         // allocate its memory space
-        let pmemory = SpinLock::new(ProcessMemory::Inactive(SpinLock::new(InactivePageTables::new())));
+        let pmemory = SpinLockIRQ::new(ProcessMemory::Inactive(SpinLockIRQ::new(InactivePageTables::new())));
 
         // allocate its kernel stack
         let pstack = KernelStack::allocate_stack()
             .expect("Couldn't allocate a kernel stack");
 
         // hardware context will be computed later in this function, write a dummy value for now
-        let empty_hwcontext = SpinLock::new(ProcessHardwareContext::new());
+        let empty_hwcontext = SpinLockIRQ::new(ProcessHardwareContext::new());
 
         // the state of the process, NotReady
         let pstate = ProcessStateAtomic::new((ProcessState::NotReady));
@@ -217,7 +217,7 @@ impl ProcessStruct {
                 pmemory,
                 pstack,
                 phwcontext : empty_hwcontext,
-                phandles: SpinLock::new(HandleTable::new()),
+                phandles: SpinLockIRQ::new(HandleTable::new()),
                 pint_disable_counter: AtomicUsize::new(0),
                 ioports
             }
@@ -245,10 +245,10 @@ impl ProcessStruct {
         let pstack = KernelStack::get_current_stack();
 
         // the saved esp will be overwritten on schedule-out anyway
-        let phwcontext = SpinLock::new(ProcessHardwareContext::new());
+        let phwcontext = SpinLockIRQ::new(ProcessHardwareContext::new());
 
         // the already currently active pages
-        let pmemory = SpinLock::new(ProcessMemory::Active);
+        let pmemory = SpinLockIRQ::new(ProcessMemory::Active);
 
         let p = Arc::new(
             ProcessStruct {
@@ -257,7 +257,7 @@ impl ProcessStruct {
                 pmemory,
                 pstack,
                 phwcontext,
-                phandles: SpinLock::new(HandleTable::new()),
+                phandles: SpinLockIRQ::new(HandleTable::new()),
                 pint_disable_counter: AtomicUsize::new(0),
                 ioports: Vec::new(),
             }

@@ -8,7 +8,7 @@ use core::mem;
 
 use process::{ProcessStruct, ProcessState, ProcessStructArc};
 use i386::process_switch::process_switch;
-use sync::{SpinLock, SpinLockGuard};
+use sync::{SpinLockIRQ, SpinLockIRQGuard};
 use core::sync::atomic::Ordering;
 
 /// We always keep an Arc to the process currently running.
@@ -52,9 +52,9 @@ unsafe fn set_current_process(p: ProcessStructArc) {
 /// It's a simple vec, acting as a round-robin, first element is the running process.
 /// When its time slice has ended, it is rotated to the end of the vec, and we go on to the next one.
 ///
-/// The vec is protected by a SpinLock, so accessing/modifying it disables irqs.
+/// The vec is protected by a SpinLockIRQ, so accessing/modifying it disables irqs.
 /// Since there's no SMP, this should guarantee we cannot deadlock in the scheduler.
-static SCHEDULE_QUEUE: SpinLock<Vec<ProcessStructArc>> = SpinLock::new(Vec::new());
+static SCHEDULE_QUEUE: SpinLockIRQ<Vec<ProcessStructArc>> = SpinLockIRQ::new(Vec::new());
 
 /// Adds a process at the end of the schedule queue, and changes its state to 'scheduled'
 /// Process must be ready to be scheduled.
@@ -103,7 +103,7 @@ pub fn is_in_schedule_queue(process: &ProcessStructArc) -> bool {
 /// This can be used to avoid race conditions between registering for an event, and unscheduling.
 ///
 /// The current process will not be ran again unless it was registered for rescheduling.
-pub fn unschedule<'a>(interrupt_manager: &'a SpinLock<()>, interrupt_lock: SpinLockGuard<'a, ()>) {
+pub fn unschedule<'a>(interrupt_manager: &'a SpinLockIRQ<()>, interrupt_lock: SpinLockIRQGuard<'a, ()>) {
     {
         let process = get_current_process();
         let old = process.pstate.compare_and_swap(ProcessState::Running, ProcessState::Stopped, Ordering::SeqCst);
@@ -158,9 +158,9 @@ pub unsafe fn create_first_process() {
 ///  * as new process *
 /// 5. Drops the lock to the schedule queue, re-enabling interrupts
 pub fn schedule() {
-    // We use a special SpinLock to disable the interruptions,
+    // We use a special SpinLockIRQ to disable the interruptions,
     // We pass it to the internal_schedule, which will drop it if it needs to HLT.
-    let interrupt_manager = SpinLock::new(());
+    let interrupt_manager = SpinLockIRQ::new(());
     let interrupt_lock = interrupt_manager.lock();
 
     internal_schedule(&interrupt_manager, interrupt_lock, false)
@@ -180,7 +180,7 @@ fn find_next_process_to_run(queue: &Vec<ProcessStructArc>) -> Option<usize> {
 /// Internal impl of the process switch, used by schedule and unschedule.
 ///
 /// See schedule function for documentation on how scheduling works.
-fn internal_schedule<'a>(interrupt_manager: &'a SpinLock<()>, mut interrupt_lock: SpinLockGuard<'a, ()>, remove_self: bool) {
+fn internal_schedule<'a>(interrupt_manager: &'a SpinLockIRQ<()>, mut interrupt_lock: SpinLockIRQGuard<'a, ()>, remove_self: bool) {
     // TODO: Ensure the global counter is <= 1
     loop {
         let mut queue = SCHEDULE_QUEUE.lock();
@@ -252,7 +252,7 @@ pub fn scheduler_first_schedule(current_process: ProcessStructArc, entrypoint: u
     unsafe { set_current_process(current_process) };
 
     unsafe {
-        // this is a new process, no SpinLock is held
+        // this is a new process, no SpinLockIRQ is held
         ::i386::instructions::interrupts::sti();
     }
 

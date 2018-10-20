@@ -12,7 +12,7 @@ pub use self::entry::PageState;
 use self::table::*;
 use self::table::entry::Entry;
 pub use i386::mem::frame_alloc::{round_to_page, round_to_page_upper, count_pages};
-use sync::SpinLock;
+use sync::SpinLockIRQ;
 use i386::mem::frame_alloc::Frame;
 use i386::mem::PhysicalAddress;
 pub use i386::mem::VirtualAddress;
@@ -25,7 +25,7 @@ pub const PAGE_SIZE: usize = 4096;
 
 const ENTRY_COUNT: usize = PAGE_SIZE / ::core::mem::size_of::<Entry>();
 
-pub static ACTIVE_PAGE_TABLES: SpinLock<ActivePageTables> = SpinLock::new(ActivePageTables());
+pub static ACTIVE_PAGE_TABLES: SpinLockIRQ<ActivePageTables> = SpinLockIRQ::new(ActivePageTables());
 
 /// Check if the paging is currently active.
 ///

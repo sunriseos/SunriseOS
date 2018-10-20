@@ -2,7 +2,7 @@
 
 use core::mem::ManuallyDrop;
 use core::ops::{Deref, DerefMut};
-use spin::{Mutex as SpinMutex, MutexGuard as SpinMutexGuard};
+use spin::{Mutex as SpinLock, MutexGuard as SpinLockGuard};
 use i386::instructions::interrupts::*;
 use core::sync::atomic::{AtomicBool, Ordering};
 use scheduler;
@@ -49,7 +49,7 @@ pub unsafe fn permanently_disable_interrupts() {
     unsafe { cli() }
 }
 
-/// Simple SpinLock.
+/// SpinLock that disables IRQ.
 ///
 /// # Description
 ///
@@ -66,26 +66,26 @@ pub unsafe fn permanently_disable_interrupts() {
 /// a global counter to disable/enable interrupts. View INTERRUPT_DISABLE_COUNTER
 /// documentation for more information.
 #[derive(Debug)]
-pub struct SpinLock<T: ?Sized> {
-    internal: SpinMutex<T>
+pub struct SpinLockIRQ<T: ?Sized> {
+    internal: SpinLock<T>
 }
 
-impl<T> SpinLock<T> {
-    pub const fn new(internal: T) -> SpinLock<T> {
-        SpinLock {
-            internal: SpinMutex::new(internal)
+impl<T> SpinLockIRQ<T> {
+    pub const fn new(internal: T) -> SpinLockIRQ<T> {
+        SpinLockIRQ {
+            internal: SpinLock::new(internal)
         }
     }
 
-    /// Consumes this SpinLock, returning the underlying data.
+    /// Consumes this SpinLockIRQ, returning the underlying data.
     pub fn into_inner(self) -> T {
         self.internal.into_inner()
     }
 }
 
-impl<T: ?Sized> SpinLock<T> {
+impl<T: ?Sized> SpinLockIRQ<T> {
     /// Disables interrupts and locks the mutex.
-    pub fn lock(&self) -> SpinLockGuard<T> {
+    pub fn lock(&self) -> SpinLockIRQGuard<T> {
         // Disable irqs
         unsafe { disable_interrupts(); }
 
@@ -94,11 +94,11 @@ impl<T: ?Sized> SpinLock<T> {
 
         // lock
         let internalguard = self.internal.lock();
-        SpinLockGuard(ManuallyDrop::new(internalguard))
+        SpinLockIRQGuard(ManuallyDrop::new(internalguard))
     }
 
     /// Disables interrupts and locks the mutex.
-    pub fn try_lock(&self) -> Option<SpinLockGuard<T>> {
+    pub fn try_lock(&self) -> Option<SpinLockIRQGuard<T>> {
         // Disable irqs
         unsafe { disable_interrupts(); }
 
@@ -107,7 +107,7 @@ impl<T: ?Sized> SpinLock<T> {
 
         // lock
         match self.internal.try_lock() {
-            Some(internalguard) => Some(SpinLockGuard(ManuallyDrop::new(internalguard))),
+            Some(internalguard) => Some(SpinLockIRQGuard(ManuallyDrop::new(internalguard))),
             None => {
                 // We couldn't lock. Restore irqs and return None
                 unsafe { enable_interrupts(); }
@@ -121,11 +121,10 @@ impl<T: ?Sized> SpinLock<T> {
     }
 }
 
-
 #[derive(Debug)]
-pub struct SpinLockGuard<'a, T: ?Sized + 'a>(ManuallyDrop<SpinMutexGuard<'a, T>>);
+pub struct SpinLockIRQGuard<'a, T: ?Sized + 'a>(ManuallyDrop<SpinLockGuard<'a, T>>);
 
-impl<'a, T: ?Sized + 'a> Drop for SpinLockGuard<'a, T> {
+impl<'a, T: ?Sized + 'a> Drop for SpinLockIRQGuard<'a, T> {
     fn drop(&mut self) {
         // TODO: Spin release
         // unlock
@@ -138,7 +137,7 @@ impl<'a, T: ?Sized + 'a> Drop for SpinLockGuard<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized + 'a> Deref for SpinLockGuard<'a, T> {
+impl<'a, T: ?Sized + 'a> Deref for SpinLockIRQGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
@@ -146,7 +145,7 @@ impl<'a, T: ?Sized + 'a> Deref for SpinLockGuard<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized + 'a> DerefMut for SpinLockGuard<'a, T> {
+impl<'a, T: ?Sized + 'a> DerefMut for SpinLockIRQGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut T {
         &mut *self.0
     }

@@ -13,7 +13,7 @@ use xmas_elf::sections::SectionData;
 use core::fmt::Write;
 use core::slice;
 use spin::Mutex;
-use sync::{self, SpinLock};
+use sync;
 use paging::{self, KernelLand, get_page};
 use utils;
 use devices::pic;

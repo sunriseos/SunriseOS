@@ -115,7 +115,7 @@ fn main() {
         scheduler::add_to_schedule_queue(proc);
     }
 
-    let lock = sync::SpinLock::new(());
+    let lock = sync::SpinLockIRQ::new(());
     loop {
         // TODO: Exit process.
         scheduler::unschedule(&lock, lock.lock());

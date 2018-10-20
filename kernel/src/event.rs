@@ -12,7 +12,7 @@
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::fmt::Debug;
 use alloc::sync::Arc;
-use sync::SpinLock;
+use sync::SpinLockIRQ;
 use alloc::vec::Vec;
 use process::{ProcessStructArc, ProcessState};
 use scheduler;
@@ -98,7 +98,7 @@ where
     <INTOITER as IntoIterator>::IntoIter: Clone
 {
     let waitable = waitable_intoiter.into_iter();
-    let interrupt_manager = SpinLock::new(());
+    let interrupt_manager = SpinLockIRQ::new(());
 
     loop {
         // Early-check for events that have already been signaled.
@@ -192,7 +192,7 @@ pub fn wait_event(irq: usize) -> IRQEvent {
 struct IRQState {
     irqnum: usize,
     counter: AtomicUsize,
-    waiting_processes: SpinLock<Vec<ProcessStructArc>>
+    waiting_processes: SpinLockIRQ<Vec<ProcessStructArc>>
 }
 
 impl IRQState {
@@ -200,7 +200,7 @@ impl IRQState {
         IRQState {
             irqnum,
             counter: AtomicUsize::new(0),
-            waiting_processes: SpinLock::new(Vec::new())
+            waiting_processes: SpinLockIRQ::new(Vec::new())
         }
     }
 }

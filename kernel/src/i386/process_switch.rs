@@ -5,7 +5,7 @@
 use process::{ProcessStruct, ProcessState, ProcessMemory, ProcessStructArc};
 use scheduler::get_current_process;
 use gdt;
-use sync::SpinLock;
+use sync::SpinLockIRQ;
 use alloc::sync::Arc;
 use spin::RwLock;
 use core::mem::size_of;
@@ -106,7 +106,7 @@ pub unsafe extern "C" fn process_switch(process_b: ProcessStructArc, process_cur
                 // a ref to the process, and we own a WriteGuard on the process,
                 // so the pages' spinlock cannot possibly be held by someone else.
                 let old_pages = spinlck.into_inner().switch_to();
-                *process_current_lock_pmemory = ProcessMemory::Inactive(SpinLock::new(old_pages));
+                *process_current_lock_pmemory = ProcessMemory::Inactive(SpinLockIRQ::new(old_pages));
             }
             ProcessMemory::Active => {
                 panic!("The process we were about to switch to had its memory marked as already active");

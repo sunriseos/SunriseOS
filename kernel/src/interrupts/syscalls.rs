@@ -15,7 +15,7 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::mem;
 use core::sync::atomic::Ordering;
-use sync::SpinLock;
+use sync::SpinLockIRQ;
 
 extern fn ignore_syscall(nr: usize) -> usize {
     // TODO: Trigger "unknown syscall" signal, for userspace signal handling.
@@ -129,7 +129,7 @@ pub extern fn syscall_handler_inner(syscall_nr: usize, arg1: usize, arg2: usize,
     };
 
     if scheduler::get_current_process().pstate.load(Ordering::SeqCst) == ProcessState::Killed {
-        let lock = SpinLock::new(());
+        let lock = SpinLockIRQ::new(());
         scheduler::unschedule(&lock, lock.lock());
         //unreachable!();
         ret
