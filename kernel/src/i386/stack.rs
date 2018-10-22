@@ -29,7 +29,7 @@
 use ::core::mem::size_of;
 use paging::*;
 use i386::mem::VirtualAddress;
-use spin::RwLock;
+use sync::RwLock;
 use xmas_elf::ElfFile;
 use xmas_elf::symbol_table::{Entry32, Entry};
 use rustc_demangle::demangle as rustc_demangle;

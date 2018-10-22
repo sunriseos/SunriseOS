@@ -18,7 +18,6 @@ extern crate ascii;
 extern crate bit_field;
 #[macro_use]
 extern crate lazy_static;
-extern crate spin;
 extern crate multiboot2;
 #[macro_use]
 extern crate bitflags;

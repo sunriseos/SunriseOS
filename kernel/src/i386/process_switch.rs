@@ -5,9 +5,8 @@
 use process::{ProcessStruct, ProcessState, ProcessMemory, ProcessStructArc};
 use scheduler::get_current_process;
 use gdt;
-use sync::SpinLockIRQ;
+use sync::{SpinLockIRQ, RwLock};
 use alloc::sync::Arc;
-use spin::RwLock;
 use core::mem::size_of;
 use i386::TssStruct;
 

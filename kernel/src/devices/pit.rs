@@ -52,7 +52,7 @@
 //! * [this very good ppt](https://www.cs.usfca.edu/~cruse/cs630f08/lesson15.ppt)
 //!
 
-use spin::Mutex;
+use sync::SpinLock;
 use io::Io;
 use ::i386::pio::Pio;
 use event::{self, IRQEvent, Waitable};
@@ -72,7 +72,7 @@ const CHAN_0_DIVISOR: u16 = (OSCILLATOR_FREQ / CHAN_0_FREQUENCY) as u16;
 
 lazy_static! {
     /// The mutex wrapping the ports
-    static ref PIT_PORTS: Mutex<PITPorts> = Mutex::new(PITPorts {
+    static ref PIT_PORTS: SpinLock<PITPorts> = SpinLock::new(PITPorts {
         port_chan_0: Pio::new(0x40),
         port_chan_2: Pio::new(0x42),
         port_cmd:    Pio::new(0x43),

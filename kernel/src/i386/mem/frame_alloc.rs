@@ -14,7 +14,7 @@
 //! for us, and we don't want to overwrite it.
 
 use multiboot2::BootInformation;
-use spin::Mutex;
+use sync::SpinLock;
 use bit_field::BitArray;
 use utils::BitArrayExt;
 use utils::bit_array_first_one;
@@ -77,7 +77,7 @@ const FRAME_FREE:     bool = true;
 const FRAME_OCCUPIED: bool = false;
 
 /// A big bitmap denoting for every frame if it is free or not
-static FRAMES_BITMAP: Mutex<AllocatorBitmap> = Mutex::new(AllocatorBitmap {
+static FRAMES_BITMAP: SpinLock<AllocatorBitmap> = SpinLock::new(AllocatorBitmap {
     memory_bitmap: [0x00; FRAMES_BITMAP_SIZE],
     initialized: false,
 });

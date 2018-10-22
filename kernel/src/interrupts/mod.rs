@@ -12,7 +12,7 @@ use xmas_elf::sections::SectionData;
 
 use core::fmt::Write;
 use core::slice;
-use spin::Mutex;
+use sync::SpinLock;
 use sync;
 use paging::{self, KernelLand, get_page};
 use utils;
@@ -206,7 +206,7 @@ pub unsafe fn syscall(syscall_nr: u32, arg1: u32, arg2: u32, arg3: u32, arg4: u3
 }
 
 lazy_static! {
-    static ref IDT: Mutex<Option<VirtualAddress>> = Mutex::new(None);
+    static ref IDT: SpinLock<Option<VirtualAddress>> = SpinLock::new(None);
 }
 
 /// Initialize the interrupt subsystem. Sets up the PIC and the IDT.

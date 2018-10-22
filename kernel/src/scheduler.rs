@@ -1,8 +1,6 @@
 //! The Completly Unfair Scheduler
 
-use spin::Mutex;
 use alloc::sync::Arc;
-use spin::RwLock;
 use alloc::vec::Vec;
 use core::mem;
 

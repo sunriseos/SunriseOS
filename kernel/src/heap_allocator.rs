@@ -3,13 +3,13 @@
 //! A simple wrapper around linked_list_allocator. We catch the OomError, and
 //! try to expand the heap with more pages in that case.
 use core::alloc::{GlobalAlloc, Layout, AllocErr};
-use spin::{Mutex, Once};
+use sync::{SpinLock, Once};
 use core::ops::Deref;
 use core::ptr::NonNull;
 use linked_list_allocator::{Heap, align_up};
 use paging::{self, EntryFlags, ACTIVE_PAGE_TABLES, PageTablesSet, VirtualAddress};
 
-pub struct Allocator(Once<Mutex<Heap>>);
+pub struct Allocator(Once<SpinLock<Heap>>);
 
 // 512MB. Should be a multiple of PAGE_SIZE.
 const RESERVED_HEAP_SIZE : usize = 512 * 1024 * 1024;
@@ -37,7 +37,7 @@ impl Allocator {
         }
     }
 
-    fn init() -> Mutex<Heap> {
+    fn init() -> SpinLock<Heap> {
         let mut active_pages = ACTIVE_PAGE_TABLES.lock();
         // Reserve 512MB of virtual memory for heap space. Don't actually allocate it.
         let heap_space = active_pages.find_available_virtual_space::<paging::KernelLand>(RESERVED_HEAP_SIZE / paging::PAGE_SIZE).expect("Kernel should have 512MB of virtual memory");
@@ -46,7 +46,7 @@ impl Allocator {
         info!("Reserving {} pages at {:#010x}", RESERVED_HEAP_SIZE / paging::PAGE_SIZE - 1, heap_space.addr() + paging::PAGE_SIZE);
         unsafe {
             // Safety: Size is of 0, and the address is freshly guard-paged.
-            Mutex::new(Heap::new(heap_space.addr(), paging::PAGE_SIZE))
+            SpinLock::new(Heap::new(heap_space.addr(), paging::PAGE_SIZE))
         }
     }
 
@@ -57,9 +57,9 @@ impl Allocator {
 }
 
 impl Deref for Allocator {
-    type Target = Mutex<Heap>;
+    type Target = SpinLock<Heap>;
 
-    fn deref(&self) -> &Mutex<Heap> {
+    fn deref(&self) -> &SpinLock<Heap> {
         &self.0.call_once(Self::init)
     }
 }

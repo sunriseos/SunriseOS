@@ -4,10 +4,9 @@ mod filter;
 
 use log::{self, Log, Metadata, Record, LevelFilter};
 use logger::Loggers;
-use spin::Once;
 use core::fmt::Write;
 use i386::multiboot::get_boot_information;
-use spin::RwLock;
+use sync::{RwLock, Once};
 
 struct Logger {
     filter: RwLock<filter::Filter>

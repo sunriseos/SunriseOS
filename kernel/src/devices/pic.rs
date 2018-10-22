@@ -5,8 +5,7 @@
 
 use i386::pio::Pio;
 use io::Io;
-use spin::Once;
-use sync::SpinLockIRQ;
+use sync::{Once, SpinLockIRQ};
 
 bitflags! {
     /// The first control word sent to the PIC.

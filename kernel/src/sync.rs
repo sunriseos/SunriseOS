@@ -1,8 +1,12 @@
 //! Synchronization primitives used by KFS
 
+extern crate spin;
+
+pub use self::spin::{Once, RwLock, RwLockReadGuard, RwLockWriteGuard};
+
 use core::mem::ManuallyDrop;
 use core::ops::{Deref, DerefMut};
-use spin::{Mutex as SpinLock, MutexGuard as SpinLockGuard};
+pub use self::spin::{Mutex as SpinLock, MutexGuard as SpinLockGuard};
 use i386::instructions::interrupts::*;
 use core::sync::atomic::{AtomicBool, Ordering};
 use scheduler;

@@ -5,7 +5,7 @@
 
 #![allow(dead_code)]
 
-use spin::{Mutex, Once};
+use sync::{SpinLock, Once};
 use arrayvec::ArrayVec;
 use bit_field::BitField;
 use core::mem::{self, size_of};
@@ -21,7 +21,7 @@ use paging::{self, KernelLand, VirtualAddress, PAGE_SIZE, ACTIVE_PAGE_TABLES, Pa
 use alloc::vec::Vec;
 use utils::div_round_up;
 
-static GDT: Once<Mutex<GdtManager>> = Once::new();
+static GDT: Once<SpinLock<GdtManager>> = Once::new();
 
 /// The global LDT used by all the processes.
 static GLOBAL_LDT: Once<DescriptorTable> = Once::new();
@@ -88,7 +88,7 @@ pub fn init_gdt() {
         gdt.push(DescriptorTableEntry::new_tss(main_task, PrivilegeLevel::Ring0, 0x2001));
 
         info!("Loading GDT");
-        Mutex::new(GdtManager::load(gdt, 0x8, 0x10, 0x18))
+        SpinLock::new(GdtManager::load(gdt, 0x8, 0x10, 0x18))
     });
 
     unsafe {

@@ -1,11 +1,10 @@
 //! RS-232
 
 use core::fmt::Write;
-use ::spin::Once;
-use ::spin::Mutex;
-use ::io::Io;
-use ::i386::pio::Pio;
-use ::logger::*;
+use sync::{Once, SpinLock};
+use io::Io;
+use i386::pio::Pio;
+use logger::*;
 
 /// The port of a COM
 #[derive(Debug, Copy, Clone)]
@@ -89,7 +88,7 @@ impl SerialAttributes {
     }
 }
 
-static G_SERIAL: Once<Mutex<SerialInternal<Pio<u8>>>> = Once::new();
+static G_SERIAL: Once<SpinLock<SerialInternal<Pio<u8>>>> = Once::new();
 
 pub struct SerialInternal<T> {
     data_port: T,
@@ -140,13 +139,13 @@ pub struct SerialLogger;
 impl Logger for SerialLogger {
     /// Prints a string to the serial port
     fn print(&mut self, string: &str) {
-        let mut internal = G_SERIAL.call_once(|| Mutex::new(SerialInternal::<Pio<u8>>::new(COM1))).lock();
+        let mut internal = G_SERIAL.call_once(|| SpinLock::new(SerialInternal::<Pio<u8>>::new(COM1))).lock();
         internal.send_string(string);
     }
 
     /// Prints a string to the screen and adds a line feed
     fn println(&mut self, string: &str) {
-        let mut internal = G_SERIAL.call_once(|| Mutex::new(SerialInternal::<Pio<u8>>::new(COM1))).lock();
+        let mut internal = G_SERIAL.call_once(|| SpinLock::new(SerialInternal::<Pio<u8>>::new(COM1))).lock();
         internal.send_string(string);
         internal.send_string("\n");
     }
@@ -155,7 +154,7 @@ impl Logger for SerialLogger {
     fn print_attr(&mut self, string: &str, attr: LogAttributes) {
         SerialAttributes::new(attr).enable();
         {
-            let mut internal = G_SERIAL.call_once(|| Mutex::new(SerialInternal::<Pio<u8>>::new(COM1))).lock();
+            let mut internal = G_SERIAL.call_once(|| SpinLock::new(SerialInternal::<Pio<u8>>::new(COM1))).lock();
             internal.send_string(string);
         }
         SerialAttributes::new(LogAttributes::default()).enable();
@@ -169,7 +168,7 @@ impl Logger for SerialLogger {
     }
 
     unsafe fn force_unlock(&mut self) {
-        G_SERIAL.call_once(|| Mutex::new(SerialInternal::<Pio<u8>>::new(COM1))).force_unlock();
+        G_SERIAL.call_once(|| SpinLock::new(SerialInternal::<Pio<u8>>::new(COM1))).force_unlock();
     }
 
     fn clear(&mut self) {

@@ -1,6 +1,6 @@
 //! Multiboot Information
 
-use spin::Once;
+use sync::Once;
 use multiboot2::BootInformation;
 
 static BOOT_INFO: Once<BootInformation> = Once::new();
