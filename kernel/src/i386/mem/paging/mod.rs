@@ -16,7 +16,6 @@ use sync::SpinLockIRQ;
 use i386::mem::frame_alloc::Frame;
 use i386::mem::PhysicalAddress;
 pub use i386::mem::VirtualAddress;
-use ::devices::vgatext::{VGA_SCREEN_ADDRESS, VGA_SCREEN_MEMORY_SIZE};
 use ::core::fmt::Write;
 use ::core::ops::Deref;
 use logger::Loggers;

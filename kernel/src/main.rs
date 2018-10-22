@@ -48,9 +48,7 @@ mod log_impl;
 use i386::mem::paging;
 use i386::mem::frame_alloc;
 pub use logger::*;
-pub use devices::vgatext::VGATextLogger;
 pub use devices::rs232::SerialLogger;
-pub use devices::vbe::VBELogger;
 use i386::mem::PhysicalAddress;
 use i386::mem::frame_alloc::Frame;
 use paging::{KernelLand, UserLand};
@@ -182,11 +180,6 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     gdt::init_gdt();
     info!("Gdt initialized");
 
-    // Initialize the VGATEXT logger now that paging is in a stable state
-    //static mut VGATEXT: VGATextLogger = VGATextLogger;
-    //Loggers::register_logger("VGA text mode", unsafe { &mut VGATEXT });
-    //info!("Initialized VGATEXT logger");
-
     i386::multiboot::init(boot_info);
 
     log_impl::init();
@@ -199,10 +192,6 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 
     //info!("Disable timer interrupt");
     //devices::pic::get().mask(0);
-
-    //info!("Registering VBE logger");
-    //static mut VBE_LOGGER: VBELogger = VBELogger;
-    //Loggers::register_logger("VBE", unsafe { &mut VBE_LOGGER });
 
     info!("Becoming the first process");
     unsafe { scheduler::create_first_process() };
