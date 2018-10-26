@@ -36,7 +36,8 @@ fn init_heap() {
 #[panic_implementation] #[no_mangle]
 pub extern fn panic_fmt(p: &core::panic::PanicInfo) -> ! {
     syscalls::output_debug_string(&format!("{}", p));
-    loop { unsafe { asm!("HLT"); } }
+    syscalls::exit_process();
+    loop {}
 }
 
 use core::alloc::Layout;
