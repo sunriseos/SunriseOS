@@ -7,7 +7,7 @@ use multiboot2::{BootInformation, ElfSectionFlags};
 use ::address::{PhysicalAddress, VirtualAddress};
 use ::frame_alloc::{Frame, round_to_page, round_to_page_upper};
 
-pub use self::table::{ActivePageTables, InactivePageTables, MappingType, EntryFlags};
+pub use self::table::{ActivePageTables, InactivePageTables, PagingOffPageSet, MappingType, EntryFlags};
 pub use self::table::PageTablesSet;
 
 use self::table::*;
@@ -15,6 +15,9 @@ use self::table::entry::Entry;
 use spin::Mutex;
 use ::core::fmt::Write;
 use ::core::ops::Deref;
+use core;
+use utils;
+use bootstrap_logging::Serial;
 
 pub const PAGE_SIZE: usize = 4096;
 
@@ -75,7 +78,9 @@ fn swap_cr3(page_directory_address: PhysicalAddress) -> PhysicalAddress {
     old_value
 }
 
-/// Creates a set of page tables identity mapping the first 32MB
+/// Creates a set of page tables identity mapping the Bootstrap.
+///
+/// Returns the newly created PageTable.
 ///
 /// # Safety
 ///
@@ -86,11 +91,34 @@ pub unsafe fn map_bootstrap(boot_info : &BootInformation) -> PagingOffPageSet {
     // Reserve the very first frame for null pointers
     new_pages.map_page_guard(VirtualAddress(0x00000000));
 
-    // Identity map from page 1 to 32MB
-    new_pages.identity_map_region(PhysicalAddress(0x00000000 + PAGE_SIZE),
-                                      0x02000000 - PAGE_SIZE,
-                                      EntryFlags::WRITABLE);
+    // Page guard the first frame of the kernel.
+    new_pages.map_page_guard(VirtualAddress(0xc0000000));
 
+    writeln!(Serial, "= Mapping the Bootstrap");
+    let elf_sections_tag = boot_info.elf_sections_tag()
+        .expect("GRUB, you're drunk. Give us our elf_sections_tag.");
+    for section in elf_sections_tag.sections() {
+        //writeln!(Serial, "= Found section {} at {:#010x} size {:#010x}", section.name(), section.start_address(), section.size());
+
+        if !section.is_allocated() || section.name() == ".boot" || section.size() == 0 {
+            continue; // section is not loaded to memory
+        }
+
+        assert_eq!(section.start_address() as usize % PAGE_SIZE, 0, "sections must be page aligned");
+
+        let mut map_flags = EntryFlags::empty();
+        if section.flags().contains(ElfSectionFlags::WRITABLE) {
+            map_flags |= EntryFlags::WRITABLE
+        }
+
+        let from = section.start_address() as usize;
+        let to = from + utils::align_up(section.size() as usize, PAGE_SIZE);
+        writeln!(Serial, "= Identity mapping {:#010x}-{:#010x}", from, to);
+
+        new_pages.identity_map_region(PhysicalAddress(section.start_address() as usize),
+                                      section.size() as usize,
+                                      map_flags);
+    }
     new_pages
 }
 

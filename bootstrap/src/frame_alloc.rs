@@ -15,7 +15,7 @@ use multiboot2::BootInformation;
 use spin::Mutex;
 use bit_field::BitArray;
 use utils::BitArrayExt;
-use utils::bit_array_first_one;
+use utils::{bit_array_first_one, bit_array_first_count_one};
 use paging::PAGE_SIZE;
 use address::PhysicalAddress;
 use bootstrap_logging::Serial;
@@ -280,6 +280,21 @@ impl FrameAllocator {
             physical_addr: frame_to_addr(frame),
             is_allocated: true
         }
+    }
+
+    /// Allocates count contiguous frames.
+    ///
+    /// # Panic
+    ///
+    /// Panics if it cannot find count contiguous free frame.
+    pub fn alloc_contiguous_frames(count: usize) -> PhysicalAddress {
+        let mut frames_bitmap = FRAMES_BITMAP.lock();
+
+        FrameAllocator::check_initialized(&*frames_bitmap);
+        let frame = bit_array_first_count_one(&frames_bitmap.memory_bitmap, count)
+            .expect("Cannot allocate frame: No available frame D:");
+        frames_bitmap.memory_bitmap.set_bits_area(frame..frame + count, FRAME_OCCUPIED);
+        PhysicalAddress(frame_to_addr(frame))
     }
 
     /// Frees an allocated frame.

@@ -9,11 +9,12 @@
 //! What the bootstrap stage does is :
 //! 1. create a set of pages
 //! 2. identity map bootstrap sections
-//! 3. enable paging
 //! 4. load kernel at the end of address space
-//! 5. construct a map of kernel sections that will be passed to kernel
-//! 6. create a kernel stack
-//! 7. jump to kernel
+//! 5. copy the multiboot2 info to be page aligned.
+//! 6. Map the multiboot2 info in kernel land.
+//! 7. construct a map of kernel sections that will be passed to kernel
+//! 8. create a kernel stack
+//! 9. jump to kernel
 //!
 //! ## Logging
 //!
@@ -57,7 +58,7 @@ mod bootstrap_stack;
 
 use bootstrap_logging::Serial;
 use frame_alloc::FrameAllocator;
-use paging::KernelLand;
+use paging::{PageTablesSet, KernelLand, EntryFlags, ACTIVE_PAGE_TABLES};
 use bootstrap_stack::BootstrapStack;
 use address::VirtualAddress;
 
@@ -113,28 +114,26 @@ pub extern "C" fn do_bootstrap(multiboot_info_addr: usize) -> ! {
     let mut page_tables = unsafe { paging::map_bootstrap(&boot_info) };
     writeln!(Serial, "= Created page tables");
 
-    // Start using these page tables
-    unsafe { page_tables.enable_paging() }
-    writeln!(Serial, "= Paging on");
-
-    let kernel_entry_point = elf_loader::load_kernel(&boot_info);
+    let kernel_entry_point = elf_loader::load_kernel(&mut page_tables, &boot_info);
     writeln!(Serial, "= Loaded kernel");
 
-    // Move the multiboot_header to a single page in kernel space.
-    let multiboot_info_page = paging::get_page::<KernelLand>();
-    let total_size = unsafe {
-        // Safety: multiboot_info_addr should always be valid, provided the
-        // bootloader ಠ_ಠ
-        *(multiboot_info_addr as *const u32) as usize
-    };
+    // Move the multiboot_header to a single page in kernel space. This simplifies some
+    // things in the kernel.
+    let multiboot_info_page = page_tables.get_page::<KernelLand>();
+    let multiboot_phys_page = page_tables.get_phys(multiboot_info_page).unwrap();
+    let total_size = boot_info.total_size();
     assert!(total_size <= paging::PAGE_SIZE, "Expected multiboot info to fit in a page");
     unsafe {
         // Safety: We just allocated this page. What could go wrong?
         core::ptr::copy(multiboot_info_addr as *const u8,
-                        multiboot_info_page.addr() as *mut u8,
+                        multiboot_phys_page.addr() as *mut u8,
                         total_size);
     }
-    writeln!(Serial, "= Copied multiboot info");
+    writeln!(Serial, "= Copied multiboot info to page {:#010x}", multiboot_info_page.addr());
+
+    // Start using these page tables
+    unsafe { page_tables.enable_paging() }
+    writeln!(Serial, "= Paging on");
 
     // Allocate a stack for the kernel
     let mut new_stack = BootstrapStack::allocate_stack()

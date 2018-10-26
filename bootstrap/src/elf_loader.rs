@@ -6,46 +6,56 @@ use core::fmt::Write;
 use core::slice;
 use xmas_elf::ElfFile;
 use xmas_elf::program::{ProgramHeader, Type::Load, SegmentData};
-use paging::{ACTIVE_PAGE_TABLES, PAGE_SIZE, PageTablesSet, EntryFlags};
-use address::VirtualAddress;
-use utils::align_up;
+use paging::{PagingOffPageSet, PAGE_SIZE, UserLand, MappingType, PageTablesSet, EntryFlags};
+use address::{PhysicalAddress, VirtualAddress};
+use utils::{self, align_up};
+use frame_alloc::FrameAllocator;
 
 /// Loads the kernel in high memory
 /// Returns address of entry point
-pub fn load_kernel(multiboot_info: &BootInformation) -> usize {
+pub fn load_kernel(page_table: &mut PagingOffPageSet, multiboot_info: &BootInformation) -> usize {
     let module = multiboot_info.module_tags()
         .nth(0).expect("Multiboot module tag for kernel not found");
 
-    let kernel_ptr = module.start_address() as *const u8;
-    let kernel_len = (module.end_address() - module.start_address()) as usize;
-    let kernel_elf = ElfFile::new(unsafe { slice::from_raw_parts(kernel_ptr, kernel_len) })
+    let kernel_ptr = module.start_address();
+    let kernel_len = module.end_address() - module.start_address();
+
+    let kernel_elf = ElfFile::new(unsafe { slice::from_raw_parts(kernel_ptr as usize as *const u8, kernel_len as usize) })
         .expect("Failed parsing multiboot module as elf");
 
     // load all segments
     for ph in kernel_elf.program_iter().filter(|ph|
         ph.get_type().expect("Failed to get type of elf program header") == Load)
     {
-        load_segment(&ph, &kernel_elf);
+        load_segment(page_table, &ph, &kernel_elf);
     }
 
     // return the entry point
     let entry_point = kernel_elf.header.pt2.entry_point();
     writeln!(Serial, "Entry point : {:#x?}", entry_point);
     entry_point as usize
-
 }
 
 /// Loads an elf segment by coping file_size bytes to the right address,
 /// and filling remaining with 0s.
 /// This is used by NOBITS sections (.bss), this way we initialize them to 0.
-fn load_segment(segment: &ProgramHeader, elf_file: &ElfFile) {
-
+fn load_segment(page_table: &mut PagingOffPageSet, segment: &ProgramHeader, elf_file: &ElfFile) {
     // Map the segment memory
     let mem_size_total = align_up(segment.mem_size() as usize, PAGE_SIZE);
-    ACTIVE_PAGE_TABLES.lock().map_range_allocate(
-        VirtualAddress(segment.virtual_addr() as usize),
-        mem_size_total / PAGE_SIZE,
+    let vaddr = segment.virtual_addr() as usize;
+
+    let flags = if !segment.flags().is_write() {
+        EntryFlags::empty()
+    } else {
         EntryFlags::WRITABLE
+    };
+
+    let phys_addr = FrameAllocator::alloc_contiguous_frames(mem_size_total / PAGE_SIZE);
+
+    page_table.map_range(phys_addr,
+        VirtualAddress(vaddr),
+        mem_size_total / PAGE_SIZE,
+        flags
     );
 
     // Copy the segment data
@@ -53,7 +63,7 @@ fn load_segment(segment: &ProgramHeader, elf_file: &ElfFile) {
     {
         SegmentData::Undefined(elf_data) =>
         {
-            let dest_ptr = segment.virtual_addr() as usize as *mut u8;
+            let dest_ptr = phys_addr.addr() as *mut u8;
             let mut dest = unsafe { slice::from_raw_parts_mut(dest_ptr, mem_size_total) };
             let (dest_data, dest_pad) = dest.split_at_mut(segment.file_size() as usize);
 
@@ -66,13 +76,6 @@ fn load_segment(segment: &ProgramHeader, elf_file: &ElfFile) {
             }
         },
         x => { panic ! ("Unexpected Segment data {:?}", x) }
-    }
-
-    // Remap as readonly if specified
-    if !segment.flags().is_write() {
-        ACTIVE_PAGE_TABLES.lock().set_region_readonly(
-            VirtualAddress(segment.virtual_addr() as usize),
-            mem_size_total / PAGE_SIZE);
     }
 
     writeln!(Serial, "Loaded segment - VirtAddr {:#010x}, FileSize {:#010x}, MemSize {:#010x} {}{}{}",
