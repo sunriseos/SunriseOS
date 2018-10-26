@@ -14,6 +14,7 @@ use core::fmt::Debug;
 use alloc::sync::Arc;
 use sync::SpinLockIRQ;
 use alloc::vec::Vec;
+use error::Error;
 use process::{ProcessStructArc, ProcessState};
 use scheduler;
 
@@ -92,7 +93,7 @@ pub trait Waitable: Debug + Send + Sync {
 }
 
 /// Waits for an event to occur on one of the given Waitable objects.
-pub fn wait<'wait, INTOITER>(waitable_intoiter: INTOITER) -> Option<&'wait Waitable>
+pub fn wait<'wait, INTOITER>(waitable_intoiter: INTOITER) -> Result<&'wait Waitable, Error>
 where
     INTOITER: IntoIterator<Item=&'wait Waitable>,
     <INTOITER as IntoIterator>::IntoIter: Clone
@@ -104,7 +105,7 @@ where
         // Early-check for events that have already been signaled.
         for item in waitable.clone() {
             if item.is_signaled() {
-                return Some(item);
+                return Ok(item);
             }
         }
 
@@ -120,13 +121,7 @@ where
         // bug otherwise.
 
         // Schedule
-        scheduler::unschedule(&interrupt_manager, lock);
-
-        // TODO: Check if synchronization was canceled. If that's the case, return an error.
-        // For now let's just check killed flag.
-        if scheduler::get_current_process().pstate.load(Ordering::SeqCst) == ProcessState::Killed {
-            return None;
-        }
+        scheduler::unschedule(&interrupt_manager, lock)?;
     }
 }
 

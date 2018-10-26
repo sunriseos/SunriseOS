@@ -8,6 +8,7 @@ use process::{ProcessStruct, ProcessState, ProcessStructArc};
 use i386::process_switch::process_switch;
 use sync::{SpinLockIRQ, SpinLockIRQGuard};
 use core::sync::atomic::Ordering;
+use error::Error;
 
 /// We always keep an Arc to the process currently running.
 /// This enables finding the current process from anywhere,
@@ -101,14 +102,20 @@ pub fn is_in_schedule_queue(process: &ProcessStructArc) -> bool {
 /// This can be used to avoid race conditions between registering for an event, and unscheduling.
 ///
 /// The current process will not be ran again unless it was registered for rescheduling.
-pub fn unschedule<'a>(interrupt_manager: &'a SpinLockIRQ<()>, interrupt_lock: SpinLockIRQGuard<'a, ()>) {
+pub fn unschedule<'a>(interrupt_manager: &'a SpinLockIRQ<()>, interrupt_lock: SpinLockIRQGuard<'a, ()>) -> Result<(), Error> {
     {
         let process = get_current_process();
         let old = process.pstate.compare_and_swap(ProcessState::Running, ProcessState::Stopped, Ordering::SeqCst);
         assert!(old == ProcessState::Killed || old == ProcessState::Running, "Old was in invalid state {:?} before unscheduling", old);
     }
 
-    internal_schedule(&interrupt_manager, interrupt_lock, true)
+    internal_schedule(&interrupt_manager, interrupt_lock, true);
+
+    if get_current_process().pstate.load(Ordering::SeqCst) == ProcessState::Killed {
+        Err(Error::Canceled)
+    } else {
+        Ok(())
+    }
 }
 
 /// Creates the very first process at boot.

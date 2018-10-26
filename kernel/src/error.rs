@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub enum Error {
     InvalidKernelCaps = 14,
     NotDebugMode = 33,

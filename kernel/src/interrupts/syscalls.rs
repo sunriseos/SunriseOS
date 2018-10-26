@@ -73,10 +73,7 @@ fn wait_synchronization(mut handle_idx: UserSpacePtrMut<usize>, handles_ptr: Use
     }).chain(timeout_waitable.iter().map(|v| v as &dyn Waitable));
 
     // And now, wait!
-    let val = match event::wait(waitables.clone()) {
-        Some(v) => v,
-        None => return Err(Error::Canceled)
-    };
+    let val = event::wait(waitables.clone())?;
 
     // Figure out which waitable got triggered.
     for (idx, handle) in waitables.enumerate() {
