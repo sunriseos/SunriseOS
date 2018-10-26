@@ -17,6 +17,7 @@ use core::mem;
 use core::sync::atomic::Ordering;
 use sync::SpinLockIRQ;
 use error::Error;
+use ipc;
 
 extern fn ignore_syscall(nr: usize) -> Result<(), Error> {
     // TODO: Trigger "unknown syscall" signal, for userspace signal handling.
@@ -57,7 +58,9 @@ fn wait_synchronization(mut handle_idx: UserSpacePtrMut<usize>, handles_ptr: Use
         // Make sure we drop proclock before waiting.
         let handleslock = proc.phandles.lock();
         for handle in handles_ptr.iter() {
-            handle_arr.push(handleslock.get_handle(*handle));
+            let hnd = handleslock.get_handle(*handle)?;
+            let _ = hnd.as_waitable()?;
+            handle_arr.push(hnd);
         }
     }
 
@@ -68,9 +71,9 @@ fn wait_synchronization(mut handle_idx: UserSpacePtrMut<usize>, handles_ptr: Use
     }
 
     // Turn the handle array and the waitable timeout into an iterator of Waitables...
-    let waitables = handle_arr.iter().map(|v| match &**v {
-        &Handle::ReadableEvent(ref waitable) => &**waitable
-    }).chain(timeout_waitable.iter().map(|v| v as &dyn Waitable));
+    let waitables = handle_arr.iter()
+        .map(|v| v.as_waitable().unwrap())
+        .chain(timeout_waitable.iter().map(|v| v as &dyn Waitable));
 
     // And now, wait!
     let val = event::wait(waitables.clone())?;
@@ -100,6 +103,34 @@ fn exit_process() -> Result<(), Error> {
     Ok(())
 }
 
+fn connect_to_named_port(mut handle_out: UserSpacePtrMut<u32>, name: UserSpacePtr<[u8; 12]>) -> Result<(), Error> {
+    let session = ipc::connect_to_named_port(*name)?;
+    info!("Got session {:?}", session);
+    let curproc = scheduler::get_current_process();
+    *handle_out = curproc.phandles.lock().add_handle(Arc::new(Handle::ClientSession(session)));
+    Ok(())
+}
+
+fn manage_named_port(mut handle_out: UserSpacePtrMut<u32>, name_ptr: UserSpacePtr<[u8; 12]>, max_sessions: u32) -> Result<(), Error> {
+    let server = ipc::create_named_port(*name_ptr, max_sessions)?;
+    let curproc = scheduler::get_current_process();
+    *handle_out = curproc.phandles.lock().add_handle(Arc::new(Handle::ServerPort(server)));
+    Ok(())
+}
+
+fn accept_session(mut handle_out: UserSpacePtrMut<u32>, porthandle: u32) -> Result<(), Error> {
+    let curproc = scheduler::get_current_process();
+    let handle = curproc.phandles.lock().get_handle(porthandle)?;
+    let port = match &*handle {
+        &Handle::ServerPort(ref port) => port,
+        _ => return Err(Error::InvalidHandle),
+    };
+
+    let server_session = port.accept()?;
+    *handle_out = curproc.phandles.lock().add_handle(Arc::new(Handle::ServerSession(server_session)));
+    Ok(())
+}
+
 pub extern fn syscall_handler_inner(syscall_nr: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize, arg5: usize, arg6: usize) -> usize {
     use logger::Logger;
     use devices::rs232::SerialLogger;
@@ -112,12 +143,15 @@ pub extern fn syscall_handler_inner(syscall_nr: usize, arg1: usize, arg2: usize,
             data: arg2,
             len: arg3
         })}), arg4),
+        0x1F => connect_to_named_port(UserSpacePtrMut(arg1 as _), UserSpacePtr(arg2 as _)),
         0x27 => output_debug_string(UserSpacePtr(unsafe {mem::transmute(FatPtr {
             data: arg1,
             len: arg2
         })})),
+        0x41 => accept_session(UserSpacePtrMut(arg1 as _), arg2 as _),
         0x53 => create_interrupt_event(UserSpacePtrMut(arg1 as _), arg2, arg3 as u32),
         //0x79 => create_process(arg1, arg2),
+        0x71 => manage_named_port(UserSpacePtrMut(arg1 as _), UserSpacePtr(arg2 as _), arg3 as _),
 
         // KFS extensions
         0x80 => map_framebuffer(UserSpacePtrMut(arg1 as _), UserSpacePtrMut(arg2 as _), UserSpacePtrMut(arg3 as _), UserSpacePtrMut(arg4 as _)),

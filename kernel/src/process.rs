@@ -14,6 +14,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use core::fmt::{self, Debug};
 use scheduler;
 use error::Error;
+use ipc::{ServerPort, ClientPort, ServerSession, ClientSession};
 
 /// The struct representing a process. There's one for every process.
 ///
@@ -55,6 +56,21 @@ pub struct ProcessStruct {
 #[derive(Debug)]
 pub enum Handle {
     ReadableEvent(Box<Waitable>),
+    ServerPort(ServerPort),
+    ClientPort(ClientPort),
+    ServerSession(ServerSession),
+    ClientSession(ClientSession),
+}
+
+impl Handle {
+    pub fn as_waitable(&self) -> Result<&Waitable, Error> {
+        match self {
+            &Handle::ReadableEvent(ref waitable) => Ok(&**waitable),
+            &Handle::ServerPort(ref serverport) => Ok(serverport),
+            &Handle::ServerSession(ref serversession) => Ok(serversession),
+            _ => Err(Error::InvalidHandle),
+        }
+    }
 }
 
 #[derive(Debug)]

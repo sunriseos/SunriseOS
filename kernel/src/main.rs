@@ -66,6 +66,7 @@ mod sync;
 mod process;
 mod scheduler;
 mod mem;
+mod ipc;
 mod elf_loader;
 
 // Make rust happy about rust_oom being no_mangle...
