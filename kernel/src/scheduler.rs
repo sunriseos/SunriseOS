@@ -6,7 +6,7 @@ use core::mem;
 
 use process::{ProcessStruct, ProcessState, ProcessStructArc};
 use i386::process_switch::process_switch;
-use sync::{SpinLockIRQ, SpinLockIRQGuard};
+use sync::{Lock, SpinLockIRQ, SpinLockIRQGuard};
 use core::sync::atomic::Ordering;
 use error::Error;
 
@@ -40,10 +40,17 @@ pub fn get_current_process() -> ProcessStructArc {
 /// Setting the current process should *always* go through this function, and never
 /// by setting CURRENT_PROCESS directly. This function uses mem::replace to ensure
 /// that the ProcessStruct's Drop is run with CURRENT_PROCESS set to the *new* value.
-unsafe fn set_current_process(p: ProcessStructArc) {
+///
+/// The passed function will be executed after setting the CURRENT_PROCESS, but before
+/// setting it back to the RUNNING state.
+unsafe fn set_current_process<R, F: FnOnce() -> R>(p: ProcessStructArc, f: F) -> R {
     mem::replace(&mut CURRENT_PROCESS, Some(p.clone()));
 
+    let r = f();
+
     p.pstate.compare_and_swap(ProcessState::Scheduled, ProcessState::Running, Ordering::SeqCst);
+
+    r
 }
 
 /// The schedule queue
@@ -99,22 +106,28 @@ pub fn is_in_schedule_queue(process: &ProcessStructArc) -> bool {
 /// Removes the current process from the schedule queue, and schedule.
 ///
 /// The passed lock will be locked until the process is safely removed from the schedule queue.
+/// It will be relocked just before the process starts running again (but before it's set to Running).
 /// This can be used to avoid race conditions between registering for an event, and unscheduling.
 ///
 /// The current process will not be ran again unless it was registered for rescheduling.
-pub fn unschedule<'a>(interrupt_manager: &'a SpinLockIRQ<()>, interrupt_lock: SpinLockIRQGuard<'a, ()>) -> Result<(), Error> {
+pub fn unschedule<'a, LOCK, GUARD>(lock: &'a LOCK, guard: GUARD) -> Result<GUARD, Error>
+where
+    LOCK: Lock<'a, GUARD>,
+    GUARD: 'a
+{
     {
         let process = get_current_process();
         let old = process.pstate.compare_and_swap(ProcessState::Running, ProcessState::Stopped, Ordering::SeqCst);
         assert!(old == ProcessState::Killed || old == ProcessState::Running, "Old was in invalid state {:?} before unscheduling", old);
+        mem::drop(guard)
     }
 
-    internal_schedule(&interrupt_manager, interrupt_lock, true);
+    let guard = internal_schedule(lock, true);
 
     if get_current_process().pstate.load(Ordering::SeqCst) == ProcessState::Killed {
         Err(Error::Canceled)
     } else {
-        Ok(())
+        Ok(guard)
     }
 }
 
@@ -135,7 +148,7 @@ pub unsafe fn create_first_process() {
     let p0 = ProcessStruct::create_first_process();
     unsafe {
         // provided we only run this function once, it hasn't been initialized yet
-        set_current_process(Arc::clone(&p0));
+        set_current_process(Arc::clone(&p0), || ());
     }
 }
 
@@ -163,12 +176,12 @@ pub unsafe fn create_first_process() {
 ///  * as new process *
 /// 5. Drops the lock to the schedule queue, re-enabling interrupts
 pub fn schedule() {
-    // We use a special SpinLockIRQ to disable the interruptions,
-    // We pass it to the internal_schedule, which will drop it if it needs to HLT.
-    let interrupt_manager = SpinLockIRQ::new(());
-    let interrupt_lock = interrupt_manager.lock();
+    struct NoopLock;
+    impl Lock<'static, ()> for NoopLock {
+        fn lock(&self) -> () { () }
+    }
 
-    internal_schedule(&interrupt_manager, interrupt_lock, false)
+    let _ : () = internal_schedule(&NoopLock, false);
 }
 
 /// Parses the queue to find the first unlocked process.
@@ -185,13 +198,21 @@ fn find_next_process_to_run(queue: &Vec<ProcessStructArc>) -> Option<usize> {
 /// Internal impl of the process switch, used by schedule and unschedule.
 ///
 /// See schedule function for documentation on how scheduling works.
-fn internal_schedule<'a>(interrupt_manager: &'a SpinLockIRQ<()>, mut interrupt_lock: SpinLockIRQGuard<'a, ()>, remove_self: bool) {
+fn internal_schedule<'a, LOCK, GUARD>(lock: &'a LOCK, remove_self: bool) -> GUARD
+where
+    LOCK: Lock<'a, GUARD>,
+    GUARD: 'a
+{
     // TODO: Ensure the global counter is <= 1
+
+    let interrupt_manager = SpinLockIRQ::new(());
+    let mut interrupt_lock = interrupt_manager.lock();
+
     loop {
         let mut queue = SCHEDULE_QUEUE.lock();
 
         let candidate_index = find_next_process_to_run(&queue);
-        match (candidate_index, remove_self) {
+        let retguard = match (candidate_index, remove_self) {
             (None, true) => {
                 // There's nobody to schedule. Let's drop all the locks, HLT, and run internal_schedule again.
                 // NOTE: There's nobody running at this point. :O
@@ -211,6 +232,7 @@ fn internal_schedule<'a>(interrupt_manager: &'a SpinLockIRQ<()>, mut interrupt_l
             (None, false) => {
                 // There's nobody else to run. Let's keep running ourselves...
                 drop(queue);
+                lock.lock()
             }
             (Some(index_b), _) => {
                 // 1. remove canditate from the queue, pushing remaining of the queue to the front
@@ -235,15 +257,15 @@ fn internal_schedule<'a>(interrupt_manager: &'a SpinLockIRQ<()>, mut interrupt_l
                     proc
                 };
 
-                /* we were scheduled again */
+                /* We were scheduled again. To prevent race conditions, relock the lock now. */
 
                 // replace CURRENT_PROCESS with ourself.
                 // If previously running process had deleted all other references to itself, this
                 // is where its drop actually happens
-                unsafe { set_current_process(whoami.clone()) };
+                unsafe { set_current_process(whoami.clone(), || lock.lock()) }
             }
-        }
-        break;
+        };
+        break retguard;
     }
 }
 
@@ -254,7 +276,7 @@ pub fn scheduler_first_schedule(current_process: ProcessStructArc, entrypoint: u
     // replace CURRENT_PROCESS with ourself.
     // If previously running process had deleted all other references to itself, this
     // is where its drop actually happens
-    unsafe { set_current_process(current_process) };
+    unsafe { set_current_process(current_process, || ()) };
 
     unsafe {
         // this is a new process, no SpinLockIRQ is held

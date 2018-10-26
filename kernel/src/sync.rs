@@ -154,3 +154,31 @@ impl<'a, T: ?Sized + 'a> DerefMut for SpinLockIRQGuard<'a, T> {
         &mut *self.0
     }
 }
+
+pub trait Lock<'a, GUARD: 'a> {
+    fn lock(&'a self) -> GUARD;
+}
+
+impl<'a, T> Lock<'a, SpinLockGuard<'a, T>> for SpinLock<T> {
+    fn lock(&self) -> SpinLockGuard<T> {
+        self.lock()
+    }
+}
+
+impl<'a, T> Lock<'a, SpinLockIRQGuard<'a, T>> for SpinLockIRQ<T> {
+    fn lock(&self) -> SpinLockIRQGuard<T> {
+        self.lock()
+    }
+}
+
+impl<'a, T> Lock<'a, RwLockReadGuard<'a, T>> for RwLock<T> {
+    fn lock(&self) -> RwLockReadGuard<T> {
+        self.read()
+    }
+}
+
+impl<'a, T> Lock<'a, RwLockWriteGuard<'a, T>> for RwLock<T> {
+    fn lock(&self) -> RwLockWriteGuard<T> {
+        self.write()
+    }
+}
