@@ -158,7 +158,7 @@ pub extern "C" fn do_bootstrap(multiboot_info_addr: usize) -> ! {
         jmp $2"
         :
         : "r"(multiboot_info_page), "r"(new_ebp_esp), "r"(kernel_entry_point)
-        : "memory"
+        : "memory", "ebx"
         : "intel", "volatile");
     }
 
