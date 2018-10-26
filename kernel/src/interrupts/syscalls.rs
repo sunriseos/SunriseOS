@@ -99,7 +99,6 @@ fn exit_process() -> Result<(), Error> {
     let proc = ProcessStruct::kill(scheduler::get_current_process());
     Ok(())
 }
-}
 
 pub extern fn syscall_handler_inner(syscall_nr: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize, arg5: usize, arg6: usize) -> usize {
     use logger::Logger;
