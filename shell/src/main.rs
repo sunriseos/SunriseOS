@@ -40,6 +40,10 @@ pub fn main() {
         match &*ps2::get_next_line() {
             "gif3" => show_gif(&mut *FRAMEBUFFER.lock(), &LOUIS3[..]),
             "gif4" => show_gif(&mut *FRAMEBUFFER.lock(), &LOUIS4[..]),
+            "connect" => {
+                let handle = syscalls::connect_to_named_port("sm:\0").unwrap();
+                writeln!(&mut VBELogger, "Got handle {:?}", handle);
+            },
             "exit" => return,
             //"stackdump" => unsafe { stack::KernelStack::dump_current_stack() },
             "help" => {

@@ -84,6 +84,80 @@ pub struct HandleRef<'a> {
 #[derive(Debug)]
 pub struct ReadableEvent(pub Handle);
 
+#[repr(transparent)]
+#[derive(Debug)]
+pub struct ClientSession(pub Handle);
+
+#[repr(transparent)]
+#[derive(Debug)]
+pub struct ServerSession(pub Handle);
+
+#[repr(transparent)]
+#[derive(Debug)]
+pub struct ServerPort(pub Handle);
+
+impl ServerPort {
+    pub fn accept(&self) -> Result<ServerSession, usize> {
+        accept_session(self)
+    }
+}
+
+pub fn exit_process() -> ! {
+    unsafe {
+        let ret = syscall!(0x7);
+        let _ = output_debug_string(&format!("Failed to exit: {}", ret));
+        loop {}
+    }
+}
+
+
+pub fn wait_synchronization(handles: &[HandleRef], timeout_ns: Option<usize>) -> Result<usize, usize> {
+    unsafe {
+        let mut handleidx = 0usize;
+        let ret = syscall!(0x18, &mut handleidx, handles.as_ptr(), handles.len(), timeout_ns.unwrap_or(usize::max_value()));
+        if ret != 0 {
+            Err(ret)
+        } else {
+            Ok(handleidx)
+        }
+    }
+}
+
+pub fn connect_to_named_port(s: &str) -> Result<ClientSession, usize> {
+    unsafe {
+        let mut out_handle = 0u32;
+        let ret = syscall!(0x1F, &mut out_handle, s as *const str as *const u8 as usize);
+        if ret != 0 {
+            Err(ret)
+        } else {
+            Ok(ClientSession(Handle(out_handle)))
+        }
+    }
+}
+
+pub fn output_debug_string(s: &str) -> Result<(), usize> {
+    unsafe {
+        let ret = syscall!(0x27, s as *const str as *const u8 as usize, s.len());
+        if ret != 0 {
+            Err(ret)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+pub fn accept_session(port: &ServerPort) -> Result<ServerSession, usize> {
+    unsafe {
+        let mut out_handle = 0u32;
+        let ret = syscall!(0x41, &mut out_handle, (port.0).0);
+        if ret != 0 {
+            Err(ret)
+        } else {
+            Ok(ServerSession(Handle(out_handle)))
+        }
+    }
+}
+
 pub fn create_interrupt_event(irqnum: usize, flag: u32) -> Result<ReadableEvent, usize> {
     unsafe {
         let mut out_handle = 0u32;
@@ -96,14 +170,14 @@ pub fn create_interrupt_event(irqnum: usize, flag: u32) -> Result<ReadableEvent,
     }
 }
 
-pub fn wait_synchronization(handles: &[HandleRef], timeout_ns: Option<usize>) -> Result<usize, usize> {
+pub fn manage_named_port(name: &str, max_handles: u32) -> Result<ServerPort, usize> {
     unsafe {
-        let mut handleidx = 0usize;
-        let ret = syscall!(0x18, &mut handleidx, handles.as_ptr(), handles.len(), timeout_ns.unwrap_or(usize::max_value()));
+        let mut out_handle = 0u32;
+        let ret = syscall!(0x71, &mut out_handle, name as *const str as *const u8 as usize, max_handles);
         if ret != 0 {
             Err(ret)
         } else {
-            Ok(handleidx)
+            Ok(ServerPort(Handle(out_handle)))
         }
     }
 }
@@ -121,24 +195,5 @@ pub fn map_framebuffer() -> Result<(&'static mut [u8], usize, usize, usize), usi
             let framebuffer_size = bpp * width * height / 8;
             Ok((slice::from_raw_parts_mut(addr as *mut u8, framebuffer_size), width, height, bpp))
         }
-    }
-}
-
-pub fn output_debug_string(s: &str) -> Result<(), usize> {
-    unsafe {
-        let ret = syscall!(0x27, s as *const str as *const u8 as usize, s.len());
-        if ret != 0 {
-            Err(ret)
-        } else {
-            Ok(())
-        }
-    }
-}
-
-pub fn exit_process() -> ! {
-    unsafe {
-        let ret = syscall!(0x7);
-        let _ = output_debug_string(&format!("Failed to exit: {}", ret));
-        loop {}
     }
 }

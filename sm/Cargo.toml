@@ -1,0 +1,7 @@
+[package]
+name = "kfs-sm"
+version = "0.1.0"
+authors = ["roblabla <unfiltered@roblab.la>"]
+
+[dependencies]
+libuser = { path = "../libuser" }

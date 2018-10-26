@@ -1,2 +1,2 @@
 [workspace]
-members = ["kernel", "bootstrap", "shell", "libuser", "clock"]
+members = ["kernel", "bootstrap", "shell", "libuser", "clock", "sm"]

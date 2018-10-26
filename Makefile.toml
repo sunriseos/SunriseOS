@@ -43,6 +43,20 @@ dependencies = ["kernel-linker"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-kernel", "--release" ]
 
+[tasks.sm]
+workspace = false
+description = "Compiles kfs-sm"
+dependencies = ["userspace-linker"]
+command = "cargo"
+args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-sm"]
+
+[tasks.sm-release]
+workspace = false
+description = "Compiles kfs-sm"
+dependencies = ["userspace-linker"]
+command = "cargo"
+args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-sm", "--release"]
+
 [tasks.shell]
 workspace = false
 description = "Compiles kfs-shell"
@@ -74,12 +88,12 @@ args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-clock", "--releas
 [tasks.userspace]
 workspace = false
 description = "Compiles userspace apps"
-dependencies = ["shell", "clock"]
+dependencies = ["shell", "clock", "sm"]
 
 [tasks.userspace-release]
 workspace = false
 description = "Compiles userspace apps"
-dependencies = ["shell-release", "clock-release"]
+dependencies = ["shell-release", "clock-release", "sm-release"]
 
 [tasks.iso]
 workspace = false
@@ -91,6 +105,7 @@ cp target/i386-unknown-none/debug/kfs-bootstrap isofiles/boot/
 cp target/i386-unknown-none/debug/kfs-kernel    isofiles/boot/
 cp target/i386-unknown-none/debug/kfs-shell     isofiles/boot/
 cp target/i386-unknown-none/debug/kfs-clock     isofiles/boot/
+cp target/i386-unknown-none/debug/kfs-sm        isofiles/boot/
 grub-mkrescue -o os.iso isofiles
 '''
 ]
@@ -105,6 +120,7 @@ cp target/i386-unknown-none/release/kfs-bootstrap isofiles/boot/
 cp target/i386-unknown-none/release/kfs-kernel    isofiles/boot/
 cp target/i386-unknown-none/release/kfs-shell     isofiles/boot/
 cp target/i386-unknown-none/release/kfs-clock     isofiles/boot/
+cp target/i386-unknown-none/release/kfs-sm        isofiles/boot/
 grub-mkrescue -o os.iso isofiles
 '''
 ]
