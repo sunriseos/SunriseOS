@@ -310,6 +310,62 @@ pub trait PageTablesSet {
     /// Finds a virtual space hole that can contain page_nb consecutive pages
     fn find_available_virtual_space_aligned<Land: VirtualSpaceLand>(&mut self, page_nb: usize, alignement: usize) -> Option<VirtualAddress>;
 
+    /// Prints the current mapping.
+    fn print_mapping(&mut self) {
+        #[derive(Debug, Clone, Copy)]
+        enum State { Present(usize, usize), Guarded(usize), Available(usize) }
+        impl State {
+            fn get_vaddr(&self) -> usize {
+                match self {
+                    &State::Present(addr, _) => addr,
+                    &State::Guarded(addr) => addr,
+                    &State::Available(addr) => addr,
+                }
+            }
+
+            fn update(&mut self, newstate: State) {
+                let old_self = ::core::mem::replace(self, State::Present(0, 0));
+                let mut real_newstate = match (old_self, newstate) {
+                    (State::Present(addr, phys), State::Present(newaddr, newphys)) if newphys - phys == newaddr - addr => State::Present(addr, phys),
+                    (State::Present(addr, phys), State::Present(newaddr, newphys)) => State::Present(addr, phys),
+                    (State::Guarded(addr), State::Guarded(newaddr)) => State::Guarded(addr),
+                    (State::Available(addr), State::Available(newaddr)) => State::Available(addr),
+                    (old, new) => {
+                        old.print(new);
+                        new
+                    }
+                };
+                *self = real_newstate;
+            }
+
+            fn from<T: PageTablesSet + ?Sized>(set: &mut T, addr: VirtualAddress) -> State {
+                match set.get_phys(addr) {
+                    PageState::Present(table) => State::Present(addr.addr(), table.addr()),
+                    PageState::Guarded => State::Guarded(addr.addr()),
+                    _ => State::Available(addr.addr())
+                }
+            }
+
+            fn print(&self, newstate: State) {
+                let new_vaddr = newstate.get_vaddr();
+                match *self {
+                    State::Present(addr, phys) => writeln!(Serial, "{:#010x} - {:#010x} - MAPS {:#010x}-{:#010x}", addr, new_vaddr, phys, (phys + (new_vaddr - addr))),
+                    State::Guarded(addr) => writeln!(Serial, "{:#010x} - {:#010x} - GUARDED", addr, new_vaddr),
+                    State::Available(addr) => writeln!(Serial, "{:#010x} - {:#010x} - AVAILABLE", addr, new_vaddr),
+                };
+            }
+        }
+
+        let mut iter = (0..utils::align_down(usize::max_value(), PAGE_SIZE)).step_by(PAGE_SIZE);
+        let mut state = State::from(self, VirtualAddress(iter.next().unwrap()));
+
+        // Don't print last entry because it's just the recursive entry.
+        for vaddr in iter {
+            state.update(State::from(self, VirtualAddress(vaddr)));
+        }
+
+        state.print(State::Available((ENTRY_COUNT - 1) * PAGE_SIZE * ENTRY_COUNT));
+    }
 
     /// Deletes a mapping in the page tables, returning the Frame if one was
     /// mapped.
