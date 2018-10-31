@@ -272,7 +272,13 @@ where
 
 /// The function called when a process was schedule for the first time,
 /// right after the arch-specific process switch was performed.
-pub fn scheduler_first_schedule(current_process: ProcessStructArc, entrypoint: usize, stack: usize) {
+///
+/// It takes a reference to the current process (which will be set), and a function that should jump
+/// to this process entrypoint.
+///
+/// The passed function should take care to change the protection level, and ensure it cleans up all
+/// the registers before calling the EIP, in order to avoid leaking information to userspace.
+pub fn scheduler_first_schedule<F: FnOnce()>(current_process: ProcessStructArc, jump_to_entrypoint: F) {
     // replace CURRENT_PROCESS with ourself.
     // If previously running process had deleted all other references to itself, this
     // is where its drop actually happens
@@ -283,5 +289,5 @@ pub fn scheduler_first_schedule(current_process: ProcessStructArc, entrypoint: u
         ::i386::instructions::interrupts::sti();
     }
 
-    ::i386::process_switch::jump_to_entrypoint(entrypoint, stack)
+    jump_to_entrypoint()
 }

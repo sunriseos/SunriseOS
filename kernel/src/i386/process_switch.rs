@@ -226,7 +226,7 @@ pub unsafe fn prepare_for_first_schedule(p: &ProcessStruct, entrypoint: usize, u
     // *  poison eip * 0x00000000
     let initial_registers = RegistersOnStack {
         eflags: 0x00000000, // no flag set, seems ok
-        edi: 0,
+        edi: 0, // Overwritten by process_switch
         esi: 0,
         ebp: stack_start,                         // -+
         esp: 0, // ignored by the popad anyway    //  |
@@ -249,8 +249,10 @@ pub unsafe fn prepare_for_first_schedule(p: &ProcessStruct, entrypoint: usize, u
     p.phwcontext.lock().esp = initial_registers_stack_top as usize;
 }
 
-/// The function ret'd on, on a process' first schedule.
-/// Interrupts are still off.
+/// The function ret'd on, on a process' first schedule - as setup by the prepare_for_first_schedule.
+///
+/// At this point, interrupts are still off. This function should ensure the process is properly
+/// switched (set up ESP0, IOPB and whatnot) and call scheduler_first_schedule.
 #[naked]
 fn first_schedule() {
     // just get the ProcessStruct pointer in $edi, the entrypoint in $eax, and call a rust function
@@ -284,13 +286,13 @@ fn first_schedule() {
         }
 
         // call the scheduler to finish the high-level process switch mechanics
-        ::scheduler::scheduler_first_schedule(current, entrypoint, userspace_stack);
+        ::scheduler::scheduler_first_schedule(current, || jump_to_entrypoint(entrypoint, userspace_stack));
 
         unreachable!()
     }
 }
 
-pub fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize) {
+fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize) {
     unsafe {
         asm!("
         mov ax,0x2B // Set data segment selector to Userland Data, Ring 3
@@ -305,7 +307,18 @@ pub fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize) {
         pushfd
         push 0x23   // Userland Code, Ring 3
         push $0     // Entrypoint
+
+        // Clean up all registers. Also setup arguments.
+        mov eax, 0
+        mov ebx, 0
+        mov ecx, 0
+        mov edx, 0
+        mov ebp, 0
+        mov edi, 0
+        mov esi, 0
+
         iretd
-        " :: "r"(ep), "r"(userspace_stack_ptr) :: "intel", "volatile");
+        " :: "r"(ep), "r"(userspace_stack_ptr) :
+             /* Prevent using eax as input, it's used early. */ "eax" : "intel", "volatile");
     }
 }
