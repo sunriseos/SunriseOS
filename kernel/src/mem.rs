@@ -4,6 +4,7 @@
 //! and UserSpacePointer
 
 use core::ops::{Deref, DerefMut};
+use core::mem;
 use core::fmt::{Formatter, Error, Display, Debug};
 use error::{KernelError, ArithmeticOperation};
 use failure::Backtrace;
@@ -96,6 +97,17 @@ impl VirtualAddress {
 #[repr(transparent)]
 pub struct UserSpacePtr<T: ?Sized>(pub *const T);
 
+impl<I> UserSpacePtr<[I]> {
+    pub fn from_raw_parts(data: *const I, len: usize) -> UserSpacePtr<[I]> {
+        unsafe {
+            UserSpacePtr(mem::transmute(FatPtr {
+                data: data as usize,
+                len: len
+            }))
+        }
+    }
+}
+
 impl<T: ?Sized> Deref for UserSpacePtr<T> {
     type Target = T;
 
@@ -109,6 +121,17 @@ impl<T: ?Sized> Deref for UserSpacePtr<T> {
 
 #[repr(transparent)]
 pub struct UserSpacePtrMut<T: ?Sized>(pub *mut T);
+
+impl<I> UserSpacePtrMut<[I]> {
+    pub fn from_raw_parts_mut(data: *mut I, len: usize) -> UserSpacePtrMut<[I]> {
+        unsafe {
+            UserSpacePtrMut(mem::transmute(FatPtr {
+                data: data as usize,
+                len: len
+            }))
+        }
+    }
+}
 
 impl<T: ?Sized> Deref for UserSpacePtrMut<T> {
     type Target = T;
@@ -127,6 +150,12 @@ impl<T: ?Sized> DerefMut for UserSpacePtrMut<T> {
             // TODO: Verify that we are allowed to read, panic otherwise.
             &mut *self.0
         }
+    }
+}
+
+impl<T> Into<UserSpacePtr<T>> for UserSpacePtrMut<T> {
+    fn into(self) -> UserSpacePtr<T> {
+        UserSpacePtr(self.0)
     }
 }
 

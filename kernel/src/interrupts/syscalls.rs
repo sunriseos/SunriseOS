@@ -149,15 +149,9 @@ pub extern fn syscall_handler_inner(syscall_nr: usize, arg1: usize, arg2: usize,
     let ret = match syscall_nr {
         // Horizon-inspired syscalls!
         0x07 => exit_process(),
-        0x18 => wait_synchronization(UserSpacePtrMut(arg1 as _), UserSpacePtr(unsafe {mem::transmute(FatPtr {
-            data: arg2,
-            len: arg3
-        })}), arg4),
+        0x18 => wait_synchronization(UserSpacePtrMut(arg1 as _), UserSpacePtr::from_raw_parts(arg2 as _, arg3), arg4),
         0x1F => connect_to_named_port(UserSpacePtrMut(arg1 as _), UserSpacePtr(arg2 as _)),
-        0x27 => output_debug_string(UserSpacePtr(unsafe {mem::transmute(FatPtr {
-            data: arg1,
-            len: arg2
-        })})),
+        0x27 => output_debug_string(UserSpacePtr::from_raw_parts(arg1 as _, arg2)),
         0x41 => accept_session(UserSpacePtrMut(arg1 as _), arg2 as _),
         0x53 => create_interrupt_event(UserSpacePtrMut(arg1 as _), arg2, arg3 as u32),
         //0x79 => create_process(arg1, arg2),
