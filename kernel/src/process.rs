@@ -1,4 +1,4 @@
-///! Process
+//! Process
 
 use stack::KernelStack;
 use i386::process_switch::*;
@@ -27,6 +27,7 @@ use ipc::{ServerPort, ClientPort, ServerSession, ClientSession};
 /// - Its hardware context, to be restored on rescheduling
 #[derive(Debug)]
 pub struct ProcessStruct {
+    pub pid:                  usize,
     pub name:                 String,
     pub pstate:               ProcessStateAtomic,
     pub pmemory:              Mutex<ProcessMemory>,
@@ -52,6 +53,8 @@ pub struct ProcessStruct {
     // Maybe in ProcessMemory?
     pub ioports: Vec<u16>
 }
+
+static NEXT_PROCESS_ID: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Debug)]
 pub enum Handle {
@@ -214,8 +217,15 @@ impl ProcessStruct {
         // the state of the process, NotReady
         let pstate = ProcessStateAtomic::new((ProcessState::NotReady));
 
+        // The PID.
+        let pid = NEXT_PROCESS_ID.fetch_add(1, Ordering::SeqCst);
+        if pid == usize::max_value() {
+            panic!("Max PID reached!");
+        }
+
         let p = Arc::new(
             ProcessStruct {
+                pid,
                 name,
                 pstate,
                 pmemory,
@@ -254,8 +264,14 @@ impl ProcessStruct {
         // the already currently active pages
         let pmemory = Mutex::new(ProcessMemory::from_active_page_tables());
 
+        let pid = NEXT_PROCESS_ID.fetch_add(1, Ordering::SeqCst);
+        if pid == usize::max_value() {
+            panic!("Max PID reached!");
+        }
+
         let p = Arc::new(
             ProcessStruct {
+                pid,
                 name: String::from("init"),
                 pstate,
                 pmemory,
