@@ -10,9 +10,16 @@ use sync::{Lock, SpinLockIRQ, SpinLockIRQGuard};
 use core::sync::atomic::Ordering;
 use error::{KernelError, UserspaceError};
 
-/// We always keep an Arc to the process currently running.
-/// This enables finding the current process from anywhere,
-/// and also prevents dropping the ProcessStruct of the process we're currently running
+/// An Arc to the currently running process.
+///
+/// In the early kernel initialization, this will be None. Once the first process takes
+/// over, this variable is guaranteed to always be Some and never go back to None - if
+/// all processes are currently waiting, the global will point to whatever the last
+/// process was running. A useful side-effect: the CURRENT_PROCESS's pmemory will *always*
+/// be the current CR3.
+///
+/// A side-effect of this guarantee is, if the last process dies, it will still be kept alive
+/// through this global!
 ///
 /// # Safety
 ///
