@@ -11,13 +11,18 @@ use bit_field::BitField;
 use core::mem::{self, size_of};
 use core::ops::{Deref, DerefMut};
 use core::slice;
+use core::fmt;
 
 use super::i386::{PrivilegeLevel, TssStruct};
 use i386::structures::gdt::SegmentSelector;
 use i386::instructions::tables::{lgdt, sgdt, DescriptorTablePointer};
 use i386::instructions::segmentation::*;
 
-use paging::{self, KernelLand, VirtualAddress, PAGE_SIZE, ACTIVE_PAGE_TABLES, PageTablesSet};
+use paging::PAGE_SIZE;
+use paging::lands::KernelLand;
+use paging::{MappingFlags, kernel_memory::get_kernel_memory};
+use frame_allocator::{FrameAllocator, FrameAllocatorTrait};
+use mem::VirtualAddress;
 use alloc::vec::Vec;
 use utils::div_round_up;
 
@@ -106,6 +111,7 @@ struct GdtManager {
 impl GdtManager {
     pub fn load(cur_loaded: DescriptorTable, new_cs: u16, new_ds: u16, new_ss: u16) -> GdtManager {
         let clone = cur_loaded.clone();
+        info!("{:#?}", cur_loaded);
         cur_loaded.load_global(new_cs, new_ds, new_ss);
 
         GdtManager {
@@ -155,7 +161,9 @@ pub fn push_task_segment(task: &'static TssStruct) -> u16 {
 lazy_static! {
     pub static ref MAIN_TASK: VirtualAddress = {
         // We need TssStruct + 0x2001 bytes of IOPB.
-        let vaddr = ACTIVE_PAGE_TABLES.lock().get_pages::<KernelLand>(div_round_up(size_of::<TssStruct>() + 0x2001, paging::PAGE_SIZE));
+        let pregion = FrameAllocator::allocate_region(div_round_up(size_of::<TssStruct>() + 0x2001, PAGE_SIZE))
+            .expect("Failed to allocate physical region for tss MAIN_TASK");
+        let vaddr = get_kernel_memory().map_phys_region(pregion, MappingFlags::WRITABLE);
         let tss = vaddr.addr() as *mut TssStruct;
         unsafe {
             *tss = TssStruct::new();
@@ -255,8 +263,41 @@ enum SystemDescriptorTypes {
 // TODO: make this an enum based on a bit? But then it's not repr(transparent)
 // :(
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 struct DescriptorTableEntry(u64);
+
+impl fmt::Debug for DescriptorTableEntry {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        //ES =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+        if self.0 == 0 {
+            write!(f, "DescriptorTableEntry(NULLDESC)")
+        } else {
+            let ty = if self.0.get_bit(44) && self.0.get_bit(43) {
+                "CS"
+            } else if self.0.get_bit(44) {
+                "DS"
+            } else {
+                match self.0.get_bits(40..44) {
+                    1 => "TSS16-avl",
+                    2 => "LDT",
+                    3 => "TSS16-busy",
+                    4 => "CALL16",
+                    5 => "TASK",
+                    6 => "INT16",
+                    7 => "TRAP16",
+                    9 => "TSS32-avl",
+                    11 => "TSS32-busy",
+                    12 => "CALL32",
+                    14 => "INT32",
+                    15 => "TRAP32",
+                    _ => "UNKN"
+                }
+            };
+            write!(f, "DescriptorTableEntry(base={:#010x}, limit={:#010x}, flags={:#010x}, DPL={:?}, type={})",
+                   self.get_base(), self.get_limit(), self.0, self.get_ring_level(), ty)
+        }
+    }
+}
 
 impl DescriptorTableEntry {
     pub fn null_descriptor() -> DescriptorTableEntry {
@@ -303,7 +344,8 @@ impl DescriptorTableEntry {
 
     /// Creates a new LDT descriptor.
     pub fn new_ldt(base: &'static DescriptorTable, priv_level: PrivilegeLevel) -> DescriptorTableEntry {
-        Self::new_system(SystemDescriptorTypes::Ldt, base as *const _ as u32, (base.table.len() * size_of::<DescriptorTableEntry>() - 1) as u32, priv_level)
+        let limit = if base.table.len() == 0 { 0 } else { base.table.len() * size_of::<DescriptorTableEntry>() - 1 };
+        Self::new_system(SystemDescriptorTypes::Ldt, base as *const _ as u32, limit as u32, priv_level)
     }
 
 

@@ -2,18 +2,18 @@
 
 use stack::KernelStack;
 use i386::process_switch::*;
-use i386::mem::paging::InactivePageTables;
+use paging::process_memory::ProcessMemory;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
 use event::Waitable;
-use sync::{RwLock, RwLockWriteGuard, SpinLockIRQ, SpinLock};
+use sync::{RwLock, RwLockWriteGuard, SpinLockIRQ, SpinLock, Mutex, MutexGuard};
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::fmt::{self, Debug};
 use scheduler;
-use error::Error;
+use error::{KernelError, UserspaceError};
 use ipc::{ServerPort, ClientPort, ServerSession, ClientSession};
 
 /// The struct representing a process. There's one for every process.
@@ -29,7 +29,7 @@ use ipc::{ServerPort, ClientPort, ServerSession, ClientSession};
 pub struct ProcessStruct {
     pub name:                 String,
     pub pstate:               ProcessStateAtomic,
-    pub pmemory:              SpinLockIRQ<ProcessMemory>,
+    pub pmemory:              Mutex<ProcessMemory>,
     pub pstack:               KernelStack,
     pub phwcontext:           SpinLockIRQ<ProcessHardwareContext>,
     pub phandles:             SpinLockIRQ<HandleTable>,
@@ -63,12 +63,12 @@ pub enum Handle {
 }
 
 impl Handle {
-    pub fn as_waitable(&self) -> Result<&Waitable, Error> {
+    pub fn as_waitable(&self) -> Result<&Waitable, UserspaceError> {
         match self {
             &Handle::ReadableEvent(ref waitable) => Ok(&**waitable),
             &Handle::ServerPort(ref serverport) => Ok(serverport),
             &Handle::ServerSession(ref serversession) => Ok(serversession),
-            _ => Err(Error::InvalidHandle),
+            _ => Err(UserspaceError::InvalidHandle),
         }
     }
 }
@@ -196,25 +196,13 @@ impl ProcessStateAtomic {
     }
 }
 
-/// The memory pages of this process
-///
-/// - Inactive contains the process's pages.
-/// - Active means the already currently active ones, accessible through ACTIVE_PAGE_TABLES.
-///
-/// A ProcessMemory should be the only owner of a process' pages
-#[derive(Debug)]
-pub enum ProcessMemory {
-    Inactive(SpinLockIRQ<InactivePageTables>),
-    Active
-}
-
 impl ProcessStruct {
     /// Creates a new process.
     pub fn new(name: String, ioports: Vec<u16>) -> ProcessStructArc {
         use ::core::mem::ManuallyDrop;
 
         // allocate its memory space
-        let pmemory = SpinLockIRQ::new(ProcessMemory::Inactive(SpinLockIRQ::new(InactivePageTables::new())));
+        let pmemory = Mutex::new(ProcessMemory::new());
 
         // allocate its kernel stack
         let pstack = KernelStack::allocate_stack()
@@ -264,7 +252,7 @@ impl ProcessStruct {
         let phwcontext = SpinLockIRQ::new(ProcessHardwareContext::new());
 
         // the already currently active pages
-        let pmemory = SpinLockIRQ::new(ProcessMemory::Active);
+        let pmemory = Mutex::new(ProcessMemory::from_active_page_tables());
 
         let p = Arc::new(
             ProcessStruct {
@@ -290,11 +278,11 @@ impl ProcessStruct {
     ///
     /// The given entrypoint *must* point to a mapped address in that process's address space.
     /// The function makes no attempt at checking if it is kernel or userspace.
-    pub unsafe fn set_start_arguments(&self, ep: usize, stack: usize) -> Result<(), Error> {
+    pub unsafe fn set_start_arguments(&self, ep: usize, stack: usize) -> Result<(), UserspaceError> {
         let oldval = self.pstate.compare_and_swap(ProcessState::NotReady, ProcessState::Readying, Ordering::SeqCst);
 
         if oldval != ProcessState::NotReady {
-            return Err(Error::ProcessAlreadyStarted);
+            return Err(UserspaceError::ProcessAlreadyStarted);
         }
 
         // prepare the process's stack for its first schedule-in

@@ -35,28 +35,25 @@ extern crate hashmap_core;
 extern crate xmas_elf;
 extern crate rustc_demangle;
 extern crate byteorder;
+#[macro_use]
+extern crate failure;
 
 use ascii::AsAsciiStr;
 use core::fmt::Write;
 use alloc::prelude::*;
 
+mod paging;
 mod event;
 mod error;
 mod logger;
 mod log_impl;
-use i386::mem::paging;
-use i386::mem::frame_alloc;
 pub use logger::*;
 pub use devices::rs232::SerialLogger;
-use i386::mem::PhysicalAddress;
-use i386::mem::frame_alloc::Frame;
-use paging::{KernelLand, UserLand};
-use process::{ProcessStruct, ProcessMemory};
-
 mod i386;
 #[cfg(target_os = "none")]
 mod gdt;
 mod interrupts;
+mod frame_allocator;
 
 mod utils;
 mod heap_allocator;
@@ -75,9 +72,11 @@ pub use heap_allocator::rust_oom;
 #[global_allocator]
 static ALLOCATOR: heap_allocator::Allocator = heap_allocator::Allocator::new();
 
-pub use frame_alloc::FrameAllocator;
-pub use i386::stack;
-use paging::{InactivePageTables, PageTablesSet, EntryFlags};
+use i386::stack;
+use paging::{PAGE_SIZE, MappingFlags};
+use mem::{PhysicalAddress, VirtualAddress};
+use paging::lands::{KernelLand, UserLand};
+use process::ProcessStruct;
 
 unsafe fn force_double_fault() {
     loop {
@@ -89,24 +88,17 @@ fn main() {
     info!("Loading all the init processes");
     for module in i386::multiboot::get_boot_information().module_tags().skip(1) {
         info!("Loading {}", module.name());
-        let proc = ProcessStruct::new(String::from(module.name()), elf_loader::get_iopb(module));
+        let mapped_module = elf_loader::map_grub_module(module);
+        let proc = ProcessStruct::new(String::from(module.name()), elf_loader::get_iopb(&mapped_module));
         {
             let (ep, sp) = {
-                let pmemlock = proc.pmemory.lock();
+                let mut pmemlock = proc.pmemory.lock();
 
-                let pmem = if let &ProcessMemory::Inactive(ref pmem) = &*pmemlock {
-                    pmem
-                } else {
-                    panic!("newly created process has active pages?")
-                };
-
-                let mut pmeminnerlock = pmem.lock();
-
-                let ep = elf_loader::load_builtin(&mut *pmeminnerlock, module);
+                let ep = elf_loader::load_builtin(&mut pmemlock, &mapped_module);
 
                 // TODO: Page guard.
-                let sp = pmeminnerlock.get_pages::<UserLand>(4);
-                (ep, sp + 4 * paging::PAGE_SIZE)
+                let sp = pmemlock.get_pages::<UserLand>(4 * PAGE_SIZE);
+                (ep, sp + 4 * PAGE_SIZE)
             };
             unsafe { proc.set_start_arguments(ep, sp.addr()); }
         }
@@ -163,17 +155,8 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     info!("Parsed multiboot informations");
 
     // Setup frame allocator
-    FrameAllocator::init(&boot_info);
+    frame_allocator::init(&boot_info);
     info!("Initialized frame allocator");
-
-    // Create a set of pages where the bootstrap is not mapped
-    let mut kernel_pages = paging::InactivePageTables::new();
-    info!("Created kernel pages");
-
-    // Start using these page tables
-    let bootstrap_pages = unsafe { kernel_pages.switch_to() };
-    info!("Switched to kernel pages");
-    bootstrap_pages.delete();
 
     // Set up (read: inhibit) the GDT.
     info!("Initializing gdt...");

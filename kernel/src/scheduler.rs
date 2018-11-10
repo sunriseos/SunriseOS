@@ -8,7 +8,7 @@ use process::{ProcessStruct, ProcessState, ProcessStructArc};
 use i386::process_switch::process_switch;
 use sync::{Lock, SpinLockIRQ, SpinLockIRQGuard};
 use core::sync::atomic::Ordering;
-use error::Error;
+use error::{KernelError, UserspaceError};
 
 /// We always keep an Arc to the process currently running.
 /// This enables finding the current process from anywhere,
@@ -110,7 +110,7 @@ pub fn is_in_schedule_queue(process: &ProcessStructArc) -> bool {
 /// This can be used to avoid race conditions between registering for an event, and unscheduling.
 ///
 /// The current process will not be ran again unless it was registered for rescheduling.
-pub fn unschedule<'a, LOCK, GUARD>(lock: &'a LOCK, guard: GUARD) -> Result<GUARD, Error>
+pub fn unschedule<'a, LOCK, GUARD>(lock: &'a LOCK, guard: GUARD) -> Result<GUARD, UserspaceError>
 where
     LOCK: Lock<'a, GUARD>,
     GUARD: 'a
@@ -125,7 +125,7 @@ where
     let guard = internal_schedule(lock, true);
 
     if get_current_process().pstate.load(Ordering::SeqCst) == ProcessState::Killed {
-        Err(Error::Canceled)
+        Err(UserspaceError::Canceled)
     } else {
         Ok(guard)
     }

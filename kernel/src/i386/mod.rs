@@ -8,7 +8,6 @@ use core::fmt;
 use alloc::boxed::Box;
 use core::ops::{Deref, DerefMut};
 
-pub mod mem;
 pub mod stack;
 pub mod pio;
 pub mod multiboot;
@@ -330,7 +329,7 @@ impl Default for TssStruct {
 const_assert_eq!(tss_struct_size; ::core::mem::size_of::<TssStruct>(), 0x68);
 
 use i386::structures::gdt::SegmentSelector;
-use i386::mem::PhysicalAddress;
+use mem::PhysicalAddress;
 
 impl TssStruct {
     /// Creates a new TssStruct.

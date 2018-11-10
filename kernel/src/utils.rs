@@ -110,3 +110,11 @@ pub fn div_round_up(a: usize, b: usize) -> usize {
         a / b
     }
 }
+
+/// align_up, but checks if addr overflows
+pub fn align_up_checked(addr: usize, align: usize) -> Option<usize> {
+    match addr & align - 1 {
+        0 => Some(addr),
+        _ => addr.checked_add(align - (addr % align))
+    }
+}

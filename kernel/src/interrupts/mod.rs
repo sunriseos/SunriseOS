@@ -2,8 +2,9 @@ use i386::structures::idt::{ExceptionStackFrame, PageFaultErrorCode, Idt};
 use i386::instructions::interrupts::sti;
 use i386::pio::Pio;
 use io::Io;
-use i386::mem::{VirtualAddress, PhysicalAddress};
-use i386::mem::paging::{PageTablesSet, ACTIVE_PAGE_TABLES, EntryFlags};
+use mem::{VirtualAddress, PhysicalAddress};
+use paging::lands::KernelLand;
+use paging::{MappingFlags, kernel_memory::get_kernel_memory};
 use i386::{stack, TssStruct, PrivilegeLevel};
 use i386;
 use gdt;
@@ -14,7 +15,6 @@ use core::fmt::Write;
 use core::slice;
 use sync::SpinLock;
 use sync;
-use paging::{self, KernelLand, get_page};
 use utils;
 use devices::pic;
 
@@ -59,21 +59,8 @@ fn double_fault_handler() {
 
     // Acquire kernel elf.
     let info = i386::multiboot::get_boot_information();
-    let kernel = info.module_tags().nth(0).unwrap();
-
-    // Find a place to map the full ELF
-    let pagenb = utils::div_round_up((kernel.end_address() - kernel.start_address()) as usize, paging::PAGE_SIZE);
-
-    let vmem = {
-        let mut pagetable = ACTIVE_PAGE_TABLES.lock();
-        let vmem = pagetable.find_available_virtual_space::<KernelLand>(pagenb).unwrap();
-        pagetable.map_range(PhysicalAddress(utils::align_down(kernel.start_address() as usize, paging::PAGE_SIZE)), vmem, pagenb, EntryFlags::empty());
-
-        vmem.addr() + ((kernel.start_address() as usize) % paging::PAGE_SIZE)
-    };
-
-    // Parse the ELF.
-    let elf = ElfFile::new(unsafe { slice::from_raw_parts(vmem as *mut u8, (kernel.end_address() - kernel.start_address()) as usize) }).unwrap();
+    let mut module = ::elf_loader::map_grub_module(info.module_tags().nth(0).unwrap());
+    let elf = module.elf.as_mut().expect("double_fault_handler: failed to parse module kernel elf");
 
     // Get the Main TSS so I can recover some information about what happened.
     unsafe {
@@ -218,7 +205,7 @@ pub unsafe fn init() {
     pic::init();
 
     {
-        let page = get_page::<KernelLand>();
+        let page = get_kernel_memory().get_page();
         let idt = page.addr() as *mut u8 as *mut Idt;
         unsafe {
             (*idt).init();

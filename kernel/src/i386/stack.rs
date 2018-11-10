@@ -27,9 +27,11 @@
 //!  in order to be able to find its bottom from any page.
 
 use ::core::mem::size_of;
-use paging::*;
-use i386::mem::VirtualAddress;
-use sync::RwLock;
+use paging::lands::KernelLand;
+use paging::{PAGE_SIZE, MappingFlags, PageState, kernel_memory::get_kernel_memory};
+use frame_allocator::{FrameAllocator, FrameAllocatorTrait};
+use mem::VirtualAddress;
+use error::KernelError;
 use xmas_elf::ElfFile;
 use xmas_elf::symbol_table::{Entry32, Entry};
 use rustc_demangle::demangle as rustc_demangle;
@@ -49,21 +51,21 @@ pub struct KernelStack {
 
 impl KernelStack {
     /// Allocates the kernel stack of a process.
-    pub fn allocate_stack() -> Option<KernelStack> {
-        let mut tables = ACTIVE_PAGE_TABLES.lock();
-        tables.find_available_virtual_space_aligned::<KernelLand>(STACK_SIZE_WITH_GUARD, STACK_ALIGNEMENT)
-            .map(|va| {
-                tables.map_range_allocate(VirtualAddress(va.addr() + PAGE_SIZE), STACK_SIZE,
-                                          EntryFlags::WRITABLE);
-                tables.map_page_guard(va);
+    pub fn allocate_stack() -> Result<KernelStack, KernelError> {
+        let mut memory = get_kernel_memory();
+        let va = memory.find_virtual_space_aligned(STACK_SIZE_WITH_GUARD * PAGE_SIZE,
+                                                   2usize.pow(STACK_ALIGNEMENT as u32))?;
+        let region = FrameAllocator::allocate_region(STACK_SIZE)?;
 
-                let mut me = KernelStack { stack_address: va };
+        memory.map_phys_region_to(region, va + PAGE_SIZE, MappingFlags::WRITABLE);
+        memory.guard(va, PAGE_SIZE);
 
-                // This is safe because va points to valid memory
-                unsafe { me.create_poison_pointers(); };
+        let mut me = KernelStack { stack_address: va };
 
-                me
-            })
+        // This is safe because va points to valid memory
+        unsafe { me.create_poison_pointers(); };
+
+        Ok(me)
     }
 
     fn get_stack_bottom(esp: usize) -> usize {
@@ -145,11 +147,12 @@ impl KernelStack {
     /// before attempting to access it. It does create a &[u8] from a technically "shared"
     /// resource. However, the compiler shouldn't know about this, so UB shouldn't be met.
     pub fn dump_stack<'a>(mut esp: usize, ebp: usize, eip: usize, elf: Option<(&ElfFile<'a>, &'a [Entry32])>) {
+        let mut memory = get_kernel_memory();
         let stack_bottom = (Self::get_stack_bottom(esp) + PAGE_SIZE) as *const u8;
 
         // Check we have STACK_SIZE pages mapped as readable (at least) from stack_bottom.
         for i in 0..STACK_SIZE {
-            if let PageState::Present(_) = ACTIVE_PAGE_TABLES.lock().get_phys(VirtualAddress(stack_bottom as usize + i * PAGE_SIZE)) {
+            if let PageState::Present(_) = memory.mapping_state(VirtualAddress(stack_bottom as usize + i * PAGE_SIZE)) {
                 // All good
             } else {
                 // Welp! Let's stop here.
@@ -168,10 +171,7 @@ impl Drop for KernelStack {
     /// We deallocate the stack when it is dropped
     fn drop(&mut self) {
         debug!("Dropping KernelStack {:?}", self);
-        let mut tables = ACTIVE_PAGE_TABLES.lock();
-        for i in 0..STACK_SIZE_WITH_GUARD {
-            tables.unmap(self.stack_address + i * PAGE_SIZE);
-        }
+        get_kernel_memory().unmap(self.stack_address, STACK_SIZE_WITH_GUARD * PAGE_SIZE);
     }
 }
 

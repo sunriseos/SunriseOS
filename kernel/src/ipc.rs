@@ -34,7 +34,7 @@ use alloc::string::String;
 use alloc::sync::{Arc, Weak};
 use core::sync::atomic::{AtomicUsize, Ordering};
 use scheduler;
-use error::Error;
+use error::{KernelError, UserspaceError};
 use event::{self, Waitable};
 use hashmap_core::HashMap;
 use process::ProcessStruct;
@@ -109,7 +109,7 @@ pub struct IncomingConnection {
 
 impl ServerPort {
     /// Accept a new connection on the Port.
-    pub fn accept(&self) -> Result<ServerSession, Error> {
+    pub fn accept(&self) -> Result<ServerSession, UserspaceError> {
         loop {
             // Wait for incoming_connections to contain a connection.
             let _ = event::wait(Some(self as &dyn Waitable))?;
@@ -141,7 +141,7 @@ impl ServerPort {
 
 impl ClientPort {
     /// Connects to this port.
-    pub fn connect(&self) -> Result<ClientSession, Error> {
+    pub fn connect(&self) -> Result<ClientSession, UserspaceError> {
         let incoming = Arc::new(IncomingConnection {
             session: SpinLock::new(None),
             creator: scheduler::get_current_process()
@@ -153,7 +153,7 @@ impl ClientPort {
         let session = loop {
             // If no handle to the server exist anymore, give up.
             if self.0.servercount.load(Ordering::SeqCst) == 0 {
-                return Err(Error::PortRemoteDead);
+                return Err(UserspaceError::PortRemoteDead);
             }
 
             // First, wake up an accepter
@@ -234,10 +234,10 @@ lazy_static! {
     static ref NAMED_PORTS: RwLock<HashMap<String, ClientPort>> = RwLock::new(HashMap::new());
 }
 
-pub fn create_named_port(name: [u8; 12], max_sessions: u32) -> Result<ServerPort, Error> {
+pub fn create_named_port(name: [u8; 12], max_sessions: u32) -> Result<ServerPort, UserspaceError> {
     let name = match name.iter().position(|v| *v == 0) {
         Some(pos) => String::from_utf8_lossy(&name[..pos]),
-        None => return Err(Error::ExceedingMaximum)
+        None => return Err(UserspaceError::ExceedingMaximum)
     };
 
     let (server, client) = Port::new(max_sessions);
@@ -245,14 +245,14 @@ pub fn create_named_port(name: [u8; 12], max_sessions: u32) -> Result<ServerPort
     Ok(server)
 }
 
-pub fn connect_to_named_port(name: [u8; 12]) -> Result<ClientSession, Error> {
+pub fn connect_to_named_port(name: [u8; 12]) -> Result<ClientSession, UserspaceError> {
     let name = match name.iter().position(|v| *v == 0) {
         Some(pos) => String::from_utf8_lossy(&name[..pos]),
-        None => return Err(Error::ExceedingMaximum)
+        None => return Err(UserspaceError::ExceedingMaximum)
     };
 
     match NAMED_PORTS.read().get(name.as_ref()) {
         Some(client) => Ok(client.connect()?),
-        None => Err(Error::NoSuchEntry)
+        None => Err(UserspaceError::NoSuchEntry)
     }
 }
