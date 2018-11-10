@@ -59,21 +59,8 @@ fn double_fault_handler() {
 
     // Acquire kernel elf.
     let info = i386::multiboot::get_boot_information();
-    let kernel = info.module_tags().nth(0).unwrap();
-
-    // Find a place to map the full ELF
-    let pagenb = utils::div_round_up((kernel.end_address() - kernel.start_address()) as usize, paging::PAGE_SIZE);
-
-    let vmem = {
-        let mut pagetable = ACTIVE_PAGE_TABLES.lock();
-        let vmem = pagetable.find_available_virtual_space::<KernelLand>(pagenb).unwrap();
-        pagetable.map_range(PhysicalAddress(utils::align_down(kernel.start_address() as usize, paging::PAGE_SIZE)), vmem, pagenb, EntryFlags::empty());
-
-        vmem.addr() + ((kernel.start_address() as usize) % paging::PAGE_SIZE)
-    };
-
-    // Parse the ELF.
-    let elf = ElfFile::new(unsafe { slice::from_raw_parts(vmem as *mut u8, (kernel.end_address() - kernel.start_address()) as usize) }).unwrap();
+    let mut module = ::elf_loader::map_grub_module(info.module_tags().nth(0).unwrap());
+    let elf = module.elf.as_mut().expect("double_fault_handler: failed to parse module kernel elf");
 
     // Get the Main TSS so I can recover some information about what happened.
     unsafe {

@@ -88,12 +88,13 @@ fn main() {
     info!("Loading all the init processes");
     for module in i386::multiboot::get_boot_information().module_tags().skip(1) {
         info!("Loading {}", module.name());
-        let proc = ProcessStruct::new(String::from(module.name()), elf_loader::get_iopb(module));
+        let mapped_module = elf_loader::map_grub_module(module);
+        let proc = ProcessStruct::new(String::from(module.name()), elf_loader::get_iopb(&mapped_module));
         {
             let (ep, sp) = {
                 let mut pmemlock = proc.pmemory.lock();
 
-                let ep = elf_loader::load_builtin(&mut *pmeminnerlock, module);
+                let ep = elf_loader::load_builtin(&mut pmemlock, &mapped_module);
 
                 // TODO: Page guard.
                 let sp = pmemlock.get_pages::<UserLand>(4 * PAGE_SIZE);
