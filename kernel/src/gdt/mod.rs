@@ -18,7 +18,10 @@ use i386::structures::gdt::SegmentSelector;
 use i386::instructions::tables::{lgdt, sgdt, DescriptorTablePointer};
 use i386::instructions::segmentation::*;
 
-use paging::{self, KernelLand, PAGE_SIZE, ACTIVE_PAGE_TABLES, PageTablesSet};
+use paging::PAGE_SIZE;
+use paging::lands::KernelLand;
+use paging::{MappingFlags, kernel_memory::get_kernel_memory};
+use frame_allocator::{FrameAllocator, FrameAllocatorTrait};
 use mem::VirtualAddress;
 use alloc::vec::Vec;
 use utils::div_round_up;
@@ -158,7 +161,9 @@ pub fn push_task_segment(task: &'static TssStruct) -> u16 {
 lazy_static! {
     pub static ref MAIN_TASK: VirtualAddress = {
         // We need TssStruct + 0x2001 bytes of IOPB.
-        let vaddr = ACTIVE_PAGE_TABLES.lock().get_pages::<KernelLand>(div_round_up(size_of::<TssStruct>() + 0x2001, paging::PAGE_SIZE));
+        let pregion = FrameAllocator::allocate_region(div_round_up(size_of::<TssStruct>() + 0x2001, PAGE_SIZE))
+            .expect("Failed to allocate physical region for tss MAIN_TASK");
+        let vaddr = get_kernel_memory().map_phys_region(pregion, MappingFlags::WRITABLE);
         let tss = vaddr.addr() as *mut TssStruct;
         unsafe {
             *tss = TssStruct::new();

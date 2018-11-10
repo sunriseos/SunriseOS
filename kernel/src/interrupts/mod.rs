@@ -2,8 +2,9 @@ use i386::structures::idt::{ExceptionStackFrame, PageFaultErrorCode, Idt};
 use i386::instructions::interrupts::sti;
 use i386::pio::Pio;
 use io::Io;
-use i386::mem::paging::{PageTablesSet, ACTIVE_PAGE_TABLES, EntryFlags};
 use mem::{VirtualAddress, PhysicalAddress};
+use paging::lands::KernelLand;
+use paging::{MappingFlags, kernel_memory::get_kernel_memory};
 use i386::{stack, TssStruct, PrivilegeLevel};
 use i386;
 use gdt;
@@ -14,7 +15,6 @@ use core::fmt::Write;
 use core::slice;
 use spin::Mutex;
 use sync;
-use paging::{self, KernelLand, get_page};
 use utils;
 use devices::pic;
 
@@ -218,7 +218,7 @@ pub unsafe fn init() {
     pic::init();
 
     {
-        let page = get_page::<KernelLand>();
+        let page = get_kernel_memory().get_page();
         let idt = page.addr() as *mut u8 as *mut Idt;
         unsafe {
             (*idt).init();

@@ -1,12 +1,14 @@
 //! Syscall implementations
 
 use i386;
-use i386::mem::paging::{self, PageTablesSet};
 use mem::PhysicalAddress;
 use mem::{FatPtr, UserSpacePtr, UserSpacePtrMut};
+use paging::{PAGE_SIZE, MappingFlags};
+use paging::lands::{UserLand, KernelLand};
+use frame_allocator::PhysicalMemRegion;
 use process::{Handle, ProcessState, ProcessStruct};
 use event::{self, Waitable};
-use scheduler;
+use scheduler::{self, get_current_process};
 use utils;
 use devices::pit;
 use alloc::boxed::Box;

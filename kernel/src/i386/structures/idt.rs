@@ -15,8 +15,8 @@ use core::mem;
 use core::ops::{Index, IndexMut};
 use bit_field::BitField;
 use i386::{AlignedTssStruct, TssStruct, PrivilegeLevel};
-use i386::mem::paging::{PageTablesSet, KernelLand, ACTIVE_PAGE_TABLES, PAGE_SIZE};
 use mem::VirtualAddress;
+use paging::{PAGE_SIZE, lands::KernelLand, kernel_memory::get_kernel_memory};
 use i386::structures::gdt::SegmentSelector;
 use alloc::boxed::Box;
 use gdt;
@@ -525,7 +525,7 @@ impl<F> IdtEntry<F> {
         self.pointer_low = 0;
         self.pointer_high = 0;
 
-        let stack = ACTIVE_PAGE_TABLES.lock().get_page::<KernelLand>();
+        let stack = get_kernel_memory().get_page();
 
         // Load tss segment with addr in IP.
         let mut tss = AlignedTssStruct::new(TssStruct::new());
