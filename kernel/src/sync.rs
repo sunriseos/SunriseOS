@@ -7,6 +7,10 @@ use i386::instructions::interrupts::*;
 use core::sync::atomic::{AtomicBool, Ordering};
 use scheduler;
 
+/// Placeholder for future Mutex implementation
+pub type Mutex<T> = SpinLock<T>;
+pub type MutexGuard<'a, T> = SpinLockGuard<'a, T>;
+
 /// Decrement the interrupt disable counter.
 ///
 /// Look at documentation for ProcessStruct::pint_disable_counter to know more.
