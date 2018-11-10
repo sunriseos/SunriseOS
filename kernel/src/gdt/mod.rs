@@ -11,6 +11,7 @@ use bit_field::BitField;
 use core::mem::{self, size_of};
 use core::ops::{Deref, DerefMut};
 use core::slice;
+use core::fmt;
 
 use super::i386::{PrivilegeLevel, TssStruct};
 use i386::structures::gdt::SegmentSelector;
@@ -106,6 +107,7 @@ struct GdtManager {
 impl GdtManager {
     pub fn load(cur_loaded: DescriptorTable, new_cs: u16, new_ds: u16, new_ss: u16) -> GdtManager {
         let clone = cur_loaded.clone();
+        info!("{:#?}", cur_loaded);
         cur_loaded.load_global(new_cs, new_ds, new_ss);
 
         GdtManager {
@@ -255,8 +257,41 @@ enum SystemDescriptorTypes {
 // TODO: make this an enum based on a bit? But then it's not repr(transparent)
 // :(
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 struct DescriptorTableEntry(u64);
+
+impl fmt::Debug for DescriptorTableEntry {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        //ES =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+        if self.0 == 0 {
+            write!(f, "DescriptorTableEntry(NULLDESC)")
+        } else {
+            let ty = if self.0.get_bit(44) && self.0.get_bit(43) {
+                "CS"
+            } else if self.0.get_bit(44) {
+                "DS"
+            } else {
+                match self.0.get_bits(40..44) {
+                    1 => "TSS16-avl",
+                    2 => "LDT",
+                    3 => "TSS16-busy",
+                    4 => "CALL16",
+                    5 => "TASK",
+                    6 => "INT16",
+                    7 => "TRAP16",
+                    9 => "TSS32-avl",
+                    11 => "TSS32-busy",
+                    12 => "CALL32",
+                    14 => "INT32",
+                    15 => "TRAP32",
+                    _ => "UNKN"
+                }
+            };
+            write!(f, "DescriptorTableEntry(base={:#010x}, limit={:#010x}, flags={:#010x}, DPL={:?}, type={})",
+                   self.get_base(), self.get_limit(), self.0, self.get_ring_level(), ty)
+        }
+    }
+}
 
 impl DescriptorTableEntry {
     pub fn null_descriptor() -> DescriptorTableEntry {
@@ -303,7 +338,8 @@ impl DescriptorTableEntry {
 
     /// Creates a new LDT descriptor.
     pub fn new_ldt(base: &'static DescriptorTable, priv_level: PrivilegeLevel) -> DescriptorTableEntry {
-        Self::new_system(SystemDescriptorTypes::Ldt, base as *const _ as u32, (base.table.len() * size_of::<DescriptorTableEntry>() - 1) as u32, priv_level)
+        let limit = if base.table.len() == 0 { 0 } else { base.table.len() * size_of::<DescriptorTableEntry>() - 1 };
+        Self::new_system(SystemDescriptorTypes::Ldt, base as *const _ as u32, limit as u32, priv_level)
     }
 
 
