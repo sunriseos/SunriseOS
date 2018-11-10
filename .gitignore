@@ -2,8 +2,7 @@
 target
 **/*.rs.bk
 Cargo.lock
-isofiles/boot/kfs-kernel
-isofiles/boot/kfs-bootstrap
+isofiles/boot/kfs-*
 os.iso
 .idea
 .gdbinit
