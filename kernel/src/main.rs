@@ -59,6 +59,7 @@ mod i386;
 #[cfg(target_os = "none")]
 mod gdt;
 mod interrupts;
+mod frame_allocator;
 
 mod utils;
 mod heap_allocator;
