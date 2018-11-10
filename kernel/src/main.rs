@@ -50,8 +50,6 @@ mod logger;
 mod log_impl;
 pub use logger::*;
 pub use devices::rs232::SerialLogger;
-use process::{ProcessStruct, ProcessMemory};
-
 mod i386;
 #[cfg(target_os = "none")]
 mod gdt;
@@ -93,21 +91,13 @@ fn main() {
         let proc = ProcessStruct::new(String::from(module.name()), elf_loader::get_iopb(module));
         {
             let (ep, sp) = {
-                let pmemlock = proc.pmemory.lock();
-
-                let pmem = if let &ProcessMemory::Inactive(ref pmem) = &*pmemlock {
-                    pmem
-                } else {
-                    panic!("newly created process has active pages?")
-                };
-
-                let mut pmeminnerlock = pmem.lock();
+                let mut pmemlock = proc.pmemory.lock();
 
                 let ep = elf_loader::load_builtin(&mut *pmeminnerlock, module);
 
                 // TODO: Page guard.
-                let sp = pmeminnerlock.get_pages::<UserLand>(4);
-                (ep, sp + 4 * paging::PAGE_SIZE)
+                let sp = pmemlock.get_pages::<UserLand>(4 * PAGE_SIZE);
+                (ep, sp + 4 * PAGE_SIZE)
             };
             unsafe { proc.set_start_arguments(ep, sp.addr()); }
         }

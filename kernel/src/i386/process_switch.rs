@@ -2,7 +2,8 @@
 //!
 //! This modules describe low-level functions and structures needed to perform a process switch
 
-use process::{ProcessStruct, ProcessState, ProcessMemory, ProcessStructArc};
+use process::{ProcessStruct, ProcessState, ProcessStructArc};
+use paging::process_memory::ProcessMemory;
 use scheduler::get_current_process;
 use gdt;
 use sync::SpinLockIRQ;
@@ -89,8 +90,8 @@ impl ProcessHardwareContext {
 pub unsafe extern "C" fn process_switch(process_b: ProcessStructArc, process_current: ProcessStructArc) -> ProcessStructArc {
 
     let esp_to_load = {
-        let mut process_current_lock_pmemory = process_current.pmemory.try_lock()
-            .expect("process_switch cannot get current process' lock for writing");
+        //let mut process_current_lock_pmemory = process_current.pmemory.try_lock()
+        //    .expect("process_switch cannot get current process' lock for writing");
         let mut process_b_lock_pmemory = process_b.pmemory.try_lock()
             .expect("process_switch cannot get destination process' lock for writing");
         let mut process_current_lock_phwcontext = process_current.phwcontext.try_lock()
@@ -99,19 +100,7 @@ pub unsafe extern "C" fn process_switch(process_b: ProcessStructArc, process_cur
             .expect("process_switch cannot get destination process' lock for writing");
 
         // Switch the memory pages
-        // B's memory will be the active one, switch it in place
-        match ::core::mem::replace(&mut *process_b_lock_pmemory, ProcessMemory::Active) {
-            ProcessMemory::Inactive(spinlck) => {
-                // Since the process is the only owner of pages, holding the pages' lock implies having
-                // a ref to the process, and we own a WriteGuard on the process,
-                // so the pages' spinlock cannot possibly be held by someone else.
-                let old_pages = spinlck.into_inner().switch_to();
-                *process_current_lock_pmemory = ProcessMemory::Inactive(SpinLockIRQ::new(old_pages));
-            }
-            ProcessMemory::Active => {
-                panic!("The process we were about to switch to had its memory marked as already active");
-            }
-        };
+        process_b_lock_pmemory.switch_to();
 
         let current_esp: usize;
         asm!("mov $0, esp" : "=r"(current_esp) : : : "intel", "volatile");
@@ -126,7 +115,7 @@ pub unsafe extern "C" fn process_switch(process_b: ProcessStructArc, process_cur
         // them again on schedule in, but since there is no SMP and interrupts are off,
         // this should be ok ...
         drop(process_b_lock_pmemory);
-        drop(process_current_lock_pmemory);
+        //drop(process_current_lock_pmemory);
         drop(process_b_lock_phwcontext);
         drop(process_current_lock_phwcontext);
 

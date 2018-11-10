@@ -2,7 +2,7 @@
 
 use stack::KernelStack;
 use i386::process_switch::*;
-use i386::mem::paging::InactivePageTables;
+use paging::process_memory::ProcessMemory;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::collections::BTreeMap;
@@ -10,7 +10,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use event::Waitable;
 use spin::{RwLock, RwLockWriteGuard};
-use sync::SpinLockIRQ;
+use sync::{SpinLockIRQ, Mutex, MutexGuard};
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::fmt::{self, Debug};
 use scheduler;
@@ -29,7 +29,7 @@ use error::{KernelError, UserspaceError};
 pub struct ProcessStruct {
     pub name:                 String,
     pub pstate:               ProcessStateAtomic,
-    pub pmemory:              SpinLockIRQ<ProcessMemory>,
+    pub pmemory:              Mutex<ProcessMemory>,
     pub pstack:               KernelStack,
     pub phwcontext:           SpinLockIRQ<ProcessHardwareContext>,
     pub phandles:             SpinLockIRQ<HandleTable>,
@@ -181,25 +181,13 @@ impl ProcessStateAtomic {
     }
 }
 
-/// The memory pages of this process
-///
-/// - Inactive contains the process's pages.
-/// - Active means the already currently active ones, accessible through ACTIVE_PAGE_TABLES.
-///
-/// A ProcessMemory should be the only owner of a process' pages
-#[derive(Debug)]
-pub enum ProcessMemory {
-    Inactive(SpinLockIRQ<InactivePageTables>),
-    Active
-}
-
 impl ProcessStruct {
     /// Creates a new process.
     pub fn new(name: String, ioports: Vec<u16>) -> ProcessStructArc {
         use ::core::mem::ManuallyDrop;
 
         // allocate its memory space
-        let pmemory = SpinLockIRQ::new(ProcessMemory::Inactive(SpinLockIRQ::new(InactivePageTables::new())));
+        let pmemory = Mutex::new(ProcessMemory::new());
 
         // allocate its kernel stack
         let pstack = KernelStack::allocate_stack()
@@ -249,7 +237,7 @@ impl ProcessStruct {
         let phwcontext = SpinLockIRQ::new(ProcessHardwareContext::new());
 
         // the already currently active pages
-        let pmemory = SpinLockIRQ::new(ProcessMemory::Active);
+        let pmemory = Mutex::new(ProcessMemory::from_active_page_tables());
 
         let p = Arc::new(
             ProcessStruct {

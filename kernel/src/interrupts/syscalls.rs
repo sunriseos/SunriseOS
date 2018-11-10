@@ -26,15 +26,21 @@ extern fn ignore_syscall(nr: usize) -> Result<(), UserspaceError> {
     Ok(())
 }
 
+/// Maps the vga frame buffer mmio in userspace memory
 fn map_framebuffer(mut addr: UserSpacePtrMut<usize>, mut width: UserSpacePtrMut<usize>, mut height: UserSpacePtrMut<usize>, mut bpp: UserSpacePtrMut<usize>) -> Result<(), UserspaceError> {
-    let boot_info = i386::multiboot::get_boot_information();
-    let tag = boot_info.framebuffer_info_tag().expect("Framebuffer to be provided");
-    let framebuffer_size = tag.framebuffer_bpp() as usize * tag.framebuffer_dimensions().0 as usize * tag.framebuffer_dimensions().1 as usize / 8;
-    let framebuffer_size_pages = utils::align_up(framebuffer_size, paging::PAGE_SIZE) / paging::PAGE_SIZE;
-    let mut page_tables = paging::ACTIVE_PAGE_TABLES.lock();
+    let tag = i386::multiboot::get_boot_information().framebuffer_info_tag()
+        .expect("Framebuffer to be provided");
+    let framebuffer_size = tag.framebuffer_bpp() as usize
+                                * tag.framebuffer_dimensions().0 as usize
+                                * tag.framebuffer_dimensions().1 as usize / 8;
+    let frame_buffer_phys_region = unsafe {
+        PhysicalMemRegion::on_fixed_mmio(PhysicalAddress(tag.framebuffer_addr()), framebuffer_size)
+    };
 
-    let framebuffer_vaddr = page_tables.find_available_virtual_space::<paging::UserLand>(framebuffer_size_pages).expect("Hopefully there's some space");
-    page_tables.map_range(PhysicalAddress(tag.framebuffer_addr()), framebuffer_vaddr, framebuffer_size_pages, paging::EntryFlags::WRITABLE);
+    let process = get_current_process();
+    let mut memory = process.pmemory.lock();
+    let framebuffer_vaddr = memory.find_virtual_space::<UserLand>(frame_buffer_phys_region.size())?;
+    memory.map_phys_region_to(frame_buffer_phys_region, framebuffer_vaddr, MappingFlags::WRITABLE);
 
     *addr = framebuffer_vaddr.0;
     *width = tag.framebuffer_dimensions().0 as usize;
