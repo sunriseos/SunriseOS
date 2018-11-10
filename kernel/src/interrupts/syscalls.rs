@@ -16,15 +16,15 @@ use alloc::vec::Vec;
 use core::mem;
 use core::sync::atomic::Ordering;
 use sync::SpinLockIRQ;
-use error::Error;
+use error::{KernelError, UserspaceError};
 
-extern fn ignore_syscall(nr: usize) -> Result<(), Error> {
+extern fn ignore_syscall(nr: usize) -> Result<(), UserspaceError> {
     // TODO: Trigger "unknown syscall" signal, for userspace signal handling.
     info!("Unknown syscall {}", nr);
     Ok(())
 }
 
-fn map_framebuffer(mut addr: UserSpacePtrMut<usize>, mut width: UserSpacePtrMut<usize>, mut height: UserSpacePtrMut<usize>, mut bpp: UserSpacePtrMut<usize>) -> Result<(), Error> {
+fn map_framebuffer(mut addr: UserSpacePtrMut<usize>, mut width: UserSpacePtrMut<usize>, mut height: UserSpacePtrMut<usize>, mut bpp: UserSpacePtrMut<usize>) -> Result<(), UserspaceError> {
     let boot_info = i386::multiboot::get_boot_information();
     let tag = boot_info.framebuffer_info_tag().expect("Framebuffer to be provided");
     let framebuffer_size = tag.framebuffer_bpp() as usize * tag.framebuffer_dimensions().0 as usize * tag.framebuffer_dimensions().1 as usize / 8;
@@ -41,7 +41,7 @@ fn map_framebuffer(mut addr: UserSpacePtrMut<usize>, mut width: UserSpacePtrMut<
     Ok(())
 }
 
-fn create_interrupt_event(mut irqhandle: UserSpacePtrMut<u32>, irq_num: usize, flag: u32) -> Result<(), Error> {
+fn create_interrupt_event(mut irqhandle: UserSpacePtrMut<u32>, irq_num: usize, flag: u32) -> Result<(), UserspaceError> {
     // TODO: Flags?
     let curproc = scheduler::get_current_process();
     *irqhandle = curproc.phandles.lock().add_handle(Arc::new(Handle::ReadableEvent(Box::new(event::wait_event(irq_num)))));
@@ -49,7 +49,7 @@ fn create_interrupt_event(mut irqhandle: UserSpacePtrMut<u32>, irq_num: usize, f
 }
 
 // TODO: Timeout_ns should be an u64!
-fn wait_synchronization(mut handle_idx: UserSpacePtrMut<usize>, handles_ptr: UserSpacePtr<[u32]>, timeout_ns: usize) -> Result<(), Error> {
+fn wait_synchronization(mut handle_idx: UserSpacePtrMut<usize>, handles_ptr: UserSpacePtr<[u32]>, timeout_ns: usize) -> Result<(), UserspaceError> {
     // A list of underlying handles to wait for...
     let mut handle_arr = Vec::new();
     let proc = scheduler::get_current_process();
@@ -75,14 +75,14 @@ fn wait_synchronization(mut handle_idx: UserSpacePtrMut<usize>, handles_ptr: Use
     // And now, wait!
     let val = match event::wait(waitables.clone()) {
         Some(v) => v,
-        None => return Err(Error::Canceled)
+        None => return Err(UserspaceError::Canceled)
     };
 
     // Figure out which waitable got triggered.
     for (idx, handle) in waitables.enumerate() {
         if handle as *const _ == val as *const _ {
             if idx == handle_arr.len() {
-                return Err(Error::Timeout);
+                return Err(UserspaceError::Timeout);
             } else {
                 *handle_idx = idx;
                 return Ok(());
@@ -93,15 +93,14 @@ fn wait_synchronization(mut handle_idx: UserSpacePtrMut<usize>, handles_ptr: Use
     unreachable!("No waitable triggered??!?");
 }
 
-fn output_debug_string(s: UserSpacePtr<[u8]>) -> Result<(), Error> {
+fn output_debug_string(s: UserSpacePtr<[u8]>) -> Result<(), UserspaceError> {
     info!("{}", String::from_utf8_lossy(&*s));
     Ok(())
 }
 
-fn exit_process() -> Result<(), Error> {
+fn exit_process() -> Result<(), UserspaceError> {
     let proc = ProcessStruct::kill(scheduler::get_current_process());
     Ok(())
-}
 }
 
 pub extern fn syscall_handler_inner(syscall_nr: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize, arg5: usize, arg6: usize) -> usize {

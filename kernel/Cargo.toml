@@ -20,6 +20,7 @@ xmas-elf = "0.6.2"
 font-rs = { git = "https://github.com/orycterope/font-rs" }
 hashmap_core = "0.1.9"
 rustc-demangle = "0.1"
+failure = { version = "0.1", default-features = false, features = ["derive"] }
 
 [dependencies.smallvec]
 default-features = false

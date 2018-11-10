@@ -36,6 +36,8 @@ extern crate hashmap_core;
 extern crate xmas_elf;
 extern crate rustc_demangle;
 extern crate byteorder;
+#[macro_use]
+extern crate failure;
 
 use ascii::AsAsciiStr;
 use core::fmt::Write;

@@ -1,4 +1,8 @@
-pub enum Error {
+//! UserspaceError and KernelError
+
+use failure::Backtrace;
+
+pub enum UserspaceError {
     InvalidKernelCaps = 14,
     NotDebugMode = 33,
     InvalidSize = 101,
@@ -33,8 +37,33 @@ pub enum Error {
     // ProcessNotBeingDebugged = 520
 }
 
-impl Error {
+impl UserspaceError {
     pub fn make_ret(self) -> usize {
         ((self as usize) << 9) | 1
+    }
+}
+
+#[derive(Debug, Fail)]
+pub enum KernelError {
+    #[fail(display = "Frame allocation error: physical address space exhausted")]
+    PhysicalMemoryExhaustion {
+        backtrace: Backtrace
+    },
+    #[fail(display = "Virtual allocation error: virtual address space exhausted")]
+    VirtualMemoryExhaustion {
+        backtrace: Backtrace,
+    },
+    #[doc(hidden)]
+    #[fail(display = "Should never ever ***EVER*** be returned")]
+    ThisWillNeverHappenButPleaseDontMatchExhaustively,
+}
+
+impl From<KernelError> for UserspaceError {
+    fn from(err: KernelError) -> UserspaceError {
+        match err {
+            KernelError::PhysicalMemoryExhaustion { .. } => UserspaceError::MemoryFull,
+            KernelError::VirtualMemoryExhaustion { .. } => UserspaceError::MemoryFull,
+            KernelError::ThisWillNeverHappenButPleaseDontMatchExhaustively => unreachable!()
+        }
     }
 }

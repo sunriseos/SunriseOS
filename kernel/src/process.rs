@@ -14,7 +14,7 @@ use sync::SpinLockIRQ;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::fmt::{self, Debug};
 use scheduler;
-use error::Error;
+use error::{KernelError, UserspaceError};
 
 /// The struct representing a process. There's one for every process.
 ///
@@ -275,11 +275,11 @@ impl ProcessStruct {
     ///
     /// The given entrypoint *must* point to a mapped address in that process's address space.
     /// The function makes no attempt at checking if it is kernel or userspace.
-    pub unsafe fn set_start_arguments(&self, ep: usize, stack: usize) -> Result<(), Error> {
+    pub unsafe fn set_start_arguments(&self, ep: usize, stack: usize) -> Result<(), UserspaceError> {
         let oldval = self.pstate.compare_and_swap(ProcessState::NotReady, ProcessState::Readying, Ordering::SeqCst);
 
         if oldval != ProcessState::NotReady {
-            return Err(Error::ProcessAlreadyStarted);
+            return Err(UserspaceError::ProcessAlreadyStarted);
         }
 
         // prepare the process's stack for its first schedule-in
