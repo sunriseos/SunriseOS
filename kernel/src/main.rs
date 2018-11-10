@@ -51,7 +51,6 @@ use i386::mem::paging;
 use i386::mem::frame_alloc;
 pub use logger::*;
 pub use devices::rs232::SerialLogger;
-use i386::mem::PhysicalAddress;
 use i386::mem::frame_alloc::Frame;
 use paging::{KernelLand, UserLand};
 use process::{ProcessStruct, ProcessMemory};
@@ -80,6 +79,7 @@ static ALLOCATOR: heap_allocator::Allocator = heap_allocator::Allocator::new();
 pub use frame_alloc::FrameAllocator;
 pub use i386::stack;
 use paging::{InactivePageTables, PageTablesSet, EntryFlags};
+use mem::{PhysicalAddress, VirtualAddress};
 
 unsafe fn force_double_fault() {
     loop {

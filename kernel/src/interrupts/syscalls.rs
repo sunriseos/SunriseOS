@@ -1,8 +1,8 @@
 //! Syscall implementations
 
 use i386;
-use i386::mem::PhysicalAddress;
 use i386::mem::paging::{self, PageTablesSet};
+use mem::PhysicalAddress;
 use mem::{FatPtr, UserSpacePtr, UserSpacePtrMut};
 use process::{Handle, ProcessState, ProcessStruct};
 use event::{self, Waitable};

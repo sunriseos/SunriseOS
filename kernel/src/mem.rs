@@ -1,6 +1,77 @@
 //! Basic functionality for dealing with memory.
+//!
+//! Contains definition for VirtualAddress and PhysicalAddress,
+//! and UserSpacePointer
 
 use core::ops::{Deref, DerefMut};
+use core::fmt::{Formatter, Error, Display, Debug};
+
+use paging::PAGE_SIZE;
+use utils::{align_down, align_up, div_round_up};
+
+/// Rounds an address to its page address
+#[inline] pub fn round_to_page(addr: usize) -> usize { align_down(addr, PAGE_SIZE) }
+
+/// Rounds an address to the next page address except if its offset in that page is 0
+#[inline] pub fn round_to_page_upper(addr: usize) -> usize { align_up(addr, PAGE_SIZE) }
+
+/// Counts the number of pages `size` takes
+#[inline] pub fn count_pages(size: usize) -> usize { div_round_up(size, PAGE_SIZE) }
+
+/// Represents a Physical address
+///
+/// Should only be used when paging is off
+#[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(transparent)]
+pub struct PhysicalAddress(pub usize);
+
+/// Represents a Virtual address
+#[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(transparent)]
+pub struct VirtualAddress(pub usize);
+
+impl VirtualAddress  { pub fn addr(&self) -> usize { self.0 } }
+impl PhysicalAddress { pub fn addr(&self) -> usize { self.0 } }
+
+impl ::core::ops::Add<usize> for VirtualAddress {
+    type Output = VirtualAddress;
+
+    fn add(self, other: usize) -> VirtualAddress {
+        VirtualAddress(self.0 + other)
+    }
+}
+
+impl ::core::ops::Add<usize> for PhysicalAddress {
+    type Output = PhysicalAddress;
+
+    fn add(self, other: usize) -> PhysicalAddress {
+        PhysicalAddress(self.0 + other)
+    }
+}
+
+impl Debug for PhysicalAddress {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        write!(f, "P {:#010x}", self.0)
+    }
+}
+
+impl Display for PhysicalAddress {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        write!(f, "P {:#010x}", self.0)
+    }
+}
+
+impl Debug for VirtualAddress {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        write!(f, "V {:#010x}", self.0)
+    }
+}
+
+impl Display for VirtualAddress {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        write!(f, "V {:#010x}", self.0)
+    }
+}
 
 #[repr(transparent)]
 pub struct UserSpacePtr<T: ?Sized>(pub *const T);

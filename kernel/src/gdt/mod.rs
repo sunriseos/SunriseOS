@@ -18,7 +18,8 @@ use i386::structures::gdt::SegmentSelector;
 use i386::instructions::tables::{lgdt, sgdt, DescriptorTablePointer};
 use i386::instructions::segmentation::*;
 
-use paging::{self, KernelLand, VirtualAddress, PAGE_SIZE, ACTIVE_PAGE_TABLES, PageTablesSet};
+use paging::{self, KernelLand, PAGE_SIZE, ACTIVE_PAGE_TABLES, PageTablesSet};
+use mem::VirtualAddress;
 use alloc::vec::Vec;
 use utils::div_round_up;
 

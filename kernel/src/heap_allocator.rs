@@ -7,7 +7,8 @@ use spin::{Mutex, Once};
 use core::ops::Deref;
 use core::ptr::NonNull;
 use linked_list_allocator::{Heap, align_up};
-use paging::{self, EntryFlags, ACTIVE_PAGE_TABLES, PageTablesSet, VirtualAddress};
+use paging::{self, EntryFlags, ACTIVE_PAGE_TABLES, PageTablesSet};
+use mem::VirtualAddress;
 
 pub struct Allocator(Once<Mutex<Heap>>);
 

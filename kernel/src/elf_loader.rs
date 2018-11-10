@@ -19,7 +19,7 @@ use core::slice;
 use xmas_elf::ElfFile;
 use xmas_elf::program::{ProgramHeader, Type::Load, SegmentData};
 use paging::{ACTIVE_PAGE_TABLES, PAGE_SIZE, PageTablesSet, EntryFlags, MappingType, InactivePageTables, KernelLand};
-use i386::mem::{VirtualAddress, PhysicalAddress};
+use mem::{VirtualAddress, PhysicalAddress};
 use utils::{self, align_up};
 use alloc::vec::Vec;
 use byteorder::{LittleEndian, ByteOrder};
