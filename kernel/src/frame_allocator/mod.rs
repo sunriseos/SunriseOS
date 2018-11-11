@@ -4,7 +4,8 @@
 
 use alloc::vec::Vec;
 use mem::PhysicalAddress;
-use utils::{align_down, align_up, div_round_up};
+use utils::{align_down, align_up, div_round_up, check_aligned};
+use utils::Splittable;
 use core::ops::{Index, Range};
 use core::iter::StepBy;
 use core::fmt::{Formatter, Error, Display, Debug};
@@ -146,6 +147,59 @@ impl Debug for PhysicalMemRegion {
     }
 }
 
+impl Splittable for PhysicalMemRegion {
+    /// Splits the given PhysicalMemRegion in two parts, at the given offset.
+    fn split_at(&mut self, offset: usize) -> Result<Option<Self>, KernelError> {
+        check_aligned(offset, MEMORY_FRAME_SIZE)?;
+        if offset != 0 && offset < self.size() {
+            let frames_count = self.frames;
+            self.frames = offset / MEMORY_FRAME_SIZE;
+            Ok(Some(PhysicalMemRegion {
+                start_addr: self.start_addr + self.frames * MEMORY_FRAME_SIZE,
+                frames: frames_count - self.frames,
+                should_free_on_drop: self.should_free_on_drop
+            }))
+        } else {
+            Ok(None) // no need to split
+        }
+    }
+}
+
+impl Splittable for Vec<PhysicalMemRegion> {
+    /// Splits a Vec of Physical regions in two Vec at the given offset.
+    ///
+    /// If the offset falls in the middle of a PhysicalMemRegion, it is splitted,
+    /// and the right part is moved to the second Vec.
+    fn split_at(&mut self, offset: usize) -> Result<Option<Self>, KernelError> {
+        check_aligned(offset, MEMORY_FRAME_SIZE)?;
+        if offset == 0 { return Ok(None) };
+
+        let mut length_acc = 0;
+        let split_pos_in_vec_opt = self.iter().position(|r| {
+            if length_acc + r.frames * MEMORY_FRAME_SIZE > offset {
+                true
+            } else {
+                length_acc += r.frames * MEMORY_FRAME_SIZE;
+                false
+            }
+        });
+        match split_pos_in_vec_opt {
+            None => Ok(None), // no need to split the vec
+            Some(split_pos_in_vec) => {
+                // ok, split the vec in two parts
+                let mut vec_right = self.split_off(split_pos_in_vec);
+                // and split right vec's first region
+                match self.first_mut().unwrap().right_split(offset - length_acc)? {
+                    None => Ok(Some(vec_right)), // did not require splitting a region
+                    Some(region_left) => {
+                        self.push(region_left);
+                        Ok(Some(vec_right))
+                    }
+                }
+            }
+        }
+    }
+}
 
 /// An arch-specific FrameAllocator must expose the following functions
 pub trait FrameAllocatorTrait: FrameAllocatorTraitPrivate {

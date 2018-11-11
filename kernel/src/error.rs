@@ -53,6 +53,12 @@ pub enum KernelError {
     VirtualMemoryExhaustion {
         backtrace: Backtrace,
     },
+    #[fail(display = "Alignment error: expected a certain alignment")]
+    AlignmentError {
+        given: usize,
+        needed: usize,
+        backtrace: Backtrace,
+    },
     #[doc(hidden)]
     #[fail(display = "Should never ever ***EVER*** be returned")]
     ThisWillNeverHappenButPleaseDontMatchExhaustively,
@@ -63,6 +69,7 @@ impl From<KernelError> for UserspaceError {
         match err {
             KernelError::PhysicalMemoryExhaustion { .. } => UserspaceError::MemoryFull,
             KernelError::VirtualMemoryExhaustion { .. } => UserspaceError::MemoryFull,
+            KernelError::AlignmentError { .. } => panic!("Tried to convert internal kernel error to UserspaceError"),
             KernelError::ThisWillNeverHappenButPleaseDontMatchExhaustively => unreachable!()
         }
     }
