@@ -1,6 +1,7 @@
 //! UserspaceError and KernelError
 
 use failure::Backtrace;
+use paging::BookkeepingError;
 use mem::VirtualAddress;
 
 #[derive(Debug)]
@@ -81,6 +82,8 @@ pub enum KernelError {
     ZeroLengthError {
         backtrace: Backtrace,
     },
+    #[fail(display = "Bookkeeping error")]
+    UserspaceBookkeepingError(BookkeepingError),
     #[doc(hidden)]
     #[fail(display = "Should never ever ***EVER*** be returned")]
     ThisWillNeverHappenButPleaseDontMatchExhaustively,

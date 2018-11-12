@@ -1,7 +1,7 @@
 //! Syscall implementations
 
 use i386;
-use mem::PhysicalAddress;
+use mem::{VirtualAddress, PhysicalAddress};
 use mem::{FatPtr, UserSpacePtr, UserSpacePtrMut};
 use paging::{PAGE_SIZE, MappingFlags};
 use paging::lands::{UserLand, KernelLand};
@@ -40,7 +40,9 @@ fn map_framebuffer(mut addr: UserSpacePtrMut<usize>, mut width: UserSpacePtrMut<
 
     let process = get_current_process();
     let mut memory = process.pmemory.lock();
-    let framebuffer_vaddr = memory.find_virtual_space::<UserLand>(frame_buffer_phys_region.size())?;
+    //let framebuffer_vaddr = memory.find_virtual_space::<UserLand>(frame_buffer_phys_region.size())?;
+    // todo make user provide the address
+    let framebuffer_vaddr = VirtualAddress(0x80000000);
     memory.map_phys_region_to(frame_buffer_phys_region, framebuffer_vaddr, MappingFlags::WRITABLE);
 
     *addr = framebuffer_vaddr.0;

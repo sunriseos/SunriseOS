@@ -17,6 +17,7 @@ use super::hierarchical_table::*;
 use super::arch::{PAGE_SIZE, InactiveHierarchy, ActiveHierarchy};
 use super::lands::{UserLand, KernelLand, VirtualSpaceLand};
 use super::kernel_memory::get_kernel_memory;
+use super::bookkeeping::{UserspaceBookkeeping, Mapping, MappingType, QuerryMemory, BookkeepingError};
 use super::MappingFlags;
 use mem::{VirtualAddress, PhysicalAddress};
 use frame_allocator::{FrameAllocator, FrameAllocatorTrait, PhysicalMemRegion, mark_frame_bootstrap_allocated};
@@ -26,6 +27,8 @@ use paging::arch::EntryFlags;
 use paging::arch::Entry;
 use error::KernelError;
 use failure::Backtrace;
+use utils::{check_aligned, check_nonzero_length};
+use alloc::{vec::Vec, sync::Arc};
 
 /// The struct representing a process' memory, stored in the ProcessStruct behind a lock.
 ///
@@ -35,7 +38,7 @@ use failure::Backtrace;
 /// A process is the only owner of a ProcessMemory
 #[derive(Debug)]
 pub struct ProcessMemory {
-    userspace_bookkeping: (),
+    userspace_bookkeping: UserspaceBookkeeping,
     table_hierarchy: InactiveHierarchy,
 }
 
@@ -114,7 +117,7 @@ impl ProcessMemory {
     /// and the top-level table of the table hierarchy.
     pub fn new() -> Self {
         ProcessMemory {
-            userspace_bookkeping: (),
+            userspace_bookkeping: UserspaceBookkeeping::new(),
             table_hierarchy: InactiveHierarchy::new()
         }
     }
@@ -127,7 +130,7 @@ impl ProcessMemory {
     /// Having multiple ProcessMemory pointing to the same table hierarchy is unsafe.
     pub unsafe fn from_active_page_tables() -> Self {
         ProcessMemory {
-            userspace_bookkeping: (),
+            userspace_bookkeping: UserspaceBookkeeping::new(),
             table_hierarchy: InactiveHierarchy::from_currently_active()
         }
     }
@@ -145,119 +148,119 @@ impl ProcessMemory {
         }
     }
 
-    /// Maps a list of physical regions to a given virtual address
-    fn map_to(&mut self, phys: &[PhysicalMemRegion], address: VirtualAddress, flags: MappingFlags) {
-        self.get_hierarchy().map_to(phys, address, flags)
-    }
-
-    /// Maps a single physical regions to a given virtual address
-    pub fn map_phys_region_to(&mut self, phys: PhysicalMemRegion, address: VirtualAddress, flags: MappingFlags) {
-        // convert region as a slice of 1 region
-        let region_as_slice = unsafe {
-            ::core::slice::from_raw_parts(&phys as *const PhysicalMemRegion, 1)
-        };
-        self.map_to(region_as_slice, address, flags);
-        // physical region must not be deallocated while it is mapped
-        ::core::mem::forget(phys);
-    }
-
-    /// Allocates the physical regions, and maps them to specified address
-    pub fn map_allocate(&mut self, address: VirtualAddress, length: usize, flags: MappingFlags) {
-        let frames_nr = ::utils::div_round_up(length, PAGE_SIZE);
-        let regions = FrameAllocator::allocate_frames_fragmented(frames_nr)
-            .expect("Could not allocate physical memory");
-        self.map_to(&regions, address, flags)
-    }
-
-    /// Guards a range of addresses
-    pub fn guard(&mut self, address: VirtualAddress, length: usize) {
-        assert!(length % PAGE_SIZE == 0, "length must be a multiple of PAGE_SIZE");
-        self.get_hierarchy().guard(address, length);
-    }
-
-    /// Deletes a mapping in the page tables.
-    pub fn unmap(&mut self, address: VirtualAddress, length: usize) {
-        assert!(length % PAGE_SIZE == 0, "length must be a multiple of PAGE_SIZE");
-        self.get_hierarchy().unmap(address, length, |paddr| {
-            let pr = unsafe {
-                // safe, they were only tracked by the page tables
-                PhysicalMemRegion::reconstruct(paddr, PAGE_SIZE);
-            };
-            drop(pr)
-        });
-    }
-
-    /// Deletes a mapping in the page tables, but does not free the underlying physical memory
-    pub fn unmap_no_dealloc(&mut self, address: VirtualAddress, length: usize) {
-        assert!(length % PAGE_SIZE == 0, "length must be a multiple of PAGE_SIZE");
-        self.get_hierarchy().unmap(address, length, |paddr| { /* leak the frame */ });
-    }
-
-    /// Finds a hole in the virtual space at least 'length' long, and respecting alignment
-    pub fn find_virtual_space_aligned<Land: VirtualSpaceLand>(&mut self, length: usize, alignment: usize) -> Result<VirtualAddress, KernelError> {
-        match self.get_hierarchy().find_available_virtual_space_aligned(length, Land::start_addr(), Land::end_addr(), alignment) {
-            Some(addr) => Ok(addr),
-            None => Err(KernelError::VirtualMemoryExhaustion { backtrace: Backtrace::new() })
-        }
-    }
-
-    /// Finds a hole in the virtual space at least 'length' long.
-    pub fn find_virtual_space<Land: VirtualSpaceLand>(&mut self, length: usize) -> Result<VirtualAddress, KernelError> {
-        self.find_virtual_space_aligned::<Land>(length, PAGE_SIZE)
-    }
-
-    /// Allocates and maps the given length, chosing a spot in VMEM for it.
+    /// Deprecated.
+    ///
+    /// Maps a single physical regions to a given virtual address.
     ///
     /// # Panics
     ///
-    /// Panics if we are out of memory.
-    /// Panics if length is not a multiple of PAGE_SIZE.
-    pub fn get_pages<Land: VirtualSpaceLand>(&mut self, length: usize) -> VirtualAddress {
-        assert!(length % PAGE_SIZE == 0, "length must be a multiple of PAGE_SIZE");
-        let va = self.find_virtual_space::<Land>(length).unwrap();
-        let mut prs = FrameAllocator::allocate_frames_fragmented(length / PAGE_SIZE).unwrap();
-        let flags = MappingFlags::WRITABLE;
-        self.map_to(&prs, va, flags);
-
-        // do not drop the frames !
-        while let Some(region) = prs.pop() {
-            ::core::mem::forget(region);
-        }
-        va
+    /// Panics if encounters any kind of bookkeeping error.
+    // todo delete this as soon as possible
+    #[deprecated(since="0.0.0", note="this function is about to be deleted for a better and safer interface")]
+    pub fn map_phys_region_to(&mut self, phys: PhysicalMemRegion, address: VirtualAddress, flags: MappingFlags) {
+        // really dumb implementation, because this function is scheduled to be removed
+        let length = phys.size();
+        let frames_vec = vec![phys];
+        self.get_hierarchy().map_to(&frames_vec, address, flags);
+        self.userspace_bookkeping.add_mapping(Mapping {
+            address, length, mtype: MappingType::Regular(frames_vec)
+        }).unwrap();
     }
 
-    /// Allocates and maps a single page, choosing a spot in VMEM for it.
-    pub fn get_page<Land: VirtualSpaceLand>(&mut self) -> VirtualAddress {
-        let va = self.find_virtual_space::<Land>(PAGE_SIZE).unwrap();
-        let pr = FrameAllocator::allocate_frame().unwrap();
-        let flags = MappingFlags::WRITABLE;
-        self.map_phys_region_to(pr, va, flags);
-        va
+    /// Allocates the physical regions, and maps them to specified address.
+    ///
+    /// # Error
+    ///
+    /// Returns a KernelError if there was already a mapping in the range.
+    /// Returns a KernelError if address does not fall in UserLand.
+    /// Returns a KernelError if address or length is not PAGE_SIZE aligned.
+    pub fn create_regular_mapping(&mut self, address: VirtualAddress, length: usize, flags: MappingFlags) -> Result<(), KernelError> {
+        check_aligned(address.addr(), PAGE_SIZE)?;
+        check_aligned(length, PAGE_SIZE)?;
+        check_nonzero_length(length)?;
+        UserLand::check_contains_region(address, length)?;
+        self.userspace_bookkeping.check_vacant(address, length)?;
+        let frames = FrameAllocator::allocate_frames_fragmented(length / PAGE_SIZE)?;
+        self.get_hierarchy().map_to(&frames, address, flags);
+        self.userspace_bookkeping.add_mapping(Mapping {
+            address, length, mtype: MappingType::Regular(frames)
+        }).unwrap();
+        Ok(())
+    }
+
+    /// Maps a previously created shared mapping to specified address.
+    ///
+    /// # Error
+    ///
+    /// Returns a KernelError if there was already a mapping in the range.
+    /// Returns a KernelError if address does not fall in UserLand.
+    /// Returns a KernelError if address or length is not PAGE_SIZE aligned.
+    pub fn map_shared_mapping(&mut self,
+                              shared_mapping: Arc<Vec<PhysicalMemRegion>>,
+                              address: VirtualAddress,
+                              flags: MappingFlags)
+                              -> Result<(), KernelError> {
+        check_aligned(address.addr(), PAGE_SIZE)?;
+        // compute the length
+        let length = shared_mapping.iter().flatten().count() * PAGE_SIZE;
+        check_nonzero_length(length)?;
+        check_aligned(length, PAGE_SIZE)?;
+        UserLand::check_contains_region(address, length)?;
+        self.userspace_bookkeping.check_vacant(address, length)?;
+        self.get_hierarchy().map_to(&shared_mapping, address, flags);
+        self.userspace_bookkeping.add_mapping(Mapping {
+            address, length, mtype: MappingType::Shared(shared_mapping)
+        }).unwrap();
+        Ok(())
+    }
+
+    /// Guards a range of addresses
+    ///
+    /// # Error
+    ///
+    /// Returns a KernelError if there was already a mapping in the range.
+    /// Returns a KernelError if address does not fall in UserLand.
+    /// Returns a KernelError if address or length is not PAGE_SIZE aligned.
+    pub fn guard(&mut self, address: VirtualAddress, length: usize) -> Result<(), KernelError>{
+        check_aligned(address.addr(), PAGE_SIZE)?;
+        check_aligned(length, PAGE_SIZE)?;
+        UserLand::check_contains_region(address, length)?;
+        self.userspace_bookkeping.add_mapping(Mapping { address, length, mtype: MappingType::Guarded})?;
+        self.get_hierarchy().guard(address, length);
+        Ok(())
+    }
+
+    /// Deletes a mapping in the page tables.
+    ///
+    /// This function will never split an existing mapping, thus address and length must match exactly.
+    ///
+    /// If the range maps physical memory, it will be de-allocated.
+    ///
+    /// # Error
+    ///
+    /// Returns a KernelError if there was no mapping corresponding to the range.
+    /// Returns a KernelError if address does not fall in UserLand.
+    /// Returns a KernelError if address or length is not PAGE_SIZE aligned.
+    pub fn unmap(&mut self, address: VirtualAddress, length: usize) -> Result<(), KernelError> {
+        check_aligned(address.addr(), PAGE_SIZE)?;
+        check_aligned(length, PAGE_SIZE)?;
+        let mapping = self.userspace_bookkeping.remove_mapping(address, length)?;
+        self.get_hierarchy().unmap(address, length, |_| {
+            /* leak the mapped frames here, we still have them in `mapping` */
+        });
+        // we drop the mapping. If it contained PhysicalMemRegions, they will be dropped
+        drop(mapping);
+        Ok(())
     }
 
     /// Reads the state of the mapping at a given address
-    pub fn mapping_state(&mut self, addr: VirtualAddress) -> PageState<PhysicalAddress> {
-        let mut mapping = None;
-        let addr_aligned = VirtualAddress(::utils::align_down(addr.addr(), PAGE_SIZE));
-        // use for_every_entry with length of just one page
-        self.get_hierarchy().for_every_entry(addr_aligned, PAGE_SIZE,
-        | state, _ | mapping = Some(state));
-        mapping.unwrap()
-    }
-
-    /// Marks all frames mapped in KernelLand as reserve
-    /// This is used at startup to reserve frames mapped by the bootstrap
     ///
-    /// # Panic
+    /// # Error
     ///
-    /// Panics if it tries to overwrite an existing reservation
-    pub fn reserve_kernel_land_frames(&mut self) {
-        self.get_hierarchy().for_every_entry(KernelLand::start_addr(), KernelLand::length(),
-        |entry_state, length| {
-            if let PageState::Present(mapped_frame) = entry_state {
-                mark_frame_bootstrap_allocated(mapped_frame)
-            }
-        });
+    /// Returns a KernelError if address does not fall in UserLand.
+    pub fn query_memory(&mut self, address: VirtualAddress) -> Result<QuerryMemory, KernelError> {
+        UserLand::check_contains_address(address)?;
+        Ok(self.userspace_bookkeping.mapping_at(address))
     }
 
     /// Unmaps a KernelLand page, and remaps it to process' memory.
@@ -278,7 +281,7 @@ impl ProcessMemory {
         // remap it
         match mapping {
             PageState::Available => { panic!("Asked to remap an available kernelland mapping to userland") },
-            PageState::Guarded => self.guard(dest_addr, PAGE_SIZE),
+            PageState::Guarded => self.guard(dest_addr, PAGE_SIZE).unwrap(),
             PageState::Present(paddr) => {
                 let frame = unsafe { PhysicalMemRegion::reconstruct_no_dealloc(paddr, PAGE_SIZE) };
                 self.map_phys_region_to(frame, dest_addr, dest_flags);
@@ -308,3 +311,5 @@ impl ProcessMemory {
         self.table_hierarchy.switch_to();
     }
 }
+
+
