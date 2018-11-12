@@ -5,6 +5,8 @@
 
 use core::ops::{Deref, DerefMut};
 use core::fmt::{Formatter, Error, Display, Debug};
+use error::{KernelError, ArithmeticOperation};
+use failure::Backtrace;
 
 use paging::PAGE_SIZE;
 use utils::{align_down, align_up, div_round_up};
@@ -70,6 +72,24 @@ impl Debug for VirtualAddress {
 impl Display for VirtualAddress {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         write!(f, "V {:#010x}", self.0)
+    }
+}
+
+impl PhysicalAddress {
+    pub fn checked_add(self, rhs: usize) -> Result<PhysicalAddress, KernelError> {
+        match self.0.checked_add(rhs) {
+            Some(sum) => Ok(PhysicalAddress(sum)),
+            None => Err(KernelError::WouldOverflow { lhs: self.0, operation: ArithmeticOperation::Add, rhs, backtrace: Backtrace::new() })
+        }
+    }
+}
+
+impl VirtualAddress {
+    pub fn checked_add(self, rhs: usize) -> Result<VirtualAddress, KernelError> {
+        match self.0.checked_add(rhs) {
+            Some(sum) => Ok(VirtualAddress(sum)),
+            None => Err(KernelError::WouldOverflow { lhs: self.0, operation: ArithmeticOperation::Add, rhs, backtrace: Backtrace::new() })
+        }
     }
 }
 

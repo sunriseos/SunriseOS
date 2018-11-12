@@ -1,7 +1,9 @@
 //! UserspaceError and KernelError
 
 use failure::Backtrace;
+use mem::VirtualAddress;
 
+#[derive(Debug)]
 pub enum UserspaceError {
     InvalidKernelCaps = 14,
     NotDebugMode = 33,
@@ -43,6 +45,9 @@ impl UserspaceError {
     }
 }
 
+#[derive(Debug)]
+pub enum ArithmeticOperation { Add, Sub, Mul, Div, Mod, Pow }
+
 #[derive(Debug, Fail)]
 pub enum KernelError {
     #[fail(display = "Frame allocation error: physical address space exhausted")]
@@ -53,10 +58,27 @@ pub enum KernelError {
     VirtualMemoryExhaustion {
         backtrace: Backtrace,
     },
+    #[fail(display = "Invalid address: virtual address is considered invalid")]
+    InvalidAddress {
+        address: VirtualAddress,
+        length: usize,
+        backtrace: Backtrace,
+    },
     #[fail(display = "Alignment error: expected a certain alignment")]
     AlignmentError {
         given: usize,
         needed: usize,
+        backtrace: Backtrace,
+    },
+    #[fail(display = "Arithmetic error: given parameters would cause an overflow")]
+    WouldOverflow {
+        lhs: usize,
+        rhs: usize,
+        operation: ArithmeticOperation,
+        backtrace: Backtrace,
+    },
+    #[fail(display = "Length error: length is 0")]
+    ZeroLengthError {
         backtrace: Backtrace,
     },
     #[doc(hidden)]
@@ -69,8 +91,9 @@ impl From<KernelError> for UserspaceError {
         match err {
             KernelError::PhysicalMemoryExhaustion { .. } => UserspaceError::MemoryFull,
             KernelError::VirtualMemoryExhaustion { .. } => UserspaceError::MemoryFull,
-            KernelError::AlignmentError { .. } => panic!("Tried to convert internal kernel error to UserspaceError"),
-            KernelError::ThisWillNeverHappenButPleaseDontMatchExhaustively => unreachable!()
+            KernelError::ThisWillNeverHappenButPleaseDontMatchExhaustively => unreachable!(),
+            _ => panic!("todo: implement matching for these errors :/")
         }
     }
 }
+

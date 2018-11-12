@@ -121,11 +121,20 @@ pub fn align_up_checked(addr: usize, align: usize) -> Option<usize> {
     }
 }
 
-/// checks that a certain value meets the given alignment
+/// checks that a certain value meets the given alignment.
 pub fn check_aligned(val: usize, alignment: usize) -> Result<(), KernelError> {
     match val % alignment {
         0 => Ok(()),
         _ => Err(KernelError::AlignmentError { given: val, needed: alignment, backtrace: Backtrace::new() } )
+    }
+}
+
+/// checks that a length is not 0.
+pub fn check_nonzero_length(length: usize) -> Result<(), KernelError> {
+    if length == 0 {
+        Err(KernelError::ZeroLengthError { backtrace: Backtrace::new() })
+    } else {
+        Ok(())
     }
 }
 

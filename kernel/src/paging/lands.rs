@@ -4,6 +4,8 @@
 use mem::VirtualAddress;
 use super::PAGE_SIZE;
 use super::arch::ENTRY_COUNT;
+use error::KernelError;
+use failure::Backtrace;
 
 /// A trait describing the splitting of virtual memory between Kernel and User.
 /// Implemented by UserLand and KernelLand
@@ -36,6 +38,20 @@ pub trait VirtualSpaceLand {
             Self::contains_address(start_address) && Self::contains_address(VirtualAddress(end_address))
         } else {
             false
+        }
+    }
+
+    /// Checks that a given address falls in this land, or return an InvalidAddress otherwise
+    fn check_contains_address(address: VirtualAddress) -> Result<(), KernelError> {
+        Self::check_contains_region(address, 1)
+    }
+
+    /// Checks that a given region falls in this land, or return an InvalidAddress otherwise
+    fn check_contains_region(address: VirtualAddress, length: usize) -> Result<(), KernelError> {
+        if UserLand::contains_region(address, length) {
+            Ok(())
+        } else {
+            Err(KernelError::InvalidAddress { address, length, backtrace: Backtrace::new() })
         }
     }
 }
@@ -94,3 +110,4 @@ fn __land_assertions() {
     const_assert!(KernelLand::start_addr().0 % (ENTRY_COUNT * PAGE_SIZE) == 0);
     const_assert!(UserLand::start_addr().0   % (ENTRY_COUNT * PAGE_SIZE) == 0);
 }
+
