@@ -93,15 +93,14 @@ impl FrameAllocatorTraitPrivate for FrameAllocator {
         // don't bother taking the lock if there is no frames to free
         if region.frames > 0 {
             debug!("Freeing {:?}", region);
+            assert!(Self::check_is_allocated(region), "PhysMemRegion beeing freed was not allocated");
             let mut allocator = FRAME_ALLOCATOR.lock();
             assert!(allocator.initialized, "The frame allocator was not initialized");
-            // todo don't do it bit by bit ! D:
-            for frame in region.into_iter() {
-                let frame_index = addr_to_frame(frame.addr());
-                assert!(allocator.memory_bitmap.get_bit(frame.addr()) == FRAME_OCCUPIED,
-                    "Frame being freed was not allocated");
-                allocator.memory_bitmap.set_bit(frame.addr(), FRAME_FREE);
-            }
+            allocator.memory_bitmap.set_bits_area(
+                addr_to_frame(region.address().addr())
+                    ..
+                addr_to_frame(region.address().addr() + region.size()),
+                FRAME_FREE);
         }
     }
 
