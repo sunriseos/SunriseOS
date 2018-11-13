@@ -17,6 +17,7 @@ use sync::SpinLock;
 use sync;
 use utils;
 use devices::pic;
+use scheduler;
 
 mod irq;
 mod syscalls;
@@ -87,7 +88,6 @@ fn double_fault_handler() {
         // And finally, panic
         panic!("Double fault!")
     }
-
 }
 
 extern "x86-interrupt" fn invalid_tss_handler(stack_frame: &mut ExceptionStackFrame, errcode: u32) {
@@ -108,12 +108,42 @@ extern "x86-interrupt" fn general_protection_fault_handler(stack_frame: &mut Exc
         sync::permanently_disable_interrupts();
     }
 
-    panic!("General Protection Fault: {:?} {}", stack_frame, errcode);
+    // Parse the ELF.
+    let info = i386::multiboot::get_boot_information();
+    let mut module = ::elf_loader::map_grub_module(info.module_tags().nth(0).unwrap());
+    let elf = module.elf.as_mut().expect("double_fault_handler: failed to parse module kernel elf");
+
+    // Then print the stack
+    let st = match elf.find_section_by_name(".symtab").expect("Missing .symtab").get_data(&elf).expect("Missing .symtab") {
+        SectionData::SymbolTable32(st) => st,
+        _ => panic!(".symtab is not a SymbolTable32"),
+    };
+
+    stack::KernelStack::dump_stack(stack_frame.stack_pointer.addr(), stack_frame.stack_pointer.addr(), stack_frame.instruction_pointer.addr(), Some((&elf, st)));
+
+    panic!("General Protection Fault in {:?}: {:?} {}", scheduler::try_get_current_process().as_ref().map(|p| &p.name), stack_frame, errcode);
 }
 
 extern "x86-interrupt" fn page_fault_handler(stack_frame: &mut ExceptionStackFrame, page: PageFaultErrorCode) {
+    // Disable interrupts forever!
+    unsafe {
+        sync::permanently_disable_interrupts();
+    }
+
+    /*
+    let info = i386::multiboot::get_boot_information();
+    let mut module = ::elf_loader::map_grub_module(info.module_tags().nth(0).unwrap());
+    let elf = module.elf.as_mut().expect("double_fault_handler: failed to parse module kernel elf");
+
+    let st = match elf.find_section_by_name(".symtab").expect("Missing .symtab").get_data(&elf).expect("Missing .symtab") {
+        SectionData::SymbolTable32(st) => st,
+        _ => panic!(".symtab is not a SymbolTable32"),
+};*/
+
+    stack::KernelStack::dump_stack(stack_frame.stack_pointer.addr(), stack_frame.stack_pointer.addr(), stack_frame.instruction_pointer.addr(), None);
+
     let cause_address = ::paging::read_cr2();
-    panic!("Page fault: {:?} {:?} {:?}", cause_address, stack_frame, page);
+    panic!("Page fault in {:?}: {:?} {:?} {:?}", scheduler::try_get_current_process().as_ref().map(|v| &v.name), cause_address, stack_frame, page);
 }
 
 extern "x86-interrupt" fn x87_floating_point_handler(stack_frame: &mut ExceptionStackFrame) {
