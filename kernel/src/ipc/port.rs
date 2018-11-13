@@ -1,43 +1,14 @@
-//! IPC primitives
-//!
-//! Mostly lifted from the Nintendo Switch.
-//! http://switchbrew.org/index.php?title=IPC_Marshalling contains documentation
-//! for how it works on the official hardware. I'll try my best to explain the
-//! ideas here.
-//!
-//! The switch IPC mechanism is separated with two main types, Ports and
-//! Sessions, both having a client and a server side.
-//!
-//! # Ports
-//!
-//! A Port represents an endpoint which can be connected to. It is split in two
-//! different part: ServerPort and ClientPort. The ClientPort has a `connect`
-//! operation, while a ServerPort has an `accept` operation.
-//!
-//! The `connect` operations waits until a ServerPort calls `accept`. Similarly,
-//! the `accept` operation waits until a ClientPort `connect`s. Once the two
-//! operation meet, a `Session` is created. The `accept` operation will return a
-//! `ServerSession`, while the `connect` operation returns a `ClientSession`.
-//! Those two parts are connected.
-//!
-//! Additionally, a ServerPort implements the Waitable trait, allowing it to be
-//! used with the `event::wait` function. TODO: The ClientPort should also
-//! implement Waitable, I believe. In Horizon/NX, it implements KSynchronization.
-//!
-//! # Session
-//!
-//! A Session represents an established connection.
-
-use sync::{Once, SpinLock, RwLock};
-use alloc::vec::Vec;
-use alloc::string::String;
-use alloc::sync::{Arc, Weak};
-use core::sync::atomic::{AtomicUsize, Ordering};
 use scheduler;
+use alloc::vec::Vec;
+use alloc::sync::{Arc, Weak};
+use sync::{Once, SpinLock, RwLock};
 use error::{KernelError, UserspaceError};
 use event::{self, Waitable};
-use hashmap_core::HashMap;
 use process::ProcessStruct;
+use core::sync::atomic::{AtomicUsize, Ordering};
+use hashmap_core::HashMap;
+use alloc::prelude::*;
+use ipc::session::*;
 
 /// An endpoint which can be connected to.
 #[derive(Debug)]
@@ -119,9 +90,8 @@ impl ServerPort {
                 let mut lock = incoming.session.lock();
 
                 // Check if it was already handled by another accepter!
-                if let &Some(_) = &*lock {
-                    continue;
-                }
+                // This shouldn't happen since we pop it from the queue above.
+                assert!(lock.is_none(), "Handled connection request still in incoming conn queue.");
 
                 // We can associate a session to this now.
                 let sess = Session::new();
@@ -174,58 +144,6 @@ impl ClientPort {
         };
 
         Ok(Session::client(session))
-    }
-}
-
-#[derive(Debug)]
-pub struct Session {
-    incoming_requests: SpinLock<Vec<Arc<ProcessStruct>>>,
-    accepters: SpinLock<Vec<Weak<ProcessStruct>>>,
-}
-
-#[derive(Debug)]
-pub struct ClientSession(Arc<Session>);
-
-#[derive(Debug)]
-pub struct ServerSession(Arc<Session>);
-
-impl Session {
-    fn new() -> Arc<Session> {
-        Arc::new(Session {
-            incoming_requests: SpinLock::new(Vec::new()),
-            accepters: SpinLock::new(Vec::new()),
-        })
-    }
-
-    /// Returns a ClientPort from this Port.
-    pub fn client(this: Arc<Self>) -> ClientSession {
-        ClientSession(this)
-    }
-
-    /// Returns a ServerSession from this Port.
-    pub fn server(this: Arc<Self>) -> ServerSession {
-        ServerSession(this)
-    }
-}
-
-impl ClientSession {
-    pub fn send_request(&self, buf: &[u8]) {
-
-    }
-}
-
-impl ServerSession {
-    pub fn reply(&self) {
-        
-    }
-}
-
-impl Waitable for ServerSession {
-    fn is_signaled(&self) -> bool {
-        !self.0.incoming_requests.lock().is_empty()
-    }
-    fn register(&self) {
-        self.0.accepters.lock().push(Arc::downgrade(&scheduler::get_current_process()));
     }
 }
 

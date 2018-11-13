@@ -104,6 +104,11 @@ impl HandleTable {
     pub fn get_handle(&self, handle: u32) -> Result<Arc<Handle>, UserspaceError> {
         self.table.get(&handle).cloned().ok_or(UserspaceError::InvalidHandle)
     }
+
+    pub fn delete_handle(&mut self, handle: u32) -> Result<Arc<Handle>, UserspaceError> {
+        // TODO: Handle 0xFFFF8000 and 0xFFFF8001 ?
+        self.table.remove(&handle).ok_or(UserspaceError::InvalidHandle)
+    }
 }
 
 /// Just a handy shortcut

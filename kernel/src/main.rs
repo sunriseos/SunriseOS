@@ -10,6 +10,8 @@
 #![cfg_attr(target_os = "none", no_std)]
 #![cfg_attr(target_os = "none", no_main)]
 #![allow(unused)]
+#![recursion_limit = "1024"]
+
 #[cfg(not(target_os = "none"))]
 use std as core;
 
@@ -37,6 +39,8 @@ extern crate rustc_demangle;
 extern crate byteorder;
 #[macro_use]
 extern crate failure;
+#[macro_use]
+extern crate bitfield;
 
 use ascii::AsAsciiStr;
 use core::fmt::Write;

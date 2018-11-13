@@ -11,6 +11,7 @@ mod bookkeeping;
 
 pub use self::arch::{PAGE_SIZE, read_cr2};
 pub use self::hierarchical_table::PageState;
+pub use self::bookkeeping::MappingType;
 
 bitflags! {
     /// The flags of a mapping.

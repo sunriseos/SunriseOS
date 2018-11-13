@@ -1,7 +1,7 @@
 //! Bookkeeping of mappings in UserLand
 
 use mem::VirtualAddress;
-use paging::PAGE_SIZE;
+use paging::{PAGE_SIZE, MappingFlags};
 use paging::lands::{UserLand, KernelLand, RecursiveTablesLand, VirtualSpaceLand};
 use frame_allocator::PhysicalMemRegion;
 use alloc::vec::Vec;
@@ -22,6 +22,7 @@ pub struct Mapping {
     pub address: VirtualAddress,
     pub length: usize,
     pub mtype: MappingType,
+    pub flags: MappingFlags,
     // keep at least one private field, to forbid it from being constructed.
     private: ()
 }
@@ -47,11 +48,11 @@ impl Mapping {
     ///
     /// Returns an Error if address or length is not page aligned.
     /// Returns an Error if length is 0.
-    pub fn new(address: VirtualAddress, length: usize, mtype: MappingType) -> Result<Mapping, KernelError> {
+    pub fn new(address: VirtualAddress, length: usize, mtype: MappingType, flags: MappingFlags) -> Result<Mapping, KernelError> {
         check_aligned(address.addr(), PAGE_SIZE)?;
         check_aligned(length, PAGE_SIZE)?;
         check_nonzero_length(length)?;
-        Ok(Mapping { address, length, mtype, private: () })
+        Ok(Mapping { address, length, mtype, flags, private: () })
     }
 }
 
@@ -65,6 +66,7 @@ impl Splittable for Mapping {
         let right = Mapping {
             address: self.address + offset,
             length: self.length - offset,
+            flags: self.flags,
             mtype: match &mut self.mtype {
                 MappingType::Available => MappingType::Available,
                 MappingType::Guarded => MappingType::Guarded,
@@ -112,12 +114,14 @@ impl UserspaceBookkeeping {
             address: KernelLand::start_addr(),
             length: KernelLand::length(),
             mtype: MappingType::SystemReserved,
+            flags: MappingFlags::empty(),
             private: ()
         };
         let rtl = Mapping {
             address: RecursiveTablesLand::start_addr(),
             length: RecursiveTablesLand::length(),
             mtype: MappingType::SystemReserved,
+            flags: MappingFlags::empty(),
             private: ()
         };
         mappings.insert(kl.address, kl);
@@ -158,6 +162,7 @@ impl UserspaceBookkeeping {
             address: start_addr,
             length: length,
             mtype: MappingType::Available,
+            flags: MappingFlags::empty(),
             private: ()
         })
     }

@@ -97,6 +97,13 @@ impl VirtualAddress {
 #[repr(transparent)]
 pub struct UserSpacePtr<T: ?Sized>(pub *const T);
 
+impl<T: ?Sized> Clone for UserSpacePtr<T> {
+    fn clone(&self) -> UserSpacePtr<T> {
+        UserSpacePtr(self.0)
+    }
+}
+impl<T: ?Sized> Copy for UserSpacePtr<T> {}
+
 impl<I> UserSpacePtr<[I]> {
     pub fn from_raw_parts(data: *const I, len: usize) -> UserSpacePtr<[I]> {
         unsafe {
@@ -120,6 +127,7 @@ impl<T: ?Sized> Deref for UserSpacePtr<T> {
 }
 
 #[repr(transparent)]
+#[derive(Debug)]
 pub struct UserSpacePtrMut<T: ?Sized>(pub *mut T);
 
 impl<I> UserSpacePtrMut<[I]> {
@@ -132,6 +140,13 @@ impl<I> UserSpacePtrMut<[I]> {
         }
     }
 }
+
+impl<T: ?Sized> Clone for UserSpacePtrMut<T> {
+    fn clone(&self) -> UserSpacePtrMut<T> {
+        UserSpacePtrMut(self.0)
+    }
+}
+impl<T: ?Sized> Copy for UserSpacePtrMut<T> {}
 
 impl<T: ?Sized> Deref for UserSpacePtrMut<T> {
     type Target = T;
