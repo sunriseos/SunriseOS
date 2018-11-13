@@ -3,6 +3,7 @@
 pub mod process_memory;
 pub mod kernel_memory;
 pub mod lands;
+pub mod cross_process;
 pub mod error;
 mod hierarchical_table;
 mod arch;

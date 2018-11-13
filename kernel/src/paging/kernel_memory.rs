@@ -87,6 +87,17 @@ impl KernelMemory {
         va
     }
 
+    /// Maps a list of physical region anywhere
+    ///
+    /// # Unsafe
+    ///
+    /// This function cannot ensure that the frames won't be dropped while still mapped.
+    pub(super) unsafe fn map_phys_regions(&mut self, phys: &[PhysicalMemRegion], flags: MappingFlags) -> VirtualAddress {
+        let length = phys.iter().flatten().count() * PAGE_SIZE;
+        let va = self.find_virtual_space(length).unwrap();
+        self.tables.map_to(phys, va, flags);
+        va
+    }
     /// Allocates and maps a single page, choosing a spot in VMEM for it.
     pub fn get_page(&mut self) -> VirtualAddress {
         let pr = FrameAllocator::allocate_frame().unwrap();

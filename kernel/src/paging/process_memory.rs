@@ -18,6 +18,7 @@ use super::arch::{PAGE_SIZE, InactiveHierarchy, ActiveHierarchy};
 use super::lands::{UserLand, KernelLand, VirtualSpaceLand};
 use super::kernel_memory::get_kernel_memory;
 use super::bookkeeping::{UserspaceBookkeeping, Mapping, MappingType, QuerryMemory};
+use super::cross_process::CrossProcessMapping;
 use super::MappingFlags;
 use mem::{VirtualAddress, PhysicalAddress};
 use frame_allocator::{FrameAllocator, FrameAllocatorTrait, PhysicalMemRegion, mark_frame_bootstrap_allocated};
@@ -276,52 +277,21 @@ impl ProcessMemory {
     /// # Error
     ///
     /// Returns a KernelError if address does not fall in UserLand.
-    pub fn query_memory(&mut self, address: VirtualAddress) -> Result<QuerryMemory, KernelError> {
+    pub fn query_memory(&self, address: VirtualAddress) -> Result<QuerryMemory, KernelError> {
         UserLand::check_contains_address(address)?;
         Ok(self.userspace_bookkeping.mapping_at(address))
     }
 
-    /// Unmaps a KernelLand page, and remaps it to process' memory.
-    // todo work on a special "AcrossLandMapping" type, that controls this behaviour more strictly
-    pub fn remap_frame_to_userland(&mut self,
-                                from_addr: VirtualAddress,
-                                dest_addr: VirtualAddress,
-                                dest_flags: MappingFlags) {
-        assert!(KernelLand::contains_region(from_addr, PAGE_SIZE));
-        assert!(UserLand::contains_region(dest_addr, PAGE_SIZE));
-        let mut kernel_memory_lock = get_kernel_memory();
-        // read the pointed frame
-        let mapping = kernel_memory_lock.mapping_state(from_addr);
-        // unmap it.
-        // don't deallocate, we still have a reference to possibly pointed frame in 'mapping'
-        kernel_memory_lock.unmap_no_dealloc(from_addr, PAGE_SIZE);
-        drop(kernel_memory_lock);
-        // remap it
-        match mapping {
-            PageState::Available => { panic!("Asked to remap an available kernelland mapping to userland") },
-            PageState::Guarded => self.guard(dest_addr, PAGE_SIZE).unwrap(),
-            PageState::Present(paddr) => {
-                let frame = unsafe { PhysicalMemRegion::reconstruct_no_dealloc(paddr, PAGE_SIZE) };
-                self.map_phys_region_to(frame, dest_addr, dest_flags);
-
-            }
-        }
-    }
-
-    /// Unmaps a KernelLand region, and remaps it to process' memory.
-    // todo work on a special "AcrossLandMapping" type, that controls this behaviour more strictly
-    pub fn remap_to_userland(&mut self,
-                            from_addr: VirtualAddress,
-                            length: usize,
-                            dest_addr: VirtualAddress,
-                            dest_flags: MappingFlags) {
-        assert!(KernelLand::contains_region(from_addr, length));
-        assert!(UserLand::contains_region(dest_addr, length));
-        assert!(length % PAGE_SIZE == 0, "length is not PAGE_SIZE aligned");
-        for offset in (0..length).step_by(PAGE_SIZE) {
-            // this is so slow it hurts
-            self.remap_frame_to_userland(from_addr + offset, dest_addr + offset, dest_flags);
-        }
+    /// Retrieves the mapping that `address` falls into, and mirror it in KernelLand
+    ///
+    /// # Error
+    ///
+    /// Returns an Error if the mapping is Available/Guarded/SystemReserved, as there would be
+    /// no point to remap it, and dereferencing the pointer would cause the kernel to page-fault.
+    pub fn mirror_mapping(&self, address: VirtualAddress) -> Result<CrossProcessMapping, KernelError> {
+        UserLand::check_contains_address(address)?;
+        let mapping = self.userspace_bookkeping.occupied_mapping_at(address)?;
+        CrossProcessMapping::mirror_mapping(mapping)
     }
 
     /// Switches to this process memory

@@ -118,14 +118,30 @@ pub fn load_builtin(process_memory: &mut ProcessMemory, module: &MappedGrubModul
 fn load_segment(process_memory: &mut ProcessMemory, segment: &ProgramHeader, elf_file: &ElfFile) {
     // Map the segment memory in KernelLand
     let mem_size_total = align_up(segment.mem_size() as usize, PAGE_SIZE);
-    let mapping_addr = get_kernel_memory().get_pages(mem_size_total);
+
+    // Map as readonly if specified
+    let flags = if !segment.flags().is_write() {
+        MappingFlags::empty()
+    } else {
+        MappingFlags::WRITABLE
+    };
+
+    // Create the mapping in UserLand
+    let userspace_addr = VirtualAddress(segment.virtual_addr() as usize);
+    process_memory.create_regular_mapping(userspace_addr, mem_size_total, flags)
+        .expect("Cannot load segment");
+
+    // Mirror it in KernelLand
+    let mirror = process_memory.mirror_mapping(userspace_addr)
+        .expect("Cannot mirror segment to load");
+    let kernel_addr = mirror.kernel_address;
 
     // Copy the segment data
     match segment.get_data(elf_file).expect("Error getting elf segment data")
     {
         SegmentData::Undefined(elf_data) =>
         {
-            let dest_ptr = mapping_addr.addr() as *mut u8;
+            let dest_ptr = kernel_addr.addr() as *mut u8;
             let mut dest = unsafe { slice::from_raw_parts_mut(dest_ptr, mem_size_total) };
             let (dest_data, dest_pad) = dest.split_at_mut(segment.file_size() as usize);
 
@@ -147,14 +163,6 @@ fn load_segment(process_memory: &mut ProcessMemory, segment: &ProgramHeader, elf
         match segment.flags().is_execute() { true => 'X', false => ' '},
     );
 
-    // Remap as readonly if specified
-    let flags = if !segment.flags().is_write() {
-        MappingFlags::empty()
-    } else {
-        MappingFlags::WRITABLE
-    };
-    // And now, map them in dest process' memory, and unmap them from current page tables
-    process_memory.remap_to_userland(mapping_addr, mem_size_total,
-                                     VirtualAddress(segment.virtual_addr() as usize),
-                                     flags);
+    // unmap it from KernelLand, leaving it mapped only in UserLand
+    drop(mirror);
 }
