@@ -3,7 +3,7 @@
 //! Provides an allocator, various lang items.
 
 #![no_std]
-#![feature(asm, start, lang_items, panic_implementation, core_intrinsics, const_fn, alloc)]
+#![feature(asm, start, lang_items, core_intrinsics, const_fn, alloc)]
 
 pub mod syscalls;
 pub mod io;
@@ -33,11 +33,10 @@ fn init_heap() {
 #[lang = "eh_personality"] #[no_mangle] pub extern fn eh_personality() {}
 
 #[cfg(target_os = "none")]
-#[panic_implementation] #[no_mangle]
+#[panic_handler] #[no_mangle]
 pub extern fn panic_fmt(p: &core::panic::PanicInfo) -> ! {
     syscalls::output_debug_string(&format!("{}", p));
     syscalls::exit_process();
-    loop {}
 }
 
 use core::alloc::Layout;

@@ -98,8 +98,8 @@ impl HandleTable {
         }
     }
 
-    pub fn get_handle(&self, handle: u32) -> Arc<Handle> {
-        self.table[&handle].clone()
+    pub fn get_handle(&self, handle: u32) -> Result<Arc<Handle>, UserspaceError> {
+        self.table.get(&handle).cloned().ok_or(UserspaceError::InvalidHandle)
     }
 }
 

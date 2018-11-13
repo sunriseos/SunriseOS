@@ -66,7 +66,7 @@ version = "0.1.3"
 source = "git+https://github.com/orycterope/font-rs#095e06426c6ea17d1f49299f327adda075eca5a1"
 dependencies = [
  "gcc 0.3.54 (registry+https://github.com/rust-lang/crates.io-index)",
- "hashmap_core 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hashmap_core 0.1.9 (git+https://github.com/pepyakin/hashmap_core?rev=add-alloc-layout-extra)",
  "math 0.0.1 (git+https://github.com/roblabla/math.rs.git)",
 ]
 
@@ -87,7 +87,7 @@ dependencies = [
 [[package]]
 name = "hashmap_core"
 version = "0.1.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
+source = "git+https://github.com/pepyakin/hashmap_core?rev=add-alloc-layout-extra#fbf5de0e4bb62d9b5bd30a25ac86580e85bf2b29"
 
 [[package]]
 name = "kfs-bootstrap"
@@ -104,7 +104,7 @@ dependencies = [
  "log 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "multiboot2 0.5.0 (git+https://github.com/roblabla/multiboot2-elf64)",
  "smallvec 0.6.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "spin 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spin 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "static_assertions 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "xmas-elf 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -114,10 +114,10 @@ name = "kfs-clock"
 version = "0.1.0"
 dependencies = [
  "font-rs 0.1.3 (git+https://github.com/orycterope/font-rs)",
- "hashmap_core 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hashmap_core 0.1.9 (git+https://github.com/pepyakin/hashmap_core?rev=add-alloc-layout-extra)",
  "lazy_static 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "libuser 0.1.0",
- "spin 0.4.9 (git+https://github.com/Orycterope/spin-rs.git)",
+ "spin 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -132,14 +132,14 @@ dependencies = [
  "failure 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "font-rs 0.1.3 (git+https://github.com/orycterope/font-rs)",
  "gif 0.10.0 (git+https://github.com/roblabla/image-gif)",
- "hashmap_core 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hashmap_core 0.1.9 (git+https://github.com/pepyakin/hashmap_core?rev=add-alloc-layout-extra)",
  "lazy_static 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "linked_list_allocator 0.6.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "multiboot2 0.5.0 (git+https://github.com/roblabla/multiboot2-elf64)",
  "rustc-demangle 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "smallvec 0.6.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "spin 0.4.9 (git+https://github.com/Orycterope/spin-rs.git)",
+ "spin 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "static_assertions 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "xmas-elf 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -150,11 +150,11 @@ version = "0.1.0"
 dependencies = [
  "font-rs 0.1.3 (git+https://github.com/orycterope/font-rs)",
  "gif 0.10.0 (git+https://github.com/roblabla/image-gif)",
- "hashmap_core 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hashmap_core 0.1.9 (git+https://github.com/pepyakin/hashmap_core?rev=add-alloc-layout-extra)",
  "lazy_static 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "libuser 0.1.0",
  "log 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "spin 0.4.9 (git+https://github.com/Orycterope/spin-rs.git)",
+ "spin 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -169,7 +169,7 @@ name = "lazy_static"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "spin 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spin 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "version_check 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -185,7 +185,7 @@ name = "linked_list_allocator"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "spin 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spin 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -253,13 +253,8 @@ dependencies = [
 
 [[package]]
 name = "spin"
-version = "0.4.8"
+version = "0.4.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-
-[[package]]
-name = "spin"
-version = "0.4.9"
-source = "git+https://github.com/Orycterope/spin-rs.git#22fca710f7527b1ce6ba3fd128758ecd81e346a5"
 
 [[package]]
 name = "static_assertions"
@@ -337,7 +332,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum font-rs 0.1.3 (git+https://github.com/orycterope/font-rs)" = "<none>"
 "checksum gcc 0.3.54 (registry+https://github.com/rust-lang/crates.io-index)" = "5e33ec290da0d127825013597dbdfc28bee4964690c7ce1166cbc2a7bd08b1bb"
 "checksum gif 0.10.0 (git+https://github.com/roblabla/image-gif)" = "<none>"
-"checksum hashmap_core 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)" = "4a9548e1de55e2a7cbcedefa9b6528e63f0ecba750fa060a325769fcf6298d11"
+"checksum hashmap_core 0.1.9 (git+https://github.com/pepyakin/hashmap_core?rev=add-alloc-layout-extra)" = "<none>"
 "checksum lazy_static 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ca488b89a5657b0a2ecd45b95609b3e848cf1755da332a0da46e2b2b1cb371a7"
 "checksum linked_list_allocator 0.6.3 (registry+https://github.com/rust-lang/crates.io-index)" = "655d57c71827fe0891ce72231b6aa5e14033dae3f604609e6a6f807267c1678d"
 "checksum log 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)" = "61bd98ae7f7b754bc53dca7d44b604f733c6bba044ea6f41bc8d89272d8161d2"
@@ -349,8 +344,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum quote 0.6.8 (registry+https://github.com/rust-lang/crates.io-index)" = "dd636425967c33af890042c483632d33fa7a18f19ad1d7ea72e8998c6ef8dea5"
 "checksum rustc-demangle 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)" = "bcfe5b13211b4d78e5c2cadfebd7769197d95c639c35a50057eb4c05de811395"
 "checksum smallvec 0.6.4 (registry+https://github.com/rust-lang/crates.io-index)" = "211a489e65e94b103926d2054ae515a1cdb5d515ea0ef414fee23b7e043ce748"
-"checksum spin 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)" = "14db77c5b914df6d6173dda9a3b3f5937bd802934fa5edaf934df06a3491e56f"
-"checksum spin 0.4.9 (git+https://github.com/Orycterope/spin-rs.git)" = "<none>"
+"checksum spin 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)" = "ceac490aa12c567115b40b7b7fceca03a6c9d53d5defea066123debc83c5dc1f"
 "checksum static_assertions 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)" = "c19be23126415861cb3a23e501d34a708f7f9b2183c5252d690941c2e69199d5"
 "checksum syn 0.14.9 (registry+https://github.com/rust-lang/crates.io-index)" = "261ae9ecaa397c42b960649561949d69311f08eeaea86a65696e6e46517cf741"
 "checksum synstructure 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)" = "85bb9b7550d063ea184027c9b8c20ac167cd36d3e06b3a40bceb9d746dc1a7b7"

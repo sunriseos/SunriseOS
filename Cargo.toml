@@ -1,2 +1,5 @@
 [workspace]
 members = ["kernel", "bootstrap", "shell", "libuser", "clock", "sm"]
+
+[patch.crates-io]
+hashmap_core = { git = "https://github.com/pepyakin/hashmap_core", rev = "add-alloc-layout-extra" }

@@ -6,7 +6,7 @@ authors = ["roblabla <unfiltered@roblab.la>"]
 [dependencies]
 libuser = { path = "../libuser" }
 font-rs = { git = "https://github.com/orycterope/font-rs" }
-spin = { git = "https://github.com/Orycterope/spin-rs.git" }
+spin = "0.4"
 hashmap_core = "0.1.9"
 
 [dependencies.lazy_static]

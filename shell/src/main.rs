@@ -1,4 +1,4 @@
-#![feature(asm, const_fn, alloc, panic_implementation, core_intrinsics, lang_items, used)]
+#![feature(alloc)]
 #![no_std]
 
 extern crate gif;
