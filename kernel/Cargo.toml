@@ -21,6 +21,7 @@ font-rs = { git = "https://github.com/orycterope/font-rs" }
 hashmap_core = "0.1.9"
 rustc-demangle = "0.1"
 failure = { version = "0.1", default-features = false, features = ["derive"] }
+bitfield = "0.13"
 
 [dependencies.smallvec]
 default-features = false
