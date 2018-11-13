@@ -148,23 +148,33 @@ impl ProcessMemory {
         }
     }
 
-    /// Deprecated.
-    ///
     /// Maps a single physical regions to a given virtual address.
+    /// Used to map mmio regions in UserSpace.
     ///
-    /// # Panics
+    /// # Error
     ///
-    /// Panics if encounters any kind of bookkeeping error.
-    // todo delete this as soon as possible
-    #[deprecated(since="0.0.0", note="this function is about to be deleted for a better and safer interface")]
-    pub fn map_phys_region_to(&mut self, phys: PhysicalMemRegion, address: VirtualAddress, flags: MappingFlags) {
-        // really dumb implementation, because this function is scheduled to be removed
+    /// Returns a KernelError if length is not page aligned.
+    /// Returns a KernelError if length is 0.
+    pub fn map_phys_region_to(&mut self,
+                              phys: PhysicalMemRegion,
+                              address: VirtualAddress,
+                              flags: MappingFlags)
+                              -> Result<(), KernelError> {
         let length = phys.size();
-        let frames_vec = vec![phys];
-        self.get_hierarchy().map_to(&frames_vec, address, flags);
-        self.userspace_bookkeping.add_mapping(Mapping {
-            address, length, mtype: MappingType::Regular(frames_vec)
-        }).unwrap();
+        check_aligned(address.addr(), PAGE_SIZE)?;
+        check_aligned(length, PAGE_SIZE)?;
+        check_nonzero_length(length)?;
+        UserLand::check_contains_region(address, length)?;
+        self.userspace_bookkeping.check_vacant(address, length)?;
+        // ok, everything seems good, from now on treat errors as unexpected
+
+        let frames = vec![phys];
+        self.get_hierarchy().map_to(&frames, address, flags);
+        let mapping = Mapping::new(address, length, MappingType::Regular(frames))
+            .expect("We checked everything, but bookkeeping refuses to create the mapping");
+        self.userspace_bookkeping.add_mapping(mapping)
+            .expect("We checked everything, but bookkeeping refuses to add the mapping");
+        Ok(())
     }
 
     /// Allocates the physical regions, and maps them to specified address.
@@ -181,10 +191,13 @@ impl ProcessMemory {
         UserLand::check_contains_region(address, length)?;
         self.userspace_bookkeping.check_vacant(address, length)?;
         let frames = FrameAllocator::allocate_frames_fragmented(length / PAGE_SIZE)?;
+        // ok, everything seems good, from now on treat errors as unexpected
+
         self.get_hierarchy().map_to(&frames, address, flags);
-        self.userspace_bookkeping.add_mapping(Mapping {
-            address, length, mtype: MappingType::Regular(frames)
-        }).unwrap();
+        let mapping = Mapping::new(address, length, MappingType::Regular(frames))
+            .expect("We checked everything, but bookkeeping refuses to create the mapping");
+        self.userspace_bookkeping.add_mapping(mapping)
+            .expect("We checked everything, but bookkeeping refuses to add the mapping");
         Ok(())
     }
 
@@ -207,10 +220,13 @@ impl ProcessMemory {
         check_aligned(length, PAGE_SIZE)?;
         UserLand::check_contains_region(address, length)?;
         self.userspace_bookkeping.check_vacant(address, length)?;
+        // ok, everything seems good, from now on treat errors as unexpected
+
         self.get_hierarchy().map_to(&shared_mapping, address, flags);
-        self.userspace_bookkeping.add_mapping(Mapping {
-            address, length, mtype: MappingType::Shared(shared_mapping)
-        }).unwrap();
+        let mapping = Mapping::new(address, length, MappingType::Shared(shared_mapping))
+            .expect("We checked everything, but bookkeeping refuses to create the mapping");
+        self.userspace_bookkeping.add_mapping(mapping)
+            .expect("We checked everything, but bookkeeping refuses to add the mapping");
         Ok(())
     }
 
@@ -222,10 +238,11 @@ impl ProcessMemory {
     /// Returns a KernelError if address does not fall in UserLand.
     /// Returns a KernelError if address or length is not PAGE_SIZE aligned.
     pub fn guard(&mut self, address: VirtualAddress, length: usize) -> Result<(), KernelError>{
-        check_aligned(address.addr(), PAGE_SIZE)?;
-        check_aligned(length, PAGE_SIZE)?;
         UserLand::check_contains_region(address, length)?;
-        self.userspace_bookkeping.add_mapping(Mapping { address, length, mtype: MappingType::Guarded})?;
+        let mapping = Mapping::new(address, length, MappingType::Guarded)?;
+        self.userspace_bookkeping.add_mapping(mapping)?;
+
+        // everything is ok, actually map the guard
         self.get_hierarchy().guard(address, length);
         Ok(())
     }
@@ -244,6 +261,7 @@ impl ProcessMemory {
     pub fn unmap(&mut self, address: VirtualAddress, length: usize) -> Result<(), KernelError> {
         check_aligned(address.addr(), PAGE_SIZE)?;
         check_aligned(length, PAGE_SIZE)?;
+        UserLand::check_contains_region(address, length)?;
         let mapping = self.userspace_bookkeping.remove_mapping(address, length)?;
         self.get_hierarchy().unmap(address, length, |_| {
             /* leak the mapped frames here, we still have them in `mapping` */
@@ -311,5 +329,4 @@ impl ProcessMemory {
         self.table_hierarchy.switch_to();
     }
 }
-
 

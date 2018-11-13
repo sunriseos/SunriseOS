@@ -14,11 +14,16 @@ use failure::Backtrace;
 
 /// A userspace mapping.
 /// Stores the address, the length, and the type it maps.
+///
+/// A mapping is guaranteed to have page aligned address and length,
+/// and that its length is not 0.
 #[derive(Debug)]
 pub struct Mapping {
     pub address: VirtualAddress,
     pub length: usize,
-    pub mtype: MappingType
+    pub mtype: MappingType,
+    // keep at least one private field, to forbid it from being constructed.
+    private: ()
 }
 
 /// The types that a UserSpace mapping can be in.
@@ -33,6 +38,21 @@ pub enum MappingType {
     Stack(Vec<PhysicalMemRegion>),
     Shared(Arc<Vec<PhysicalMemRegion>>),
     SystemReserved // used for anything that UserSpace isn't authorized to address
+}
+
+impl Mapping {
+    /// Tries to constructs a mapping.
+    ///
+    /// # Error
+    ///
+    /// Returns an Error if address or length is not page aligned.
+    /// Returns an Error if length is 0.
+    pub fn new(address: VirtualAddress, length: usize, mtype: MappingType) -> Result<Mapping, KernelError> {
+        check_aligned(address.addr(), PAGE_SIZE)?;
+        check_aligned(length, PAGE_SIZE)?;
+        check_nonzero_length(length)?;
+        Ok(Mapping { address, length, mtype, private: () })
+    }
 }
 
 impl Splittable for Mapping {
@@ -91,12 +111,14 @@ impl UserspaceBookkeeping {
         let kl = Mapping {
             address: KernelLand::start_addr(),
             length: KernelLand::length(),
-            mtype: MappingType::SystemReserved
+            mtype: MappingType::SystemReserved,
+            private: ()
         };
         let rtl = Mapping {
             address: RecursiveTablesLand::start_addr(),
             length: RecursiveTablesLand::length(),
-            mtype: MappingType::SystemReserved
+            mtype: MappingType::SystemReserved,
+            private: ()
         };
         mappings.insert(kl.address, kl);
         mappings.insert(rtl.address, rtl);
@@ -121,7 +143,7 @@ impl UserspaceBookkeeping {
             .map(|(_, mapping)| mapping)
     }
 
-    /// Returns the mapping `address` falls into
+    /// Returns the mapping `address` falls into.
     pub fn mapping_at(&self, address: VirtualAddress) -> QuerryMemory {
         let start_addr = match self.mapping_at_or_preceding(address) {
             Some(m) if m.address + m.length > address => return QuerryMemory::Used(m), // address falls in m
@@ -135,8 +157,21 @@ impl UserspaceBookkeeping {
         QuerryMemory::Available(Mapping {
             address: start_addr,
             length: length,
-            mtype: MappingType::Available
+            mtype: MappingType::Available,
+            private: ()
         })
+    }
+
+    /// Returns the mapping `address` falls into.
+    ///
+    /// # Error
+    ///
+    /// Returns an Error if mapping pointed to by address is vacant.
+    pub fn occupied_mapping_at(&self, address: VirtualAddress) -> Result<&Mapping, KernelError> {
+        match self.mapping_at_or_preceding(address) {
+            Some(m) if m.address + m.length > address => Ok(m),
+            _ => Err(KernelError::MmError(MmError::WasAvailable { address, backtrace: Backtrace::new() }))
+        }
     }
 
     /// Checks that a given range is unoccupied.
