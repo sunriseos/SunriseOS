@@ -17,7 +17,7 @@ use super::hierarchical_table::*;
 use super::arch::{PAGE_SIZE, InactiveHierarchy, ActiveHierarchy};
 use super::lands::{UserLand, KernelLand, VirtualSpaceLand};
 use super::kernel_memory::get_kernel_memory;
-use super::bookkeeping::{UserspaceBookkeeping, Mapping, MappingType, QuerryMemory, BookkeepingError};
+use super::bookkeeping::{UserspaceBookkeeping, Mapping, MappingType, QuerryMemory};
 use super::MappingFlags;
 use mem::{VirtualAddress, PhysicalAddress};
 use frame_allocator::{FrameAllocator, FrameAllocatorTrait, PhysicalMemRegion, mark_frame_bootstrap_allocated};

@@ -1,7 +1,7 @@
 //! UserspaceError and KernelError
 
 use failure::Backtrace;
-use paging::BookkeepingError;
+use paging::error::MmError;
 use mem::VirtualAddress;
 
 #[derive(Debug)]
@@ -82,8 +82,8 @@ pub enum KernelError {
     ZeroLengthError {
         backtrace: Backtrace,
     },
-    #[fail(display = "Bookkeeping error")]
-    UserspaceBookkeepingError(BookkeepingError),
+    #[fail(display = "Memory management error")]
+    MmError(MmError),
     #[doc(hidden)]
     #[fail(display = "Should never ever ***EVER*** be returned")]
     ThisWillNeverHappenButPleaseDontMatchExhaustively,
@@ -95,7 +95,8 @@ impl From<KernelError> for UserspaceError {
             KernelError::PhysicalMemoryExhaustion { .. } => UserspaceError::MemoryFull,
             KernelError::VirtualMemoryExhaustion { .. } => UserspaceError::MemoryFull,
             KernelError::ThisWillNeverHappenButPleaseDontMatchExhaustively => unreachable!(),
-            _ => panic!("todo: implement matching for these errors :/")
+            // todo
+            _ => unimplemented!("todo: implement matching for these errors :/")
         }
     }
 }

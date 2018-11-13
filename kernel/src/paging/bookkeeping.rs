@@ -8,6 +8,7 @@ use alloc::vec::Vec;
 use alloc::sync::Arc;
 use alloc::collections::BTreeMap;
 use error::{KernelError, UserspaceError};
+use super::error::MmError;
 use utils::{Splittable, check_aligned, check_nonzero_length};
 use failure::Backtrace;
 
@@ -49,10 +50,11 @@ impl Splittable for Mapping {
                 MappingType::Guarded => MappingType::Guarded,
                 MappingType::Regular(ref mut frames) => MappingType::Regular(frames.split_at(offset)?.unwrap()),
                 MappingType::Stack(ref mut frames) => MappingType::Stack(frames.split_at(offset)?.unwrap()),
-                MappingType::Shared(arc) => return Err(KernelError::UserspaceBookkeepingError(
-                                                       BookkeepingError::SharedMapping { backtrace: Backtrace::new() })),
+                MappingType::Shared(arc) => return Err(KernelError::MmError(
+                                                       MmError::SharedMapping { backtrace: Backtrace::new() })),
                 MappingType::SystemReserved => panic!("shouldn't split a SystemReserved mapping"),
-            }
+            },
+            private: ()
         };
         // split succeeded, now modify left part
         self.length = offset;
@@ -155,8 +157,8 @@ impl UserspaceBookkeeping {
     /// Returns an Error if address + length would overflow.
     pub fn check_vacant(&self, address: VirtualAddress, length: usize) -> Result<(), KernelError> {
         if !self.is_vacant(address, length)? {
-            Err(KernelError::UserspaceBookkeepingError(
-                BookkeepingError::OccupiedMapping { address, length, backtrace: Backtrace::new() }))
+            Err(KernelError::MmError(
+                MmError::OccupiedMapping { address, length, backtrace: Backtrace::new() }))
         } else {
             Ok(())
         }
@@ -188,7 +190,7 @@ impl UserspaceBookkeeping {
         if self.mappings.get(&address)
             .filter(|m| m.length == length)
             .is_none() {
-            Err(KernelError::UserspaceBookkeepingError(BookkeepingError::DoesNotSpanMapping { address, length, backtrace: Backtrace::new() }))
+            Err(KernelError::MmError(MmError::DoesNotSpanMapping { address, length, backtrace: Backtrace::new() }))
         } else {
             Ok(self.mappings.remove(&address).unwrap())
         }
@@ -206,46 +208,6 @@ impl UserspaceBookkeeping {
     /// Returns a KernelError if the range spans multiple mappings.
     /// Returns a KernelError if the range falls in a Shared mapping, as it cannot be splitted.
     pub fn remove_mapping_split(&mut self, address: VirtualAddress, length: usize) -> Result<Mapping, KernelError> {
-        unimplemented!()
-    }
-}
-
-#[derive(Debug, Fail)]
-pub enum BookkeepingError {
-    #[fail(display = "Bookkeeping error: Virtual region is already occupied")]
-    OccupiedMapping {
-        address: VirtualAddress,
-        length: usize,
-        backtrace: Backtrace
-    },
-    #[fail(display = "Bookkeeping error: Virtual region does not span the mapping exactly")]
-    DoesNotSpanMapping {
-        address: VirtualAddress,
-        length: usize,
-        backtrace: Backtrace
-    },
-    #[fail(display = "Bookkeeping error: Virtual region spans several mappings")]
-    SpansSeveralMappings {
-        address: VirtualAddress,
-        length: usize,
-        backtrace: Backtrace
-    },
-    #[fail(display = "Bookkeeping error: asked to remove an already available mapping")]
-    WasAvailable {
-        address: VirtualAddress,
-        backtrace: Backtrace
-    },
-    #[fail(display = "Bookkeeping error: cannot split mapping because it is shared")]
-    SharedMapping {
-        backtrace: Backtrace,
-    },
-    #[doc(hidden)]
-    #[fail(display = "Should never ever ***EVER*** be returned")]
-    ThisWillNeverHappenButPleaseDontMatchExhaustively,
-}
-
-impl From<BookkeepingError> for UserspaceError {
-    fn from(_: BookkeepingError) -> Self {
         unimplemented!()
     }
 }
