@@ -6,7 +6,8 @@ extern crate libuser;
 extern crate alloc;
 
 use alloc::prelude::*;
-use libuser::syscalls::{self, ServerSession, HandleRef};
+use libuser::syscalls;
+use libuser::types::*;
 
 fn main() {
     let port = syscalls::manage_named_port("sm:\0", 0).unwrap();

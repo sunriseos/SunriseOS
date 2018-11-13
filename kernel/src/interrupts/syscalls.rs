@@ -28,7 +28,7 @@ extern fn ignore_syscall(nr: usize) -> Result<(), UserspaceError> {
 }
 
 /// Maps the vga frame buffer mmio in userspace memory
-fn map_framebuffer(mut addr: UserSpacePtrMut<usize>, mut width: UserSpacePtrMut<usize>, mut height: UserSpacePtrMut<usize>, mut bpp: UserSpacePtrMut<usize>) -> Result<(), UserspaceError> {
+fn map_framebuffer() -> Result<(usize, usize, usize, usize), UserspaceError> {
     let tag = i386::multiboot::get_boot_information().framebuffer_info_tag()
         .expect("Framebuffer to be provided");
     let framebuffer_size = tag.framebuffer_bpp() as usize
@@ -45,22 +45,22 @@ fn map_framebuffer(mut addr: UserSpacePtrMut<usize>, mut width: UserSpacePtrMut<
     let framebuffer_vaddr = VirtualAddress(0x80000000);
     memory.map_phys_region_to(frame_buffer_phys_region, framebuffer_vaddr, MappingFlags::u_rw());
 
-    *addr = framebuffer_vaddr.0;
-    *width = tag.framebuffer_dimensions().0 as usize;
-    *height = tag.framebuffer_dimensions().1 as usize;
-    *bpp = tag.framebuffer_bpp() as usize;
-    Ok(())
+    let addr = framebuffer_vaddr.0;
+    let width = tag.framebuffer_dimensions().0 as usize;
+    let height = tag.framebuffer_dimensions().1 as usize;
+    let bpp = tag.framebuffer_bpp() as usize;
+    Ok((addr, width, height, bpp))
 }
 
-fn create_interrupt_event(mut irqhandle: UserSpacePtrMut<u32>, irq_num: usize, flag: u32) -> Result<(), UserspaceError> {
+fn create_interrupt_event(irq_num: usize, flag: u32) -> Result<usize, UserspaceError> {
     // TODO: Flags?
     let curproc = scheduler::get_current_process();
-    *irqhandle = curproc.phandles.lock().add_handle(Arc::new(Handle::ReadableEvent(Box::new(event::wait_event(irq_num)))));
-    Ok(())
+    let hnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ReadableEvent(Box::new(event::wait_event(irq_num)))));
+    Ok(hnd as _)
 }
 
 // TODO: Timeout_ns should be an u64!
-fn wait_synchronization(mut handle_idx: UserSpacePtrMut<usize>, handles_ptr: UserSpacePtr<[u32]>, timeout_ns: usize) -> Result<(), UserspaceError> {
+fn wait_synchronization(handles_ptr: UserSpacePtr<[u32]>, timeout_ns: usize) -> Result<usize, UserspaceError> {
     // A list of underlying handles to wait for...
     let mut handle_arr = Vec::new();
     let proc = scheduler::get_current_process();
@@ -94,8 +94,7 @@ fn wait_synchronization(mut handle_idx: UserSpacePtrMut<usize>, handles_ptr: Use
             if idx == handle_arr.len() {
                 return Err(UserspaceError::Timeout);
             } else {
-                *handle_idx = idx;
-                return Ok(());
+                return Ok(idx);
             }
         }
     }
@@ -113,22 +112,22 @@ fn exit_process() -> Result<(), UserspaceError> {
     Ok(())
 }
 
-fn connect_to_named_port(mut handle_out: UserSpacePtrMut<u32>, name: UserSpacePtr<[u8; 12]>) -> Result<(), UserspaceError> {
+fn connect_to_named_port(name: UserSpacePtr<[u8; 12]>) -> Result<usize, UserspaceError> {
     let session = ipc::connect_to_named_port(*name)?;
     info!("Got session {:?}", session);
     let curproc = scheduler::get_current_process();
-    *handle_out = curproc.phandles.lock().add_handle(Arc::new(Handle::ClientSession(session)));
-    Ok(())
+    let hnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ClientSession(session)));
+    Ok(hnd as _)
 }
 
-fn manage_named_port(mut handle_out: UserSpacePtrMut<u32>, name_ptr: UserSpacePtr<[u8; 12]>, max_sessions: u32) -> Result<(), UserspaceError> {
+fn manage_named_port(name_ptr: UserSpacePtr<[u8; 12]>, max_sessions: u32) -> Result<usize, UserspaceError> {
     let server = ipc::create_named_port(*name_ptr, max_sessions)?;
     let curproc = scheduler::get_current_process();
-    *handle_out = curproc.phandles.lock().add_handle(Arc::new(Handle::ServerPort(server)));
-    Ok(())
+    let hnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ServerPort(server)));
+    Ok(hnd as _)
 }
 
-fn accept_session(mut handle_out: UserSpacePtrMut<u32>, porthandle: u32) -> Result<(), UserspaceError> {
+fn accept_session(porthandle: u32) -> Result<usize, UserspaceError> {
     let curproc = scheduler::get_current_process();
     let handle = curproc.phandles.lock().get_handle(porthandle)?;
     let port = match &*handle {
@@ -137,40 +136,91 @@ fn accept_session(mut handle_out: UserSpacePtrMut<u32>, porthandle: u32) -> Resu
     };
 
     let server_session = port.accept()?;
-    *handle_out = curproc.phandles.lock().add_handle(Arc::new(Handle::ServerSession(server_session)));
-    Ok(())
+    let hnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ServerSession(server_session)));
+    Ok(hnd as _)
 }
 
-pub extern fn syscall_handler_inner(syscall_nr: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize, arg5: usize, arg6: usize) -> usize {
+impl Registers {
+    fn apply0(&mut self, ret: Result<(), UserspaceError>) {
+        self.apply3(ret.map(|_| (0, 0, 0)))
+    }
+
+    fn apply1(&mut self, ret: Result<usize, UserspaceError>) {
+        self.apply3(ret.map(|v| (v, 0, 0)))
+    }
+
+    fn apply2(&mut self, ret: Result<(usize, usize), UserspaceError>) {
+        self.apply3(ret.map(|(v0, v1)| (v0, v1, 0)))
+    }
+
+    fn apply3(&mut self, ret: Result<(usize, usize, usize), UserspaceError>) {
+        self.apply4(ret.map(|(v0, v1, v2)| (v0, v1, v2, 0)))
+    }
+
+    fn apply4(&mut self, ret: Result<(usize, usize, usize, usize), UserspaceError>) {
+        match ret {
+            Ok((v0, v1, v2, v3)) => {
+                self.eax = 0;
+                self.ebx = v0;
+                self.ecx = v1;
+                self.edx = v2;
+                self.esi = v3;
+                self.edi = 0;
+                self.ebp = 0;
+            },
+            Err(err) => {
+                self.eax = err.make_ret();
+                self.ebx = 0;
+                self.ecx = 0;
+                self.edx = 0;
+                self.esi = 0;
+                self.edi = 0;
+                self.ebp = 0;
+            }
+        }
+    }
+}
+
+#[repr(C)]
+pub struct Registers {
+    eax: usize,
+    ebx: usize,
+    ecx: usize,
+    edx: usize,
+    esi: usize,
+    edi: usize,
+    ebp: usize,
+}
+
+// TODO: Get a 6th argument in by putting the syscall_nr in the interrupt struct.
+pub extern fn syscall_handler_inner(registers: &mut Registers) {
     use logger::Logger;
     use devices::rs232::SerialLogger;
-    info!("Handling syscall {} - arg1: {}, arg2: {}, arg3: {}, arg4: {}, arg5: {}, arg6: {}",
-          syscall_nr, arg1, arg2, arg3, arg4, arg5, arg6);
-    let ret = match syscall_nr {
+
+    let (syscall_nr, x0, x1, x2, x3, x4, x5) = (registers.eax, registers.ebx, registers.ecx, registers.edx, registers.esi, registers.edi, registers.ebp);
+
+    info!("Handling syscall {} - x0: {}, x1: {}, x2: {}, x3: {}, x4: {}, x5: {}",
+          syscall_nr, x0, x1, x2, x3, x4, x5);
+
+    match syscall_nr {
         // Horizon-inspired syscalls!
-        0x07 => exit_process(),
-        0x18 => wait_synchronization(UserSpacePtrMut(arg1 as _), UserSpacePtr::from_raw_parts(arg2 as _, arg3), arg4),
-        0x1F => connect_to_named_port(UserSpacePtrMut(arg1 as _), UserSpacePtr(arg2 as _)),
-        0x27 => output_debug_string(UserSpacePtr::from_raw_parts(arg1 as _, arg2)),
-        0x41 => accept_session(UserSpacePtrMut(arg1 as _), arg2 as _),
-        0x53 => create_interrupt_event(UserSpacePtrMut(arg1 as _), arg2, arg3 as u32),
-        //0x79 => create_process(arg1, arg2),
-        0x71 => manage_named_port(UserSpacePtrMut(arg1 as _), UserSpacePtr(arg2 as _), arg3 as _),
+        0x07 => registers.apply0(exit_process()),
+        0x18 => registers.apply1(wait_synchronization(UserSpacePtr::from_raw_parts(x0 as _, x1), x2)),
+        0x1F => registers.apply1(connect_to_named_port(UserSpacePtr(x0 as _))),
+        0x27 => registers.apply0(output_debug_string(UserSpacePtr::from_raw_parts(x0 as _, x1))),
+        0x41 => registers.apply1(accept_session(x0 as _)),
+        0x53 => registers.apply1(create_interrupt_event(x0, x1 as u32)),
+        0x71 => registers.apply1(manage_named_port(UserSpacePtr(x0 as _), x1 as _)),
 
         // KFS extensions
-        0x80 => map_framebuffer(UserSpacePtrMut(arg1 as _), UserSpacePtrMut(arg2 as _), UserSpacePtrMut(arg3 as _), UserSpacePtrMut(arg4 as _)),
-
+        0x80 => registers.apply4(map_framebuffer()),
         // Unknown syscall. Should probably crash.
-        u => ignore_syscall(u)
-    };
+        u => registers.apply0(ignore_syscall(u))
+    }
 
     if scheduler::get_current_process().pstate.load(Ordering::SeqCst) == ProcessState::Killed {
         let lock = SpinLockIRQ::new(());
         scheduler::unschedule(&lock, lock.lock());
         //unreachable!();
-    }
-    match ret {
-        Ok(()) => 0,
-        Err(err) => err.make_ret()
     }
 }

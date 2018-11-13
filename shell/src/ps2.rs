@@ -2,12 +2,13 @@ use io::{Io, Pio};
 use core::sync::atomic::{AtomicBool, Ordering::SeqCst};
 use alloc::string::String;
 use logger::{Logger, Loggers};
-use syscalls::{self, ReadableEvent};
+use libuser::syscalls;
+use libuser::types::ReadableEvent;
 
 struct PS2 {
     status_port: Pio<u8>,
     data_port: Pio<u8>,
-    event: syscalls::ReadableEvent,
+    event: ReadableEvent,
     is_capslocked:  AtomicBool,
     is_shift:       AtomicBool
 }

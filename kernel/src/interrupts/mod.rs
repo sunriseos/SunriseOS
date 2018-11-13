@@ -142,7 +142,9 @@ extern "x86-interrupt" fn security_exception_handler(stack_frame: &mut Exception
 
 /// This is the function called on int 0x80.
 ///
-/// The ABI is the same as linux, that is to say :
+/// The ABI is linuxy, but modified to allow multiple register returns:
+///
+/// # Inputs
 ///
 /// - eax  system call number
 /// - ebx  arg1
@@ -151,9 +153,20 @@ extern "x86-interrupt" fn security_exception_handler(stack_frame: &mut Exception
 /// - esi  arg4
 /// - edi  arg5
 /// - ebp  arg6
-/// - return value is put in eax
 ///
-/// What this wrapper does is simply pushing the registers on the stack as argument to the syscall dispatcher
+/// # Outputs
+///
+/// - eax  error code
+/// - ebx  ret1
+/// - ecx  ret2
+/// - edx  ret3
+/// - esi  ret4
+/// - edi  ret5
+/// - ebp  ret6
+///
+/// What this wrapper does is creating an instance of the Registers structure on the stack as argument
+/// to the syscall dispatcher. The syscall dispatcher will then modify this structure to reflect what
+/// the registers should look like on syscall exit, and the wrapper pops those modified values.
 ///
 /// We don't use the x86-interrupt llvm feature because syscall arguments are passed in registers, and
 /// it does not enable us to access those saved registers.
@@ -165,6 +178,7 @@ extern "C" fn syscall_handler() {
     unsafe {
         asm!("
         cld         // direction flag will be restored on return when iret pops EFLAGS
+        // Construct Registers structure - see syscalls for more info
         push ebp
         push edi
         push esi
@@ -172,24 +186,21 @@ extern "C" fn syscall_handler() {
         push ecx
         push ebx
         push eax
+        // Push pointer to Registers structure as argument
+        push esp
         call $0
-        add esp, 28  // drop the pushed arguments
+        // Restore registers.
+        mov ebx, [esp + 0x08]
+        mov ecx, [esp + 0x0C]
+        mov edx, [esp + 0x10]
+        mov esi, [esp + 0x14]
+        mov edi, [esp + 0x18]
+        mov ebp, [esp + 0x1C]
+        mov eax, [esp + 0x04]
+        add esp, 0x20
         iretd
         " :: "i"(syscalls::syscall_handler_inner as *const u8) :: "volatile", "intel" );
     }
-}
-
-/// A bit of asm making a syscall
-pub unsafe fn syscall(syscall_nr: u32, arg1: u32, arg2: u32, arg3: u32, arg4: u32, arg5: u32, arg6: u32) -> u32 {
-    let result: u32;
-    asm!("
-    int 0x80        // make the call
-    "
-    : "={eax}"(result)
-    : "{eax}"(syscall_nr), "{ebx}"(arg1), "{ecx}"(arg2), "{edx}"(arg3), "{esi}"(arg4), "{edi}"(arg5), "{ebp}"(arg6)
-    : "memory"
-    : "volatile", "intel");
-    result
 }
 
 lazy_static! {

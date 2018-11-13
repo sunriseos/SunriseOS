@@ -5,13 +5,12 @@
 #![no_std]
 #![feature(asm, start, lang_items, core_intrinsics, const_fn, alloc)]
 
-pub mod syscalls;
-pub mod io;
-
 extern crate linked_list_allocator;
-
 #[macro_use]
 extern crate alloc;
+pub mod syscalls;
+pub mod io;
+pub mod types;
 
 use linked_list_allocator::LockedHeap;
 
