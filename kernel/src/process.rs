@@ -74,6 +74,22 @@ impl Handle {
             _ => Err(UserspaceError::InvalidHandle),
         }
     }
+
+    pub fn as_server_session(&self) -> Result<ServerSession, UserspaceError> {
+        if let &Handle::ServerSession(ref s) = self {
+            Ok((*s).clone())
+        } else {
+            Err(UserspaceError::InvalidHandle)
+        }
+    }
+
+    pub fn as_client_session(&self) -> Result<ClientSession, UserspaceError> {
+        if let &Handle::ClientSession(ref s) = self {
+            Ok((*s).clone())
+        } else {
+            Err(UserspaceError::InvalidHandle)
+        }
+    }
 }
 
 #[derive(Debug)]

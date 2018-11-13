@@ -140,6 +140,28 @@ fn accept_session(porthandle: u32) -> Result<usize, UserspaceError> {
     Ok(hnd as _)
 }
 
+fn send_sync_request_with_user_buffer(buf: UserSpacePtrMut<[u8]>, handle: u32) -> Result<(), UserspaceError> {
+    let proc = scheduler::get_current_process();
+    let sess = proc.phandles.lock().get_handle(handle)?.as_client_session()?;
+    sess.send_request(buf)
+}
+
+fn reply_and_receive_with_user_buffer(buf: UserSpacePtrMut<[u8]>, handles: UserSpacePtr<[u32]>, reply_target: u32, timeout: usize) -> Result<usize, UserspaceError> {
+    let proc = scheduler::get_current_process();
+    if reply_target != 0 {
+        // get session
+        let sess = proc.phandles.lock().get_handle(reply_target)?;
+        sess.as_server_session()?.reply(UserSpacePtr(buf.0));
+    }
+
+    // TODO: Ensure all handles are receive
+    let idx = wait_synchronization(handles.clone(), timeout)?;
+
+    let servsess = proc.phandles.lock().get_handle(handles[idx])?.as_server_session()?;
+    servsess.receive(buf)?;
+    Ok(idx)
+}
+
 impl Registers {
     fn apply0(&mut self, ret: Result<(), UserspaceError>) {
         self.apply3(ret.map(|_| (0, 0, 0)))
@@ -207,8 +229,13 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
         0x07 => registers.apply0(exit_process()),
         0x18 => registers.apply1(wait_synchronization(UserSpacePtr::from_raw_parts(x0 as _, x1), x2)),
         0x1F => registers.apply1(connect_to_named_port(UserSpacePtr(x0 as _))),
+        0x22 => registers.apply0(send_sync_request_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), x2 as _)),
         0x27 => registers.apply0(output_debug_string(UserSpacePtr::from_raw_parts(x0 as _, x1))),
         0x41 => registers.apply1(accept_session(x0 as _)),
+        // TODO: We need one more register for the timeout. Sad panda.
+        // The ARM64 spec allows x0-x7 as input arguments, so *ideally* we need 2
+        // more registers.
+        0x44 => registers.apply1(reply_and_receive_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), UserSpacePtr::from_raw_parts(x2 as _, x3), x4 as _, 0)),
         0x53 => registers.apply1(create_interrupt_event(x0, x1 as u32)),
         0x71 => registers.apply1(manage_named_port(UserSpacePtr(x0 as _), x1 as _)),
 
