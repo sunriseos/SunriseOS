@@ -83,9 +83,10 @@ impl HierarchicalTable for ActivePageDirectory {
         assert!(self.entries()[index].is_unused(), "called create_child_table on a non available entry");
         let table_frame = FrameAllocator::allocate_frame().unwrap();
 
-        // If we're in user land, we should create the table as USER_ACCESSIBLE.
+        // A directory entry is always WRITABLE, write permission is handled at table level.
         let mut flags = I386EntryFlags::PRESENT | I386EntryFlags::WRITABLE;
-        if UserLand::contains_address(VirtualAddress(index * ENTRY_COUNT * PAGE_SIZE)) {
+        // If we're in user land, we should create the table as USER_ACCESSIBLE.
+        if UserLand::start_table() <= index && index <= UserLand::end_table() {
             flags |= I386EntryFlags::USER_ACCESSIBLE;
         }
 
@@ -155,7 +156,7 @@ impl HierarchicalTable for InactivePageDirectory {
                 PhysicalMemRegion::reconstruct_no_dealloc(frame, PAGE_SIZE)
             };
             let va = active_pages.find_virtual_space(PAGE_SIZE).unwrap();
-            active_pages.map_phys_region_to(phys_region, va, MappingFlags::WRITABLE);
+            active_pages.map_phys_region_to(phys_region, va, MappingFlags::k_w());
             SmartHierarchicalTable::new(unsafe {va.addr() as *mut InactivePageTable})
         })
     }
@@ -171,13 +172,15 @@ impl HierarchicalTable for InactivePageDirectory {
         };
         // 1: Map it in our page tables
         let va = active_pages.find_virtual_space(PAGE_SIZE).unwrap();
-        active_pages.map_phys_region_to(table_frame, va, MappingFlags::WRITABLE);
+        active_pages.map_phys_region_to(table_frame, va, MappingFlags::k_w());
         let mut mapped_table = SmartHierarchicalTable::new(unsafe {va.addr() as *mut InactivePageTable});
         mapped_table.zero();
 
-        // If we're in user land, we should create the table as USER_ACCESSIBLE.
+
+        // A directory entry is always WRITABLE, write permission is handled at table level.
         let mut flags = I386EntryFlags::PRESENT | I386EntryFlags::WRITABLE;
-        if UserLand::contains_address(VirtualAddress(index * ENTRY_COUNT * PAGE_SIZE)) {
+        // If we're in user land, we should create the table as USER_ACCESSIBLE.
+        if UserLand::start_table() <= index && index <= UserLand::end_table() {
             flags |= I386EntryFlags::USER_ACCESSIBLE;
         }
 
@@ -212,7 +215,7 @@ impl TableHierarchy for InactiveHierarchy {
         };
         let mut active_pages = get_kernel_memory();
         let va = active_pages.find_virtual_space(PAGE_SIZE).unwrap();
-        active_pages.map_phys_region_to(frame, va, MappingFlags::WRITABLE);
+        active_pages.map_phys_region_to(frame, va, MappingFlags::READABLE | MappingFlags::WRITABLE);
         SmartHierarchicalTable::new(va.addr() as *mut InactivePageDirectory)
     }
 }

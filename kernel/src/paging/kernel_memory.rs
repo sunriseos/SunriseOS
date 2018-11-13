@@ -101,7 +101,7 @@ impl KernelMemory {
     /// Allocates and maps a single page, choosing a spot in VMEM for it.
     pub fn get_page(&mut self) -> VirtualAddress {
         let pr = FrameAllocator::allocate_frame().unwrap();
-        self.map_phys_region(pr, MappingFlags::WRITABLE)
+        self.map_phys_region(pr, MappingFlags::k_rw())
     }
 
     /// Allocates non-contiguous frames, and map them at the given address
@@ -126,7 +126,7 @@ impl KernelMemory {
     pub fn get_pages(&mut self, length: usize) -> VirtualAddress {
         assert!(length % PAGE_SIZE == 0, "length must be a multiple of PAGE_SIZE");
         let va = self.find_virtual_space(length).unwrap();
-        self.map_allocate_to(va, length, MappingFlags::WRITABLE);
+        self.map_allocate_to(va, length, MappingFlags::k_rw());
         va
     }
 

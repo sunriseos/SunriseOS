@@ -49,7 +49,7 @@ pub fn map_grub_module(module: &ModuleTag) -> MappedGrubModule {
             // safe, they were not tracked before
             PhysicalMemRegion::reconstruct(start_address_aligned, module_len_aligned)
         };
-        page_table.map_phys_region_to(module_phys_location, vaddr, MappingFlags::empty());
+        page_table.map_phys_region_to(module_phys_location, vaddr, MappingFlags::k_r());
 
         vaddr
     };
@@ -120,11 +120,16 @@ fn load_segment(process_memory: &mut ProcessMemory, segment: &ProgramHeader, elf
     let mem_size_total = align_up(segment.mem_size() as usize, PAGE_SIZE);
 
     // Map as readonly if specified
-    let flags = if !segment.flags().is_write() {
-        MappingFlags::empty()
-    } else {
-        MappingFlags::WRITABLE
+    let mut flags = MappingFlags::USER_ACCESSIBLE;
+    if segment.flags().is_read() {
+        flags |= MappingFlags::READABLE
     };
+    if segment.flags().is_write() {
+        flags |= MappingFlags::WRITABLE
+    };
+    if segment.flags().is_execute() {
+        flags |= MappingFlags::EXECUTABLE
+    }
 
     // Create the mapping in UserLand
     let userspace_addr = VirtualAddress(segment.virtual_addr() as usize);

@@ -57,7 +57,7 @@ impl KernelStack {
                                                    2usize.pow(STACK_ALIGNEMENT as u32))?;
         let region = FrameAllocator::allocate_region(STACK_SIZE)?;
 
-        memory.map_phys_region_to(region, va + PAGE_SIZE, MappingFlags::WRITABLE);
+        memory.map_phys_region_to(region, va + PAGE_SIZE, MappingFlags::k_rw());
         memory.guard(va, PAGE_SIZE);
 
         let mut me = KernelStack { stack_address: va };

@@ -51,9 +51,6 @@ pub struct CrossProcessMapping<'a> {
     private: ()
 }
 
-/// A cross mapping will always be mirrored as WRITABLE.
-const MAPPING_KERNEL_FLAGS: MappingFlags = MappingFlags::WRITABLE;
-
 impl<'a> CrossProcessMapping<'a> {
     /// Creates a CrossProcessMapping.
     ///
@@ -73,7 +70,7 @@ impl<'a> CrossProcessMapping<'a> {
         };
         let kernel_address = unsafe {
             // safe, the frames won't be dropped, they still are tracked by the userspace mapping.
-            get_kernel_memory().map_phys_regions(frames, MAPPING_KERNEL_FLAGS)
+            get_kernel_memory().map_phys_regions(frames, MappingFlags::u_rw())
         };
         Ok(CrossProcessMapping {
             kernel_address,

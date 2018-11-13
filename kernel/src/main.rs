@@ -100,7 +100,7 @@ fn main() {
                 // TODO: why is this not elf D: ?
                 //let sp = pmemlock.get_pages::<UserLand>(4 * PAGE_SIZE);
                 let sp = VirtualAddress(0x40000000);
-                pmemlock.create_regular_mapping(sp, 4 * PAGE_SIZE, MappingFlags::WRITABLE).unwrap();
+                pmemlock.create_regular_mapping(sp, 4 * PAGE_SIZE, MappingFlags::u_rw()).unwrap();
                 (ep, sp + 4 * PAGE_SIZE)
             };
             unsafe { proc.set_start_arguments(ep, sp.addr()); }

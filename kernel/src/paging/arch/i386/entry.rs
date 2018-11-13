@@ -25,10 +25,23 @@ bitflags! {
 
 impl From<MappingFlags> for I386EntryFlags {
     fn from(flags: MappingFlags) -> I386EntryFlags {
-        let mut newflags = I386EntryFlags::PRESENT;
-        if flags.contains(MappingFlags::WRITABLE) {
-            newflags |= I386EntryFlags::WRITABLE;
+        let mut newflags = I386EntryFlags::empty();
+
+        // i386 does not support write-only or execute-only page.
+        // this means that if a mappping is either read, write, or execute,
+        // we mark it PRESENT in the page tables, and it will be readable.
+        if flags.intersects(MappingFlags::READABLE | MappingFlags::WRITABLE | MappingFlags::EXECUTABLE) {
+            newflags |= I386EntryFlags::PRESENT
+        } else {
+            // if it is not present, then we're basically a guard page.
+            return I386EntryFlags::GUARD_PAGE;
         }
+        if flags.contains(MappingFlags::WRITABLE) {
+            newflags |= I386EntryFlags::WRITABLE
+        };
+        if flags.contains(MappingFlags::USER_ACCESSIBLE) {
+            newflags |= I386EntryFlags::USER_ACCESSIBLE
+        };
         newflags
     }
 }
@@ -85,6 +98,12 @@ impl HierarchicalEntry for I386Entry {
         assert_eq!(flags.contains(I386EntryFlags::PRESENT)
                 && flags.contains(I386EntryFlags::GUARD_PAGE), false,
                 "a GUARD_PAGE cannot also be PRESENT");
+
+        if flags.contains(I386EntryFlags::GUARD_PAGE) {
+            // if we're mapping a guard page, do not store the frame in it because of L1TF
+            self.set_guard();
+            return;
+        }
         assert_eq!(frame_phys_addr.addr() & !ENTRY_PHYS_ADDRESS_MASK, 0);
 
         self.0 = (frame_phys_addr.addr() as u32) | flags.bits();
