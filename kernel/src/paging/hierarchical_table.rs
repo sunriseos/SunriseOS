@@ -420,6 +420,7 @@ pub trait TableHierarchy {
                     },
                     (_, PageState::Guarded) => {
                         // we have to split the huge guard
+                        table.unmap_nth_entry(entry_index);
                         let mut child_table = table.create_child_table(entry_index);
                         child_table.guard_all_entries();
                         rec_unmap(&mut child_table, child_start_address, length, callback)
