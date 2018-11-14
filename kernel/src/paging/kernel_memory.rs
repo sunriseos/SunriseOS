@@ -189,12 +189,12 @@ impl KernelMemory {
         &mut self.tables
     }
 
-    /// Prints the current mapping.
-    pub fn print_mapping(&mut self) {
+    /// Prints the state of the KernelLand by parsing the page tables. Used for debugging purposes.
+    pub fn dump_kernelland_state(&mut self) {
         #[derive(Debug, Clone, Copy)]
-        enum State { Present(usize, usize), Guarded(usize), Available(usize) }
+        enum State { Present(VirtualAddress, PhysicalAddress), Guarded(VirtualAddress), Available(VirtualAddress) }
         impl State {
-            fn get_vaddr(&self) -> usize {
+            fn get_vaddr(&self) -> VirtualAddress {
                 match self {
                     &State::Present(addr, _) => addr,
                     &State::Guarded(addr) => addr,
@@ -203,46 +203,60 @@ impl KernelMemory {
             }
 
             fn update(&mut self, newstate: State) {
-                let old_self = ::core::mem::replace(self, State::Present(0, 0));
+                //let old_self = ::core::mem::replace(self, State::Present(VirtualAddress(0), PhysicalAddress(0)));
+                let old_self = *self;
                 let mut real_newstate = match (old_self, newstate) {
-                    (State::Present(addr, phys), State::Present(newaddr, newphys)) if newphys.wrapping_sub(phys) == newaddr - addr => State::Present(addr, phys),
-                    (State::Present(addr, phys), State::Present(newaddr, newphys)) => State::Present(addr, phys),
+                    // fuse guarded states
                     (State::Guarded(addr), State::Guarded(newaddr)) => State::Guarded(addr),
+                    // fuse available states
                     (State::Available(addr), State::Available(newaddr)) => State::Available(addr),
+                    // fuse present states only if physical frames are contiguous
+                    (State::Present(addr, phys), State::Present(newaddr, newphys))
+                        if newphys.addr().wrapping_sub(phys.addr()) == newaddr - addr
+                            => State::Present(addr, phys),
+                    // otherwise print the old mapping, and start a new one
                     (old, new) => {
-                        old.print(new);
+                        old.print(new.get_vaddr() - 1);
                         new
                     }
                 };
                 *self = real_newstate;
             }
 
-            fn from(set: &mut KernelMemory, addr: VirtualAddress) -> State {
-                match set.mapping_state(addr) {
-                    PageState::Present(table) => State::Present(addr.addr(), table.addr()),
-                    PageState::Guarded => State::Guarded(addr.addr()),
-                    _ => State::Available(addr.addr())
+            fn from(state: PageState<PhysicalAddress>, addr: VirtualAddress) -> State {
+                match state {
+                    PageState::Present(table) => State::Present(addr, table),
+                    PageState::Guarded => State::Guarded(addr),
+                    PageState::Available => State::Available(addr)
                 }
             }
 
-            fn print(&self, newstate: State) {
-                let new_vaddr = newstate.get_vaddr();
+            fn print(&self, end_addr: VirtualAddress) {
                 match *self {
-                    State::Present(addr, phys) => info!("{:#010x} - {:#010x} - MAPS {:#010x}-{:#010x}", addr, new_vaddr, phys, (phys + (new_vaddr - addr))),
-                    State::Guarded(addr) => info!("{:#010x} - {:#010x} - GUARDED", addr, new_vaddr),
-                    State::Available(addr) => info!("{:#010x} - {:#010x} - AVAILABLE", addr, new_vaddr),
+                    State::Guarded(addr) => info!("{:#010x} - {:#010x} - GUARDED", addr, end_addr),
+                    State::Available(addr) => info!("{:#010x} - {:#010x} - AVAILABLE", addr, end_addr),
+                    State::Present(addr, phys) => info!("{:#010x} - {:#010x} - MAPS {:#010x} - {:#010x} ({} frames)",
+                                                        addr, end_addr, phys, (phys + (end_addr - addr)), ((end_addr + 1) - addr) / PAGE_SIZE),
                 };
             }
         }
 
-        let mut iter = (KernelLand::start_addr().addr()..=KernelLand::end_addr().addr()).step_by(PAGE_SIZE);
-        let mut state = State::from(self, VirtualAddress(iter.next().unwrap()));
+        let mut address: VirtualAddress = KernelLand::start_addr();
+        let mut state = None;
+        self.tables.for_every_entry(KernelLand::start_addr(), KernelLand::length(), |entry, length| {
+            match state {
+                // the first run
+                None => { state = Some(State::from(entry, address)) },
+                // all others
+                Some(ref mut state) => state.update(State::from(entry, address))
+            }
+            address += length;
+        });
 
-        // Don't print last entry because it's just the recursive entry.
-        for vaddr in iter {
-            state.update(State::from(self, VirtualAddress(vaddr)));
+        // print the last state
+        match state {
+            Some(state) => state.print(RecursiveTablesLand::start_addr() - 1),
+            None => info!("Tables are empty")
         }
-
-        state.print(State::Available(RecursiveTablesLand::start_addr().addr()));
     }
 }
