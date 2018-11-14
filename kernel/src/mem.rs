@@ -5,7 +5,7 @@
 
 use core::ops::{Deref, DerefMut};
 use core::mem;
-use core::fmt::{Formatter, Error, Display, Debug};
+use core::fmt::{Formatter, Error, Display, Debug, LowerHex};
 use error::{KernelError, ArithmeticOperation};
 use failure::Backtrace;
 
@@ -22,8 +22,6 @@ use utils::{align_down, align_up, div_round_up};
 #[inline] pub fn count_pages(size: usize) -> usize { div_round_up(size, PAGE_SIZE) }
 
 /// Represents a Physical address
-///
-/// Should only be used when paging is off
 #[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct PhysicalAddress(pub usize);
@@ -38,18 +36,58 @@ impl PhysicalAddress { pub fn addr(&self) -> usize { self.0 } }
 
 impl ::core::ops::Add<usize> for VirtualAddress {
     type Output = VirtualAddress;
-
-    fn add(self, other: usize) -> VirtualAddress {
-        VirtualAddress(self.0 + other)
-    }
+    /// Adding a length to an address gives another address
+    fn add(self, other: usize) -> VirtualAddress { VirtualAddress(self.0 + other) }
 }
 
 impl ::core::ops::Add<usize> for PhysicalAddress {
     type Output = PhysicalAddress;
+    /// Adding a length to an address gives another address
+    fn add(self, other: usize) -> PhysicalAddress { PhysicalAddress(self.0 + other) }
+}
 
-    fn add(self, other: usize) -> PhysicalAddress {
-        PhysicalAddress(self.0 + other)
-    }
+impl ::core::ops::Sub<usize> for VirtualAddress {
+    type Output = VirtualAddress;
+    /// Subtracting a length from an address gives another address
+    fn sub(self, other: usize) -> VirtualAddress { VirtualAddress(self.0 - other) }
+}
+
+impl ::core::ops::Sub<usize> for PhysicalAddress {
+    type Output = PhysicalAddress;
+    /// Subtracting a length from an address gives another address
+    fn sub(self, other: usize) -> PhysicalAddress { PhysicalAddress(self.0 - other) }
+}
+
+impl ::core::ops::AddAssign<usize> for VirtualAddress {
+    /// Adding a length to an address gives another address
+    fn add_assign(&mut self, rhs: usize) { self.0 += rhs }
+}
+
+impl ::core::ops::AddAssign<usize> for PhysicalAddress {
+    /// Adding a length to an address gives another address
+    fn add_assign(&mut self, rhs: usize) { self.0 += rhs }
+}
+
+impl ::core::ops::SubAssign<usize> for VirtualAddress {
+    /// Subtracting a length from an address gives another address
+    fn sub_assign(&mut self, rhs: usize) { self.0 -= rhs }
+}
+
+impl ::core::ops::SubAssign<usize> for PhysicalAddress {
+    /// Subtracting a length from an address gives another address
+    fn sub_assign(&mut self, rhs: usize) { self.0 -= rhs }
+}
+
+impl ::core::ops::Sub<VirtualAddress> for VirtualAddress {
+    type Output = usize;
+    /// Subtracting two address gives their distance
+    fn sub(self, rhs: VirtualAddress) -> usize { self.0 - rhs.0 }
+}
+
+impl ::core::ops::Sub<PhysicalAddress> for PhysicalAddress {
+    type Output = usize;
+    /// Subtracting two address gives their distance
+    fn sub(self, rhs: PhysicalAddress) -> usize { self.0 - rhs.0 }
 }
 
 impl Debug for PhysicalAddress {
@@ -64,6 +102,12 @@ impl Display for PhysicalAddress {
     }
 }
 
+impl LowerHex for PhysicalAddress {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        write!(f, "P {:#010x}", self.0)
+    }
+}
+
 impl Debug for VirtualAddress {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         write!(f, "V {:#010x}", self.0)
@@ -71,6 +115,12 @@ impl Debug for VirtualAddress {
 }
 
 impl Display for VirtualAddress {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        write!(f, "V {:#010x}", self.0)
+    }
+}
+
+impl LowerHex for VirtualAddress {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         write!(f, "V {:#010x}", self.0)
     }
