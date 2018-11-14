@@ -99,7 +99,7 @@ pub struct UserspaceBookkeeping {
 /// Because we do not store Available mappings internally, we need this enum to return
 /// a new available mappings, or a reference to the stored mapping.
 #[derive(Debug)]
-pub enum QuerryMemory<'a> {
+pub enum QueryMemory<'a> {
     Available(Mapping),
     Used(&'a Mapping)
 }
@@ -148,9 +148,9 @@ impl UserspaceBookkeeping {
     }
 
     /// Returns the mapping `address` falls into.
-    pub fn mapping_at(&self, address: VirtualAddress) -> QuerryMemory {
+    pub fn mapping_at(&self, address: VirtualAddress) -> QueryMemory {
         let start_addr = match self.mapping_at_or_preceding(address) {
-            Some(m) if m.address + m.length > address => return QuerryMemory::Used(m), // address falls in m
+            Some(m) if m.address + m.length > address => return QueryMemory::Used(m), // address falls in m
             Some(m) => m.address + m.length,
             None => VirtualAddress(0x00000000),
         };
@@ -158,7 +158,7 @@ impl UserspaceBookkeeping {
             Some(m) => m.address.addr() - start_addr.addr(),
             None => usize::max_value() - start_addr.addr() + 1
         };
-        QuerryMemory::Available(Mapping {
+        QueryMemory::Available(Mapping {
             address: start_addr,
             length: length,
             mtype: MappingType::Available,

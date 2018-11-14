@@ -17,7 +17,7 @@ use super::hierarchical_table::*;
 use super::arch::{PAGE_SIZE, InactiveHierarchy, ActiveHierarchy};
 use super::lands::{UserLand, KernelLand, VirtualSpaceLand};
 use super::kernel_memory::get_kernel_memory;
-use super::bookkeeping::{UserspaceBookkeeping, Mapping, MappingType, QuerryMemory};
+use super::bookkeeping::{UserspaceBookkeeping, Mapping, MappingType, QueryMemory};
 use super::cross_process::CrossProcessMapping;
 use super::MappingFlags;
 use mem::{VirtualAddress, PhysicalAddress};
@@ -275,7 +275,7 @@ impl ProcessMemory {
     /// # Error
     ///
     /// Returns a KernelError if address does not fall in UserLand.
-    pub fn query_memory(&self, address: VirtualAddress) -> Result<QuerryMemory, KernelError> {
+    pub fn query_memory(&self, address: VirtualAddress) -> Result<QueryMemory, KernelError> {
         UserLand::check_contains_address(address)?;
         Ok(self.userspace_bookkeping.mapping_at(address))
     }
