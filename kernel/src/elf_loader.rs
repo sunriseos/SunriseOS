@@ -137,9 +137,9 @@ fn load_segment(process_memory: &mut ProcessMemory, segment: &ProgramHeader, elf
         .expect("Cannot load segment");
 
     // Mirror it in KernelLand
-    let mirror = process_memory.mirror_mapping(userspace_addr)
+    let mirror = process_memory.mirror_mapping(userspace_addr, mem_size_total)
         .expect("Cannot mirror segment to load");
-    let kernel_addr = mirror.kernel_address;
+    let kernel_addr = mirror.addr();
 
     // Copy the segment data
     match segment.get_data(elf_file).expect("Error getting elf segment data")

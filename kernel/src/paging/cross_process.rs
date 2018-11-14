@@ -45,8 +45,10 @@ use error::KernelError;
 
 /// A struct representing a UserLand mapping temporarily mirrored in KernelSpace.
 pub struct CrossProcessMapping<'a> {
-    pub kernel_address: VirtualAddress,
-    pub mapping: &'a Mapping,
+    kernel_address: VirtualAddress,
+    mapping: &'a Mapping,
+    offset: usize,
+    len: usize,
     // keep at least one private field, to forbid it from being constructed.
     private: ()
 }
@@ -60,7 +62,7 @@ impl<'a> CrossProcessMapping<'a> {
     ///
     /// Returns an Error if the mapping is Available/Guarded/SystemReserved, as there would be
     /// no point to remap it, and dereferencing the pointer would cause the kernel to page-fault.
-    pub fn mirror_mapping(mapping: &Mapping) -> Result<CrossProcessMapping, KernelError> {
+    pub fn mirror_mapping(mapping: &Mapping, offset: usize, len: usize) -> Result<CrossProcessMapping, KernelError> {
         let frames = match mapping.mtype {
             MappingType::Guarded | MappingType::Available | MappingType::SystemReserved
                 => return Err(KernelError::MmError(MmError::InvalidMapping { backtrace: Backtrace::new() })),
@@ -75,8 +77,20 @@ impl<'a> CrossProcessMapping<'a> {
         Ok(CrossProcessMapping {
             kernel_address,
             mapping,
+            offset,
+            len,
             private: ()
         })
+    }
+
+    /// Gets the address of the mapping.
+    pub fn addr(&self) -> VirtualAddress {
+        self.kernel_address + self.offset
+    }
+
+    /// The length in byte of the mapping.
+    pub fn len(&self) -> usize {
+        self.len
     }
 }
 

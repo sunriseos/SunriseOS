@@ -286,10 +286,14 @@ impl ProcessMemory {
     ///
     /// Returns an Error if the mapping is Available/Guarded/SystemReserved, as there would be
     /// no point to remap it, and dereferencing the pointer would cause the kernel to page-fault.
-    pub fn mirror_mapping(&self, address: VirtualAddress) -> Result<CrossProcessMapping, KernelError> {
+    pub fn mirror_mapping(&self, address: VirtualAddress, length: usize) -> Result<CrossProcessMapping, KernelError> {
         UserLand::check_contains_address(address)?;
         let mapping = self.userspace_bookkeping.occupied_mapping_at(address)?;
-        CrossProcessMapping::mirror_mapping(mapping)
+        if length < mapping.length {
+            return Err(KernelError::InvalidAddress { address, length, backtrace: Backtrace::new() })
+        }
+        let offset = address.addr() - mapping.address.addr();
+        CrossProcessMapping::mirror_mapping(mapping, offset, length)
     }
 
     /// Switches to this process memory
