@@ -100,12 +100,12 @@ fn main() {
 
                 let ep = elf_loader::load_builtin(&mut pmemlock, &mapped_module);
 
-                // TODO: Page guard.
-                // TODO: why is this not elf D: ?
-                //let sp = pmemlock.get_pages::<UserLand>(4 * PAGE_SIZE);
-                let sp = VirtualAddress(0x40000000);
-                pmemlock.create_regular_mapping(sp, 4 * PAGE_SIZE, MappingFlags::u_rw()).unwrap();
-                (ep, sp + 4 * PAGE_SIZE)
+                let stack = pmemlock.find_available_space(5 * PAGE_SIZE)
+                    .expect(&format!("Cannot create a stack for process {:?}", proc));
+                pmemlock.guard(stack, PAGE_SIZE).unwrap();
+                pmemlock.create_regular_mapping(stack + PAGE_SIZE, 4 * PAGE_SIZE, MappingFlags::u_rw()).unwrap();
+
+                (ep, stack + 5 * PAGE_SIZE)
             };
             unsafe { proc.set_start_arguments(ep, sp.addr()); }
         }

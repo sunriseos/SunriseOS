@@ -125,10 +125,12 @@ impl ProcessMemory {
     /// Creates a ProcessMemory, allocating the userspace-bookkeeping,
     /// and the top-level table of the table hierarchy.
     pub fn new() -> Self {
-        ProcessMemory {
+        let mut ret = ProcessMemory {
             userspace_bookkeping: UserspaceBookkeeping::new(),
             table_hierarchy: InactiveHierarchy::new()
-        }
+        };
+        ret.guard(VirtualAddress(0x00000000), PAGE_SIZE);
+        ret
     }
 
     /// Creates a ProcessMemory referencing the current page tables.

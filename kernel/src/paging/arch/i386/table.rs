@@ -234,7 +234,6 @@ impl InactiveHierarchyTrait for InactiveHierarchy {
         // don't deallocate it, it is mapped now.
         ::core::mem::forget(directory_frame);
 
-        pageset.guard(VirtualAddress(0x00000000), PAGE_SIZE);
         pageset
     }
 
