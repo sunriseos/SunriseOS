@@ -3,8 +3,9 @@
 use failure::Backtrace;
 use paging::error::MmError;
 use mem::VirtualAddress;
+use core::fmt::{self, Display};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum UserspaceError {
     InvalidKernelCaps = 14,
     NotDebugMode = 33,
@@ -46,8 +47,21 @@ impl UserspaceError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum ArithmeticOperation { Add, Sub, Mul, Div, Mod, Pow }
+
+impl Display for ArithmeticOperation {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            ArithmeticOperation::Add => write!(f, "+"),
+            ArithmeticOperation::Sub => write!(f, "-"),
+            ArithmeticOperation::Mul => write!(f, "*"),
+            ArithmeticOperation::Div => write!(f, "/"),
+            ArithmeticOperation::Mod => write!(f, "%"),
+            ArithmeticOperation::Pow => write!(f, "**"),
+        }
+    }
+}
 
 #[derive(Debug, Fail)]
 pub enum KernelError {
@@ -59,19 +73,19 @@ pub enum KernelError {
     VirtualMemoryExhaustion {
         backtrace: Backtrace,
     },
-    #[fail(display = "Invalid address: virtual address is considered invalid")]
+    #[fail(display = "Invalid address: virtual address {} len {} is considered invalid", address, length)]
     InvalidAddress {
         address: VirtualAddress,
         length: usize,
         backtrace: Backtrace,
     },
-    #[fail(display = "Alignment error: expected a certain alignment")]
+    #[fail(display = "Alignment error: expected alignment {}, got {}", needed, given)]
     AlignmentError {
         given: usize,
         needed: usize,
         backtrace: Backtrace,
     },
-    #[fail(display = "Arithmetic error: given parameters would cause an overflow")]
+    #[fail(display = "Arithmetic error: {} {} {} would cause an overflow", lhs, operation, rhs)]
     WouldOverflow {
         lhs: usize,
         rhs: usize,
@@ -82,7 +96,7 @@ pub enum KernelError {
     ZeroLengthError {
         backtrace: Backtrace,
     },
-    #[fail(display = "Memory management error")]
+    #[fail(display = "Memory management error: {}", _0)]
     MmError(MmError),
     #[doc(hidden)]
     #[fail(display = "Should never ever ***EVER*** be returned")]
@@ -94,9 +108,10 @@ impl From<KernelError> for UserspaceError {
         match err {
             KernelError::PhysicalMemoryExhaustion { .. } => UserspaceError::MemoryFull,
             KernelError::VirtualMemoryExhaustion { .. } => UserspaceError::MemoryFull,
+            //KernelError::
             KernelError::ThisWillNeverHappenButPleaseDontMatchExhaustively => unreachable!(),
             // todo
-            _ => unimplemented!("todo: implement matching for these errors :/")
+            _ => unimplemented!("Unmatched Error: {}", err)
         }
     }
 }

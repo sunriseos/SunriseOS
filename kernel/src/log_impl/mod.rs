@@ -7,6 +7,7 @@ use logger::Loggers;
 use core::fmt::Write;
 use i386::multiboot::get_boot_information;
 use sync::{RwLock, Once};
+use scheduler;
 
 struct Logger {
     filter: RwLock<filter::Filter>
@@ -19,7 +20,11 @@ impl Log for Logger {
 
     fn log(&self, record: &Record) {
         if self.filter.read().matches(record) {
-            writeln!(Loggers, "[{}] - {} - {}", record.level(), record.target(), record.args());
+            if let Some(process) = scheduler::try_get_current_process() {
+                writeln!(Loggers, "[{}] - {} - {} - {}", record.level(), record.target(), process.name, record.args());
+            } else {
+                writeln!(Loggers, "[{}] - {} - {}", record.level(), record.target(), record.args());
+            }
         }
     }
 
