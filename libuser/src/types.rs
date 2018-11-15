@@ -23,7 +23,7 @@ impl Handle {
 
 impl Drop for Handle {
     fn drop(&mut self) {
-        // TODO: Close the handle.
+        syscalls::close_handle(self.0.get());
     }
 }
 

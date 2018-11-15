@@ -162,6 +162,12 @@ fn reply_and_receive_with_user_buffer(buf: UserSpacePtrMut<[u8]>, handles: UserS
     Ok(idx)
 }
 
+fn close_handle(handle: u32) -> Result<(), UserspaceError> {
+    let proc = scheduler::get_current_process();
+    proc.phandles.lock().delete_handle(handle)?;
+    Ok(())
+}
+
 impl Registers {
     fn apply0(&mut self, ret: Result<(), UserspaceError>) {
         self.apply3(ret.map(|_| (0, 0, 0)))
@@ -227,6 +233,7 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
     match syscall_nr {
         // Horizon-inspired syscalls!
         0x07 => registers.apply0(exit_process()),
+        0x16 => registers.apply0(close_handle(x0 as _)),
         0x18 => registers.apply1(wait_synchronization(UserSpacePtr::from_raw_parts(x0 as _, x1), x2)),
         0x1F => registers.apply1(connect_to_named_port(UserSpacePtr(x0 as _))),
         0x22 => registers.apply0(send_sync_request_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), x2 as _)),
