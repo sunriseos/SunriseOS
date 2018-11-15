@@ -19,7 +19,8 @@ use super::hierarchical_table::*;
 use super::arch::{PAGE_SIZE, InactiveHierarchy, ActiveHierarchy};
 use super::lands::{UserLand, KernelLand, VirtualSpaceLand};
 use super::kernel_memory::get_kernel_memory;
-use super::bookkeeping::{UserspaceBookkeeping, Mapping, MappingType};
+use super::bookkeeping::UserspaceBookkeeping;
+use super::mapping::{Mapping, MappingType};
 use super::cross_process::CrossProcessMapping;
 use super::MappingFlags;
 use mem::{VirtualAddress, PhysicalAddress};
@@ -177,7 +178,7 @@ impl ProcessMemory {
         // ok, everything seems good, from now on treat errors as unexpected
 
         self.get_hierarchy().map_to_from_iterator(phys.into_iter(), address, flags);
-        let mapping = Mapping::new(address, length, MappingType::Regular(vec![phys]), flags)
+        let mapping = Mapping::new_regular(address, vec![phys], flags)
             .expect("We checked everything, but bookkeeping refuses to create the mapping");
         self.userspace_bookkeping.add_mapping(mapping)
             .expect("We checked everything, but bookkeeping refuses to add the mapping");
@@ -201,7 +202,7 @@ impl ProcessMemory {
         // ok, everything seems good, from now on treat errors as unexpected
 
         self.get_hierarchy().map_to_from_iterator(frames.iter().flatten(), address, flags);
-        let mapping = Mapping::new(address, length, MappingType::Regular(frames), flags)
+        let mapping = Mapping::new_regular(address, frames, flags)
             .expect("We checked everything, but bookkeeping refuses to create the mapping");
         self.userspace_bookkeping.add_mapping(mapping)
             .expect("We checked everything, but bookkeeping refuses to add the mapping");
@@ -230,7 +231,7 @@ impl ProcessMemory {
         // ok, everything seems good, from now on treat errors as unexpected
 
         self.get_hierarchy().map_to_from_iterator(shared_mapping.iter().flatten(), address, flags);
-        let mapping = Mapping::new(address, length, MappingType::Shared(shared_mapping), flags)
+        let mapping = Mapping::new_shared(address, shared_mapping, flags)
             .expect("We checked everything, but bookkeeping refuses to create the mapping");
         self.userspace_bookkeping.add_mapping(mapping)
             .expect("We checked everything, but bookkeeping refuses to add the mapping");
@@ -246,7 +247,7 @@ impl ProcessMemory {
     /// Returns a KernelError if address or length is not PAGE_SIZE aligned.
     pub fn guard(&mut self, address: VirtualAddress, length: usize) -> Result<(), KernelError>{
         UserLand::check_contains_region(address, length)?;
-        let mapping = Mapping::new(address, length, MappingType::Guarded, MappingFlags::empty())?;
+        let mapping = Mapping::new_guard(address, length)?;
         self.userspace_bookkeping.add_mapping(mapping)?;
 
         // everything is ok, actually map the guard
@@ -295,10 +296,10 @@ impl ProcessMemory {
     pub fn mirror_mapping(&self, address: VirtualAddress, length: usize) -> Result<CrossProcessMapping, KernelError> {
         UserLand::check_contains_address(address)?;
         let mapping = self.userspace_bookkeping.occupied_mapping_at(address)?;
-        if length < mapping.length {
+        if length < mapping.length() {
             return Err(KernelError::InvalidAddress { address, length, backtrace: Backtrace::new() })
         }
-        let offset = address.addr() - mapping.address.addr();
+        let offset = address.addr() - mapping.address().addr();
         CrossProcessMapping::mirror_mapping(mapping, offset, length)
     }
 

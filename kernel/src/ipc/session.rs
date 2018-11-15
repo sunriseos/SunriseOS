@@ -8,7 +8,7 @@ use process::ProcessStruct;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::slice;
 use byteorder::{LE, ByteOrder};
-use paging::{self, MappingType, MappingFlags, process_memory::ProcessMemory};
+use paging::{self, MappingFlags, mapping::MappingType, process_memory::ProcessMemory};
 use mem::{UserSpacePtr, UserSpacePtrMut, VirtualAddress};
 use bit_field::BitField;
 
@@ -175,13 +175,16 @@ fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mu
         .ok_or(UserspaceError::MemoryFull)?;*/
 
     let mapping = from_mem.unmap(VirtualAddress(addr), size)?;
-    let phys = match mapping.mtype {
-        MappingType::Available | MappingType::Guarded | MappingType::SystemReserved => return Err(UserspaceError::InvalidAddress),
-        MappingType::Regular(vec) | MappingType::Stack(vec) => Arc::new(vec),
+    let flags = mapping.flags();
+    let phys = match mapping.mtype() {
+        MappingType::Available | MappingType::Guarded | MappingType::SystemReserved =>
+            // todo remap it D:
+            return Err(UserspaceError::InvalidAddress),
+        MappingType::Regular(vec) /*| MappingType::Stack(vec) */ => Arc::new(vec),
         MappingType::Shared(arc) => arc,
     };
 
-    from_mem.map_shared_mapping(phys, VirtualAddress(addr), mapping.flags)?;
+    from_mem.map_shared_mapping(phys, VirtualAddress(addr), flags)?;
 
     let loweraddr = to_addr.addr() as u32;
     let rest = *0u32

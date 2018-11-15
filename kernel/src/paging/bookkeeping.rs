@@ -11,78 +11,7 @@ use error::{KernelError, UserspaceError};
 use super::error::MmError;
 use utils::{Splittable, check_aligned, check_nonzero_length};
 use failure::Backtrace;
-
-/// A userspace mapping.
-/// Stores the address, the length, and the type it maps.
-///
-/// A mapping is guaranteed to have page aligned address and length,
-/// and that its length is not 0.
-#[derive(Debug)]
-pub struct Mapping {
-    pub address: VirtualAddress,
-    pub length: usize,
-    pub mtype: MappingType,
-    pub flags: MappingFlags,
-    // keep at least one private field, to forbid it from being constructed.
-    private: ()
-}
-
-/// The types that a UserSpace mapping can be in.
-///
-/// If it maps physical memory regions, we hold them in a Vec.
-/// They will be de-allocated when this enum is dropped.
-#[derive(Debug)]
-pub enum MappingType {
-    Available,
-    Guarded,
-    Regular(Vec<PhysicalMemRegion>),
-    Stack(Vec<PhysicalMemRegion>),
-    Shared(Arc<Vec<PhysicalMemRegion>>),
-    SystemReserved // used for anything that UserSpace isn't authorized to address
-}
-
-impl Mapping {
-    /// Tries to constructs a mapping.
-    ///
-    /// # Error
-    ///
-    /// Returns an Error if address or length is not page aligned.
-    /// Returns an Error if length is 0.
-    pub fn new(address: VirtualAddress, length: usize, mtype: MappingType, flags: MappingFlags) -> Result<Mapping, KernelError> {
-        check_aligned(address.addr(), PAGE_SIZE)?;
-        check_aligned(length, PAGE_SIZE)?;
-        check_nonzero_length(length)?;
-        Ok(Mapping { address, length, mtype, flags, private: () })
-    }
-}
-
-impl Splittable for Mapping {
-    /// Splits a mapping at a given offset.
-    ///
-    /// Because it is reference counted, a Shared mapping cannot be splitted.
-    fn split_at(&mut self, offset: usize) -> Result<Option<Self>, KernelError> {
-        check_aligned(offset, PAGE_SIZE)?;
-        if offset == 0 || offset >= self.length { return Ok(None) };
-        let right = Mapping {
-            address: self.address + offset,
-            length: self.length - offset,
-            flags: self.flags,
-            mtype: match &mut self.mtype {
-                MappingType::Available => MappingType::Available,
-                MappingType::Guarded => MappingType::Guarded,
-                MappingType::Regular(ref mut frames) => MappingType::Regular(frames.split_at(offset)?.unwrap()),
-                MappingType::Stack(ref mut frames) => MappingType::Stack(frames.split_at(offset)?.unwrap()),
-                MappingType::Shared(arc) => return Err(KernelError::MmError(
-                                                       MmError::SharedMapping { backtrace: Backtrace::new() })),
-                MappingType::SystemReserved => panic!("shouldn't split a SystemReserved mapping"),
-            },
-            private: ()
-        };
-        // split succeeded, now modify left part
-        self.length = offset;
-        Ok(Some(right))
-    }
-}
+use super::mapping::{Mapping, MappingType};
 
 /// A bookkeeping is just a list of Mappings
 ///
@@ -110,22 +39,12 @@ impl UserspaceBookkeeping {
     /// Initially contains only SystemReserved regions for KernelLand and RecursiveTableLand
     pub fn new() -> Self {
         let mut mappings = BTreeMap::new();
-        let kl = Mapping {
-            address: KernelLand::start_addr(),
-            length: KernelLand::length(),
-            mtype: MappingType::SystemReserved,
-            flags: MappingFlags::empty(),
-            private: ()
-        };
-        let rtl = Mapping {
-            address: RecursiveTablesLand::start_addr(),
-            length: RecursiveTablesLand::length(),
-            mtype: MappingType::SystemReserved,
-            flags: MappingFlags::empty(),
-            private: ()
-        };
-        mappings.insert(kl.address, kl);
-        mappings.insert(rtl.address, rtl);
+        let kl = Mapping::new_system_reserved(KernelLand::start_addr(), KernelLand::length())
+            .expect("Cannot create KernelLand system_reserved mapping");
+        let rtl = Mapping::new_system_reserved(RecursiveTablesLand::start_addr(), RecursiveTablesLand::length())
+            .expect("Cannot create RecursiveTableLand system_reserved mapping");
+        mappings.insert(kl.address(), kl);
+        mappings.insert(rtl.address(), rtl);
         UserspaceBookkeeping { mappings }
     }
 
@@ -150,21 +69,20 @@ impl UserspaceBookkeeping {
     /// Returns the mapping `address` falls into.
     pub fn mapping_at(&self, address: VirtualAddress) -> QueryMemory {
         let start_addr = match self.mapping_at_or_preceding(address) {
-            Some(m) if m.address + m.length > address => return QueryMemory::Used(m), // address falls in m
-            Some(m) => m.address + m.length,
+            // check cannot overflow
+            Some(m) if m.length() - 1 + m.address() >= address => return QueryMemory::Used(m), // address falls in m
+            Some(m) => m.address() + m.length(),
             None => VirtualAddress(0x00000000),
         };
         let length = match self.mapping_at_or_following(address) {
-            Some(m) => m.address.addr() - start_addr.addr(),
+            Some(m) => m.address() - start_addr,
             None => usize::max_value() - start_addr.addr() + 1
+            // todo this could overflow for 0x00000000-0xffffffff.
         };
-        QueryMemory::Available(Mapping {
-            address: start_addr,
-            length: length,
-            mtype: MappingType::Available,
-            flags: MappingFlags::empty(),
-            private: ()
-        })
+        QueryMemory::Available(
+            Mapping::new_available(address, length)
+                .expect("Failed creating an available mapping")
+        )
     }
 
     /// Returns the mapping `address` falls into.
@@ -174,7 +92,8 @@ impl UserspaceBookkeeping {
     /// Returns an Error if mapping pointed to by address is vacant.
     pub fn occupied_mapping_at(&self, address: VirtualAddress) -> Result<&Mapping, KernelError> {
         match self.mapping_at_or_preceding(address) {
-            Some(m) if m.address + m.length > address => Ok(m),
+            // check cannot overflow
+            Some(m) if m.length() - 1 + m.address() >= address => Ok(m),
             _ => Err(KernelError::MmError(MmError::WasAvailable { address, backtrace: Backtrace::new() }))
         }
     }
@@ -183,10 +102,12 @@ impl UserspaceBookkeeping {
     ///
     /// # Error
     ///
-    /// Returns an Error if address + length would overflow.
+    /// Returns an Error if address + length - 1 would overflow.
+    /// Returns an Error if length is 0.
     pub fn is_vacant(&self, address: VirtualAddress, length: usize) -> Result<bool, KernelError> {
-        let end_addr = address.checked_add(length)?;
-        Ok(self.mappings.range(address..end_addr).next().is_none())
+        check_nonzero_length(length)?;
+        let end_addr = address.checked_add(length - 1)?;
+        Ok(self.mappings.range(address..=end_addr).next().is_none())
     }
 
     /// Asserts that a given range is unoccupied
@@ -194,7 +115,8 @@ impl UserspaceBookkeeping {
     /// # Error
     ///
     /// Returns an Error if range is occupied.
-    /// Returns an Error if address + length would overflow.
+    /// Returns an Error if address + length - 1 would overflow.
+    /// Returns an Error if length is 0.
     pub fn check_vacant(&self, address: VirtualAddress, length: usize) -> Result<(), KernelError> {
         if !self.is_vacant(address, length)? {
             Err(KernelError::MmError(
@@ -209,12 +131,9 @@ impl UserspaceBookkeeping {
     /// # Error
     ///
     /// Returns a KernelError if the space was not vacant.
-    /// Returns a KernelError if mapping.addr + mapping.length would overflow.
-    /// Returns a KernelError if mapping.length is 0.
     pub fn add_mapping(&mut self, mapping: Mapping) -> Result<(), KernelError> {
-        check_nonzero_length(mapping.length)?;
-        self.check_vacant(mapping.address, mapping.length)?;
-        self.mappings.insert(mapping.address, mapping);
+        self.check_vacant(mapping.address(), mapping.length())?;
+        self.mappings.insert(mapping.address(), mapping);
         Ok(())
     }
 
@@ -228,7 +147,7 @@ impl UserspaceBookkeeping {
     /// Returns a KernelError if address falls in an available mapping.
     pub fn remove_mapping(&mut self, address: VirtualAddress, length: usize) -> Result<Mapping, KernelError> {
         if self.mappings.get(&address)
-            .filter(|m| m.length == length)
+            .filter(|m| m.length() == length)
             .is_none() {
             Err(KernelError::MmError(MmError::DoesNotSpanMapping { address, length, backtrace: Backtrace::new() }))
         } else {

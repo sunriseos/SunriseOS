@@ -35,7 +35,8 @@
 
 use mem::VirtualAddress;
 use super::{PAGE_SIZE, MappingFlags};
-use super::bookkeeping::{Mapping, MappingType, UserspaceBookkeeping};
+use super::mapping::{Mapping, MappingType};
+use super::bookkeeping::UserspaceBookkeeping;
 use super::process_memory::ProcessMemory;
 use super::kernel_memory::get_kernel_memory;
 use super::error::MmError;
@@ -63,11 +64,11 @@ impl<'a> CrossProcessMapping<'a> {
     /// Returns an Error if the mapping is Available/Guarded/SystemReserved, as there would be
     /// no point to remap it, and dereferencing the pointer would cause the kernel to page-fault.
     pub fn mirror_mapping(mapping: &Mapping, offset: usize, len: usize) -> Result<CrossProcessMapping, KernelError> {
-        let frames = match mapping.mtype {
+        let frames = match mapping.mtype_ref() {
             MappingType::Guarded | MappingType::Available | MappingType::SystemReserved
                 => return Err(KernelError::MmError(MmError::InvalidMapping { backtrace: Backtrace::new() })),
             MappingType::Regular(ref f) => f,
-            MappingType::Stack(ref f) => f,
+            //MappingType::Stack(ref f) => f,
             MappingType::Shared(ref f) => f
         };
         let kernel_address = unsafe {
@@ -100,6 +101,6 @@ impl<'a> Drop for CrossProcessMapping<'a> {
         // don't dealloc the frames, they are still tracked by the mapping
         get_kernel_memory().unmap_no_dealloc(
             self.kernel_address,
-            self.mapping.length)
+            self.mapping.length())
     }
 }

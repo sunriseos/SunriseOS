@@ -159,7 +159,7 @@ impl KernelStack {
             let addr = VirtualAddress(stack_bottom as usize + i * PAGE_SIZE);
             if UserLand::contains_address(addr) {
                 if let Ok(QueryMemory::Used(mapping)) = pmemory.query_memory(addr) {
-                    if mapping.flags.contains(MappingFlags::READABLE) {
+                    if mapping.flags().contains(MappingFlags::READABLE) {
                         continue;
                     }
                 }
