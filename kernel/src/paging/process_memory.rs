@@ -13,11 +13,13 @@
 //! j--------------------------------+----------------~-----j
 //!                         Page tables
 
+pub use super::bookkeeping::QueryMemory;
+
 use super::hierarchical_table::*;
 use super::arch::{PAGE_SIZE, InactiveHierarchy, ActiveHierarchy};
 use super::lands::{UserLand, KernelLand, VirtualSpaceLand};
 use super::kernel_memory::get_kernel_memory;
-use super::bookkeeping::{UserspaceBookkeeping, Mapping, MappingType, QueryMemory};
+use super::bookkeeping::{UserspaceBookkeeping, Mapping, MappingType};
 use super::cross_process::CrossProcessMapping;
 use super::MappingFlags;
 use mem::{VirtualAddress, PhysicalAddress};
