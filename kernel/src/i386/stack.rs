@@ -27,14 +27,15 @@
 //!  in order to be able to find its bottom from any page.
 
 use ::core::mem::size_of;
-use paging::lands::KernelLand;
-use paging::{PAGE_SIZE, MappingFlags, PageState, kernel_memory::get_kernel_memory};
+use paging::lands::{VirtualSpaceLand, UserLand, KernelLand};
+use paging::{PAGE_SIZE, process_memory::QueryMemory, MappingFlags, PageState, kernel_memory::get_kernel_memory};
 use frame_allocator::{FrameAllocator, FrameAllocatorTrait};
 use mem::VirtualAddress;
 use error::KernelError;
 use xmas_elf::ElfFile;
 use xmas_elf::symbol_table::{Entry32, Entry};
 use rustc_demangle::demangle as rustc_demangle;
+use scheduler;
 
 /// The size of a kernel stack, not accounting for the page guard
 pub const STACK_SIZE: usize            = 4;
@@ -147,17 +148,27 @@ impl KernelStack {
     /// before attempting to access it. It does create a &[u8] from a technically "shared"
     /// resource. However, the compiler shouldn't know about this, so UB shouldn't be met.
     pub fn dump_stack<'a>(mut esp: usize, ebp: usize, eip: usize, elf: Option<(&ElfFile<'a>, &'a [Entry32])>) {
-        let mut memory = get_kernel_memory();
+        let mut kmemory = get_kernel_memory();
+        let process = scheduler::get_current_process();
+        let pmemory = process.pmemory.lock();
+
         let stack_bottom = (Self::get_stack_bottom(esp) + PAGE_SIZE) as *const u8;
 
         // Check we have STACK_SIZE pages mapped as readable (at least) from stack_bottom.
         for i in 0..STACK_SIZE {
-            if let PageState::Present(_) = memory.mapping_state(VirtualAddress(stack_bottom as usize + i * PAGE_SIZE)) {
-                // All good
-            } else {
-                // Welp! Let's stop here.
-                return dump_stack(&[], stack_bottom as usize, esp, ebp, eip, elf);
+            let addr = VirtualAddress(stack_bottom as usize + i * PAGE_SIZE);
+            if UserLand::contains_address(addr) {
+                if let Ok(QueryMemory::Used(mapping)) = pmemory.query_memory(addr) {
+                    if mapping.flags.contains(MappingFlags::READABLE) {
+                        continue;
+                    }
+                }
+            } else if KernelLand::contains_address(addr) {
+                if let PageState::Present(_) = kmemory.mapping_state(addr) {
+                    continue;
+                }
             }
+            return dump_stack(&[], stack_bottom as usize, esp, ebp, eip, elf);
         }
 
         let stack_slice = unsafe { ::core::slice::from_raw_parts(stack_bottom,
