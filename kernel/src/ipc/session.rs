@@ -22,13 +22,43 @@ struct InternalSession {
 pub struct Session {
     internal: SpinLock<InternalSession>,
     accepters: SpinLock<Vec<Weak<ProcessStruct>>>,
+    servercount: AtomicUsize,
 }
 
 #[derive(Debug, Clone)]
 pub struct ClientSession(Arc<Session>);
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ServerSession(Arc<Session>);
+
+impl Clone for ServerSession {
+    fn clone(&self) -> Self {
+        assert!(self.0.servercount.fetch_add(1, Ordering::SeqCst) != usize::max_value(), "Overflow when incrementing servercount");
+        ServerSession(self.0.clone())
+    }
+}
+
+impl Drop for ServerSession {
+    fn drop(&mut self) {
+        let count = self.0.servercount.fetch_sub(1, Ordering::SeqCst);
+        assert!(count != 0, "Overflow when decrementing servercount");
+        if count == 1 {
+            info!("Last ServerSession dropped");
+            // We're dead jim.
+            let mut internal = self.0.internal.lock();
+
+            if let Some(request) = internal.active_request.take() {
+                *request.answered.lock() = Some(Err(UserspaceError::PortRemoteDead));
+                scheduler::add_to_schedule_queue(request.sender.clone());
+            }
+
+            for request in internal.incoming_requests.drain(..) {
+                *request.answered.lock() = Some(Err(UserspaceError::PortRemoteDead));
+                scheduler::add_to_schedule_queue(request.sender.clone());
+            }
+        }
+    }
+}
 
 bitfield! {
     /// Represenens the header of an HIPC command.
@@ -55,23 +85,27 @@ bitfield! {
 }
 
 impl Session {
-    pub fn new() -> Arc<Session> {
-        Arc::new(Session {
+    pub fn new() -> (ClientSession, ServerSession) {
+        let sess = Arc::new(Session {
             internal: SpinLock::new(InternalSession {
                 incoming_requests: Vec::new(),
                 active_request: None
             }),
             accepters: SpinLock::new(Vec::new()),
-        })
+            servercount: AtomicUsize::new(0)
+        });
+
+        (Session::client(sess.clone()), Session::server(sess))
     }
 
     /// Returns a ClientPort from this Port.
-    pub fn client(this: Arc<Self>) -> ClientSession {
+    fn client(this: Arc<Self>) -> ClientSession {
         ClientSession(this)
     }
 
     /// Returns a ServerSession from this Port.
-    pub fn server(this: Arc<Self>) -> ServerSession {
+    fn server(this: Arc<Self>) -> ServerSession {
+        this.servercount.fetch_add(1, Ordering::SeqCst);
         ServerSession(this)
     }
 }
@@ -82,10 +116,13 @@ impl Waitable for ServerSession {
         if internal.active_request.is_none() {
             if let Some(s) = internal.incoming_requests.pop() {
                 internal.active_request = Some(s);
-                return true;
+                true
+            } else {
+                false
             }
+        } else {
+            true
         }
-        false
     }
 
     fn register(&self) {
@@ -97,7 +134,7 @@ impl Waitable for ServerSession {
 struct Request {
     sender_buf: &'static mut [u8],
     sender: Arc<ProcessStruct>,
-    answered: Arc<SpinLock<bool>>,
+    answered: Arc<SpinLock<Option<Result<(), UserspaceError>>>>,
 }
 
 fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mut ProcessMemory, to_mem: &mut ProcessMemory, flags: MappingFlags) -> Result<(), UserspaceError> {
@@ -171,17 +208,28 @@ impl ClientSession {
             slice::from_raw_parts_mut(addr.addr() as *mut u8, buf.len())
         };
 
-        let answered = Arc::new(SpinLock::new(false));
+        let answered = Arc::new(SpinLock::new(None));
 
-        let lock = self.0.internal.lock().incoming_requests.push(Request {
-            sender_buf: buf,
-            answered: answered.clone(),
-            sender: scheduler::get_current_process(),
-        });
+        {
+            // Be thread-safe: First we lock the internal mutex. Then check whether there's
+            // a server left or not, in which case fail-fast. Otherwise, add the incoming
+            // request.
+            let mut internal = self.0.internal.lock();
+
+            if self.0.servercount.load(Ordering::SeqCst) == 0 {
+                return Err(UserspaceError::PortRemoteDead);
+            }
+
+            internal.incoming_requests.push(Request {
+                sender_buf: buf,
+                answered: answered.clone(),
+                sender: scheduler::get_current_process(),
+            })
+        }
 
         let mut guard = answered.lock();
 
-        while !*guard {
+        while let None = *guard {
             while let Some(item) = self.0.accepters.lock().pop() {
                 if let Some(process) = item.upgrade() {
                     scheduler::add_to_schedule_queue(process);
@@ -191,7 +239,8 @@ impl ClientSession {
 
             guard = scheduler::unschedule(&*answered, guard)?;
         }
-        Ok(())
+
+        (*guard).unwrap()
     }
 }
 
@@ -216,7 +265,7 @@ impl ServerSession {
 
         pass_message(&*buf, scheduler::get_current_process(), active.sender_buf, active.sender.clone())?;
 
-        *active.answered.lock() = true;
+        *active.answered.lock() = Some(Ok(()));
 
         scheduler::add_to_schedule_queue(active.sender.clone());
 

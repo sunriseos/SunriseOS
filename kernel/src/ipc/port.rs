@@ -74,7 +74,7 @@ impl Drop for ServerPort {
 
 #[derive(Debug)]
 pub struct IncomingConnection {
-    session: SpinLock<Option<Arc<Session>>>,
+    session: SpinLock<Option<ClientSession>>,
     creator: Arc<ProcessStruct>
 }
 
@@ -94,8 +94,8 @@ impl ServerPort {
                 assert!(lock.is_none(), "Handled connection request still in incoming conn queue.");
 
                 // We can associate a session to this now.
-                let sess = Session::new();
-                *lock = Some(sess.clone());
+                let (client, server) = Session::new();
+                *lock = Some(client);
 
                 // Wake up the creator.
                 // **VERY IMPORTANT**: This should be done with the LOCK HELD!!!
@@ -103,7 +103,7 @@ impl ServerPort {
                 scheduler::add_to_schedule_queue(incoming.creator.clone());
 
                 // We're done!
-                return Ok(Session::server(sess));
+                return Ok(server);
             }
         }
     }
@@ -143,7 +143,7 @@ impl ClientPort {
             }
         };
 
-        Ok(Session::client(session))
+        Ok(session)
     }
 }
 
