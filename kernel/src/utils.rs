@@ -138,6 +138,28 @@ pub fn check_nonzero_length(length: usize) -> Result<(), KernelError> {
     }
 }
 
+/// adds to usize, and returns an KernelError if it would cause an overflow.
+pub fn add_or_error(lhs: usize, rhs: usize) -> Result<usize, KernelError> {
+    match lhs.checked_add(rhs) {
+        Some(result) => Ok(result),
+        None => Err(KernelError::WouldOverflow { lhs,
+                                                 operation: ::error::ArithmeticOperation::Add,
+                                                 rhs,
+                                                 backtrace: Backtrace::new() })
+    }
+}
+
+/// subtracts to usize, and returns an KernelError if it would cause an overflow.
+pub fn sub_or_error(lhs: usize, rhs: usize) -> Result<usize, KernelError> {
+    match lhs.checked_add(rhs) {
+        Some(result) => Ok(result),
+        None => Err(KernelError::WouldOverflow { lhs,
+                                                 operation: ::error::ArithmeticOperation::Sub,
+                                                 rhs,
+                                                 backtrace: Backtrace::new() })
+    }
+}
+
 /// A trait for things that can be splitted in two parts
 pub trait Splittable where Self: Sized {
     /// Split the given object in two at a given offset.

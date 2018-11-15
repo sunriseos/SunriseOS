@@ -133,6 +133,12 @@ impl PhysicalAddress {
             None => Err(KernelError::WouldOverflow { lhs: self.0, operation: ArithmeticOperation::Add, rhs, backtrace: Backtrace::new() })
         }
     }
+
+    /// Rounds down to PAGE_SIZE.
+    pub fn floor(self) -> PhysicalAddress { PhysicalAddress(round_to_page(self.0)) }
+
+    /// Rounds up PAGE_SIZE.
+    pub fn ceil(self) -> PhysicalAddress { PhysicalAddress(round_to_page_upper(self.0)) }
 }
 
 impl VirtualAddress {
@@ -142,6 +148,12 @@ impl VirtualAddress {
             None => Err(KernelError::WouldOverflow { lhs: self.0, operation: ArithmeticOperation::Add, rhs, backtrace: Backtrace::new() })
         }
     }
+
+    /// Rounds down to PAGE_SIZE.
+    pub fn floor(self) -> VirtualAddress { VirtualAddress(round_to_page(self.0)) }
+
+    /// Rounds up PAGE_SIZE.
+    pub fn ceil(self) -> VirtualAddress { VirtualAddress(round_to_page_upper(self.0)) }
 }
 
 #[repr(transparent)]
