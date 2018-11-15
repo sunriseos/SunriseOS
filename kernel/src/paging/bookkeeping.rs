@@ -169,4 +169,23 @@ impl UserspaceBookkeeping {
     pub fn remove_mapping_split(&mut self, address: VirtualAddress, length: usize) -> Result<Mapping, KernelError> {
         unimplemented!()
     }
+
+    /// Finds a hole in virtual space at least `length` long.
+    ///
+    /// # Error
+    ///
+    /// Returns a KernelError if no sufficiently big hole was found.
+    /// Returns a KernelError if `length` is 0.
+    pub fn find_available_space(&self, length: usize) -> Result<VirtualAddress, KernelError> {
+        check_nonzero_length(length)?;
+        let mut last_address = VirtualAddress(0x00000000);
+        for m in self.mappings.values() {
+            if m.address() - last_address >= length {
+                return Ok(last_address)
+            }
+            last_address = VirtualAddress(m.address().addr().wrapping_add(m.length()));
+            // will overflow for last mapping, but we'll return right after, so it's ok
+        }
+        Err(KernelError::VirtualMemoryExhaustion { backtrace: Backtrace::new() })
+    }
 }

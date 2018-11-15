@@ -287,6 +287,16 @@ impl ProcessMemory {
         Ok(self.userspace_bookkeping.mapping_at(address))
     }
 
+    /// Finds a hole in virtual space at least `length` long.
+    ///
+    /// # Error
+    ///
+    /// Returns a KernelError if no sufficiently big hole was found.
+    /// Returns a KernelError if `length` is 0.
+    pub fn find_available_space(&self, length: usize) -> Result<VirtualAddress, KernelError> {
+        self.userspace_bookkeping.find_available_space(length)
+    }
+
     /// Retrieves the mapping that `address` falls into, and mirror it in KernelLand
     ///
     /// # Error
