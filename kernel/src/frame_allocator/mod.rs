@@ -121,6 +121,7 @@ impl Drop for PhysicalMemRegion {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct PhysicalMemRegionIter<'a>(StepBy<Range<usize>>, PhantomData<&'a ()>);
 
 impl<'a> Iterator for PhysicalMemRegionIter<'a> {

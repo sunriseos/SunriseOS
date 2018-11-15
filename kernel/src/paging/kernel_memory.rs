@@ -55,7 +55,7 @@ pub fn get_kernel_memory() -> MutexGuard<'static, KernelMemory> { KERNEL_MEMORY.
 
 impl KernelMemory {
 
-    /// Finds a hole in the virtual space at least 'length' long, and respecting alignment
+    /// Finds a hole in the virtual space at least 'length' long, and respecting alignment.
     pub fn find_virtual_space_aligned(&mut self, length: usize, alignment: usize) -> Result<VirtualAddress, KernelError> {
         match self.tables.find_available_virtual_space_aligned(length, KernelLand::start_addr(), KernelLand::end_addr(), alignment) {
             Some(addr) => Ok(addr),
@@ -68,48 +68,109 @@ impl KernelMemory {
         self.find_virtual_space_aligned(length, PAGE_SIZE)
     }
 
-    /// Maps a single physical regions to a given virtual address
+    /// Maps a single physical regions to a given virtual address.
+    ///
+    /// # Panics
+    ///
+    /// Panics if virtual region is not in KernelLand.
+    // todo check va alignment
     pub fn map_phys_region_to(&mut self, phys: PhysicalMemRegion, address: VirtualAddress, flags: MappingFlags) {
         assert!(KernelLand::contains_region(address, phys.size()));
-        // convert region as a slice of 1 region
-        let region_as_slice = unsafe {
-            ::core::slice::from_raw_parts(&phys as *const PhysicalMemRegion, 1)
-        };
-        self.tables.map_to(region_as_slice, address, flags);
+        self.tables.map_to_from_iterator(phys.into_iter(), address, flags);
         // physical region must not be deallocated while it is mapped
         ::core::mem::forget(phys);
     }
 
-    /// Maps a single physical region anywhere
+    /// Maps a single physical region anywhere.
+    ///
+    /// # Panics
+    ///
+    /// Panics if encounters virtual space exhaustion.
     pub fn map_phys_region(&mut self, phys: PhysicalMemRegion, flags: MappingFlags) -> VirtualAddress {
         let va = self.find_virtual_space(phys.size()).unwrap();
         self.map_phys_region_to(phys, va, flags);
         va
     }
 
-    /// Maps a list of physical region anywhere
+    /// Maps a list of physical region anywhere.
     ///
     /// # Unsafe
     ///
     /// This function cannot ensure that the frames won't be dropped while still mapped.
+    ///
+    /// # Panics
+    ///
+    /// Panics if encounters virtual space exhaustion.
     pub(super) unsafe fn map_phys_regions(&mut self, phys: &[PhysicalMemRegion], flags: MappingFlags) -> VirtualAddress {
         let length = phys.iter().flatten().count() * PAGE_SIZE;
         let va = self.find_virtual_space(length).unwrap();
-        self.tables.map_to(phys, va, flags);
+        self.tables.map_to_from_iterator(phys.iter().flatten(), va, flags);
         va
     }
+
+    /// Maps a list of physical region yielded by an iterator.
+    ///
+    /// # Unsafe
+    ///
+    /// This function cannot ensure that the frames won't be dropped while still mapped.
+    ///
+    /// # Panics
+    ///
+    /// Panics if virtual region is not in KernelLand.
+    /// Panics if encounters virtual space exhaustion.
+    // todo check va alignment
+    pub(super) unsafe fn map_frame_iterator_to<I>(&mut self, iterator: I, address: VirtualAddress, flags: MappingFlags)
+    where I: Iterator<Item=PhysicalAddress> + Clone
+    {
+        assert!(KernelLand::contains_region(address,
+                                            iterator.clone().count() * PAGE_SIZE));
+        self.tables.map_to_from_iterator(iterator, address, flags);
+    }
+
+    /// Maps a list of physical region yielded by the iterator.
+    /// Chooses the address.
+    ///
+    /// # Unsafe
+    ///
+    /// This function cannot ensure that the frames won't be dropped while still mapped.
+    ///
+    /// # Panics
+    ///
+    /// Panics if encounters virtual space exhaustion.
+    pub(super) unsafe fn map_frame_iterator<I>(&mut self, iterator: I, flags: MappingFlags) -> VirtualAddress
+    where I: Iterator<Item=PhysicalAddress> + Clone
+    {
+        let length = iterator.clone().count() * PAGE_SIZE;
+        let va = self.find_virtual_space(length).unwrap();
+        self.tables.map_to_from_iterator(iterator, va, flags);
+        va
+    }
+
     /// Allocates and maps a single page, choosing a spot in VMEM for it.
+    ///
+    /// # Panics
+    ///
+    /// Panics if encounters physical memory exhaustion.
+    /// Panics if encounters virtual space exhaustion.
     pub fn get_page(&mut self) -> VirtualAddress {
         let pr = FrameAllocator::allocate_frame().unwrap();
         self.map_phys_region(pr, MappingFlags::k_rw())
     }
 
-    /// Allocates non-contiguous frames, and map them at the given address
+    /// Allocates non-contiguous frames, and map them at the given address.
+    ///
+    /// # Panics
+    ///
+    /// Panics if encounters physical memory exhaustion.
+    /// Panics if encounters virtual space exhaustion.
+    /// Panics if destination was already mapped.
+    /// Panics if `length` is not a multiple of PAGE_SIZE.
+    // todo check va alignment
     pub fn map_allocate_to(&mut self, va: VirtualAddress, length: usize, flags: MappingFlags) {
         assert!(KernelLand::contains_region(va, length));
         assert!(length % PAGE_SIZE == 0, "length must be a multiple of PAGE_SIZE");
         let mut prs = FrameAllocator::allocate_frames_fragmented(length / PAGE_SIZE).unwrap();
-        self.tables.map_to(&prs, va, flags);
+        self.tables.map_to_from_iterator(prs.iter().flatten(), va, flags);
 
         // do not drop the frames, they are mapped in the page tables !
         while let Some(region) = prs.pop() {
@@ -121,8 +182,9 @@ impl KernelMemory {
     ///
     /// # Panics
     ///
-    /// Panics if we are out of memory.
-    /// Panics if length is not a multiple of PAGE_SIZE.
+    /// Panics if encounters physical memory exhaustion.
+    /// Panics if encounters virtual space exhaustion.
+    /// Panics if `length` is not a multiple of PAGE_SIZE.
     pub fn get_pages(&mut self, length: usize) -> VirtualAddress {
         assert!(length % PAGE_SIZE == 0, "length must be a multiple of PAGE_SIZE");
         let va = self.find_virtual_space(length).unwrap();
@@ -130,13 +192,23 @@ impl KernelMemory {
         va
     }
 
-    /// Guards a range of addresses
+    /// Guards a range of addresses.
+    ///
+    /// # Panics
+    ///
+    /// Panics if destination was already mapped.
+    /// Panics if `length` is not a multiple of PAGE_SIZE.
+    // todo check va alignment
     pub fn guard(&mut self, address: VirtualAddress, length: usize) {
         assert!(length % PAGE_SIZE == 0, "length must be a multiple of PAGE_SIZE");
         self.get_hierarchy().guard(address, length);
     }
 
-    /// Reads the state of the mapping at a given address
+    /// Reads the state of the mapping at a given address.
+    ///
+    /// # Panics
+    ///
+    /// If `address` is not in KernelLand.
     pub fn mapping_state(&mut self, addr: VirtualAddress) -> PageState<PhysicalAddress> {
         let mut mapping= None;
         let addr_aligned = VirtualAddress(::utils::align_down(addr.addr(), PAGE_SIZE));
@@ -149,6 +221,14 @@ impl KernelMemory {
 
     /// Deletes a mapping in the page tables.
     /// This functions assumes the frames were not tracked anywhere else, and drops them.
+    ///
+    /// # Panics
+    ///
+    ///
+    /// Panics if encounters any entry that was not mapped.
+    /// Panics if virtual region is not in KernelLand.
+    /// Panics if `length` is not page aligned.
+    // todo check va alignment
     pub fn unmap(&mut self, address: VirtualAddress, length: usize) {
         assert!(KernelLand::contains_region(address, length));
         assert!(length % PAGE_SIZE == 0, "length must be a multiple of PAGE_SIZE");
@@ -162,6 +242,13 @@ impl KernelMemory {
     }
 
     /// Deletes a mapping in the page tables, but does not free the underlying physical memory.
+    ///
+    /// # Panics
+    ///
+    /// Panics if encounters any entry that was not mapped.
+    /// Panics if virtual region is not in KernelLand.
+    /// Panics if `length` is not page aligned.
+    // todo check va alignment
     pub fn unmap_no_dealloc(&mut self, address: VirtualAddress, length: usize) {
         assert!(KernelLand::contains_region(address, length));
         assert!(length % PAGE_SIZE == 0, "length must be a multiple of PAGE_SIZE");

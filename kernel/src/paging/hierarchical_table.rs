@@ -313,23 +313,6 @@ pub trait TableHierarchy {
                           start_address.addr(), flags);
     }
 
-    /// Creates a mapping in the page tables with the given flags.
-    ///
-    /// Just a shorthand for `map_to_from_iterator`, where the slice of PhysicalMemRegions
-    /// is converted to an iterator.
-    ///
-    /// # Panics
-    ///
-    /// Panics if address is not page-aligned.
-    /// Panics if any encountered entry was already in use
-    fn map_to(&mut self, physical_regions: &[PhysicalMemRegion],
-                         start_address: VirtualAddress,
-                         flags: MappingFlags) {
-        self.map_to_from_iterator(physical_regions.iter().flatten(),
-                                  start_address, flags);
-    }
-
-
     /// Creates a span of guard pages
     ///
     /// This function will avoid creating child tables filled only with guarded entry,

@@ -79,10 +79,15 @@ impl<'b> TableHierarchy for DynamicHierarchy<'b> {
         panic!("Dynamic DynamicHierarchy reimplements everything");
     }
 
-    fn map_to(&mut self, physical_regions: &[PhysicalMemRegion], start_address: VirtualAddress, flags: MappingFlags) {
+    fn map_to_from_iterator<I>(&mut self,
+                               frames_iterator: I,
+                               start_address: VirtualAddress,
+                               flags: MappingFlags)
+    where I: Iterator<Item=PhysicalAddress>
+    {
         match self {
-            &mut DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.map_to(physical_regions, start_address, flags),
-            &mut DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.map_to(physical_regions, start_address, flags),
+            &mut DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.map_to_from_iterator(frames_iterator, start_address, flags),
+            &mut DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.map_to_from_iterator(frames_iterator, start_address, flags),
         }
     }
 
@@ -171,9 +176,8 @@ impl ProcessMemory {
         self.userspace_bookkeping.check_vacant(address, length)?;
         // ok, everything seems good, from now on treat errors as unexpected
 
-        let frames = vec![phys];
-        self.get_hierarchy().map_to(&frames, address, flags);
-        let mapping = Mapping::new(address, length, MappingType::Regular(frames), flags)
+        self.get_hierarchy().map_to_from_iterator(phys.into_iter(), address, flags);
+        let mapping = Mapping::new(address, length, MappingType::Regular(vec![phys]), flags)
             .expect("We checked everything, but bookkeeping refuses to create the mapping");
         self.userspace_bookkeping.add_mapping(mapping)
             .expect("We checked everything, but bookkeeping refuses to add the mapping");
@@ -196,7 +200,7 @@ impl ProcessMemory {
         let frames = FrameAllocator::allocate_frames_fragmented(length / PAGE_SIZE)?;
         // ok, everything seems good, from now on treat errors as unexpected
 
-        self.get_hierarchy().map_to(&frames, address, flags);
+        self.get_hierarchy().map_to_from_iterator(frames.iter().flatten(), address, flags);
         let mapping = Mapping::new(address, length, MappingType::Regular(frames), flags)
             .expect("We checked everything, but bookkeeping refuses to create the mapping");
         self.userspace_bookkeping.add_mapping(mapping)
@@ -225,7 +229,7 @@ impl ProcessMemory {
         self.userspace_bookkeping.check_vacant(address, length)?;
         // ok, everything seems good, from now on treat errors as unexpected
 
-        self.get_hierarchy().map_to(&shared_mapping, address, flags);
+        self.get_hierarchy().map_to_from_iterator(shared_mapping.iter().flatten(), address, flags);
         let mapping = Mapping::new(address, length, MappingType::Shared(shared_mapping), flags)
             .expect("We checked everything, but bookkeeping refuses to create the mapping");
         self.userspace_bookkeping.add_mapping(mapping)
