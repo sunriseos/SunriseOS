@@ -46,6 +46,18 @@ impl ::core::ops::Add<usize> for PhysicalAddress {
     fn add(self, other: usize) -> PhysicalAddress { PhysicalAddress(self.0 + other) }
 }
 
+impl ::core::ops::Add<VirtualAddress> for usize {
+    type Output = VirtualAddress;
+    /// Adding a length to an address gives another address
+    fn add(self, other: VirtualAddress) -> VirtualAddress { VirtualAddress(self + other.0) }
+}
+
+impl ::core::ops::Add<PhysicalAddress> for usize {
+    type Output = PhysicalAddress;
+    /// Adding a length to an address gives another address
+    fn add(self, other: PhysicalAddress) -> PhysicalAddress { PhysicalAddress(self + other.0) }
+}
+
 impl ::core::ops::Sub<usize> for VirtualAddress {
     type Output = VirtualAddress;
     /// Subtracting a length from an address gives another address
