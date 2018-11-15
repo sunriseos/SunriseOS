@@ -296,10 +296,7 @@ impl ProcessMemory {
     pub fn mirror_mapping(&self, address: VirtualAddress, length: usize) -> Result<CrossProcessMapping, KernelError> {
         UserLand::check_contains_address(address)?;
         let mapping = self.userspace_bookkeping.occupied_mapping_at(address)?;
-        if length < mapping.length() {
-            return Err(KernelError::InvalidAddress { address, length, backtrace: Backtrace::new() })
-        }
-        let offset = address.addr() - mapping.address().addr();
+        let offset = address - mapping.address();
         CrossProcessMapping::mirror_mapping(mapping, offset, length)
     }
 
