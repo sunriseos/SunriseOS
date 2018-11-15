@@ -254,24 +254,31 @@ pub trait TableHierarchy {
     /// or by temporarily mapping it in the currently active page tables.
     fn get_top_level_table<'a>(&'a mut self) -> SmartHierarchicalTable<'a, Self::TopLevelTableType>;
 
-    /// Creates a mapping in the page tables with the given flags
+    /// Creates a mapping in the page tables with the given flags.
+    ///
+    /// The physical frames to map are passed as an iterator that yields physical addresses.
+    /// The mapping begins at `start_address`, and advances by PAGE_SIZE steps, consuming
+    /// `frames_iterator` every time.
+    /// When `frames_iterator` is depleted, the mapping stops.
     ///
     /// # Panics
     ///
     /// Panics if address is not page-aligned.
     /// Panics if any encountered entry was already in use
-    fn map_to(&mut self, physical_regions: &[PhysicalMemRegion],
-                         start_address: VirtualAddress,
-                         flags:   MappingFlags) {
+    fn map_to_from_iterator<I>(&mut self,
+                               frames_iterator: I,
+                               start_address: VirtualAddress,
+                               flags: MappingFlags)
+    where I: Iterator<Item=PhysicalAddress>
+    {
         assert_eq!(start_address.addr() % PAGE_SIZE, 0, "Address is not page aligned");
 
         /// Delay work to child tables, and map it ourselves when we have no more children.
         /// Panics if any entry was already in use
         fn rec_map_to<T, I>(table: &mut SmartHierarchicalTable<T>,
-                           frames_iterator: &mut Peekable<I>,
-                           start_address: usize,
-                           flags: MappingFlags)
-                           /*flags: <<T as HierarchicalTable>::EntryType as HierarchicalEntry>::EntryFlagsType) */
+                            frames_iterator: &mut Peekable<I>,
+                            start_address: usize,
+                            flags: MappingFlags)
         where T: HierarchicalTable,
               I: Iterator<Item=PhysicalAddress>
         {
@@ -302,8 +309,24 @@ pub trait TableHierarchy {
         }
 
         return rec_map_to(&mut self.get_top_level_table(),
-                          &mut physical_regions.iter().flatten().peekable(),
+                          &mut frames_iterator.peekable(),
                           start_address.addr(), flags);
+    }
+
+    /// Creates a mapping in the page tables with the given flags.
+    ///
+    /// Just a shorthand for `map_to_from_iterator`, where the slice of PhysicalMemRegions
+    /// is converted to an iterator.
+    ///
+    /// # Panics
+    ///
+    /// Panics if address is not page-aligned.
+    /// Panics if any encountered entry was already in use
+    fn map_to(&mut self, physical_regions: &[PhysicalMemRegion],
+                         start_address: VirtualAddress,
+                         flags: MappingFlags) {
+        self.map_to_from_iterator(physical_regions.iter().flatten(),
+                                  start_address, flags);
     }
 
 
