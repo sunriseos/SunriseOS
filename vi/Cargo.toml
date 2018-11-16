@@ -1,0 +1,13 @@
+[package]
+name = "kfs-vi"
+version = "0.1.0"
+authors = ["roblabla <unfiltered@roblab.la>"]
+
+[dependencies]
+libuser = { path = "../libuser" }
+spin = "0.4"
+hashmap_core = "0.1.9"
+
+[dependencies.lazy_static]
+features = ["spin_no_std"]
+version = "1.0.0"
