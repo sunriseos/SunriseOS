@@ -95,10 +95,7 @@ pub fn bit_array_first_one(bitarray: &[u8]) -> Option<usize> {
 }
 
 pub fn align_up(addr: usize, align: usize) -> usize {
-    match addr & align - 1 {
-        0 => addr,
-        _ => align_down(addr, align) + align
-    }
+    align_down(addr + align - 1, align)
 }
 
 pub fn align_down(addr: usize, align: usize) -> usize {

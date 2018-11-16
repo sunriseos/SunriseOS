@@ -154,7 +154,7 @@ fn reply_and_receive_with_user_buffer(buf: UserSpacePtrMut<[u8]>, handles: UserS
         sess.as_server_session()?.reply(UserSpacePtr(buf.0));
     }
 
-    // TODO: Ensure all handles are receive
+    // TODO: Ensure all handles are ClientSessions
     let idx = wait_synchronization(handles.clone(), timeout)?;
 
     let servsess = proc.phandles.lock().get_handle(handles[idx])?.as_server_session()?;
@@ -175,6 +175,14 @@ fn sleep_thread(nanos: usize) -> Result<(), UserspaceError> {
     } else {
         event::wait(Some(&pit::wait_ms(nanos / 1_000_000) as &dyn Waitable)).map(|_| ())
     }
+}
+
+fn create_port(max_sessions: u32, _is_light: bool, _name_ptr: UserSpacePtr<[u8; 12]>) -> Result<(usize, usize), UserspaceError>{
+    let (server, client) = ipc::port::Port::new(max_sessions);
+    let curproc = scheduler::get_current_process();
+    let serverhnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ServerPort(server)));
+    let clienthnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ClientPort(client)));
+    Ok((clienthnd as _, serverhnd as _))
 }
 
 impl Registers {
@@ -254,6 +262,7 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
         // more registers.
         0x44 => registers.apply1(reply_and_receive_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), UserSpacePtr::from_raw_parts(x2 as _, x3), x4 as _, usize::max_value())),
         0x53 => registers.apply1(create_interrupt_event(x0, x1 as u32)),
+        0x70 => registers.apply2(create_port(x0 as _, x1 != 0, UserSpacePtr(x2 as _))),
         0x71 => registers.apply1(manage_named_port(UserSpacePtr(x0 as _), x1 as _)),
 
         // KFS extensions

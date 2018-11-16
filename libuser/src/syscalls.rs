@@ -2,6 +2,8 @@
 
 use core::slice;
 use types::*;
+use alloc::prelude::*;
+use core::fmt::Write;
 
 global_asm!("
 .intel_syntax noprefix
@@ -120,8 +122,44 @@ pub fn connect_to_named_port(s: &str) -> Result<ClientSession, usize> {
     }
 }
 
+pub fn hexdump(mem: &[u8], display_addr: usize) {
+    let mut s = String::from("\n");
+    for chunk in mem.chunks(16) {
+        let mut arr = [None; 16];
+        for (i, elem) in chunk.iter().enumerate() {
+            arr[i] = Some(*elem);
+        }
+
+        let offset_in_mem = chunk.as_ptr() as usize - mem.as_ptr() as usize;
+        let _ = write!(s, "{:#010x}:", display_addr + offset_in_mem);
+
+        for pair in arr.chunks(2) {
+            let _ = write!(s, " ");
+            for elem in pair {
+                if let &Some(i) = elem {
+                    let _ = write!(s, "{:02x}", i);
+                } else {
+                    let _ = write!(s, "  ");
+                }
+            }
+        }
+        let _ = write!(s, "  ");
+        for i in chunk {
+            if i.is_ascii_graphic() {
+                let _ = write!(s, "{}", *i as char);
+            } else {
+                let _ = write!(s, ".");
+            }
+        }
+        let _ = writeln!(s, "");
+    }
+
+    output_debug_string(&s);
+}
+
 pub fn send_sync_request_with_user_buffer(buf: &mut [u8], handle: &ClientSession) -> Result<(), usize> {
     unsafe {
+        hexdump(&*buf, 0);
         syscall(0x22, buf.as_ptr() as _, buf.len(), (handle.0).0.get() as _, 0, 0, 0)?;
         Ok(())
     }
@@ -184,6 +222,7 @@ pub fn reply_and_receive_with_user_buffer(buf: &mut [u8], handles: &[HandleRef],
             Some(s) => s.inner.get() as _,
             None => 0
         }, 0)?;
+        hexdump(&*buf, 0);
         Ok(idx)
     }
 }
