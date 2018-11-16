@@ -28,7 +28,7 @@ pub struct ClientPort(Arc<Port>);
 ///
 /// This is necessary for accepting connections on a port. Its only operation
 /// is accept(), which returns a ServerSession.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ServerPort(Arc<Port>);
 
 impl Port {
@@ -66,11 +66,29 @@ impl Waitable for ServerPort {
     }
 }
 
-impl Drop for ServerPort {
-    fn drop(&mut self) {
-        assert!(self.0.servercount.fetch_sub(1, Ordering::SeqCst) != 0, "Overflow when decrementing servercount");
+impl Clone for ServerPort {
+    fn clone(&self) -> Self {
+        assert!(self.0.servercount.fetch_add(1, Ordering::SeqCst) != usize::max_value(), "Overflow when incrementing servercount");
+        ServerPort(self.0.clone())
     }
 }
+
+impl Drop for ServerPort {
+    fn drop(&mut self) {
+        let count = self.0.servercount.fetch_sub(1, Ordering::SeqCst);
+        assert!(count != 0, "Overflow when decrementing servercount");
+        if count == 1 {
+            info!("Last ServerPort dropped");
+            // We're dead jim.
+            let mut internal = self.0.incoming_connections.lock();
+
+            for request in internal.drain(..) {
+                scheduler::add_to_schedule_queue(request.creator.clone());
+            }
+        }
+    }
+}
+
 
 #[derive(Debug)]
 pub struct IncomingConnection {
