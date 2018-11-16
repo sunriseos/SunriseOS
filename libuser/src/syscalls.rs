@@ -99,6 +99,13 @@ pub(crate) fn close_handle(handle: u32) -> Result<(), usize> {
     }
 }
 
+pub fn sleep_thread(nanos: usize) -> Result<(), usize> {
+    unsafe {
+        let ret = syscall(0x18, nanos, 0, 0, 0, 0, 0)?;
+        Ok(())
+    }
+}
+
 pub fn wait_synchronization(handles: &[HandleRef], timeout_ns: Option<usize>) -> Result<usize, usize> {
     unsafe {
         let (handleidx, ..) = syscall(0x18, handles.as_ptr() as _, handles.len(), timeout_ns.unwrap_or(usize::max_value()), 0, 0, 0)?;

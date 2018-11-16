@@ -168,6 +168,15 @@ fn close_handle(handle: u32) -> Result<(), UserspaceError> {
     Ok(())
 }
 
+fn sleep_thread(nanos: usize) -> Result<(), UserspaceError> {
+    if nanos == 0 {
+        scheduler::schedule();
+        Ok(())
+    } else {
+        event::wait(Some(&pit::wait_ms(nanos / 1_000_000) as &dyn Waitable)).map(|_| ())
+    }
+}
+
 impl Registers {
     fn apply0(&mut self, ret: Result<(), UserspaceError>) {
         self.apply3(ret.map(|_| (0, 0, 0)))
@@ -233,6 +242,7 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
     match syscall_nr {
         // Horizon-inspired syscalls!
         0x07 => registers.apply0(exit_process()),
+        0x0B => registers.apply0(sleep_thread(x0)),
         0x16 => registers.apply0(close_handle(x0 as _)),
         0x18 => registers.apply1(wait_synchronization(UserSpacePtr::from_raw_parts(x0 as _, x1), x2)),
         0x1F => registers.apply1(connect_to_named_port(UserSpacePtr(x0 as _))),

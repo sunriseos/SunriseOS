@@ -11,6 +11,10 @@ hashmap_core = "0.1.9"
 log = "0.4.2"
 libuser = { path = "../libuser" }
 
+[dependencies.byteorder]
+default-features = false
+version = "1.2.1"
+
 [dependencies.lazy_static]
 features = ["spin_no_std"]
 version = "1.0.0"

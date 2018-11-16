@@ -12,17 +12,20 @@ extern crate log;
 #[macro_use]
 extern crate lazy_static;
 extern crate libuser;
+extern crate byteorder;
 
 mod vbe;
 mod ps2;
 mod logger;
 use libuser::syscalls;
 use libuser::io;
+use libuser::sm;
 
 use vbe::{Framebuffer, FRAMEBUFFER, VBELogger};
 use core::fmt::Write;
 use alloc::vec::Vec;
 use logger::Loggers;
+use byteorder::{ByteOrder, LE};
 
 static mut VBE_LOGGER: VBELogger = VBELogger;
 
@@ -41,7 +44,7 @@ pub fn main() {
             "gif3" => show_gif(&mut *FRAMEBUFFER.lock(), &LOUIS3[..]),
             "gif4" => show_gif(&mut *FRAMEBUFFER.lock(), &LOUIS4[..]),
             "connect" => {
-                let handle = syscalls::connect_to_named_port("sm:\0").unwrap();
+                let handle = sm::IUserInterface::raw_new().unwrap().get_service(LE::read_u64(b"vi:\0\0\0\0\0"));
                 writeln!(&mut VBELogger, "Got handle {:?}", handle);
             },
             "exit" => return,

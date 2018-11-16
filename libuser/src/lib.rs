@@ -8,9 +8,19 @@
 extern crate linked_list_allocator;
 #[macro_use]
 extern crate alloc;
+extern crate byteorder;
+extern crate arrayvec;
+#[macro_use]
+extern crate bitfield;
+extern crate bit_field;
+extern crate num_traits;
+
 pub mod syscalls;
 pub mod io;
 pub mod types;
+pub mod ipc;
+pub mod utils;
+pub mod sm;
 
 use linked_list_allocator::LockedHeap;
 

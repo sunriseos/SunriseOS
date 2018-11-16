@@ -41,13 +41,36 @@ pub struct ReadableEvent(pub Handle);
 #[derive(Debug)]
 pub struct ClientSession(pub Handle);
 
+impl ClientSession {
+    pub fn send_sync_request_with_user_buffer(&self, buf: &mut [u8]) -> Result<(), usize> {
+        syscalls::send_sync_request_with_user_buffer(buf, self)
+    }
+}
+
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct ServerSession(pub Handle);
 
+impl ServerSession {
+    pub fn receive(&self, buf: &mut [u8]) -> Result<(), usize> {
+        syscalls::reply_and_receive_with_user_buffer(buf, &[self.0.as_ref()], None).map(|v| ())
+    }
+
+    pub fn reply(&self, buf: &mut [u8]) -> Result<(), usize> {
+        syscalls::reply_and_receive_with_user_buffer(buf, &[], Some(self.0.as_ref())).map(|v| ())
+    }
+}
+
+
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct ClientPort(pub Handle);
+
+impl ClientPort {
+    pub fn connect(&self) -> Result<ClientSession, usize> {
+        syscalls::connect_to_port(self)
+    }
+}
 
 #[repr(transparent)]
 #[derive(Debug)]

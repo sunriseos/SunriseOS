@@ -5,3 +5,17 @@ authors = ["roblabla <unfiltered@roblab.la>", "orycterope <tvermeilh@gmail.com>"
 
 [dependencies]
 linked_list_allocator = "0.6.2"
+bitfield = "0.13"
+bit_field = "0.9"
+
+[dependencies.num-traits]
+version = "0.2"
+default-features = false
+
+[dependencies.byteorder]
+default-features = false
+version = "1.2.1"
+
+[dependencies.arrayvec]
+default-features = false
+version = "0.4.7"
