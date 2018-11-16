@@ -15,7 +15,7 @@ use bit_field::BitField;
 #[derive(Debug)]
 struct InternalSession {
     active_request: Option<Request>,
-    incoming_requests: Vec<Request>
+    incoming_requests: Vec<Request>,
 }
 
 #[derive(Debug)]
@@ -132,7 +132,8 @@ impl Waitable for ServerSession {
 
 #[derive(Debug)]
 struct Request {
-    sender_buf: &'static mut [u8],
+    sender_buf: VirtualAddress,
+    sender_bufsize: usize,
     sender: Arc<ProcessStruct>,
     answered: Arc<SpinLock<Option<Result<(), UserspaceError>>>>,
 }
@@ -205,12 +206,6 @@ impl ClientSession {
     pub fn send_request(&self, buf: UserSpacePtrMut<[u8]>) -> Result<(), UserspaceError> {
         // TODO: Unmapping is out of the question. Ideally, I should just affect the bookkeeping
         // in order to remap it in the kernel.
-        let addr : VirtualAddress = unimplemented!("remap_in_kernel");
-
-        let buf = unsafe {
-            slice::from_raw_parts_mut(addr.addr() as *mut u8, buf.len())
-        };
-
         let answered = Arc::new(SpinLock::new(None));
 
         {
@@ -224,7 +219,8 @@ impl ClientSession {
             }
 
             internal.incoming_requests.push(Request {
-                sender_buf: buf,
+                sender_buf: VirtualAddress(buf.as_ptr() as usize),
+                sender_bufsize: buf.len(),
                 answered: answered.clone(),
                 sender: scheduler::get_current_process(),
             })
@@ -256,7 +252,16 @@ impl ServerSession {
         // Can races even happen ?
         let active = internal.active_request.as_ref().unwrap();
 
-        pass_message(active.sender_buf, active.sender.clone(), &mut *buf, scheduler::get_current_process())?;
+        let sender = active.sender.clone();
+
+        let memlock = sender.pmemory.lock();
+
+        let mapping = memlock.mirror_mapping(active.sender_buf, active.sender_bufsize)?;
+        let sender_buf = unsafe {
+            slice::from_raw_parts_mut(mapping.addr().addr() as *mut u8, mapping.len())
+        };
+
+        pass_message(sender_buf, active.sender.clone(), &mut *buf, scheduler::get_current_process())?;
 
         Ok(())
     }
@@ -264,9 +269,19 @@ impl ServerSession {
     pub fn reply(&self, buf: UserSpacePtr<[u8]>) -> Result<(), UserspaceError> {
         // TODO: This probably has an errcode.
         assert!(self.0.internal.lock().active_request.is_some(), "Called reply without an active session");
+
         let active = self.0.internal.lock().active_request.take().unwrap();
 
-        pass_message(&*buf, scheduler::get_current_process(), active.sender_buf, active.sender.clone())?;
+        let sender = active.sender.clone();
+
+        let memlock = sender.pmemory.lock();
+
+        let mapping = memlock.mirror_mapping(active.sender_buf, active.sender_bufsize)?;
+        let sender_buf = unsafe {
+            slice::from_raw_parts_mut(mapping.addr().addr() as *mut u8, mapping.len())
+        };
+
+        pass_message(&*buf, scheduler::get_current_process(), sender_buf, active.sender.clone())?;
 
         *active.answered.lock() = Some(Ok(()));
 
