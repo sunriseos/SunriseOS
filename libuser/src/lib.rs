@@ -13,6 +13,7 @@ extern crate arrayvec;
 #[macro_use]
 extern crate bitfield;
 extern crate bit_field;
+extern crate spin;
 extern crate num_traits;
 
 pub mod syscalls;
