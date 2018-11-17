@@ -15,6 +15,7 @@ use core::fmt::{self, Debug};
 use scheduler;
 use error::{KernelError, UserspaceError};
 use ipc::{ServerPort, ClientPort, ServerSession, ClientSession};
+use mem::VirtualAddress;
 
 /// The struct representing a process. There's one for every process.
 ///
@@ -162,8 +163,8 @@ impl HandleTable {
 /// - Running: currently on the CPU
 /// - Scheduled: scheduled to be running
 /// - Stopped: not in the scheduled queue, waiting for an event
-/// - Readying: In the process of getting ready. Should go to the Stopped state soon.
-/// - NotReady: never added to the schedule queue yet. Should be started with `scheduler::start_thread`
+/// - Newborn: has never been ran, not in the schedule queue yet.
+/// - Killed: dying, will be unscheduled and dropped at syscall boundary
 ///
 /// Since SMP is not supported, there is only one Running thread.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -172,9 +173,8 @@ pub enum ThreadState {
     Running = 0,
     Scheduled = 1,
     Stopped = 2,
-    Readying = 3,
-    NotReady = 4,
-    Killed = 5,
+    Newborn = 3,
+    Killed = 4,
 }
 
 impl ThreadState {
@@ -183,9 +183,8 @@ impl ThreadState {
             0 => ThreadState::Running,
             1 => ThreadState::Scheduled,
             2 => ThreadState::Stopped,
-            3 => ThreadState::Readying,
-            4 => ThreadState::NotReady,
-            5 => ThreadState::Killed,
+            3 => ThreadState::Newborn,
+            4 => ThreadState::Killed,
             _ => panic!("Invalid thread state"),
         }
     }
@@ -336,11 +335,18 @@ impl Drop for ProcessStruct {
 impl ThreadStruct {
     /// Creates a new thread.
     ///
-    /// Thread will be in state NotReady, and must be given a job to do with set_start_arguments.
+    /// Sets the entrypoint and userspace stack pointer.
     ///
     /// Adds itself to list of threads of the belonging process.
-    // todo: possibly return an error
-    pub fn new(belonging_process: &Arc<ProcessStruct>) -> Arc<Self> {
+    ///
+    /// The returned thread will be in `Newborn` state. It must be changed to `Stopped`
+    /// before adding it to the schedule queue.
+    ///
+    /// # Safety
+    ///
+    /// The given entrypoint *must* point to a mapped address in that process's address space.
+    /// The function makes no attempt at checking if it is kernel or userspace.
+    pub unsafe fn new(belonging_process: &Arc<ProcessStruct>, ep: VirtualAddress, stack: VirtualAddress) -> Arc<Self> {
 
         // allocate its kernel stack
         let kstack = KernelStack::allocate_stack()
@@ -351,7 +357,7 @@ impl ThreadStruct {
         let empty_hwcontext = SpinLockIRQ::new(ThreadHardwareContext::new());
 
         // the state of the process, NotReady
-        let state = ThreadStateAtomic::new((ThreadState::NotReady));
+        let state = ThreadStateAtomic::new((ThreadState::Newborn));
 
         let t = Arc::new(
             ThreadStruct {
@@ -362,6 +368,13 @@ impl ThreadStruct {
                 process: Arc::clone(belonging_process),
             }
         );
+
+        // prepare the thread's stack for its first schedule-in
+        unsafe {
+            // Safety: We just created the ThreadStruct, and own the only reference
+            // to it, so we *know* it never has been scheduled, and cannot be.
+            prepare_for_first_schedule(&t, ep.addr(), stack.addr());
+        }
 
         // add it to the process' list of threads
         belonging_process.threads.lock().push(Arc::downgrade(&t));
@@ -424,35 +437,6 @@ impl ThreadStruct {
         process.threads.lock().push(Arc::downgrade(&t));
 
         t
-    }
-
-    /// Sets the entrypoint and userspace stack pointer. Puts the Thread in Stopped state.
-    ///
-    /// If the process is not in the NotReady state, it will fail with ProcessAlreadyStarted.
-    ///
-    /// # Safety
-    ///
-    /// The given entrypoint *must* point to a mapped address in that process's address space.
-    /// The function makes no attempt at checking if it is kernel or userspace.
-    // todo maybe return a KernelError, not a UserspaceError
-    pub unsafe fn set_start_arguments(&self, ep: usize, stack: usize) -> Result<(), UserspaceError> {
-        let oldval = self.state.compare_and_swap(ThreadState::NotReady, ThreadState::Readying, Ordering::SeqCst);
-
-        if oldval != ThreadState::NotReady {
-            return Err(UserspaceError::ProcessAlreadyStarted);
-        }
-
-        // prepare the thread's stack for its first schedule-in
-        unsafe {
-            // Safety: With the compare_and_swap above, we ensure that this can only
-            // be run exactly *once*.
-            // Furthermore, since we're in readying state (and were in NotReady before),
-            // we can ensure that we have never been scheduled, and cannot be scheduled.
-            prepare_for_first_schedule(self, ep, stack);
-        }
-
-        self.state.store(ThreadState::Stopped, Ordering::SeqCst);
-        Ok(())
     }
 
     /// Sets the thread to the Killed state.

@@ -80,7 +80,8 @@ use i386::stack;
 use paging::{PAGE_SIZE, MappingFlags};
 use mem::{PhysicalAddress, VirtualAddress};
 use paging::lands::{KernelLand, UserLand};
-use process::{ProcessStruct, ThreadStruct};
+use process::{ProcessStruct, ThreadStruct, ThreadState};
+use core::sync::atomic::Ordering;
 
 unsafe fn force_double_fault() {
     loop {
@@ -104,10 +105,12 @@ fn main() {
                 pmemlock.guard(stack, PAGE_SIZE).unwrap();
                 pmemlock.create_regular_mapping(stack + PAGE_SIZE, 4 * PAGE_SIZE, MappingFlags::u_rw()).unwrap();
 
-                (ep, stack + 5 * PAGE_SIZE)
+                (VirtualAddress(ep), stack + 5 * PAGE_SIZE)
         };
-        let thread = ThreadStruct::new(&proc);
-        unsafe { thread.set_start_arguments(ep, sp.addr()); }
+        let thread = unsafe { ThreadStruct::new(&proc, ep, sp) };
+
+        // Newborn -> Stopped
+        thread.state.store(ThreadState::Stopped, Ordering::SeqCst);
 
         scheduler::add_to_schedule_queue(thread);
     }
