@@ -86,7 +86,7 @@ impl<'a> CrossProcessMapping<'a> {
             get_kernel_memory().map_frame_iterator(frames_iterator, MappingFlags::k_rw())
         };
         Ok(CrossProcessMapping {
-            kernel_address: kernel_map_start + offset,
+            kernel_address: kernel_map_start + (offset % PAGE_SIZE),
             mapping,
             len,
             private: ()
