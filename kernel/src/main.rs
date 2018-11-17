@@ -107,7 +107,8 @@ fn main() {
 
                 (VirtualAddress(ep), stack + 5 * PAGE_SIZE)
         };
-        let thread = unsafe { ThreadStruct::new(&proc, ep, sp) };
+        let thread = unsafe { ThreadStruct::new(&proc, ep, sp) }
+            .expect("failed creating thread for service");
 
         // Newborn -> Stopped
         thread.state.store(ThreadState::Stopped, Ordering::SeqCst);

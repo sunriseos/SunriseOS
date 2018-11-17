@@ -346,12 +346,10 @@ impl ThreadStruct {
     ///
     /// The given entrypoint *must* point to a mapped address in that process's address space.
     /// The function makes no attempt at checking if it is kernel or userspace.
-    pub unsafe fn new(belonging_process: &Arc<ProcessStruct>, ep: VirtualAddress, stack: VirtualAddress) -> Arc<Self> {
+    pub unsafe fn new(belonging_process: &Arc<ProcessStruct>, ep: VirtualAddress, stack: VirtualAddress) -> Result<Arc<Self>, KernelError> {
 
         // allocate its kernel stack
-        let kstack = KernelStack::allocate_stack()
-            .expect("Couldn't allocate a kernel stack");
-            // todo return an error instead of panicking
+        let kstack = KernelStack::allocate_stack()?;
 
         // hardware context will be computed later in this function, write a dummy value for now
         let empty_hwcontext = SpinLockIRQ::new(ThreadHardwareContext::new());
@@ -387,7 +385,7 @@ impl ThreadStruct {
         // maybe we should poison the lock when killing a process ?
         // maybe we can use the special -empty vec- case as meaning "killed process" ?
 
-        t
+        Ok(t)
     }
 
     /// Creates the very first process and thread at boot.
