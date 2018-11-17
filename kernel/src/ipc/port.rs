@@ -4,7 +4,7 @@ use alloc::sync::{Arc, Weak};
 use sync::{Once, SpinLock, RwLock};
 use error::{KernelError, UserspaceError};
 use event::{self, Waitable};
-use process::ProcessStruct;
+use process::ThreadStruct;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use hashmap_core::HashMap;
 use alloc::prelude::*;
@@ -14,7 +14,7 @@ use ipc::session::*;
 #[derive(Debug)]
 pub struct Port {
     incoming_connections: SpinLock<Vec<Arc<IncomingConnection>>>,
-    accepters: SpinLock<Vec<Weak<ProcessStruct>>>,
+    accepters: SpinLock<Vec<Weak<ThreadStruct>>>,
     servercount: AtomicUsize,
 }
 
@@ -62,7 +62,7 @@ impl Waitable for ServerPort {
     }
 
     fn register(&self) {
-        self.0.accepters.lock().push(Arc::downgrade(&scheduler::get_current_process()));
+        self.0.accepters.lock().push(Arc::downgrade(&scheduler::get_current_thread()));
     }
 }
 
@@ -93,7 +93,7 @@ impl Drop for ServerPort {
 #[derive(Debug)]
 pub struct IncomingConnection {
     session: SpinLock<Option<ClientSession>>,
-    creator: Arc<ProcessStruct>
+    creator: Arc<ThreadStruct>
 }
 
 impl ServerPort {
@@ -117,7 +117,7 @@ impl ServerPort {
 
                 // Wake up the creator.
                 // **VERY IMPORTANT**: This should be done with the LOCK HELD!!!
-                info!("Resuming {}", incoming.creator.name);
+                info!("Resuming {}", incoming.creator.process.name);
                 scheduler::add_to_schedule_queue(incoming.creator.clone());
 
                 // We're done!
@@ -132,7 +132,7 @@ impl ClientPort {
     pub fn connect(&self) -> Result<ClientSession, UserspaceError> {
         let incoming = Arc::new(IncomingConnection {
             session: SpinLock::new(None),
-            creator: scheduler::get_current_process()
+            creator: scheduler::get_current_thread()
         });
 
         let mut guard = incoming.session.lock();
@@ -146,8 +146,8 @@ impl ClientPort {
 
             // First, wake up an accepter
             while let Some(item) = self.0.accepters.lock().pop() {
-                if let Some(process) = item.upgrade() {
-                    scheduler::add_to_schedule_queue(process);
+                if let Some(thread) = item.upgrade() {
+                    scheduler::add_to_schedule_queue(thread);
                     break;
                 }
             }

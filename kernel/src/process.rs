@@ -4,7 +4,7 @@ use stack::KernelStack;
 use i386::process_switch::*;
 use paging::process_memory::ProcessMemory;
 use alloc::boxed::Box;
-use alloc::sync::Arc;
+use alloc::sync::{Arc, Weak};
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -27,24 +27,18 @@ use ipc::{ServerPort, ClientPort, ServerSession, ClientSession};
 /// - Its hardware context, to be restored on rescheduling
 #[derive(Debug)]
 pub struct ProcessStruct {
+    /// The unique id of this process.
     pub pid:                  usize,
+    /// A name for this process.
     pub name:                 String,
-    pub pstate:               ProcessStateAtomic,
+    /// The memory view of this process. Shared among the threads.
     pub pmemory:              Mutex<ProcessMemory>,
-    pub pstack:               KernelStack,
-    pub phwcontext:           SpinLockIRQ<ProcessHardwareContext>,
+    /// The handles of this process. Shared among the threads.
     pub phandles:             SpinLockIRQ<HandleTable>,
-
-    /// Interrupt disable counter.
-    ///
-    /// # Description
-    ///
-    /// Allows recursively disabling interrupts while keeping a sane behavior.
-    /// Should only be manipulated through sync::enable_interrupts and
-    /// sync::disable_interrupts.
-    ///
-    /// Used by the SpinLockIRQ to implement recursive irqsave logic.
-    pub pint_disable_counter: AtomicUsize,
+    /// The threads of this process.
+    /// A ProcessStruct with no thread left will eventually be dropped.
+    // todo choose a better lock
+    pub threads:              SpinLockIRQ<Vec<Weak<ThreadStruct>>>,
 
     /// A vector of readable IO ports.
     ///
@@ -55,6 +49,42 @@ pub struct ProcessStruct {
 }
 
 static NEXT_PROCESS_ID: AtomicUsize = AtomicUsize::new(0);
+
+/// The struct representing a thread. A process may own multiple threads.
+#[derive(Debug)]
+pub struct ThreadStruct {
+    /// The state of this thread.
+    pub state: ThreadStateAtomic,
+
+    /// The kernel stack it uses for handling syscalls/irqs.
+    pub kstack: KernelStack,
+
+    /// The saved hardware context, for getting it running again on a process_switch.
+    pub hwcontext: SpinLockIRQ<ThreadHardwareContext>,
+
+    /// The process that this thread belongs to.
+    ///
+    /// # Description
+    ///
+    /// A process has a link to its threads, and every thread has a link back to its process.
+    /// The thread owns a strong reference to the process it belongs to, and the process in turn
+    /// has a vec of weak references to the threads it owns.
+    /// This way dropping a process is done automatically when its last thread is dropped.
+    ///
+    /// The currently running process is indirectly kept alive by the `CURRENT_THREAD` global in scheduler.
+    pub process: Arc<ProcessStruct>,
+
+    /// Interrupt disable counter.
+    ///
+    /// # Description
+    ///
+    /// Allows recursively disabling interrupts while keeping a sane behavior.
+    /// Should only be manipulated through sync::enable_interrupts and
+    /// sync::disable_interrupts.
+    ///
+    /// Used by the SpinLockIRQ to implement recursive irqsave logic.
+    pub int_disable_counter: AtomicUsize,
+}
 
 #[derive(Debug)]
 pub enum Handle {
@@ -127,21 +157,18 @@ impl HandleTable {
     }
 }
 
-/// Just a handy shortcut
-pub type ProcessStructArc = Arc<ProcessStruct>;
-
-/// The state of a process.
+/// The state of a thread.
 ///
 /// - Running: currently on the CPU
 /// - Scheduled: scheduled to be running
 /// - Stopped: not in the scheduled queue, waiting for an event
 /// - Readying: In the process of getting ready. Should go to the Stopped state soon.
-/// - NotReady: never added to the schedule queue yet. Should be started with `scheduler::start_process`
+/// - NotReady: never added to the schedule queue yet. Should be started with `scheduler::start_thread`
 ///
-/// Since SMP is not supported, there is only one Running process.
+/// Since SMP is not supported, there is only one Running thread.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(usize)]
-pub enum ProcessState {
+pub enum ThreadState {
     Running = 0,
     Scheduled = 1,
     Stopped = 2,
@@ -150,110 +177,104 @@ pub enum ProcessState {
     Killed = 5,
 }
 
-impl ProcessState {
-    fn from_primitive(v: usize) -> ProcessState {
+impl ThreadState {
+    fn from_primitive(v: usize) -> ThreadState {
         match v {
-            0 => ProcessState::Running,
-            1 => ProcessState::Scheduled,
-            2 => ProcessState::Stopped,
-            3 => ProcessState::Readying,
-            4 => ProcessState::NotReady,
-            5 => ProcessState::Killed,
-            _ => panic!("Invalid process state"),
+            0 => ThreadState::Running,
+            1 => ThreadState::Scheduled,
+            2 => ThreadState::Stopped,
+            3 => ThreadState::Readying,
+            4 => ThreadState::NotReady,
+            5 => ThreadState::Killed,
+            _ => panic!("Invalid thread state"),
         }
     }
 }
 
-pub struct ProcessStateAtomic(AtomicUsize);
+pub struct ThreadStateAtomic(AtomicUsize);
 
-impl Debug for ProcessStateAtomic {
+impl Debug for ThreadStateAtomic {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         Debug::fmt(&self.load(Ordering::SeqCst), f)
     }
 }
 
-impl ProcessStateAtomic {
-    pub fn new(state: ProcessState) -> ProcessStateAtomic {
-        ProcessStateAtomic(AtomicUsize::new(state as usize))
+impl ThreadStateAtomic {
+    pub fn new(state: ThreadState) -> ThreadStateAtomic {
+        ThreadStateAtomic(AtomicUsize::new(state as usize))
     }
 
-    pub fn into_inner(self) -> ProcessState {
-        ProcessState::from_primitive(self.0.into_inner())
+    pub fn into_inner(self) -> ThreadState {
+        ThreadState::from_primitive(self.0.into_inner())
     }
 
-    pub fn load(&self, order: Ordering) -> ProcessState {
-        ProcessState::from_primitive(self.0.load(order))
+    pub fn load(&self, order: Ordering) -> ThreadState {
+        ThreadState::from_primitive(self.0.load(order))
     }
 
-    pub fn store(&self, val: ProcessState, order: Ordering) {
+    pub fn store(&self, val: ThreadState, order: Ordering) {
         self.0.store(val as usize, order)
     }
 
-    pub fn swap(&self, val: ProcessState, order: Ordering) -> ProcessState {
-        ProcessState::from_primitive(self.0.swap(val as usize, order))
+    pub fn swap(&self, val: ThreadState, order: Ordering) -> ThreadState {
+        ThreadState::from_primitive(self.0.swap(val as usize, order))
     }
 
-    pub fn compare_and_swap(&self, current: ProcessState, new: ProcessState, order: Ordering) -> ProcessState {
-        ProcessState::from_primitive(self.0.compare_and_swap(current as usize, new as usize, order))
+    pub fn compare_and_swap(&self, current: ThreadState, new: ThreadState, order: Ordering) -> ThreadState {
+        ThreadState::from_primitive(self.0.compare_and_swap(current as usize, new as usize, order))
     }
 
-    pub fn compare_exchange(&self, current: ProcessState, new: ProcessState, success: Ordering, failure: Ordering) -> Result<ProcessState, ProcessState> {
+    pub fn compare_exchange(&self, current: ThreadState, new: ThreadState, success: Ordering, failure: Ordering) -> Result<ThreadState, ThreadState> {
         self.0.compare_exchange(current as usize, new as usize, success, failure)
-            .map(ProcessState::from_primitive)
-            .map_err(ProcessState::from_primitive)
+            .map(ThreadState::from_primitive)
+            .map_err(ThreadState::from_primitive)
     }
 
-    pub fn compare_exchange_weak(&self, current: ProcessState, new: ProcessState, success: Ordering, failure: Ordering) -> Result<ProcessState, ProcessState> {
+    pub fn compare_exchange_weak(&self, current: ThreadState, new: ThreadState, success: Ordering, failure: Ordering) -> Result<ThreadState, ThreadState> {
         self.0.compare_exchange_weak(current as usize, new as usize, success, failure)
-            .map(ProcessState::from_primitive)
-            .map_err(ProcessState::from_primitive)
+            .map(ThreadState::from_primitive)
+            .map_err(ThreadState::from_primitive)
     }
 
-    pub fn fetch_update<F>(&self, mut f: F, fetch_order: Ordering, set_order: Ordering) -> Result<ProcessState, ProcessState>
+    pub fn fetch_update<F>(&self, mut f: F, fetch_order: Ordering, set_order: Ordering) -> Result<ThreadState, ThreadState>
     where
-        F: FnMut(ProcessState) -> Option<ProcessState>
+        F: FnMut(ThreadState) -> Option<ThreadState>
     {
-        self.0.fetch_update(|v| f(ProcessState::from_primitive(v)).map(|v| v as usize),
+        self.0.fetch_update(|v| f(ThreadState::from_primitive(v)).map(|v| v as usize),
                             fetch_order, set_order)
-            .map(ProcessState::from_primitive)
-            .map_err(ProcessState::from_primitive)
+            .map(ThreadState::from_primitive)
+            .map_err(ThreadState::from_primitive)
     }
 }
 
 impl ProcessStruct {
     /// Creates a new process.
-    pub fn new(name: String, ioports: Vec<u16>) -> ProcessStructArc {
-        use ::core::mem::ManuallyDrop;
+    ///
+    /// The created process will have no threads.
+    ///
+    /// # Panics
+    ///
+    /// Panics if max PID has been reached, which it shouldn't have since we're the first process.
+    // todo: return an error instead of panicking
+    pub fn new(name: String, ioports: Vec<u16>) -> Arc<ProcessStruct> {
 
         // allocate its memory space
         let pmemory = Mutex::new(ProcessMemory::new());
-
-        // allocate its kernel stack
-        let pstack = KernelStack::allocate_stack()
-            .expect("Couldn't allocate a kernel stack");
-
-        // hardware context will be computed later in this function, write a dummy value for now
-        let empty_hwcontext = SpinLockIRQ::new(ProcessHardwareContext::new());
-
-        // the state of the process, NotReady
-        let pstate = ProcessStateAtomic::new((ProcessState::NotReady));
 
         // The PID.
         let pid = NEXT_PROCESS_ID.fetch_add(1, Ordering::SeqCst);
         if pid == usize::max_value() {
             panic!("Max PID reached!");
+            // todo: return an error instead of panicking
         }
 
         let p = Arc::new(
             ProcessStruct {
                 pid,
                 name,
-                pstate,
                 pmemory,
-                pstack,
-                phwcontext : empty_hwcontext,
+                threads: SpinLockIRQ::new(Vec::new()),
                 phandles: SpinLockIRQ::new(HandleTable::new()),
-                pint_disable_counter: AtomicUsize::new(0),
                 ioports
             }
         );
@@ -262,6 +283,9 @@ impl ProcessStruct {
     }
 
     /// Creates the very first process at boot.
+    /// Called internally by create_first_thread.
+    ///
+    /// The created process will have no threads.
     ///
     /// # Safety
     ///
@@ -270,17 +294,8 @@ impl ProcessStruct {
     ///
     /// # Panics
     ///
-    /// ThreadInfoInStack will be initialized, it must not already have been
-    pub unsafe fn create_first_process() -> Arc<ProcessStruct> {
-
-        // the state of the process, currently running
-        let pstate = ProcessStateAtomic::new(ProcessState::Running);
-
-        // use the already allocated stack
-        let pstack = KernelStack::get_current_stack();
-
-        // the saved esp will be overwritten on schedule-out anyway
-        let phwcontext = SpinLockIRQ::new(ProcessHardwareContext::new());
+    /// Panics if max PID has been reached, which it shouldn't have since we're the first process.
+    unsafe fn create_first_process() -> Arc<ProcessStruct> {
 
         // the already currently active pages
         let pmemory = Mutex::new(ProcessMemory::from_active_page_tables());
@@ -294,12 +309,9 @@ impl ProcessStruct {
             ProcessStruct {
                 pid,
                 name: String::from("init"),
-                pstate,
                 pmemory,
-                pstack,
-                phwcontext,
+                threads: SpinLockIRQ::new(Vec::new()),
                 phandles: SpinLockIRQ::new(HandleTable::new()),
-                pint_disable_counter: AtomicUsize::new(0),
                 ioports: Vec::new(),
             }
         );
@@ -307,42 +319,11 @@ impl ProcessStruct {
         p
     }
 
-    /// Sets the entrypoint and userspace stack pointer. Puts the Process in Stopped state.
-    ///
-    /// If the process is not in the NotReady state, it will fail with ProcessAlreadyStarted.
-    ///
-    /// # Safety
-    ///
-    /// The given entrypoint *must* point to a mapped address in that process's address space.
-    /// The function makes no attempt at checking if it is kernel or userspace.
-    pub unsafe fn set_start_arguments(&self, ep: usize, stack: usize) -> Result<(), UserspaceError> {
-        let oldval = self.pstate.compare_and_swap(ProcessState::NotReady, ProcessState::Readying, Ordering::SeqCst);
-
-        if oldval != ProcessState::NotReady {
-            return Err(UserspaceError::ProcessAlreadyStarted);
-        }
-
-        // prepare the process's stack for its first schedule-in
-        unsafe {
-            // Safety: With the compare_and_swap above, we ensure that this can only
-            // be run exactly *once*.
-            // Furthermore, since we're in readying state (and were in NotReady before),
-            // we can ensure that we have never been scheduled, and cannot be scheduled.
-            prepare_for_first_schedule(self, ep, stack);
-        }
-
-        self.pstate.store(ProcessState::Stopped, Ordering::SeqCst);
-        Ok(())
+    /// Kills a process by killing all of its threads.
+    pub fn kill_process(this: Arc<Self>) {
+        unimplemented!("killing a process is not yet implemented");
     }
 
-    /// Sets the process to the Killed state.
-    ///
-    /// We reschedule the process (cancelling any waiting it was doing).
-    /// In this state, the process will die when attempting to return to userspace.
-    pub fn kill(this: Arc<Self>) {
-        this.pstate.store(ProcessState::Killed, Ordering::SeqCst);
-        scheduler::add_to_schedule_queue(this);
-    }
 }
 
 impl Drop for ProcessStruct {
@@ -351,3 +332,143 @@ impl Drop for ProcessStruct {
         info!("Dropped a process : {:?}", self)
     }
 }
+
+impl ThreadStruct {
+    /// Creates a new thread.
+    ///
+    /// Thread will be in state NotReady, and must be given a job to do with set_start_arguments.
+    ///
+    /// Adds itself to list of threads of the belonging process.
+    // todo: possibly return an error
+    pub fn new(belonging_process: &Arc<ProcessStruct>) -> Arc<Self> {
+
+        // allocate its kernel stack
+        let kstack = KernelStack::allocate_stack()
+            .expect("Couldn't allocate a kernel stack");
+            // todo return an error instead of panicking
+
+        // hardware context will be computed later in this function, write a dummy value for now
+        let empty_hwcontext = SpinLockIRQ::new(ThreadHardwareContext::new());
+
+        // the state of the process, NotReady
+        let state = ThreadStateAtomic::new((ThreadState::NotReady));
+
+        let t = Arc::new(
+            ThreadStruct {
+                state,
+                kstack,
+                hwcontext : empty_hwcontext,
+                int_disable_counter: AtomicUsize::new(0),
+                process: Arc::clone(belonging_process),
+            }
+        );
+
+        // add it to the process' list of threads
+        belonging_process.threads.lock().push(Arc::downgrade(&t));
+
+        // todo: what if a process was killing all the threads, finished, dropped the lock,
+        // and now we're pushing one again ?
+        //
+        // maybe we should cancel the operation if we can't get the lock ?
+        // maybe the process struct should contain a "terminated" state that we check before pushing new threads ?
+        // maybe we should poison the lock when killing a process ?
+        // maybe we can use the special -empty vec- case as meaning "killed process" ?
+
+        t
+    }
+
+    /// Creates the very first process and thread at boot.
+    ///
+    /// 1: Creates a process struct that uses current page tables.
+    /// 2: Creates a thread struct that uses the current KernelStack as its stack,
+    ///    and points to the created process.
+    /// 3: Adds itself to the created process.
+    ///
+    /// Thread will be in state Running.
+    ///
+    /// Returns the created thread.
+    ///
+    /// # Safety
+    ///
+    /// Use only for creating the very first process. Should never be used again after that.
+    /// Must be using a valid KernelStack, a valid ActivePageTables.
+    ///
+    /// # Panics
+    ///
+    /// Panics if max PID has been reached, which it shouldn't have since we're the first process.
+    pub unsafe fn create_first_thread() -> Arc<ThreadStruct> {
+
+        // first create the process we will belong to
+        let process = ProcessStruct::create_first_process();
+
+        // the state of the process, currently running
+        let state = ThreadStateAtomic::new(ThreadState::Running);
+
+        // use the already allocated stack
+        let kstack = KernelStack::get_current_stack();
+
+        // the saved esp will be overwritten on schedule-out anyway
+        let hwcontext = SpinLockIRQ::new(ThreadHardwareContext::new());
+
+        let t = Arc::new(
+            ThreadStruct {
+                state,
+                kstack,
+                hwcontext,
+                int_disable_counter: AtomicUsize::new(0),
+                process: Arc::clone(&process),
+            }
+        );
+
+        // first process now has one thread
+        process.threads.lock().push(Arc::downgrade(&t));
+
+        t
+    }
+
+    /// Sets the entrypoint and userspace stack pointer. Puts the Thread in Stopped state.
+    ///
+    /// If the process is not in the NotReady state, it will fail with ProcessAlreadyStarted.
+    ///
+    /// # Safety
+    ///
+    /// The given entrypoint *must* point to a mapped address in that process's address space.
+    /// The function makes no attempt at checking if it is kernel or userspace.
+    // todo maybe return a KernelError, not a UserspaceError
+    pub unsafe fn set_start_arguments(&self, ep: usize, stack: usize) -> Result<(), UserspaceError> {
+        let oldval = self.state.compare_and_swap(ThreadState::NotReady, ThreadState::Readying, Ordering::SeqCst);
+
+        if oldval != ThreadState::NotReady {
+            return Err(UserspaceError::ProcessAlreadyStarted);
+        }
+
+        // prepare the thread's stack for its first schedule-in
+        unsafe {
+            // Safety: With the compare_and_swap above, we ensure that this can only
+            // be run exactly *once*.
+            // Furthermore, since we're in readying state (and were in NotReady before),
+            // we can ensure that we have never been scheduled, and cannot be scheduled.
+            prepare_for_first_schedule(self, ep, stack);
+        }
+
+        self.state.store(ThreadState::Stopped, Ordering::SeqCst);
+        Ok(())
+    }
+
+    /// Sets the thread to the Killed state.
+    ///
+    /// We reschedule the thread (cancelling any waiting it was doing).
+    /// In this state, the thread will die when attempting to return to userspace.
+    pub fn kill(this: Arc<Self>) {
+        this.state.store(ThreadState::Killed, Ordering::SeqCst);
+        scheduler::add_to_schedule_queue(this);
+    }
+}
+
+impl Drop for ThreadStruct {
+    fn drop(&mut self) {
+        // todo this should be a debug !
+        info!("Dropped a thread : {:?}", self)
+    }
+}
+

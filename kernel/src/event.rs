@@ -15,7 +15,7 @@ use alloc::sync::Arc;
 use sync::SpinLockIRQ;
 use alloc::vec::Vec;
 use error::{KernelError, UserspaceError};
-use process::{ProcessStructArc, ProcessState};
+use process::{ThreadStruct, ThreadState};
 use scheduler;
 
 // TODO: maybe we should use the libcore's task:: stuff...
@@ -154,11 +154,11 @@ impl Waitable for IRQEvent {
     }
 
     fn register(&self) {
-        let curproc = scheduler::get_current_process();
+        let curproc = scheduler::get_current_thread();
         let mut veclock = self.state.waiting_processes.lock();
         info!("Registering {:010x} for irq {}", &*curproc as *const _ as usize, self.state.irqnum);
         if veclock.iter().find(|v| Arc::ptr_eq(&curproc, v)).is_none() {
-            veclock.push(scheduler::get_current_process());
+            veclock.push(scheduler::get_current_thread());
         }
     }
 }
@@ -187,7 +187,7 @@ pub fn wait_event(irq: usize) -> IRQEvent {
 struct IRQState {
     irqnum: usize,
     counter: AtomicUsize,
-    waiting_processes: SpinLockIRQ<Vec<ProcessStructArc>>
+    waiting_processes: SpinLockIRQ<Vec<Arc<ThreadStruct>>>
 }
 
 impl IRQState {

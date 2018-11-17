@@ -20,8 +20,8 @@ pub type MutexGuard<'a, T> = SpinLockGuard<'a, T>;
 /// Look at documentation for ProcessStruct::pint_disable_counter to know more.
 fn enable_interrupts() {
     if !INTERRUPT_DISARM.load(Ordering::SeqCst) {
-        if let Some(proc) = scheduler::try_get_current_process() {
-            if proc.pint_disable_counter.fetch_sub(1, Ordering::SeqCst) == 1 {
+        if let Some(thread) = scheduler::try_get_current_thread() {
+            if thread.int_disable_counter.fetch_sub(1, Ordering::SeqCst) == 1 {
                 unsafe { sti() }
             }
         } else {
@@ -36,8 +36,8 @@ fn enable_interrupts() {
 /// Look at documentation for INTERRUPT_DISABLE_COUNTER to know more.
 fn disable_interrupts() {
     if !INTERRUPT_DISARM.load(Ordering::SeqCst) {
-        if let Some(proc) = scheduler::try_get_current_process() {
-            if proc.pint_disable_counter.fetch_add(1, Ordering::SeqCst) == 0 {
+        if let Some(thread) = scheduler::try_get_current_thread() {
+            if thread.int_disable_counter.fetch_add(1, Ordering::SeqCst) == 0 {
                 unsafe { cli() }
             }
         } else {

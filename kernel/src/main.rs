@@ -80,7 +80,7 @@ use i386::stack;
 use paging::{PAGE_SIZE, MappingFlags};
 use mem::{PhysicalAddress, VirtualAddress};
 use paging::lands::{KernelLand, UserLand};
-use process::ProcessStruct;
+use process::{ProcessStruct, ThreadStruct};
 
 unsafe fn force_double_fault() {
     loop {
@@ -94,8 +94,7 @@ fn main() {
         info!("Loading {}", module.name());
         let mapped_module = elf_loader::map_grub_module(module);
         let proc = ProcessStruct::new(String::from(module.name()), elf_loader::get_iopb(&mapped_module));
-        {
-            let (ep, sp) = {
+        let (ep, sp) = {
                 let mut pmemlock = proc.pmemory.lock();
 
                 let ep = elf_loader::load_builtin(&mut pmemlock, &mapped_module);
@@ -106,11 +105,11 @@ fn main() {
                 pmemlock.create_regular_mapping(stack + PAGE_SIZE, 4 * PAGE_SIZE, MappingFlags::u_rw()).unwrap();
 
                 (ep, stack + 5 * PAGE_SIZE)
-            };
-            unsafe { proc.set_start_arguments(ep, sp.addr()); }
-        }
+        };
+        let thread = ThreadStruct::new(&proc);
+        unsafe { thread.set_start_arguments(ep, sp.addr()); }
 
-        scheduler::add_to_schedule_queue(proc);
+        scheduler::add_to_schedule_queue(thread);
     }
 
     let lock = sync::SpinLockIRQ::new(());

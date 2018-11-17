@@ -20,8 +20,8 @@ impl Log for Logger {
 
     fn log(&self, record: &Record) {
         if self.filter.read().matches(record) {
-            if let Some(process) = scheduler::try_get_current_process() {
-                writeln!(Loggers, "[{}] - {} - {} - {}", record.level(), record.target(), process.name, record.args());
+            if let Some(thread) = scheduler::try_get_current_thread() {
+                writeln!(Loggers, "[{}] - {} - {} - {}", record.level(), record.target(), thread.process.name, record.args());
             } else {
                 writeln!(Loggers, "[{}] - {} - {}", record.level(), record.target(), record.args());
             }

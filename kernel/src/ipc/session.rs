@@ -4,7 +4,7 @@ use alloc::sync::{Arc, Weak};
 use sync::{Once, SpinLock, RwLock};
 use error::UserspaceError;
 use event::{self, Waitable};
-use process::ProcessStruct;
+use process::ThreadStruct;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::slice;
 use byteorder::{LE, ByteOrder};
@@ -21,7 +21,7 @@ struct InternalSession {
 #[derive(Debug)]
 pub struct Session {
     internal: SpinLock<InternalSession>,
-    accepters: SpinLock<Vec<Weak<ProcessStruct>>>,
+    accepters: SpinLock<Vec<Weak<ThreadStruct>>>,
     servercount: AtomicUsize,
 }
 
@@ -126,7 +126,7 @@ impl Waitable for ServerSession {
     }
 
     fn register(&self) {
-        self.0.accepters.lock().push(Arc::downgrade(&scheduler::get_current_process()));
+        self.0.accepters.lock().push(Arc::downgrade(&scheduler::get_current_thread()));
     }
 }
 
@@ -134,7 +134,7 @@ impl Waitable for ServerSession {
 struct Request {
     sender_buf: VirtualAddress,
     sender_bufsize: usize,
-    sender: Arc<ProcessStruct>,
+    sender: Arc<ThreadStruct>,
     answered: Arc<SpinLock<Option<Result<(), UserspaceError>>>>,
 }
 
@@ -222,7 +222,7 @@ impl ClientSession {
                 sender_buf: VirtualAddress(buf.as_ptr() as usize),
                 sender_bufsize: buf.len(),
                 answered: answered.clone(),
-                sender: scheduler::get_current_process(),
+                sender: scheduler::get_current_thread(),
             })
         }
 
@@ -252,8 +252,7 @@ impl ServerSession {
         // Can races even happen ?
         let active = internal.active_request.as_ref().unwrap();
 
-        let sender = active.sender.clone();
-
+        let sender = active.sender.process.clone();
         let memlock = sender.pmemory.lock();
 
         let mapping = memlock.mirror_mapping(active.sender_buf, active.sender_bufsize)?;
@@ -263,7 +262,7 @@ impl ServerSession {
 
         get_kernel_memory().dump_kernelland_state();
 
-        pass_message(sender_buf, active.sender.clone(), &mut *buf, scheduler::get_current_process())?;
+        pass_message(sender_buf, active.sender.clone(), &mut *buf, scheduler::get_current_thread())?;
 
         Ok(())
     }
@@ -274,7 +273,7 @@ impl ServerSession {
 
         let active = self.0.internal.lock().active_request.take().unwrap();
 
-        let sender = active.sender.clone();
+        let sender = active.sender.process.clone();
 
         let memlock = sender.pmemory.lock();
 
@@ -283,7 +282,7 @@ impl ServerSession {
             slice::from_raw_parts_mut(mapping.addr().addr() as *mut u8, mapping.len())
         };
 
-        pass_message(&*buf, scheduler::get_current_process(), sender_buf, active.sender.clone())?;
+        pass_message(&*buf, scheduler::get_current_thread(), sender_buf, active.sender.clone())?;
 
         *active.answered.lock() = Some(Ok(()));
 
@@ -293,7 +292,7 @@ impl ServerSession {
     }
 }
 
-fn pass_message(from_buf: &[u8], from_proc: Arc<ProcessStruct>, to_buf: &mut [u8], to_proc: Arc<ProcessStruct>) -> Result<(), UserspaceError> {
+fn pass_message(from_buf: &[u8], from_proc: Arc<ThreadStruct>, to_buf: &mut [u8], to_proc: Arc<ThreadStruct>) -> Result<(), UserspaceError> {
     // TODO: Handle case where from == to. Might want to add some logic in those mutex lockings.
     // TODO: also handle case where from and to are both active.
 
@@ -314,13 +313,13 @@ fn pass_message(from_buf: &[u8], from_proc: Arc<ProcessStruct>, to_buf: &mut [u8
 
     if descriptor.send_pid() {
         // TODO: Atmosphere patch for fs_mitm.
-        LE::write_u64(&mut to_buf[curoff..curoff + 8], from_proc.pid as u64);
+        LE::write_u64(&mut to_buf[curoff..curoff + 8], from_proc.process.pid as u64);
         curoff += 8;
     }
 
     if descriptor.num_copy_handles() != 0 || descriptor.num_move_handles() != 0 {
-        let mut from_handle_table = from_proc.phandles.lock();
-        let mut to_handle_table = to_proc.phandles.lock();
+        let mut from_handle_table = from_proc.process.phandles.lock();
+        let mut to_handle_table = to_proc.process.phandles.lock();
 
         for i in 0..descriptor.num_copy_handles() {
             let handle = LE::read_u32(&from_buf[curoff..curoff + 4]);
@@ -343,8 +342,8 @@ fn pass_message(from_buf: &[u8], from_proc: Arc<ProcessStruct>, to_buf: &mut [u8
     }
 
     if hdr.num_a_descriptors() != 0 || hdr.num_b_descriptors() != 0 {
-        let mut from_mem = from_proc.pmemory.lock();
-        let mut to_mem = to_proc.pmemory.lock();
+        let mut from_mem = from_proc.process.pmemory.lock();
+        let mut to_mem = to_proc.process.pmemory.lock();
 
         for i in 0..hdr.num_a_descriptors() {
             buf_map(from_buf, to_buf, &mut curoff, &mut *from_mem, &mut *to_mem, MappingFlags::empty())?;

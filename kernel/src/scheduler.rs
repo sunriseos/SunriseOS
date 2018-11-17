@@ -4,134 +4,147 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::mem;
 
-use process::{ProcessStruct, ProcessState, ProcessStructArc};
+use process::{ProcessStruct, ThreadStruct, ThreadState};
 use i386::process_switch::process_switch;
 use sync::{Lock, SpinLockIRQ, SpinLockIRQGuard};
 use core::sync::atomic::Ordering;
 use error::{KernelError, UserspaceError};
 
-/// An Arc to the currently running process.
+/// An Arc to the currently running thread.
 ///
-/// In the early kernel initialization, this will be None. Once the first process takes
+/// In the early kernel initialization, this will be None. Once the first thread takes
 /// over, this variable is guaranteed to always be Some and never go back to None - if
-/// all processes are currently waiting, the global will point to whatever the last
-/// process was running. A useful side-effect: the CURRENT_PROCESS's pmemory will *always*
+/// all threads are currently waiting, the global will point to whatever the last
+/// thread was running. A useful side-effect: the CURRENT_PROCESS's pmemory will *always*
 /// be the current CR3.
 ///
-/// A side-effect of this guarantee is, if the last process dies, it will still be kept alive
+/// A side-effect of this guarantee is, if the last thread dies, it will still be kept alive
 /// through this global!
 ///
 /// # Safety
 ///
-/// Setting this value should be done through set_current_process, otherwise Bad Things:tm:
+/// Setting this value should be done through set_current_thread, otherwise Bad Things:tm:
 /// will happen.
-// why isn't uninitialized() a const fn !? D:
-static mut CURRENT_PROCESS: Option<ProcessStructArc> = None;
+static mut CURRENT_THREAD: Option<Arc<ThreadStruct>> = None;
 
-pub fn try_get_current_process() -> Option<ProcessStructArc> {
+/// Gets the current ThreadStruct, incrementing its refcount.
+/// Will return None if we're in an early boot state, and it has not yet been initialized.
+pub fn try_get_current_thread() -> Option<Arc<ThreadStruct>> {
     unsafe {
         // Safe because modifications only happens in the schedule() function,
-        // and outside of that function, seen from a process' perspective,
-        // CURRENT_PROCESS will always have the same value
-        CURRENT_PROCESS.clone()
+        // and outside of that function, seen from a thread' perspective,
+        // CURRENT_THREAD will always have the same value
+        CURRENT_THREAD.clone()
     }
 }
 
-/// Gets the current ProcessStruct.
-pub fn get_current_process() -> ProcessStructArc {
+/// Gets the current ThreadStruct, incrementing its refcount.
+pub fn get_current_thread() -> Arc<ThreadStruct> {
+    try_get_current_thread().unwrap()
+}
+
+/// Gets the ProcessStruct of the current thread, incrementing its refcount.
+/// Will return None if we're in an early boot state, and it has not yet been initialized.
+pub fn try_get_current_process() -> Option<Arc<ProcessStruct>> {
+    try_get_current_thread().map(|t| t.process.clone())
+}
+
+/// Gets the ProcessStruct of the current thread, incrementing its refcount.
+pub fn get_current_process() -> Arc<ProcessStruct> {
     try_get_current_process().unwrap()
 }
 
-/// Sets the current ProcessStruct.
+/// Sets the current ThreadStruct.
 ///
-/// Setting the current process should *always* go through this function, and never
+/// Setting the current thread should *always* go through this function, and never
 /// by setting CURRENT_PROCESS directly. This function uses mem::replace to ensure
-/// that the ProcessStruct's Drop is run with CURRENT_PROCESS set to the *new* value.
+/// that the ThreadStruct's Drop is run with CURRENT_THREAD set to the *new* value.
 ///
-/// The passed function will be executed after setting the CURRENT_PROCESS, but before
+/// The passed function will be executed after setting the CURRENT_THREAD, but before
 /// setting it back to the RUNNING state.
-unsafe fn set_current_process<R, F: FnOnce() -> R>(p: ProcessStructArc, f: F) -> R {
-    mem::replace(&mut CURRENT_PROCESS, Some(p.clone()));
+unsafe fn set_current_thread<R, F: FnOnce() -> R>(t: Arc<ThreadStruct>, f: F) -> R {
+    mem::replace(&mut CURRENT_THREAD, Some(t.clone()));
 
     let r = f();
 
-    p.pstate.compare_and_swap(ProcessState::Scheduled, ProcessState::Running, Ordering::SeqCst);
+    t.state.compare_and_swap(ThreadState::Scheduled, ThreadState::Running, Ordering::SeqCst);
 
     r
 }
 
 /// The schedule queue
 ///
-/// It's a simple vec, acting as a round-robin, first element is the running process.
+/// It's a simple vec, acting as a round-robin, first element is the running thread.
 /// When its time slice has ended, it is rotated to the end of the vec, and we go on to the next one.
 ///
 /// The vec is protected by a SpinLockIRQ, so accessing/modifying it disables irqs.
 /// Since there's no SMP, this should guarantee we cannot deadlock in the scheduler.
-static SCHEDULE_QUEUE: SpinLockIRQ<Vec<ProcessStructArc>> = SpinLockIRQ::new(Vec::new());
+static SCHEDULE_QUEUE: SpinLockIRQ<Vec<Arc<ThreadStruct>>> = SpinLockIRQ::new(Vec::new());
 
-/// Adds a process at the end of the schedule queue, and changes its state to 'scheduled'
-/// Process must be ready to be scheduled.
+/// Adds a thread at the end of the schedule queue, and changes its state to 'scheduled'
+/// Thread must be ready to be scheduled.
 ///
-/// Note that if the lock protecting process was not available, this function might schedule
+/// Note that if the lock protecting thread was not available, this function might schedule
 ///
-/// If the process was already scheduled, this function is a Noop.
+/// If the thread was already scheduled, this function is a Noop.
 ///
 /// # Panics
 ///
-/// Panics if the process' state was already "Scheduled"
-pub fn add_to_schedule_queue(process: ProcessStructArc) {
+/// Panics if the thread's state was already "Scheduled"
+pub fn add_to_schedule_queue(thread: Arc<ThreadStruct>) {
     // todo maybe delete this assert, it adds a lot of overhead
     //assert!(!is_in_schedule_queue(&process),
     //        "Process was already in schedule queue : {:?}", process);
 
-    if is_in_schedule_queue(&process) {
+    if is_in_schedule_queue(&thread) {
         return;
     }
 
+    // todo: no lock is held here, thread could had been added between the check and us re-taking the lock.
+
     let mut queue_lock = {
         let queue_lock = SCHEDULE_QUEUE.lock();
-        use process::ProcessState;
-        let mut oldstate = process.pstate.compare_and_swap(ProcessState::Stopped, ProcessState::Scheduled, Ordering::SeqCst);
-        assert_eq!(oldstate, ProcessState::Stopped,
+        let mut oldstate = thread.state.compare_and_swap(ThreadState::Stopped, ThreadState::Scheduled, Ordering::SeqCst);
+        assert_eq!(oldstate, ThreadState::Stopped,
                    "Process added to schedule queue was not stopped : {:?}", oldstate);
         // TODO: Check ProcessState is Scheduled (was Stopped) or Killed
         queue_lock
-        // process' guard is dropped here
     };
 
-    queue_lock.push(process)
+    queue_lock.push(thread)
 }
 
 /// Checks if a process is in the schedule queue
-pub fn is_in_schedule_queue(process: &ProcessStructArc) -> bool {
+// todo: should take the queue's lock as a parameter. Dropping it after having made the check makes no sense.
+pub fn is_in_schedule_queue(thread: &Arc<ThreadStruct>) -> bool {
     let queue = SCHEDULE_QUEUE.lock();
-    unsafe { CURRENT_PROCESS.iter() }.filter(|v| {
-        v.pstate.load(Ordering::SeqCst) != ProcessState::Stopped
-    }).chain(queue.iter()).any(|elem| Arc::ptr_eq(process, elem))
+    unsafe { CURRENT_THREAD.iter() }.filter(|v| {
+        v.state.load(Ordering::SeqCst) != ThreadState::Stopped
+    }).chain(queue.iter()).any(|elem| Arc::ptr_eq(thread, elem))
 }
 
-/// Removes the current process from the schedule queue, and schedule.
+/// Removes the current thread from the schedule queue, and schedule.
 ///
-/// The passed lock will be locked until the process is safely removed from the schedule queue.
-/// It will be relocked just before the process starts running again (but before it's set to Running).
+/// The passed lock will be locked until the thread is safely removed from the schedule queue.
+/// It will be relocked just before the thread starts running again (but before it's set to Running).
 /// This can be used to avoid race conditions between registering for an event, and unscheduling.
 ///
-/// The current process will not be ran again unless it was registered for rescheduling.
+/// The current thread will not be ran again unless it was registered for rescheduling.
 pub fn unschedule<'a, LOCK, GUARD>(lock: &'a LOCK, guard: GUARD) -> Result<GUARD, UserspaceError>
 where
     LOCK: Lock<'a, GUARD>,
     GUARD: 'a
 {
     {
-        let process = get_current_process();
-        let old = process.pstate.compare_and_swap(ProcessState::Running, ProcessState::Stopped, Ordering::SeqCst);
-        assert!(old == ProcessState::Killed || old == ProcessState::Running, "Old was in invalid state {:?} before unscheduling", old);
+        let thread = get_current_thread();
+        let old = thread.state.compare_and_swap(ThreadState::Running, ThreadState::Stopped, Ordering::SeqCst);
+        assert!(old == ThreadState::Killed || old == ThreadState::Running, "Old was in invalid state {:?} before unscheduling", old);
         mem::drop(guard)
     }
 
     let guard = internal_schedule(lock, true);
 
-    if get_current_process().pstate.load(Ordering::SeqCst) == ProcessState::Killed {
+    if get_current_thread().state.load(Ordering::SeqCst) == ThreadState::Killed {
         Err(UserspaceError::Canceled)
     } else {
         Ok(guard)
@@ -139,7 +152,7 @@ where
 }
 
 /// Creates the very first process at boot.
-/// The created process is marked as the current process, and added to the schedule queue.
+/// The created process has 1 thread, which is marked as the current thread, and added to the schedule queue.
 ///
 /// # Safety
 ///
@@ -152,10 +165,11 @@ where
 pub unsafe fn create_first_process() {
     let mut queue = SCHEDULE_QUEUE.lock();
     assert!(queue.is_empty());
-    let p0 = ProcessStruct::create_first_process();
+    let thread_0 = ThreadStruct::create_first_thread();
     unsafe {
         // provided we only run this function once, it hasn't been initialized yet
-        set_current_process(Arc::clone(&p0), || ());
+        // todo do we even need to clone the arc here ?
+        set_current_thread(Arc::clone(&thread_0), || ());
     }
 }
 
@@ -193,9 +207,9 @@ pub fn schedule() {
 
 /// Parses the queue to find the first unlocked process.
 /// Returns the index of found process
-fn find_next_process_to_run(queue: &Vec<ProcessStructArc>) -> Option<usize> {
-    for (index, process) in queue.iter().enumerate() {
-        if process.phwcontext.try_lock().is_some() {
+fn find_next_thread_to_run(queue: &Vec<Arc<ThreadStruct>>) -> Option<usize> {
+    for (index, thread) in queue.iter().enumerate() {
+        if thread.hwcontext.try_lock().is_some() {
             return Some(index)
         }
     }
@@ -218,7 +232,7 @@ where
     loop {
         let mut queue = SCHEDULE_QUEUE.lock();
 
-        let candidate_index = find_next_process_to_run(&queue);
+        let candidate_index = find_next_thread_to_run(&queue);
         let retguard = match (candidate_index, remove_self) {
             (None, true) => {
                 // There's nobody to schedule. Let's drop all the locks, HLT, and run internal_schedule again.
@@ -246,7 +260,7 @@ where
                 let process_b = queue.remove(index_b);
 
                 // 2. push current at the back of the queue, unless we want to unschedule it.
-                let proc = get_current_process();
+                let proc = get_current_thread();
                 if !remove_self {
                     queue.push(proc.clone());
                 }
@@ -266,10 +280,10 @@ where
 
                 /* We were scheduled again. To prevent race conditions, relock the lock now. */
 
-                // replace CURRENT_PROCESS with ourself.
-                // If previously running process had deleted all other references to itself, this
+                // replace CURRENT_THREAD with ourself.
+                // If previously running thread had deleted all other references to itself, this
                 // is where its drop actually happens
-                unsafe { set_current_process(whoami.clone(), || lock.lock()) }
+                unsafe { set_current_thread(whoami.clone(), || lock.lock()) }
             }
         };
         break retguard;
@@ -277,19 +291,19 @@ where
 }
 
 
-/// The function called when a process was schedule for the first time,
+/// The function called when a thread was scheduled for the first time,
 /// right after the arch-specific process switch was performed.
 ///
-/// It takes a reference to the current process (which will be set), and a function that should jump
-/// to this process entrypoint.
+/// It takes a reference to the current thread (which will be set), and a function that should jump
+/// to this thread's entrypoint.
 ///
 /// The passed function should take care to change the protection level, and ensure it cleans up all
 /// the registers before calling the EIP, in order to avoid leaking information to userspace.
-pub fn scheduler_first_schedule<F: FnOnce()>(current_process: ProcessStructArc, jump_to_entrypoint: F) {
-    // replace CURRENT_PROCESS with ourself.
-    // If previously running process had deleted all other references to itself, this
+pub fn scheduler_first_schedule<F: FnOnce()>(current_thread: Arc<ThreadStruct>, jump_to_entrypoint: F) {
+    // replace CURRENT_THREAD with ourself.
+    // If previously running thread had deleted all other references to itself, this
     // is where its drop actually happens
-    unsafe { set_current_process(current_process, || ()) };
+    unsafe { set_current_thread(current_thread, || ()) };
 
     unsafe {
         // this is a new process, no SpinLockIRQ is held

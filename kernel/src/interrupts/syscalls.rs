@@ -6,9 +6,9 @@ use mem::{FatPtr, UserSpacePtr, UserSpacePtrMut};
 use paging::{PAGE_SIZE, MappingFlags};
 use paging::lands::{UserLand, KernelLand};
 use frame_allocator::PhysicalMemRegion;
-use process::{Handle, ProcessState, ProcessStruct};
+use process::{Handle, ThreadState, ProcessStruct};
 use event::{self, Waitable};
-use scheduler::{self, get_current_process};
+use scheduler::{self, get_current_thread, get_current_process};
 use utils;
 use devices::pit;
 use alloc::boxed::Box;
@@ -108,7 +108,9 @@ fn output_debug_string(s: UserSpacePtr<[u8]>) -> Result<(), UserspaceError> {
 }
 
 fn exit_process() -> Result<(), UserspaceError> {
-    let proc = ProcessStruct::kill(scheduler::get_current_process());
+    unimplemented!("not sure what exit_process should do since we added threads");
+    // what it used to do:
+    //let proc = ProcessStruct::kill(scheduler::get_current_process());
     Ok(())
 }
 
@@ -271,7 +273,7 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
         u => registers.apply0(ignore_syscall(u))
     }
 
-    if scheduler::get_current_process().pstate.load(Ordering::SeqCst) == ProcessState::Killed {
+    if scheduler::get_current_thread().state.load(Ordering::SeqCst) == ThreadState::Killed {
         let lock = SpinLockIRQ::new(());
         scheduler::unschedule(&lock, lock.lock());
         //unreachable!();

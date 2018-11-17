@@ -2,31 +2,30 @@
 //!
 //! This modules describe low-level functions and structures needed to perform a process switch
 
-use process::{ProcessStruct, ProcessState, ProcessStructArc};
+use process::{ProcessStruct, ThreadStruct, ThreadState};
 use paging::process_memory::ProcessMemory;
-use scheduler::get_current_process;
 use gdt;
 use sync::{SpinLockIRQ, RwLock};
 use alloc::sync::Arc;
 use core::mem::size_of;
 use i386::TssStruct;
 
-/// The hardware context of a paused process. It contains just enough registers to get the process
+/// The hardware context of a paused thread. It contains just enough registers to get the thread
 /// running again.
 ///
-/// All other registers are to be saved on the process's kernel stack before scheduling,
+/// All other registers are to be saved on the thread's kernel stack before scheduling,
 /// and restored right after re-schedule.
 ///
-/// Stored in the ProcessStruct of every process.
+/// Stored in the ThreadStruct of every thread.
 #[derive(Debug)]
-pub struct ProcessHardwareContext {
+pub struct ThreadHardwareContext {
     esp: usize, // the top of the stack, where all other registers are saved
 }
 
-impl ProcessHardwareContext {
+impl ThreadHardwareContext {
     pub fn new() -> Self {
         // the saved esp will be overwritten on schedule-out anyway
-        ProcessHardwareContext { esp: 0x55555555 }
+        Self { esp: 0x55555555 }
     }
 }
 
@@ -86,56 +85,58 @@ impl ProcessHardwareContext {
 ///
 /// Interrupts definitely must be masked when calling this function
 #[inline(never)] // we need that sweet saved ebp + eip on the stack
-pub unsafe extern "C" fn process_switch(process_b: ProcessStructArc, process_current: ProcessStructArc) -> ProcessStructArc {
+pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_current: Arc<ThreadStruct>) -> Arc<ThreadStruct> {
 
     let esp_to_load = {
-        //let mut process_current_lock_pmemory = process_current.pmemory.try_lock()
-        //    .expect("process_switch cannot get current process' lock for writing");
-        let mut process_b_lock_pmemory = process_b.pmemory.try_lock()
-            .expect("process_switch cannot get destination process' lock for writing");
-        let mut process_current_lock_phwcontext = process_current.phwcontext.try_lock()
-            .expect("process_switch cannot get current process' lock for writing");
-        let mut process_b_lock_phwcontext = process_b.phwcontext.try_lock()
-            .expect("process_switch cannot get destination process' lock for writing");
+        // todo do not try to change cr3 if thread_b belongs to the same process.
+        //let mut thread_current_lock_pmemory = thread_current.pmemory.try_lock()
+        //    .expect("process_switch cannot get current thread' lock for writing");
+        let mut thread_b_lock_pmemory = thread_b.process.pmemory.try_lock()
+            .expect("process_switch cannot get destination thread' lock for writing");
+        let mut thread_current_lock_phwcontext = thread_current.hwcontext.try_lock()
+            .expect("process_switch cannot get current thread' lock for writing");
+        let mut thread_b_lock_phwcontext = thread_b.hwcontext.try_lock()
+            .expect("process_switch cannot get destination thread' lock for writing");
 
         // Switch the memory pages
-        process_b_lock_pmemory.switch_to();
+        thread_b_lock_pmemory.switch_to();
 
         let current_esp: usize;
         asm!("mov $0, esp" : "=r"(current_esp) : : : "intel", "volatile");
 
         // on restoring, esp will point to the top of the saved registers
         let esp_to_save = current_esp - (8 + 1 + 1) * size_of::<usize>();
-        process_current_lock_phwcontext.esp = esp_to_save;
+        thread_current_lock_phwcontext.esp = esp_to_save;
 
-        let esp_to_load = process_b_lock_phwcontext.esp;
+        let esp_to_load = thread_b_lock_phwcontext.esp;
 
-        // unlock the processes, they become available to be taken between now and when B will take
+        // unlock the threads, they become available to be taken between now and when B will take
         // them again on schedule in, but since there is no SMP and interrupts are off,
         // this should be ok ...
-        drop(process_b_lock_pmemory);
-        //drop(process_current_lock_pmemory);
-        drop(process_b_lock_phwcontext);
-        drop(process_current_lock_phwcontext);
+        drop(thread_b_lock_pmemory);
+        //drop(thread_current_lock_pmemory);
+        drop(thread_b_lock_phwcontext);
+        drop(thread_current_lock_phwcontext);
 
         esp_to_load
     };
 
     // Set IOPB back to "nothing allowed" state
+    // todo do not change iopb if thread_b belongs to the same process.
     let iopb = gdt::get_main_iopb();
-    for ioport in process_current.ioports.iter() {
+    for ioport in thread_current.process.ioports.iter() {
         let ioport = *ioport as usize;
         iopb[ioport / 8] = 0xFF;
     }
 
     // current is still stored in scheduler's global CURRENT_PROCESS, so it's not dropped yet.
-    drop(process_current);
+    drop(thread_current);
 
-    // we pass a pointer to its ProcessStruct to the process we're about to switch to.
+    // we pass a pointer to its ThreadStruct to the thread we're about to switch to.
     // Arc::into_raw does not decrement the reference count, so it's temporarily leaked.
-    // This also prevents process B to be dropped when we're about to switch to it.
-    let process_b_whoami = Arc::into_raw(process_b);
-    let whoami: *const ProcessStruct;
+    // This also prevents thread B to be dropped when we're about to switch to it.
+    let thread_b_whoami = Arc::into_raw(thread_b);
+    let whoami: *const ThreadStruct;
 
     asm!("
     // Push all registers on the stack, swap to B's stack, and jump to B's schedule-in
@@ -148,37 +149,37 @@ pub unsafe extern "C" fn process_switch(process_b: ProcessStructArc, process_cur
         // load B's stack, and jump to its schedule-in
         mov esp, $1
 
-    // Process B resumes here
+    // thread B resumes here
     schedule_in:
         // Ok ! Welcome again to B !
 
         // restore the saved registers
         popfd           // pop eflags
-        mov [esp], edi  // edi contains our precious ProcessStruct ptr, we do not want to lose it.
+        mov [esp], edi  // edi contains our precious ThreadStruct ptr, we do not want to lose it.
         popad           // pop edi (overwritten), esi, ebp, ebx, edx, ecx, eax. Pushed esp is ignored
         ret             // ret to the callback pushed on the stack
 
-    // If this was not the first time the process was scheduled-in,
+    // If this was not the first time the thread was scheduled-in,
     // it ends up here
     resume:
         // return to rust code as if nothing happened
     "
-    : "={edi}"(whoami) // at re-schedule, $edi contains a pointer to our ProcessStruct
-    : "r"(esp_to_load), "{edi}"(process_b_whoami)
+    : "={edi}"(whoami) // at re-schedule, $edi contains a pointer to our ThreadStruct
+    : "r"(esp_to_load), "{edi}"(thread_b_whoami)
     : "eax"
     : "volatile", "intel");
 
     // ends up here if it was not our first schedule-in
 
-    // recreate the Arc to our ProcessStruct from the pointer that was passed to us
+    // recreate the Arc to our ThreadStruct from the pointer that was passed to us
     let me = unsafe { Arc::from_raw(whoami) };
 
     // Set the ESP0
     let tss = gdt::MAIN_TASK.addr() as *mut TssStruct;
-    (*tss).esp0 = me.pstack.get_stack_start() as u32;
+    (*tss).esp0 = me.kstack.get_stack_start() as u32;
 
     // Set IOPB
-    for ioport in me.ioports.iter() {
+    for ioport in me.process.ioports.iter() {
         let ioport = *ioport as usize;
         iopb[ioport / 8] &= !(1 << (ioport % 8));
     }
@@ -188,15 +189,15 @@ pub unsafe extern "C" fn process_switch(process_b: ProcessStructArc, process_cur
 
 
 
-/// Prepares the process for its first schedule by writing default values at the start of the
+/// Prepares the thread for its first schedule by writing default values at the start of the
 /// stack that will be loaded in the registers in schedule-in.
 /// See process_switch() documentation for more details.
 ///
 /// # Safety
 ///
 /// This function will definitely fuck up your stack, so make sure you're calling it on a
-/// never-scheduled process's empty-stack.
-pub unsafe fn prepare_for_first_schedule(p: &ProcessStruct, entrypoint: usize, userspace_stack: usize) {
+/// never-scheduled thread's empty-stack.
+pub unsafe fn prepare_for_first_schedule(t: &ThreadStruct, entrypoint: usize, userspace_stack: usize) {
     #[repr(packed)]
     struct RegistersOnStack {
         eflags: u32,
@@ -214,7 +215,7 @@ pub unsafe fn prepare_for_first_schedule(p: &ProcessStruct, entrypoint: usize, u
         // poison eip
     };
 
-    let stack_start = p.pstack.get_stack_start() as u32;
+    let stack_start = t.kstack.get_stack_start() as u32;
 
     // *     $esp       * eflags
     //                    ...
@@ -240,18 +241,18 @@ pub unsafe fn prepare_for_first_schedule(p: &ProcessStruct, entrypoint: usize, u
         // poison eip
     };
 
-    let initial_registers_stack_top = (p.pstack.get_stack_start()
+    let initial_registers_stack_top = (t.kstack.get_stack_start()
         - ::core::mem::size_of::<RegistersOnStack>()) as *mut RegistersOnStack;
 
     ::core::ptr::write(initial_registers_stack_top, initial_registers);
 
     // put the pointer to the top of the structure as the $esp to be loaded on schedule-in
-    p.phwcontext.lock().esp = initial_registers_stack_top as usize;
+    t.hwcontext.lock().esp = initial_registers_stack_top as usize;
 }
 
-/// The function ret'd on, on a process' first schedule - as setup by the prepare_for_first_schedule.
+/// The function ret'd on, on a thread's first schedule - as setup by the prepare_for_first_schedule.
 ///
-/// At this point, interrupts are still off. This function should ensure the process is properly
+/// At this point, interrupts are still off. This function should ensure the thread is properly
 /// switched (set up ESP0, IOPB and whatnot) and call scheduler_first_schedule.
 #[naked]
 fn first_schedule() {
@@ -265,7 +266,7 @@ fn first_schedule() {
         " : : "i"(first_schedule_inner as *const u8) : : "volatile", "intel");
     }
 
-    extern "C" fn first_schedule_inner(whoami: *const ProcessStruct, entrypoint: usize, userspace_stack: usize) -> ! {
+    extern "C" fn first_schedule_inner(whoami: *const ThreadStruct, entrypoint: usize, userspace_stack: usize) -> ! {
         // reconstruct an Arc to our ProcessStruct from the leaked pointer
         let current = unsafe { Arc::from_raw(whoami) };
 
@@ -273,14 +274,15 @@ fn first_schedule() {
         let tss = gdt::MAIN_TASK.addr() as *mut TssStruct;
         unsafe {
             // Safety: TSS is always valid.
-            (*tss).esp0 = current.pstack.get_stack_start() as u32;
+            (*tss).esp0 = current.kstack.get_stack_start() as u32;
         }
 
+        // todo do not touch iopb if we come from a thread of the same process.
         // Set IOPB
         let iopb = unsafe {
             gdt::get_main_iopb()
         };
-        for ioport in current.ioports.iter() {
+        for ioport in current.process.ioports.iter() {
             let ioport = *ioport as usize;
             iopb[ioport / 8] &= !(1 << (ioport % 8));
         }

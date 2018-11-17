@@ -25,7 +25,6 @@ use super::cross_process::CrossProcessMapping;
 use super::MappingFlags;
 use mem::{VirtualAddress, PhysicalAddress};
 use frame_allocator::{FrameAllocator, FrameAllocatorTrait, PhysicalMemRegion, mark_frame_bootstrap_allocated};
-use scheduler::{get_current_process, try_get_current_process};
 use sync::{Mutex, MutexGuard};
 use paging::arch::EntryFlags;
 use paging::arch::Entry;
