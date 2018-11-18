@@ -293,9 +293,6 @@ where
                 cursor.write_u32::<LE>(descriptor_hdr.0);
             }
 
-            // Descriptor_hdr is 2 bytes, but everything is encoded on 4-bytes...
-            cursor.skip_write(2);
-
             // Seek 8 if we have to send pid. We don't actually write the pid.
             if let Some(pid) = self.pid {
                 cursor.write_u64::<LE>(pid);
