@@ -206,7 +206,11 @@ impl Waitable for WaitFor {
 
     fn is_signaled(&self) -> bool {
         // First, reset the spins if necessary
-        self.spins_needed.compare_and_swap(0, div_round_up(self.every_ms * CHAN_0_FREQUENCY, 1000), Ordering::SeqCst);
+        let mut new_spin = div_round_up(self.every_ms * CHAN_0_FREQUENCY, 1000);
+        if new_spin == 0 {
+            new_spin = 1;
+        }
+        self.spins_needed.compare_and_swap(0, new_spin, Ordering::SeqCst);
 
         // Then, check if it's us.
         self.parent_event.is_signaled()
