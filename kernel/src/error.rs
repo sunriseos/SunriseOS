@@ -8,7 +8,7 @@ use core::fmt::{self, Display};
 #[derive(Debug, Clone, Copy)]
 pub enum UserspaceError {
     InvalidKernelCaps = 14,
-    NotDebugMode = 33,
+    NotImplemented = 33,
     InvalidSize = 101,
     InvalidAddress = 102,
     // SlabheapFull = 103,

@@ -24,7 +24,7 @@ use error::{KernelError, UserspaceError};
 extern fn ignore_syscall(nr: usize) -> Result<(), UserspaceError> {
     // TODO: Trigger "unknown syscall" signal, for userspace signal handling.
     info!("Unknown syscall {}", nr);
-    Ok(())
+    Err(UserspaceError::NotImplemented)
 }
 
 /// Maps the vga frame buffer mmio in userspace memory
@@ -151,7 +151,7 @@ fn reply_and_receive_with_user_buffer(buf: UserSpacePtrMut<[u8]>, handles: UserS
     if reply_target != 0 {
         // get session
         let sess = proc.phandles.lock().get_handle(reply_target)?;
-        sess.as_server_session()?.reply(UserSpacePtr(buf.0));
+        sess.as_server_session()?.reply(UserSpacePtr(buf.0))?;
     }
 
     // TODO: Ensure all handles are ClientSessions
