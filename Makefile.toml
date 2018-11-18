@@ -46,14 +46,14 @@ args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-kernel", "--relea
 [tasks.vi]
 workspace = false
 description = "Compiles kfs-vi"
-dependencies = ["userspace-linker", "install-source-component"]
+dependencies = ["userspace-linker"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-vi"]
 
 [tasks.vi-release]
 workspace = false
 description = "Compiles kfs-vi"
-dependencies = ["userspace-linker", "install-source-component"]
+dependencies = ["userspace-linker"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-vi", "--release"]
 
