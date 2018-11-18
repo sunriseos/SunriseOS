@@ -216,12 +216,12 @@ pub fn map_framebuffer() -> Result<(&'static mut [u8], usize, usize, usize), usi
     }
 }
 
-pub fn reply_and_receive_with_user_buffer(buf: &mut [u8], handles: &[HandleRef], replytarget: Option<HandleRef>) -> Result<usize, usize>{
+pub fn reply_and_receive_with_user_buffer(buf: &mut [u8], handles: &[HandleRef], replytarget: Option<HandleRef>, timeout: Option<usize>) -> Result<usize, usize>{
     unsafe {
         let (idx, ..) = syscall(0x44, buf.as_ptr() as _, buf.len(), handles.as_ptr() as _, handles.len(), match replytarget {
             Some(s) => s.inner.get() as _,
             None => 0
-        }, 0)?;
+        }, timeout.unwrap_or(usize::max_value()))?;
         hexdump(&*buf, 0);
         Ok(idx)
     }

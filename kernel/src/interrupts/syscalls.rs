@@ -260,7 +260,7 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
         // TODO: We need one more register for the timeout. Sad panda.
         // The ARM64 spec allows x0-x7 as input arguments, so *ideally* we need 2
         // more registers.
-        0x44 => registers.apply1(reply_and_receive_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), UserSpacePtr::from_raw_parts(x2 as _, x3), x4 as _, usize::max_value())),
+        0x44 => registers.apply1(reply_and_receive_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), UserSpacePtr::from_raw_parts(x2 as _, x3), x4 as _, x5)),
         0x53 => registers.apply1(create_interrupt_event(x0, x1 as u32)),
         0x70 => registers.apply2(create_port(x0 as _, x1 != 0, UserSpacePtr(x2 as _))),
         0x71 => registers.apply1(manage_named_port(UserSpacePtr(x0 as _), x1 as _)),

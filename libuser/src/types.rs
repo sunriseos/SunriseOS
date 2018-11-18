@@ -52,12 +52,13 @@ impl ClientSession {
 pub struct ServerSession(pub Handle);
 
 impl ServerSession {
-    pub fn receive(&self, buf: &mut [u8]) -> Result<(), usize> {
-        syscalls::reply_and_receive_with_user_buffer(buf, &[self.0.as_ref()], None).map(|v| ())
+    pub fn receive(&self, buf: &mut [u8], timeout: Option<usize>) -> Result<(), usize> {
+        syscalls::reply_and_receive_with_user_buffer(buf, &[self.0.as_ref()], None, timeout).map(|v| ())
     }
 
     pub fn reply(&self, buf: &mut [u8]) -> Result<(), usize> {
-        syscalls::reply_and_receive_with_user_buffer(buf, &[], Some(self.0.as_ref())).map(|v| ())
+        syscalls::reply_and_receive_with_user_buffer(buf, &[], Some(self.0.as_ref()), Some(0))
+            .map(|v| ()).or_else(|v| if v == 0xEA01 { Ok(())} else { Err(v) })
     }
 }
 

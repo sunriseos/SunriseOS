@@ -260,8 +260,6 @@ impl ServerSession {
             slice::from_raw_parts_mut(mapping.addr().addr() as *mut u8, mapping.len())
         };
 
-        get_kernel_memory().dump_kernelland_state();
-
         pass_message(sender_buf, active.sender.clone(), &mut *buf, scheduler::get_current_thread())?;
 
         Ok(())
