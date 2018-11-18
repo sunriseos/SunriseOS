@@ -98,6 +98,10 @@ pub enum KernelError {
     },
     #[fail(display = "Memory management error: {}", _0)]
     MmError(MmError),
+    #[fail(display = "Process was killed before finishing operation")]
+    ProcessKilled {
+        backtrace: Backtrace,
+    },
     #[doc(hidden)]
     #[fail(display = "Should never ever ***EVER*** be returned")]
     ThisWillNeverHappenButPleaseDontMatchExhaustively,

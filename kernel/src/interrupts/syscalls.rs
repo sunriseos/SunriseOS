@@ -108,9 +108,7 @@ fn output_debug_string(s: UserSpacePtr<[u8]>) -> Result<(), UserspaceError> {
 }
 
 fn exit_process() -> Result<(), UserspaceError> {
-    unimplemented!("not sure what exit_process should do since we added threads");
-    // what it used to do:
-    //let proc = ProcessStruct::kill(scheduler::get_current_process());
+    ProcessStruct::kill_process(get_current_process());
     Ok(())
 }
 

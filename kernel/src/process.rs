@@ -10,12 +10,13 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use event::Waitable;
 use sync::{RwLock, RwLockWriteGuard, SpinLockIRQ, SpinLock, Mutex, MutexGuard};
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use core::fmt::{self, Debug};
 use scheduler;
 use error::{KernelError, UserspaceError};
 use ipc::{ServerPort, ClientPort, ServerSession, ClientSession};
 use mem::VirtualAddress;
+use failure::Backtrace;
 
 /// The struct representing a process. There's one for every process.
 ///
@@ -40,6 +41,8 @@ pub struct ProcessStruct {
     /// A ProcessStruct with no thread left will eventually be dropped.
     // todo choose a better lock
     pub threads:              SpinLockIRQ<Vec<Weak<ThreadStruct>>>,
+    /// Marks when the process is dying.
+    pub killed:               AtomicBool,
 
     /// A vector of readable IO ports.
     ///
@@ -274,7 +277,8 @@ impl ProcessStruct {
                 pmemory,
                 threads: SpinLockIRQ::new(Vec::new()),
                 phandles: SpinLockIRQ::new(HandleTable::new()),
-                ioports
+                killed: AtomicBool::new(false),
+                ioports,
             }
         );
 
@@ -311,6 +315,7 @@ impl ProcessStruct {
                 pmemory,
                 threads: SpinLockIRQ::new(Vec::new()),
                 phandles: SpinLockIRQ::new(HandleTable::new()),
+                killed: AtomicBool::new(false),
                 ioports: Vec::new(),
             }
         );
@@ -319,8 +324,22 @@ impl ProcessStruct {
     }
 
     /// Kills a process by killing all of its threads.
+    ///
+    /// When a thread is about to return to userspace, it checks if its state is Killed.
+    /// In this case it unschedules itself instead, and its ThreadStruct is dropped.
+    ///
+    /// When our last thread is dropped, our process struct is dropped with it.
+    ///
+    /// We also mark the process struct as killed to prevent race condition with
+    /// another thread that would want to spawn a thread after we killed all ours.
     pub fn kill_process(this: Arc<Self>) {
-        unimplemented!("killing a process is not yet implemented");
+        // mark the process as killed
+        this.killed.store(true, Ordering::SeqCst);
+        // kill all our threads
+        for weak_thread in this.threads.lock().iter() {
+            Weak::upgrade(weak_thread)
+                .map(|t| ThreadStruct::kill(t));
+        }
     }
 
 }
@@ -375,15 +394,14 @@ impl ThreadStruct {
         }
 
         // add it to the process' list of threads
-        belonging_process.threads.lock().push(Arc::downgrade(&t));
-
-        // todo: what if a process was killing all the threads, finished, dropped the lock,
-        // and now we're pushing one again ?
-        //
-        // maybe we should cancel the operation if we can't get the lock ?
-        // maybe the process struct should contain a "terminated" state that we check before pushing new threads ?
-        // maybe we should poison the lock when killing a process ?
-        // maybe we can use the special -empty vec- case as meaning "killed process" ?
+        let mut threads_vec = belonging_process.threads.lock();
+        if belonging_process.killed.load(Ordering::SeqCst) {
+            // process was killed while we were waiting for the lock.
+            // do not add the process to the vec, cancel the thread creation.
+            drop(t);
+            return Err(KernelError::ProcessKilled { backtrace: Backtrace::new() })
+        }
+        threads_vec.push(Arc::downgrade(&t));
 
         Ok(t)
     }
@@ -403,6 +421,8 @@ impl ThreadStruct {
     ///
     /// Use only for creating the very first process. Should never be used again after that.
     /// Must be using a valid KernelStack, a valid ActivePageTables.
+    ///
+    /// Does not check that the process struct is not marked killed.
     ///
     /// # Panics
     ///
