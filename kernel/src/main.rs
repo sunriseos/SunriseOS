@@ -16,7 +16,6 @@
 use std as core;
 
 extern crate arrayvec;
-extern crate ascii;
 extern crate bit_field;
 #[macro_use]
 extern crate lazy_static;
@@ -28,11 +27,9 @@ extern crate static_assertions;
 #[macro_use]
 extern crate alloc;
 extern crate linked_list_allocator;
-extern crate gif;
 #[macro_use]
 extern crate log;
 extern crate smallvec;
-extern crate font_rs;
 extern crate hashmap_core;
 extern crate xmas_elf;
 extern crate rustc_demangle;
@@ -42,7 +39,6 @@ extern crate failure;
 #[macro_use]
 extern crate bitfield;
 
-use ascii::AsAsciiStr;
 use core::fmt::Write;
 use alloc::prelude::*;
 
