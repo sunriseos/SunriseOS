@@ -8,6 +8,11 @@ addons:
     packages:
     - grub-common
 
+# Install cargo-make and rust-src rustup component
+before_install:
+- cargo install cargo-make || echo "cargo-make already installed"
+- rustup component add rust-src || echo "rust-src already installed"
+
 script:
 - cargo make iso
 # TODO: Run tests.
