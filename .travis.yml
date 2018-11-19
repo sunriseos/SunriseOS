@@ -1,0 +1,17 @@
+language: rust
+rust:
+- nightly
+
+# Install grub-mkrescue
+addons:
+  apt:
+    packages:
+    - grub-common
+
+script:
+- cargo make iso
+# TODO: Run tests.
+
+# TODO: Create an ISO artifact on release.
+
+cache: cargo
