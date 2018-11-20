@@ -98,6 +98,8 @@ where
     INTOITER: IntoIterator<Item=&'wait Waitable>,
     <INTOITER as IntoIterator>::IntoIter: Clone
 {
+    let _thread = scheduler::get_current_thread();
+
     let waitable = waitable_intoiter.into_iter();
     let interrupt_manager = SpinLockIRQ::new(());
 
