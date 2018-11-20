@@ -19,7 +19,7 @@ struct InternalSession {
 }
 
 #[derive(Debug)]
-pub struct Session {
+struct Session {
     internal: SpinLock<InternalSession>,
     accepters: SpinLock<Vec<Weak<ThreadStruct>>>,
     servercount: AtomicUsize,
@@ -85,7 +85,7 @@ bitfield! {
 }
 
 impl Session {
-    pub fn new() -> (ClientSession, ServerSession) {
+    fn new() -> (ServerSession, ClientSession) {
         let sess = Arc::new(Session {
             internal: SpinLock::new(InternalSession {
                 incoming_requests: Vec::new(),
@@ -95,7 +95,7 @@ impl Session {
             servercount: AtomicUsize::new(0)
         });
 
-        (Session::client(sess.clone()), Session::server(sess))
+        (Session::server(sess.clone()), Session::client(sess))
     }
 
     /// Returns a ClientPort from this Port.
@@ -108,6 +108,10 @@ impl Session {
         this.servercount.fetch_add(1, Ordering::SeqCst);
         ServerSession(this)
     }
+}
+
+pub fn new() -> (ServerSession, ClientSession) {
+    Session::new()
 }
 
 impl Waitable for ServerSession {

@@ -8,11 +8,11 @@ use process::ThreadStruct;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use hashmap_core::HashMap;
 use alloc::prelude::*;
-use ipc::session::*;
+use ipc::session::{self, ClientSession, ServerSession};
 
 /// An endpoint which can be connected to.
 #[derive(Debug)]
-pub struct Port {
+struct Port {
     incoming_connections: SpinLock<Vec<Arc<IncomingConnection>>>,
     accepters: SpinLock<Vec<Weak<ThreadStruct>>>,
     servercount: AtomicUsize,
@@ -34,7 +34,7 @@ pub struct ServerPort(Arc<Port>);
 impl Port {
     /// Creates a new port. This port may only have _max_sessions sessions active at
     /// a given time.
-    pub fn new(_max_sessions: u32) -> (ServerPort, ClientPort) {
+    fn new(_max_sessions: u32) -> (ServerPort, ClientPort) {
         let port = Arc::new(Port {
             servercount: AtomicUsize::new(0),
             incoming_connections: SpinLock::new(Vec::new()),
@@ -44,15 +44,19 @@ impl Port {
     }
 
     /// Returns a ClientPort from this Port.
-    pub fn client(this: Arc<Self>) -> ClientPort {
+    fn client(this: Arc<Self>) -> ClientPort {
         ClientPort(this)
     }
 
     /// Returns a ServerPort from this Port.
-    pub fn server(this: Arc<Self>) -> ServerPort {
+    fn server(this: Arc<Self>) -> ServerPort {
         this.servercount.fetch_add(1, Ordering::SeqCst);
         ServerPort(this)
     }
+}
+
+pub fn new(_max_sessions: u32) -> (ServerPort, ClientPort) {
+    Port::new(_max_sessions)
 }
 
 // Wait for a connection to become available.
@@ -89,7 +93,6 @@ impl Drop for ServerPort {
     }
 }
 
-
 #[derive(Debug)]
 pub struct IncomingConnection {
     session: SpinLock<Option<ClientSession>>,
@@ -112,7 +115,7 @@ impl ServerPort {
                 assert!(lock.is_none(), "Handled connection request still in incoming conn queue.");
 
                 // We can associate a session to this now.
-                let (client, server) = Session::new();
+                let (server, client) = session::new();
                 *lock = Some(client);
 
                 // Wake up the creator.
@@ -162,33 +165,5 @@ impl ClientPort {
         };
 
         Ok(session)
-    }
-}
-
-lazy_static! {
-    // TODO: StringWrapper<[u8; 12]>
-    static ref NAMED_PORTS: RwLock<HashMap<String, ClientPort>> = RwLock::new(HashMap::new());
-}
-
-pub fn create_named_port(name: [u8; 12], max_sessions: u32) -> Result<ServerPort, UserspaceError> {
-    let name = match name.iter().position(|v| *v == 0) {
-        Some(pos) => String::from_utf8_lossy(&name[..pos]),
-        None => return Err(UserspaceError::ExceedingMaximum)
-    };
-
-    let (server, client) = Port::new(max_sessions);
-    NAMED_PORTS.write().insert(name.into_owned(), client);
-    Ok(server)
-}
-
-pub fn connect_to_named_port(name: [u8; 12]) -> Result<ClientSession, UserspaceError> {
-    let name = match name.iter().position(|v| *v == 0) {
-        Some(pos) => String::from_utf8_lossy(&name[..pos]),
-        None => return Err(UserspaceError::ExceedingMaximum)
-    };
-
-    match NAMED_PORTS.read().get(name.as_ref()) {
-        Some(client) => Ok(client.connect()?),
-        None => Err(UserspaceError::NoSuchEntry)
     }
 }

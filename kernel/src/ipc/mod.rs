@@ -61,7 +61,7 @@ pub fn create_named_port(name: [u8; 12], max_sessions: u32) -> Result<ServerPort
         None => return Err(UserspaceError::ExceedingMaximum)
     };
 
-    let (server, client) = Port::new(max_sessions);
+    let (server, client) = port::new(max_sessions);
     NAMED_PORTS.write().insert(name.into_owned(), client);
     Ok(server)
 }

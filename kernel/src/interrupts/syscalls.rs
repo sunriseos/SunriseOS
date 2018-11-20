@@ -220,7 +220,7 @@ fn sleep_thread(nanos: usize) -> Result<(), UserspaceError> {
 }
 
 fn create_port(max_sessions: u32, _is_light: bool, _name_ptr: UserSpacePtr<[u8; 12]>) -> Result<(usize, usize), UserspaceError>{
-    let (server, client) = ipc::port::Port::new(max_sessions);
+    let (server, client) = ipc::port::new(max_sessions);
     let curproc = scheduler::get_current_process();
     let serverhnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ServerPort(server)));
     let clienthnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ClientPort(client)));
