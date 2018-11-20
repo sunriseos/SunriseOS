@@ -103,7 +103,7 @@ pub(crate) fn close_handle(handle: u32) -> Result<(), usize> {
 
 pub fn sleep_thread(nanos: usize) -> Result<(), usize> {
     unsafe {
-        let ret = syscall(0x18, nanos, 0, 0, 0, 0, 0)?;
+        syscall(0x0B, nanos, 0, 0, 0, 0, 0)?;
         Ok(())
     }
 }
