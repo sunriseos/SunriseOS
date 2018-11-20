@@ -126,8 +126,20 @@ pub fn is_in_schedule_queue(thread: &Arc<ThreadStruct>) -> bool {
 /// Removes the current thread from the schedule queue, and schedule.
 ///
 /// The passed lock will be locked until the thread is safely removed from the schedule queue.
-/// It will be relocked just before the thread starts running again (but before it's set to Running).
-/// This can be used to avoid race conditions between registering for an event, and unscheduling.
+/// In other words, event handling code should wait for that lock to be dropped before attempting
+/// to call `add_to_schedule_queue`.
+///
+/// The reason behind this behavior is that `add_to_schedule_queue` checks if a thread is currently
+/// in the schedule queue, before adding it in. It does the check by checking if the thread is
+/// either in the list of threads to run, or if it's the currently running one and in a Running
+/// state. The lock will be dropped once the thread is transitioned to the Stopped state, allowing
+/// `add_to_schedule_queue` to work again.
+///
+/// It will be relocked just before the thread starts running again. Specifically, it will be
+/// relocked when CURRENT_THREAD is set back to the current thread, but before its state is
+/// changed back to Running. This allows using SpinLockIRQs as a lock.
+///
+/// The lock should be used to avoid race conditions between registering for an event, and unscheduling.
 ///
 /// The current thread will not be ran again unless it was registered for rescheduling.
 pub fn unschedule<'a, LOCK, GUARD>(lock: &'a LOCK, guard: GUARD) -> Result<GUARD, UserspaceError>
