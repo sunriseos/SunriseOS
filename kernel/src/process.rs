@@ -363,9 +363,7 @@ impl ThreadStruct {
     ///
     /// # Safety
     ///
-    /// The given entrypoint *must* point to a mapped address in that process's address space.
-    /// The function makes no attempt at checking if it is kernel or userspace.
-    pub unsafe fn new(belonging_process: &Arc<ProcessStruct>, ep: VirtualAddress, stack: VirtualAddress) -> Result<Arc<Self>, KernelError> {
+    pub fn new(belonging_process: &Arc<ProcessStruct>, ep: VirtualAddress, stack: VirtualAddress) -> Result<Weak<Self>, KernelError> {
 
         // allocate its kernel stack
         let kstack = KernelStack::allocate_stack()?;
