@@ -112,6 +112,13 @@ fn exit_process() -> Result<(), UserspaceError> {
     ProcessStruct::kill_process(get_current_process());
     Ok(())
 }
+fn connect_to_port(handle: u32) -> Result<usize, UserspaceError> {
+    let curproc = scheduler::get_current_process();
+    let clientport = curproc.phandles.lock().get_handle(handle)?.as_client_port()?;
+    let clientsess = clientport.connect()?;
+    let hnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ClientSession(clientsess)));
+    Ok(hnd as _)
+}
 
 /// Kills our own thread.
 fn exit_thread() -> Result<(), UserspaceError> {
@@ -309,6 +316,7 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
         0x53 => registers.apply1(create_interrupt_event(x0, x1 as u32)),
         0x70 => registers.apply2(create_port(x0 as _, x1 != 0, UserSpacePtr(x2 as _))),
         0x71 => registers.apply1(manage_named_port(UserSpacePtr(x0 as _), x1 as _)),
+        0x72 => registers.apply1(connect_to_port(x0 as _)),
 
         // KFS extensions
         0x80 => registers.apply4(map_framebuffer()),

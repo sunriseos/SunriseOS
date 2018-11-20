@@ -133,6 +133,14 @@ impl Handle {
         }
     }
 
+    pub fn as_client_port(&self) -> Result<ClientPort, UserspaceError> {
+        if let &Handle::ClientPort(ref s) = self {
+            Ok((*s).clone())
+        } else {
+            Err(UserspaceError::InvalidHandle)
+        }
+    }
+
     pub fn as_server_session(&self) -> Result<ServerSession, UserspaceError> {
         if let &Handle::ServerSession(ref s) = self {
             Ok((*s).clone())
