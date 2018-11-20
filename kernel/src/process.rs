@@ -49,7 +49,30 @@ pub struct ProcessStruct {
     /// When task switching, the IOPB will be changed to take this into account.
     // TODO: This is i386-specific. Sucks, but it should *really* go somewhere else.
     // Maybe in ProcessMemory?
-    pub ioports: Vec<u16>
+    pub ioports: Vec<u16>,
+
+    /// An array of the created but not yet started threads.
+    ///
+    /// When we create a thread, we return a handle to userspace containing a weak reference to the thread,
+    /// which has not been added to the schedule queue yet.
+    /// To prevent it from being dropped, we must keep at least 1 strong reference somewhere.
+    /// This is the job of the maternity. It holds references to threads that no one has for now.
+    /// When a thread is started, its only strong reference is removed from the maternity, and put
+    /// in the scheduler, which is now in charge of keeping it alive (or not).
+    ///
+    /// Note that we store in the process struct a strong reference to a thread, which itself
+    /// has a strong reference to the same process struct. This creates a cycle, and we loose
+    /// the behaviour of "a process is dropped when its last *living* thread is dropped".
+    /// The non-started threads will keep the process struct alive. This makes it possible to
+    /// pass a non-started thread handle to another process, and let it start it for us, even after
+    /// our last living thread has died.
+    ///
+    /// However, because of this, if a thread creates other threads, does not share the handles,
+    /// and dies before starting them, the process struct will be kept alive indefinitely
+    /// by those non-started threads that no one can start, and the process will stay that way
+    /// until it is explicitly killed from outside.
+    // todo choose a better lock
+    thread_maternity: SpinLock<Vec<Arc<ThreadStruct>>>,
 }
 
 static NEXT_PROCESS_ID: AtomicUsize = AtomicUsize::new(0);
@@ -166,7 +189,6 @@ impl HandleTable {
 /// - Running: currently on the CPU
 /// - Scheduled: scheduled to be running
 /// - Stopped: not in the scheduled queue, waiting for an event
-/// - Newborn: has never been ran, not in the schedule queue yet.
 /// - Killed: dying, will be unscheduled and dropped at syscall boundary
 ///
 /// Since SMP is not supported, there is only one Running thread.
@@ -176,8 +198,7 @@ pub enum ThreadState {
     Running = 0,
     Scheduled = 1,
     Stopped = 2,
-    Newborn = 3,
-    Killed = 4,
+    Killed = 3,
 }
 
 impl ThreadState {
@@ -186,8 +207,7 @@ impl ThreadState {
             0 => ThreadState::Running,
             1 => ThreadState::Scheduled,
             2 => ThreadState::Stopped,
-            3 => ThreadState::Newborn,
-            4 => ThreadState::Killed,
+            3 => ThreadState::Killed,
             _ => panic!("Invalid thread state"),
         }
     }
@@ -278,6 +298,7 @@ impl ProcessStruct {
                 threads: SpinLockIRQ::new(Vec::new()),
                 phandles: SpinLockIRQ::new(HandleTable::new()),
                 killed: AtomicBool::new(false),
+                thread_maternity: SpinLock::new(Vec::new()),
                 ioports,
             }
         );
@@ -316,6 +337,7 @@ impl ProcessStruct {
                 threads: SpinLockIRQ::new(Vec::new()),
                 phandles: SpinLockIRQ::new(HandleTable::new()),
                 killed: AtomicBool::new(false),
+                thread_maternity: SpinLock::new(Vec::new()),
                 ioports: Vec::new(),
             }
         );
@@ -335,7 +357,12 @@ impl ProcessStruct {
     pub fn kill_process(this: Arc<Self>) {
         // mark the process as killed
         this.killed.store(true, Ordering::SeqCst);
-        // kill all our threads
+
+        // kill our baby threads. Those threads have never run, we don't even bother
+        // scheduling them so the can free their resources, just drop the hole maternity.
+        this.thread_maternity.lock().clear();
+
+        // kill all other regular threads
         for weak_thread in this.threads.lock().iter() {
             Weak::upgrade(weak_thread)
                 .map(|t| ThreadStruct::kill(t));
@@ -358,11 +385,10 @@ impl ThreadStruct {
     ///
     /// Adds itself to list of threads of the belonging process.
     ///
-    /// The returned thread will be in `Newborn` state. It must be changed to `Stopped`
-    /// before adding it to the schedule queue.
+    /// The returned thread will be in `Stopped` state.
     ///
-    /// # Safety
-    ///
+    /// The thread's only strong reference is stored in the process' maternity,
+    /// and we return only a weak to it, that can directly be put in a thread_handle.
     pub fn new(belonging_process: &Arc<ProcessStruct>, ep: VirtualAddress, stack: VirtualAddress) -> Result<Weak<Self>, KernelError> {
 
         // allocate its kernel stack
@@ -371,8 +397,8 @@ impl ThreadStruct {
         // hardware context will be computed later in this function, write a dummy value for now
         let empty_hwcontext = SpinLockIRQ::new(ThreadHardwareContext::new());
 
-        // the state of the process, NotReady
-        let state = ThreadStateAtomic::new((ThreadState::Newborn));
+        // the state of the process, Stopped
+        let state = ThreadStateAtomic::new((ThreadState::Stopped));
 
         let t = Arc::new(
             ThreadStruct {
@@ -391,7 +417,11 @@ impl ThreadStruct {
             prepare_for_first_schedule(&t, ep.addr(), stack.addr());
         }
 
-        // add it to the process' list of threads
+        // make a weak copy that we will return
+        let ret = Arc::downgrade(&t);
+
+        // add it to the process' list of threads, and to the maternity, simultaneously
+        let mut maternity = belonging_process.thread_maternity.lock();
         let mut threads_vec = belonging_process.threads.lock();
         if belonging_process.killed.load(Ordering::SeqCst) {
             // process was killed while we were waiting for the lock.
@@ -399,9 +429,12 @@ impl ThreadStruct {
             drop(t);
             return Err(KernelError::ProcessKilled { backtrace: Backtrace::new() })
         }
+        // push a weak in the threads_vec
         threads_vec.push(Arc::downgrade(&t));
+        // and put the only strong in the maternity
+        maternity.push(t);
 
-        Ok(t)
+        Ok(ret)
     }
 
     /// Creates the very first process and thread at boot.
@@ -455,12 +488,53 @@ impl ThreadStruct {
         t
     }
 
-    /// Sets the thread to the Killed state.
+    /// Takes a reference to a thread, removes it from the maternity, and adds it to the schedule queue.
+    ///
+    /// We take only a weak reference, to permit calling this function easily with a thread_handle.
+    ///
+    /// # Errors
+    ///
+    /// * `ThreadAlreadyStarted` if the weak resolution failed (the thread has already been killed).
+    /// * `ThreadAlreadyStarted` if the thread was not found in the maternity.
+    /// * `ProcessKilled` if the process struct was tagged `killed` before we had time to start it.
+    pub fn start(this: Weak<Self>) -> Result<(), KernelError> {
+        let thread = this.upgrade().ok_or(
+            // the thread was dropped, meaning it has already been killed.
+            KernelError::ThreadAlreadyStarted { backtrace: Backtrace::new() }
+        )?;
+        // remove it from the maternity
+        let mut maternity = thread.process.thread_maternity.lock();
+        if thread.process.killed.load(Ordering::SeqCst) {
+            // process was killed while we were waiting for the lock.
+            // do not start process to the vec, cancel the thread start.
+            return Err(KernelError::ProcessKilled { backtrace: Backtrace::new() })
+        }
+        let cradle = maternity.iter().position(|baby| Arc::ptr_eq(baby, &thread));
+        match cradle {
+            None => {
+                // the thread was not found in the maternity, meaning it had already started.
+                return Err(KernelError::ThreadAlreadyStarted { backtrace: Backtrace::new() })
+            },
+            Some(pos) => {
+                // remove it from maternity, and put it in the schedule queue
+                scheduler::add_to_schedule_queue(maternity.remove(pos));
+                Ok(())
+            }
+        }
+    }
+
+    /// Sets the thread to the `Killed` state.
     ///
     /// We reschedule the thread (cancelling any waiting it was doing).
     /// In this state, the thread will die when attempting to return to userspace.
+    ///
+    /// If the thread was already in the `Killed` state, this function is a no-op.
     pub fn kill(this: Arc<Self>) {
-        this.state.store(ThreadState::Killed, Ordering::SeqCst);
+        let old_state = this.state.swap(ThreadState::Killed, Ordering::SeqCst);
+        if old_state == ThreadState::Killed {
+            // if the thread was already marked killed, don't do anything.
+            return;
+        }
         scheduler::add_to_schedule_queue(this);
     }
 }

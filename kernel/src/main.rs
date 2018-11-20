@@ -105,11 +105,8 @@ fn main() {
         };
         let thread = ThreadStruct::new(&proc, ep, sp)
             .expect("failed creating thread for service");
-
-        // Newborn -> Stopped
-        thread.state.store(ThreadState::Stopped, Ordering::SeqCst);
-
-        scheduler::add_to_schedule_queue(thread);
+        ThreadStruct::start(thread)
+            .expect("failed starting thread for service");
     }
 
     let lock = sync::SpinLockIRQ::new(());

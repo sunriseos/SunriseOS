@@ -102,6 +102,10 @@ pub enum KernelError {
     ProcessKilled {
         backtrace: Backtrace,
     },
+    #[fail(display = "Thread was already started")]
+    ThreadAlreadyStarted {
+        backtrace: Backtrace,
+    },
     #[doc(hidden)]
     #[fail(display = "Should never ever ***EVER*** be returned")]
     ThisWillNeverHappenButPleaseDontMatchExhaustively,
@@ -112,6 +116,7 @@ impl From<KernelError> for UserspaceError {
         match err {
             KernelError::PhysicalMemoryExhaustion { .. } => UserspaceError::MemoryFull,
             KernelError::VirtualMemoryExhaustion { .. } => UserspaceError::MemoryFull,
+            KernelError::ThreadAlreadyStarted { .. } => UserspaceError::ProcessAlreadyStarted,
             //KernelError::
             KernelError::ThisWillNeverHappenButPleaseDontMatchExhaustively => unreachable!(),
             // todo
