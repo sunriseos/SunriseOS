@@ -82,3 +82,13 @@ impl ServerPort {
         syscalls::accept_session(self)
     }
 }
+
+#[repr(transparent)]
+#[derive(Debug)]
+pub struct Thread(pub Handle);
+
+impl Thread {
+    pub fn start(&self) -> Result<(), usize> {
+        syscalls::start_thread(self)
+    }
+}

@@ -93,17 +93,43 @@ pub fn exit_process() -> ! {
     }
 }
 
-// Not totally public because it's not safe to use directly
-pub(crate) fn close_handle(handle: u32) -> Result<(), usize> {
+/// Creates a thread in the current process.
+pub fn create_thread(ip: fn() -> !, _context: usize, sp: *const u8, _priority: u32, _processor_id: u32) -> Result<Thread, usize> {
     unsafe {
-        syscall(0x16, handle as _, 0, 0, 0, 0, 0)?;
+        let (out_handle, ..) = syscall(0x08, ip as usize, _context, sp as _, _priority as _, _processor_id as _, 0)?;
+        Ok(Thread(Handle::new(out_handle as _)))
+    }
+}
+
+/// Starts the thread for the provided handle.
+pub fn start_thread(thread_handle: &Thread) -> Result<(), usize> {
+    unsafe {
+        syscall(0x09, (thread_handle.0).0.get() as usize, 0, 0, 0, 0, 0)?;
         Ok(())
     }
 }
 
+/// Exits the current thread.
+#[allow(unused_must_use)]
+pub fn exit_thread() -> ! {
+    unsafe {
+        syscall(0x0A, 0, 0, 0, 0, 0, 0);
+    }
+    unreachable!("svcExitThread returned, WTF ???")
+}
+
+/// Sleeps for a specified amount of time, or yield thread.
 pub fn sleep_thread(nanos: usize) -> Result<(), usize> {
     unsafe {
         syscall(0x0B, nanos, 0, 0, 0, 0, 0)?;
+        Ok(())
+    }
+}
+
+// Not totally public because it's not safe to use directly
+pub(crate) fn close_handle(handle: u32) -> Result<(), usize> {
+    unsafe {
+        syscall(0x16, handle as _, 0, 0, 0, 0, 0)?;
         Ok(())
     }
 }
