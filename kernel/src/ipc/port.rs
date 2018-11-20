@@ -27,7 +27,8 @@ pub struct ClientPort(Arc<Port>);
 /// The server side of a Port.
 ///
 /// This is necessary for accepting connections on a port. Its only operation
-/// is accept(), which returns a ServerSession.
+/// is accept(), which returns a ServerSession. It implements Waitable, which
+/// waits until its associated ClientPort called connect().
 #[derive(Debug)]
 pub struct ServerPort(Arc<Port>);
 
