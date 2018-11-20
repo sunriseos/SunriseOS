@@ -6,7 +6,7 @@ use mem::{FatPtr, UserSpacePtr, UserSpacePtrMut};
 use paging::{PAGE_SIZE, MappingFlags};
 use paging::lands::{UserLand, KernelLand};
 use frame_allocator::PhysicalMemRegion;
-use process::{Handle, ThreadState, ProcessStruct};
+use process::{Handle, ThreadStruct, ThreadState, ProcessStruct};
 use event::{self, Waitable};
 use scheduler::{self, get_current_thread, get_current_process};
 use utils;
@@ -107,9 +107,51 @@ fn output_debug_string(s: UserSpacePtr<[u8]>) -> Result<(), UserspaceError> {
     Ok(())
 }
 
+/// Kills our own process.
 fn exit_process() -> Result<(), UserspaceError> {
     ProcessStruct::kill_process(get_current_process());
     Ok(())
+}
+
+/// Kills our own thread.
+fn exit_thread() -> Result<(), UserspaceError> {
+    ThreadStruct::kill(get_current_thread());
+    Ok(())
+}
+
+/// Creates a thread in the current process.
+/// The thread can then be started with the svcStartThread.
+///
+/// # Params
+///
+/// * `ip` the entry point of the thread,
+/// * `context` ignored,
+/// * `sp` the top of the stack,
+/// * `priority` ignored,
+/// * `processor_id` ignored,
+///
+/// # Returns
+///
+/// A thread_handle to the created thread.
+fn create_thread(ip: usize, _context: usize, sp: usize, _priority: u32, _processor_id: u32) -> Result<usize, UserspaceError> {
+    let cur_proc = get_current_process();
+    let thread = ThreadStruct::new( &cur_proc, VirtualAddress(ip), VirtualAddress(sp))?;
+    let handle = Handle::Thread(thread);
+    let mut handles_table = cur_proc.phandles.lock();
+    Ok(handles_table.add_handle(Arc::new(handle)) as usize)
+}
+
+/// Starts a previously created thread.
+///
+/// # Error
+///
+/// * `InvalidHandle` if the handle is not a thread_handle,
+/// * `ProcessAlreadyStarted` if the thread has already started,
+fn start_thread(thread_handle: u32) -> Result<(), UserspaceError> {
+    let cur_proc = get_current_process();
+    let handles_table = cur_proc.phandles.lock();
+    let thread = handles_table.get_handle(thread_handle)?.as_thread_handle()?;
+    Ok(ThreadStruct::start(thread)?)
 }
 
 fn connect_to_named_port(name: UserSpacePtr<[u8; 12]>) -> Result<usize, UserspaceError> {
@@ -250,6 +292,9 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
     match syscall_nr {
         // Horizon-inspired syscalls!
         0x07 => registers.apply0(exit_process()),
+        0x08 => registers.apply1(create_thread(x0, x1, x2, x3 as _, x4 as _)),
+        0x09 => registers.apply0(start_thread(x0 as _)),
+        0x0A => registers.apply0(exit_thread()),
         0x0B => registers.apply0(sleep_thread(x0)),
         0x16 => registers.apply0(close_handle(x0 as _)),
         0x18 => registers.apply1(wait_synchronization(UserSpacePtr::from_raw_parts(x0 as _, x1), x2)),

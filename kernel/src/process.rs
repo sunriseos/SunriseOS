@@ -120,6 +120,7 @@ pub enum Handle {
     ClientPort(ClientPort),
     ServerSession(ServerSession),
     ClientSession(ClientSession),
+    Thread(Weak<ThreadStruct>),
 }
 
 impl Handle {
@@ -142,6 +143,14 @@ impl Handle {
 
     pub fn as_client_session(&self) -> Result<ClientSession, UserspaceError> {
         if let &Handle::ClientSession(ref s) = self {
+            Ok((*s).clone())
+        } else {
+            Err(UserspaceError::InvalidHandle)
+        }
+    }
+
+    pub fn as_thread_handle(&self) -> Result<Weak<ThreadStruct>, UserspaceError> {
+        if let &Handle::Thread(ref s) = self {
             Ok((*s).clone())
         } else {
             Err(UserspaceError::InvalidHandle)
