@@ -3,15 +3,12 @@ use core::mem;
 use byteorder::{ByteOrder, LE};
 use arrayvec::{ArrayVec, Array};
 use utils::{self, align_up, CursorWrite, CursorRead};
-use types::{Handle, HandleRef};
+use types::{Handle, HandleRef, Pid};
 use bit_field::BitField;
 
 #[macro_use]
 pub mod macros;
 pub mod server;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Pid(pub u64);
 
 bitfield! {
     /// Represenens the header of an HIPC command.

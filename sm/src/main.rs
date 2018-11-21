@@ -12,7 +12,6 @@ extern crate lazy_static;
 
 use alloc::prelude::*;
 use libuser::syscalls;
-use libuser::ipc::Pid;
 use libuser::ipc::server::{WaitableManager, PortHandler, IWaitable};
 use libuser::types::*;
 use hashmap_core::map::{HashMap, Entry};

@@ -92,3 +92,6 @@ impl Thread {
         syscalls::start_thread(self)
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Pid(pub u64);
