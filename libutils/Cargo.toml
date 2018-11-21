@@ -1,5 +1,5 @@
 [package]
-name = "kfs-utils"
+name = "kfs-libutils"
 version = "0.1.0"
 authors = ["roblabla <unfiltered@roblab.la>", "orycterope <tvermeilh@gmail.com>"]
 

@@ -15,7 +15,7 @@ extern crate bitfield;
 extern crate bit_field;
 extern crate spin;
 #[macro_use]
-extern crate kfs_utils;
+extern crate kfs_libutils;
 
 pub mod syscalls;
 pub mod io;
@@ -23,7 +23,7 @@ pub mod types;
 pub mod ipc;
 pub mod sm;
 
-use kfs_utils as utils;
+use kfs_libutils as utils;
 use linked_list_allocator::LockedHeap;
 
 #[global_allocator]
