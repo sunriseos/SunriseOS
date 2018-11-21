@@ -4,7 +4,7 @@
 
 use alloc::vec::Vec;
 use mem::PhysicalAddress;
-use utils::{align_down, align_up, div_round_up, check_aligned};
+use utils::{align_down, align_up, div_ceil, check_aligned};
 use utils::Splittable;
 use core::ops::{Index, Range};
 use core::iter::StepBy;
@@ -47,7 +47,7 @@ impl PhysicalMemRegion {
     pub unsafe fn on_fixed_mmio(start_addr: PhysicalAddress, len: usize) -> Self {
         let region = PhysicalMemRegion {
             start_addr: align_down(start_addr.addr(), MEMORY_FRAME_SIZE),
-            frames: div_round_up(len, MEMORY_FRAME_SIZE),
+            frames: div_ceil(len, MEMORY_FRAME_SIZE),
             should_free_on_drop: false
         };
         assert!(FrameAllocator::check_is_reserved(&region));

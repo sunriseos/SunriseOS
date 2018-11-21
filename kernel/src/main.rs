@@ -55,7 +55,6 @@ mod gdt;
 mod interrupts;
 mod frame_allocator;
 
-mod utils;
 mod heap_allocator;
 mod io;
 mod devices;
@@ -65,6 +64,8 @@ mod scheduler;
 mod mem;
 mod ipc;
 mod elf_loader;
+mod utils;
+mod checks;
 
 // Make rust happy about rust_oom being no_mangle...
 pub use heap_allocator::rust_oom;

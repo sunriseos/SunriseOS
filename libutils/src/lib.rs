@@ -1,0 +1,153 @@
+//! A messy crate with various utilities shared between the user and kernel code.
+//! Should probably be further split into several useful libraries.
+
+#![no_std]
+
+extern crate byteorder;
+extern crate bit_field;
+extern crate num_traits;
+
+use num_traits::Num;
+use core::ops::{Not, BitAnd};
+use core::fmt::Write;
+
+mod cursor;
+pub use cursor::*;
+
+pub fn align_up<T: Num + Not<Output = T> + BitAnd<Output = T> + Copy>(addr: T, align: T) -> T
+{
+    align_down(addr + align - T::one(), align)
+}
+
+pub fn align_down<T: Num + Not<Output = T> + BitAnd<Output = T> + Copy>(addr: T, align: T) -> T
+{
+    addr & !(align - T::one())
+}
+
+/// align_up, but checks if addr overflows
+pub fn align_up_checked(addr: usize, align: usize) -> Option<usize> {
+    match addr & align - 1 {
+        0 => Some(addr),
+        _ => addr.checked_add(align - (addr % align))
+    }
+}
+
+
+pub fn div_ceil<T: Num + Copy>(a: T, b: T) -> T {
+    if a % b != T::zero() {
+        a / b + T::one()
+    } else {
+        a / b
+    }
+}
+
+#[macro_export]
+macro_rules! enum_with_val {
+    ($(#[$meta:meta])* $vis:vis struct $ident:ident($ty:ty) {
+        $($variant:ident = $num:expr),* $(,)*
+    }) => {
+        $(#[$meta])*
+        $vis struct $ident($ty);
+        impl $ident {
+            $($vis const $variant: $ident = $ident($num);)*
+        }
+
+        impl ::core::fmt::Debug for $ident {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                match self {
+                    $(&$ident::$variant => f.write_str(stringify!($ident)),)*
+                    &$ident(v) => write!(f, "UNKNOWN({})", v),
+                }
+            }
+        }
+    }
+}
+
+/// Displays memory as hexdump
+pub fn print_hexdump<T: Write>(f: &mut T, mem: &[u8]) {
+    // just print as if at its own address ... which it is
+    print_hexdump_as_if_at_addr(f, mem, mem.as_ptr() as usize)
+}
+
+/// Makes a hexdump of a slice, but display different addresses.
+/// Used for displaying memory areas which are not identity mapped in the current pages
+pub fn print_hexdump_as_if_at_addr<T: Write>(f: &mut T, mem: &[u8], display_addr: usize) {
+    for chunk in mem.chunks(16) {
+        let mut arr = [None; 16];
+        for (i, elem) in chunk.iter().enumerate() {
+            arr[i] = Some(*elem);
+        }
+
+        let offset_in_mem = chunk.as_ptr() as usize - mem.as_ptr() as usize;
+        let _ = write!(f, "{:#0x}:", display_addr + offset_in_mem);
+
+        for pair in arr.chunks(2) {
+            let _ = write!(f, " ");
+            for elem in pair {
+                if let &Some(i) = elem {
+                    let _ = write!(f, "{:02x}", i);
+                } else {
+                    let _ = write!(f, "  ");
+                }
+            }
+        }
+        let _ = write!(f, "  ");
+        for i in chunk {
+            if i.is_ascii_graphic() {
+                let _ = write!(f, "{}", *i as char);
+            } else {
+                let _ = write!(f, ".");
+            }
+        }
+        let _ = writeln!(f, "");
+    }
+}
+
+pub trait BitArrayExt<U: ::bit_field::BitField>: ::bit_field::BitArray<U> {
+    fn set_bits_area(&mut self, range: ::core::ops::Range<usize>, value: bool) {
+        for i in range {
+            self.set_bit(i, value);
+        }
+    }
+}
+
+impl<T: ?Sized, U: ::bit_field::BitField> BitArrayExt<U> for T where T: ::bit_field::BitArray<U> {}
+
+// We could have made a generic implementation of this two functions working for either 1 or 0,
+// but it will just be slower checking "what is our needle again ?" in every loop
+
+/// Returns the index of the first 0 in a bit array
+pub fn bit_array_first_zero(bitarray: &[u8]) -> Option<usize> {
+    for (index, &byte) in bitarray.iter().enumerate() {
+        if byte == 0xFF {
+            // not here
+            continue;
+        }
+        // We've got a zero in this byte
+        for offset in 0..8 {
+            if (byte & (1 << offset)) == 0 {
+                return Some(index * 8 + offset);
+            }
+        }
+    }
+    // not found
+    None
+}
+
+/// Returns the index of the first 1 in a bit array
+pub fn bit_array_first_one(bitarray: &[u8]) -> Option<usize> {
+    for (index, &byte) in bitarray.iter().enumerate() {
+        if byte == 0x00 {
+            // not here
+            continue;
+        }
+        // We've got a one in this byte
+        for offset in 0..8 {
+            if (byte & (1 << offset)) != 0 {
+                return Some(index * 8 + offset);
+            }
+        }
+    }
+    // not found
+    None
+}

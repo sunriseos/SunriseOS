@@ -10,7 +10,7 @@ use error::{KernelError, ArithmeticOperation};
 use failure::Backtrace;
 
 use paging::PAGE_SIZE;
-use utils::{align_down, align_up, div_round_up};
+use utils::{align_down, align_up, div_ceil};
 
 /// Rounds an address to its page address
 #[inline] pub fn round_to_page(addr: usize) -> usize { align_down(addr, PAGE_SIZE) }
@@ -19,7 +19,7 @@ use utils::{align_down, align_up, div_round_up};
 #[inline] pub fn round_to_page_upper(addr: usize) -> usize { align_up(addr, PAGE_SIZE) }
 
 /// Counts the number of pages `size` takes
-#[inline] pub fn count_pages(size: usize) -> usize { div_round_up(size, PAGE_SIZE) }
+#[inline] pub fn count_pages(size: usize) -> usize { div_ceil(size, PAGE_SIZE) }
 
 /// Represents a Physical address
 #[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]

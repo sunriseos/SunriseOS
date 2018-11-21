@@ -1,8 +1,6 @@
 use byteorder::ByteOrder;
 use core::mem::{self, size_of};
 use core::slice;
-use num_traits::Num;
-use core::ops::{Not, BitAnd};
 
 // Minimal cursor implementation
 pub struct CursorWrite<'a> {
@@ -119,23 +117,5 @@ impl<'a> CursorRead<'a> {
             }
             v
         }
-    }
-}
-
-pub fn align_up<T: Num + Not<Output = T> + BitAnd<Output = T> + Copy>(addr: T, align: T) -> T
-{
-    align_down(addr + align - T::one(), align)
-}
-
-pub fn align_down<T: Num + Not<Output = T> + BitAnd<Output = T> + Copy>(addr: T, align: T) -> T
-{
-    addr & !(align - T::one())
-}
-
-pub fn div_ceil<T: Num + Copy>(a: T, b: T) -> T {
-    if a % b != T::zero() {
-        a / b + T::one()
-    } else {
-        a / b
     }
 }

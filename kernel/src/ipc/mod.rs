@@ -91,7 +91,7 @@ use process::ProcessStruct;
 pub mod session;
 pub mod port;
 
-pub use self::session::{ClientSesion, ServerSession};
+pub use self::session::{ClientSession, ServerSession};
 pub use self::port::{ClientPort, ServerPort};
 
 lazy_static! {

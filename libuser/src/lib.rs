@@ -14,15 +14,16 @@ extern crate arrayvec;
 extern crate bitfield;
 extern crate bit_field;
 extern crate spin;
-extern crate num_traits;
+#[macro_use]
+extern crate kfs_utils;
 
 pub mod syscalls;
 pub mod io;
 pub mod types;
 pub mod ipc;
-pub mod utils;
 pub mod sm;
 
+use kfs_utils as utils;
 use linked_list_allocator::LockedHeap;
 
 #[global_allocator]

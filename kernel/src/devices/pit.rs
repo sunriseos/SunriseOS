@@ -56,7 +56,7 @@ use sync::SpinLock;
 use io::Io;
 use ::i386::pio::Pio;
 use event::{self, IRQEvent, Waitable};
-use utils::div_round_up;
+use utils::div_ceil;
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 
@@ -206,7 +206,7 @@ impl Waitable for WaitFor {
 
     fn is_signaled(&self) -> bool {
         // First, reset the spins if necessary
-        let mut new_spin = div_round_up(self.every_ms * CHAN_0_FREQUENCY, 1000);
+        let mut new_spin = div_ceil(self.every_ms * CHAN_0_FREQUENCY, 1000);
         if new_spin == 0 {
             new_spin = 1;
         }

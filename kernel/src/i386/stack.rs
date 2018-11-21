@@ -232,7 +232,7 @@ pub fn dump_stack<'a>(stack: &[u8], orig_address: usize, mut esp: usize, mut ebp
         if esp_off >= stack.len() { writeln!(Loggers, "Invalid esp"); break; }
         if ebp_off >  stack.len() { writeln!(Loggers, "Invalid ebp"); break; }
         let frame_slice = &stack[esp_off..ebp_off];
-        print_hexdump_as_if_at_addr(frame_slice, orig_address + esp_off);
+        print_hexdump_as_if_at_addr(&mut Loggers, frame_slice, orig_address + esp_off);
 
         // fetch saved ebp/eip at [ebp]
         if ebp_off + 8 > stack.len() { writeln!(Loggers, "Cannot access saved ebp/eip"); break; }
