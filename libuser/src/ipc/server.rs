@@ -54,7 +54,6 @@ impl WaitableManager {
 }
 
 pub trait Object {
-    fn new() -> Self;
     fn dispatch(&mut self, cmdid: u32, buf: &mut [u8]) -> Result<(), usize>;
 }
 
@@ -87,6 +86,16 @@ struct SessionWrapper<T: Object> {
     buf: Align16<[u8; 0x100]>
 }
 
+impl<T: Object> SessionWrapper<T> {
+    pub fn new(handle: ServerSession, object: T) -> SessionWrapper<T> {
+        SessionWrapper {
+            handle,
+            object,
+            buf: Align16([0; 0x100]),
+        }
+    }
+}
+
 impl<T: Object> IWaitable for SessionWrapper<T> {
     fn get_handle<'a>(&'a self) -> HandleRef<'a> {
         self.handle.0.as_ref()
@@ -112,12 +121,12 @@ impl<T: Object> IWaitable for SessionWrapper<T> {
     }
 }
 
-pub struct PortHandler<T: Object> {
+pub struct PortHandler<T: Object + Default> {
     handle: ServerPort,
     phantom: PhantomData<T>
 }
 
-impl<T: Object + 'static> IWaitable for PortHandler<T> {
+impl<T: Object + Default + 'static> IWaitable for PortHandler<T> {
     fn get_handle<'a>(&'a self) -> HandleRef<'a> {
         self.handle.0.as_ref()
     }
@@ -128,7 +137,7 @@ impl<T: Object + 'static> IWaitable for PortHandler<T> {
 
     fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<(), usize> {
         let session = Box::new(SessionWrapper {
-            object: T::new(),
+            object: T::default(),
             handle: self.handle.accept()?,
             buf: Align16([0; 0x100])
         });
@@ -147,7 +156,7 @@ fn encode_bytes(s: &str) -> u64 {
         | (*s.get(6).unwrap_or(&0) as u64) << 48 | (*s.get(7).unwrap_or(&0) as u64) << 56
 }
 
-impl<T: Object> PortHandler<T> {
+impl<T: Object + Default> PortHandler<T> {
     pub fn new(server_name: &str) -> Result<PortHandler<T>, usize> {
         use sm::IUserInterface;
         let port = IUserInterface::raw_new()?.register_service(encode_bytes(server_name), false, 0)?;

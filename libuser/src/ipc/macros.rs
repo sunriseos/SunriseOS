@@ -15,8 +15,6 @@
 /// }
 /// ```
 ///
-/// It redirects the Object::new() method to Self::new().
-///
 /// Allowed argument types:
 /// - Pid: the Pid of the remote process, from the Handle Descriptor
 /// - Handle<move>: A Handle in the Handle Descriptor's move handle list.
@@ -67,10 +65,6 @@ macro_rules! object {
         }
 
         impl $crate::ipc::server::Object for $tyname {
-            fn new() -> Self {
-                Self::new()
-            }
-
             fn dispatch(&mut self, cmdid: u32, buf: &mut [u8]) -> Result<(), usize> {
                 //object!(@enum $($fns)*)
                 object!(@dispatch self, cmdid=cmdid, buf=buf, fns=(), $($fns)*)

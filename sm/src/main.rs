@@ -17,6 +17,7 @@ use libuser::types::*;
 use hashmap_core::map::{HashMap, Entry};
 use spin::Mutex;
 
+#[derive(Debug, Default)]
 struct UserInterface;
 
 lazy_static! {

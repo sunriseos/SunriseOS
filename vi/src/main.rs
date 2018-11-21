@@ -27,30 +27,40 @@ impl Into<usize> for Error {
     }
 }
 
-struct ViInterface {
-    mapping: HashMap<usize, usize>,
-    curhandle: usize,
-}
-
-impl ViInterface {
-    fn new() -> Self {
-        ViInterface {
-            mapping: HashMap::new(),
-            curhandle: 0
-        }
-    }
-}
+#[derive(Default)]
+struct ViInterface;
 
 object! {
     impl ViInterface {
         // TODO: Take some transfer memory
         #[cmdid(0)]
-        fn create_buffer(&mut self,) -> Result<(), usize> {
-            Ok(())
+        fn create_buffer(&mut self, handle: Handle<copy>,) -> Result<(Handle,), usize> {
+            /*let sharedmem = SharedMemory::from_raw(handle);
+            addr = find_vaddr();
+            sharedmem.map(addr);
+            let buf = IBuffer {
+                mem: addr,
+            };
+            let (server, client) = syscalls::create_session(false, 0);
+            //session = SessionWrapper::new();*/
+            Err(0xFC01)
         }
     }
 }
+/*
+struct IBuffer {
+    mem: usize // TODO: MappedSharedMemory type.
+}
 
+object! {
+    impl IBuffer {
+        #[cmdid(0)]
+        fn draw(&mut self, ) -> Result<(), usize> {
+            
+        }
+    }
+}
+*/
 fn main() {
     let man = WaitableManager::new();
     let handler = Box::new(PortHandler::<ViInterface>::new("vi:\0").unwrap());
