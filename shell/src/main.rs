@@ -11,7 +11,7 @@ extern crate alloc;
 extern crate log;
 #[macro_use]
 extern crate lazy_static;
-extern crate libuser;
+extern crate kfs_libuser as libuser;
 extern crate byteorder;
 
 mod vbe;

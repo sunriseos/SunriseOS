@@ -1,7 +1,7 @@
 #![feature(alloc, used)]
 #![no_std]
 
-extern crate libuser;
+extern crate kfs_libuser as libuser;
 #[macro_use]
 extern crate alloc;
 extern crate font_rs;

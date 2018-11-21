@@ -2,7 +2,7 @@
 #![no_std]
 
 #[macro_use]
-extern crate libuser;
+extern crate kfs_libuser as libuser;
 #[macro_use]
 extern crate alloc;
 extern crate spin;
