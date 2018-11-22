@@ -4,6 +4,7 @@ use core::slice;
 use types::*;
 use alloc::prelude::*;
 use core::fmt::Write;
+use kfs_libkern::nr;
 
 global_asm!("
 .intel_syntax noprefix
@@ -85,7 +86,7 @@ unsafe fn syscall(nr: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize,
 
 pub fn exit_process() -> ! {
     unsafe {
-        match syscall(0x7, 0, 0, 0, 0, 0, 0) {
+        match syscall(nr::ExitProcess, 0, 0, 0, 0, 0, 0) {
             Ok(_) => (),
             Err(err) => { let _ = output_debug_string(&format!("Failed to exit: {}", err)); },
         }
@@ -96,7 +97,7 @@ pub fn exit_process() -> ! {
 /// Creates a thread in the current process.
 pub fn create_thread(ip: fn() -> !, _context: usize, sp: *const u8, _priority: u32, _processor_id: u32) -> Result<Thread, usize> {
     unsafe {
-        let (out_handle, ..) = syscall(0x08, ip as usize, _context, sp as _, _priority as _, _processor_id as _, 0)?;
+        let (out_handle, ..) = syscall(nr::CreateThread, ip as usize, _context, sp as _, _priority as _, _processor_id as _, 0)?;
         Ok(Thread(Handle::new(out_handle as _)))
     }
 }
@@ -104,7 +105,7 @@ pub fn create_thread(ip: fn() -> !, _context: usize, sp: *const u8, _priority: u
 /// Starts the thread for the provided handle.
 pub fn start_thread(thread_handle: &Thread) -> Result<(), usize> {
     unsafe {
-        syscall(0x09, (thread_handle.0).0.get() as usize, 0, 0, 0, 0, 0)?;
+        syscall(nr::StartThread, (thread_handle.0).0.get() as usize, 0, 0, 0, 0, 0)?;
         Ok(())
     }
 }
@@ -113,7 +114,7 @@ pub fn start_thread(thread_handle: &Thread) -> Result<(), usize> {
 #[allow(unused_must_use)]
 pub fn exit_thread() -> ! {
     unsafe {
-        syscall(0x0A, 0, 0, 0, 0, 0, 0);
+        syscall(nr::ExitThread, 0, 0, 0, 0, 0, 0);
     }
     unreachable!("svcExitThread returned, WTF ???")
 }
@@ -121,7 +122,7 @@ pub fn exit_thread() -> ! {
 /// Sleeps for a specified amount of time, or yield thread.
 pub fn sleep_thread(nanos: usize) -> Result<(), usize> {
     unsafe {
-        syscall(0x0B, nanos, 0, 0, 0, 0, 0)?;
+        syscall(nr::SleepThread, nanos, 0, 0, 0, 0, 0)?;
         Ok(())
     }
 }
@@ -129,126 +130,89 @@ pub fn sleep_thread(nanos: usize) -> Result<(), usize> {
 // Not totally public because it's not safe to use directly
 pub(crate) fn close_handle(handle: u32) -> Result<(), usize> {
     unsafe {
-        syscall(0x16, handle as _, 0, 0, 0, 0, 0)?;
+        syscall(nr::CloseHandle, handle as _, 0, 0, 0, 0, 0)?;
         Ok(())
     }
 }
 
 pub fn wait_synchronization(handles: &[HandleRef], timeout_ns: Option<usize>) -> Result<usize, usize> {
     unsafe {
-        let (handleidx, ..) = syscall(0x18, handles.as_ptr() as _, handles.len(), timeout_ns.unwrap_or(usize::max_value()), 0, 0, 0)?;
+        let (handleidx, ..) = syscall(nr::WaitSynchronization, handles.as_ptr() as _, handles.len(), timeout_ns.unwrap_or(usize::max_value()), 0, 0, 0)?;
         Ok(handleidx)
     }
 }
 
 pub fn connect_to_named_port(s: &str) -> Result<ClientSession, usize> {
     unsafe {
-        let (out_handle, ..) = syscall(0x1F, s.as_ptr() as _, 0, 0, 0, 0, 0)?;
+        let (out_handle, ..) = syscall(nr::ConnectToNamedPort, s.as_ptr() as _, 0, 0, 0, 0, 0)?;
         Ok(ClientSession(Handle::new(out_handle as _)))
     }
 }
 
-pub fn hexdump(mem: &[u8], display_addr: usize) {
-    let mut s = String::from("\n");
-    for chunk in mem.chunks(16) {
-        let mut arr = [None; 16];
-        for (i, elem) in chunk.iter().enumerate() {
-            arr[i] = Some(*elem);
-        }
-
-        let offset_in_mem = chunk.as_ptr() as usize - mem.as_ptr() as usize;
-        let _ = write!(s, "{:#010x}:", display_addr + offset_in_mem);
-
-        for pair in arr.chunks(2) {
-            let _ = write!(s, " ");
-            for elem in pair {
-                if let &Some(i) = elem {
-                    let _ = write!(s, "{:02x}", i);
-                } else {
-                    let _ = write!(s, "  ");
-                }
-            }
-        }
-        let _ = write!(s, "  ");
-        for i in chunk {
-            if i.is_ascii_graphic() {
-                let _ = write!(s, "{}", *i as char);
-            } else {
-                let _ = write!(s, ".");
-            }
-        }
-        let _ = writeln!(s, "");
-    }
-
-    output_debug_string(&s);
-}
-
 pub fn send_sync_request_with_user_buffer(buf: &mut [u8], handle: &ClientSession) -> Result<(), usize> {
     unsafe {
-        hexdump(&*buf, 0);
-        syscall(0x22, buf.as_ptr() as _, buf.len(), (handle.0).0.get() as _, 0, 0, 0)?;
+        syscall(nr::SendSyncRequestWithUserBuffer, buf.as_ptr() as _, buf.len(), (handle.0).0.get() as _, 0, 0, 0)?;
         Ok(())
     }
 }
 
 pub fn output_debug_string(s: &str) -> Result<(), usize> {
     unsafe {
-        syscall(0x27, s.as_ptr() as _, s.len(), 0, 0, 0, 0)?;
+        syscall(nr::OutputDebugString, s.as_ptr() as _, s.len(), 0, 0, 0, 0)?;
         Ok(())
     }
 }
 
 pub fn accept_session(port: &ServerPort) -> Result<ServerSession, usize> {
     unsafe {
-        let (out_handle, ..) = syscall(0x41, (port.0).0.get() as _, 0, 0, 0, 0, 0)?;
+        let (out_handle, ..) = syscall(nr::AcceptSession, (port.0).0.get() as _, 0, 0, 0, 0, 0)?;
         Ok(ServerSession(Handle::new(out_handle as _)))
+    }
+}
+
+pub fn reply_and_receive_with_user_buffer(buf: &mut [u8], handles: &[HandleRef], replytarget: Option<HandleRef>, timeout: Option<usize>) -> Result<usize, usize>{
+    unsafe {
+        let (idx, ..) = syscall(nr::ReplyAndReceiveWithUserBuffer, buf.as_ptr() as _, buf.len(), handles.as_ptr() as _, handles.len(), match replytarget {
+            Some(s) => s.inner.get() as _,
+            None => 0
+        }, timeout.unwrap_or(usize::max_value()))?;
+        Ok(idx)
     }
 }
 
 pub fn create_interrupt_event(irqnum: usize, flag: u32) -> Result<ReadableEvent, usize> {
     unsafe {
-        let (out_handle, ..) = syscall(0x53, irqnum, flag as usize, 0, 0, 0, 0)?;
+        let (out_handle, ..) = syscall(nr::CreateInterruptEvent, irqnum, flag as usize, 0, 0, 0, 0)?;
         Ok(ReadableEvent(Handle::new(out_handle as _)))
     }
 }
 
 pub fn create_port(max_sessions: u32, is_light: bool, name_ptr: &str) -> Result<(ClientPort, ServerPort), usize> {
     unsafe {
-        let (out_client_handle, out_server_handle, ..) = syscall(0x70, max_sessions as _, is_light as _, name_ptr.as_ptr() as _, 0, 0, 0)?;
+        let (out_client_handle, out_server_handle, ..) = syscall(nr::CreatePort, max_sessions as _, is_light as _, name_ptr.as_ptr() as _, 0, 0, 0)?;
         Ok((ClientPort(Handle::new(out_client_handle as _)), ServerPort(Handle::new(out_server_handle as _))))
     }
 }
 
 pub fn manage_named_port(name: &str, max_handles: u32) -> Result<ServerPort, usize> {
     unsafe {
-        let (out_handle, ..) = syscall(0x71, name.as_ptr() as _, max_handles as _, 0, 0, 0, 0)?;
+        let (out_handle, ..) = syscall(nr::ManageNamedPort, name.as_ptr() as _, max_handles as _, 0, 0, 0, 0)?;
         Ok(ServerPort(Handle::new(out_handle as _)))
     }
 }
 
 pub fn connect_to_port(port: &ClientPort) -> Result<ClientSession, usize> {
     unsafe {
-        let (out_handle, ..) = syscall(0x72, (port.0).0.get() as _, 0, 0, 0, 0, 0)?;
+        let (out_handle, ..) = syscall(nr::ConnectToPort, (port.0).0.get() as _, 0, 0, 0, 0, 0)?;
         Ok(ClientSession(Handle::new(out_handle as _)))
     }
 }
 
 pub fn map_framebuffer() -> Result<(&'static mut [u8], usize, usize, usize), usize> {
     unsafe {
-        let (addr, width, height, bpp) = syscall(0x80, 0, 0, 0, 0, 0, 0)?;
+        let (addr, width, height, bpp) = syscall(nr::MapFramebuffer, 0, 0, 0, 0, 0, 0)?;
         output_debug_string(&format!("{} {} {} {}", addr, width, height, bpp));
         let framebuffer_size = bpp * width * height / 8;
         Ok((slice::from_raw_parts_mut(addr as *mut u8, framebuffer_size), width, height, bpp))
-    }
-}
-
-pub fn reply_and_receive_with_user_buffer(buf: &mut [u8], handles: &[HandleRef], replytarget: Option<HandleRef>, timeout: Option<usize>) -> Result<usize, usize>{
-    unsafe {
-        let (idx, ..) = syscall(0x44, buf.as_ptr() as _, buf.len(), handles.as_ptr() as _, handles.len(), match replytarget {
-            Some(s) => s.inner.get() as _,
-            None => 0
-        }, timeout.unwrap_or(usize::max_value()))?;
-        hexdump(&*buf, 0);
-        Ok(idx)
     }
 }

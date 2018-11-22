@@ -16,6 +16,7 @@ extern crate bit_field;
 extern crate spin;
 #[macro_use]
 extern crate kfs_libutils;
+extern crate kfs_libkern;
 
 pub mod syscalls;
 pub mod io;

@@ -1,0 +1,13 @@
+[package]
+name = "kfs-libkern"
+version = "0.1.0"
+authors = ["roblabla <unfiltered@roblab.la>"]
+edition = "2018"
+
+[dependencies]
+kfs-libutils = { path = "../libutils" }
+bitflags = "1.0"
+
+[dependencies.lazy_static]
+features = ["spin_no_std"]
+version = "1.0.0"
