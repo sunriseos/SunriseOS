@@ -226,14 +226,8 @@ extern "x86-interrupt" fn alignment_check_handler(stack_frame: &mut ExceptionSta
 }
 
 extern "x86-interrupt" fn machine_check_handler(stack_frame: &mut ExceptionStackFrame) {
-    #[cfg(feature = "panic-on-exception")]
-    { panic_on_exception(format_args!("Machine-Check Exception"), stack_frame); }
-
-    let thread = get_current_thread();
-    warn!("Machine-Check Exception in {:#?}", thread);
-    ProcessStruct::kill_process(thread.process.clone());
-
-    check_thread_killed();
+    // unconditionally panic
+    panic_on_exception(format_args!("Machine-Check Exception"), stack_frame);
 }
 
 extern "x86-interrupt" fn simd_floating_point_handler(stack_frame: &mut ExceptionStackFrame) {
