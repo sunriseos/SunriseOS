@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["roblabla <unfiltered@roblab.la>", "orycterope <tvermeilh@gmail.com>"]
 
 [dependencies]
-libuser = { path = "../libuser" }
+kfs-libuser = { path = "../libuser" }
 font-rs = { git = "https://github.com/orycterope/font-rs" }
 spin = "0.4"
 hashmap_core = "0.1.9"

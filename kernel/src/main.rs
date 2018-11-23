@@ -38,6 +38,7 @@ extern crate byteorder;
 extern crate failure;
 #[macro_use]
 extern crate bitfield;
+extern crate kfs_libkern;
 
 use core::fmt::Write;
 use alloc::prelude::*;

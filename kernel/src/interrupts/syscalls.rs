@@ -20,6 +20,7 @@ use core::sync::atomic::Ordering;
 use sync::SpinLockIRQ;
 use ipc;
 use error::{KernelError, UserspaceError};
+use kfs_libkern::{nr, SYSCALL_NAMES};
 
 extern fn ignore_syscall(nr: usize) -> Result<(), UserspaceError> {
     // TODO: Trigger "unknown syscall" signal, for userspace signal handling.
@@ -298,28 +299,28 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
 
     match syscall_nr {
         // Horizon-inspired syscalls!
-        0x07 => registers.apply0(exit_process()),
-        0x08 => registers.apply1(create_thread(x0, x1, x2, x3 as _, x4 as _)),
-        0x09 => registers.apply0(start_thread(x0 as _)),
-        0x0A => registers.apply0(exit_thread()),
-        0x0B => registers.apply0(sleep_thread(x0)),
-        0x16 => registers.apply0(close_handle(x0 as _)),
-        0x18 => registers.apply1(wait_synchronization(UserSpacePtr::from_raw_parts(x0 as _, x1), x2)),
-        0x1F => registers.apply1(connect_to_named_port(UserSpacePtr(x0 as _))),
-        0x22 => registers.apply0(send_sync_request_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), x2 as _)),
-        0x27 => registers.apply0(output_debug_string(UserSpacePtr::from_raw_parts(x0 as _, x1))),
-        0x41 => registers.apply1(accept_session(x0 as _)),
+        nr::ExitProcess => registers.apply0(exit_process()),
+        nr::CreateThread => registers.apply1(create_thread(x0, x1, x2, x3 as _, x4 as _)),
+        nr::StartThread => registers.apply0(start_thread(x0 as _)),
+        nr::ExitThread => registers.apply0(exit_thread()),
+        nr::SleepThread => registers.apply0(sleep_thread(x0)),
+        nr::CloseHandle => registers.apply0(close_handle(x0 as _)),
+        nr::WaitSynchronization => registers.apply1(wait_synchronization(UserSpacePtr::from_raw_parts(x0 as _, x1), x2)),
+        nr::ConnectToNamedPort => registers.apply1(connect_to_named_port(UserSpacePtr(x0 as _))),
+        nr::SendSyncRequestWithUserBuffer => registers.apply0(send_sync_request_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), x2 as _)),
+        nr::OutputDebugString => registers.apply0(output_debug_string(UserSpacePtr::from_raw_parts(x0 as _, x1))),
+        nr::AcceptSession => registers.apply1(accept_session(x0 as _)),
         // TODO: We need one more register for the timeout. Sad panda.
         // The ARM64 spec allows x0-x7 as input arguments, so *ideally* we need 2
         // more registers.
-        0x44 => registers.apply1(reply_and_receive_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), UserSpacePtr::from_raw_parts(x2 as _, x3), x4 as _, x5)),
-        0x53 => registers.apply1(create_interrupt_event(x0, x1 as u32)),
-        0x70 => registers.apply2(create_port(x0 as _, x1 != 0, UserSpacePtr(x2 as _))),
-        0x71 => registers.apply1(manage_named_port(UserSpacePtr(x0 as _), x1 as _)),
-        0x72 => registers.apply1(connect_to_port(x0 as _)),
+        nr::ReplyAndReceiveWithUserBuffer => registers.apply1(reply_and_receive_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), UserSpacePtr::from_raw_parts(x2 as _, x3), x4 as _, x5)),
+        nr::CreateInterruptEvent => registers.apply1(create_interrupt_event(x0, x1 as u32)),
+        nr::CreatePort => registers.apply2(create_port(x0 as _, x1 != 0, UserSpacePtr(x2 as _))),
+        nr::ManageNamedPort => registers.apply1(manage_named_port(UserSpacePtr(x0 as _), x1 as _)),
+        nr::ConnectToPort => registers.apply1(connect_to_port(x0 as _)),
 
         // KFS extensions
-        0x80 => registers.apply4(map_framebuffer()),
+        nr::MapFramebuffer => registers.apply4(map_framebuffer()),
         // Unknown syscall. Should probably crash.
         u => registers.apply0(ignore_syscall(u))
     }
@@ -331,129 +332,3 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
     }
 }
 
-lazy_static! {
-static ref SYSCALL_NAMES: [&'static str; 0x82] = {
-    let mut arr = ["Unknown"; 0x82];
-
-    arr[0x01] = "SetHeapSize";
-    arr[0x02] = "SetMemoryPermission";
-    arr[0x03] = "SetMemoryAttribute";
-    arr[0x04] = "MapMemory";
-    arr[0x05] = "UnmapMemory";
-    arr[0x06] = "QueryMemory";
-    arr[0x07] = "ExitProcess";
-    arr[0x08] = "CreateThread";
-    arr[0x09] = "StartThread";
-    arr[0x0A] = "ExitThread";
-    arr[0x0B] = "SleepThread";
-    arr[0x0C] = "GetThreadPriority";
-    arr[0x0D] = "SetThreadPriority";
-    arr[0x0E] = "GetThreadCoreMask";
-    arr[0x0F] = "SetThreadCoreMask";
-    arr[0x10] = "GetCurrentProcessorNumber";
-    arr[0x11] = "SignalEvent";
-    arr[0x12] = "ClearEvent";
-    arr[0x13] = "MapSharedMemory";
-    arr[0x14] = "UnmapSharedMemory";
-    arr[0x15] = "CreateTransferMemory";
-    arr[0x16] = "CloseHandle";
-    arr[0x17] = "ResetSignal";
-    arr[0x18] = "WaitSynchronization";
-    arr[0x19] = "CancelSynchronization";
-    arr[0x1A] = "ArbitrateLock";
-    arr[0x1B] = "ArbitrateUnlock";
-    arr[0x1C] = "WaitProcessWideKeyAtomic";
-    arr[0x1D] = "SignalProcessWideKey";
-    arr[0x1E] = "GetSystemTick";
-    arr[0x1F] = "ConnectToNamedPort";
-    arr[0x20] = "SendSyncRequestLight";
-    arr[0x21] = "SendSyncRequest";
-    arr[0x22] = "SendSyncRequestWithUserBuffer";
-    arr[0x23] = "SendAsyncRequestWithUserBuffer";
-    arr[0x24] = "GetProcessId";
-    arr[0x25] = "GetThreadId";
-    arr[0x26] = "Break";
-    arr[0x27] = "OutputDebugString";
-    arr[0x28] = "ReturnFromException";
-    arr[0x29] = "GetInfo";
-    arr[0x2A] = "FlushEntireDataCache";
-    arr[0x2B] = "FlushDataCache";
-    arr[0x2C] = "MapPhysicalMemory";
-    arr[0x2D] = "UnmapPhysicalMemory";
-    arr[0x2E] = "GetFutureThreadInfo";
-    arr[0x2F] = "GetLastThreadInfo";
-    arr[0x30] = "GetResourceLimitLimitValue";
-    arr[0x31] = "GetResourceLimitCurrentValue";
-    arr[0x32] = "SetThreadActivity";
-    arr[0x33] = "GetThreadContext3";
-    arr[0x34] = "WaitForAddress";
-    arr[0x35] = "SignalToAddress";
-    arr[0x3C] = "DumpInfo";
-    arr[0x3D] = "DumpInfoNew";
-    arr[0x40] = "CreateSession";
-    arr[0x41] = "AcceptSession";
-    arr[0x42] = "ReplyAndReceiveLight";
-    arr[0x43] = "ReplyAndReceive";
-    arr[0x44] = "ReplyAndReceiveWithUserBuffer";
-    arr[0x45] = "CreateEvent";
-    arr[0x48] = "MapPhysicalMemoryUnsafe";
-    arr[0x49] = "UnmapPhysicalMemoryUnsafe";
-    arr[0x4A] = "SetUnsafeLimit";
-    arr[0x4B] = "CreateCodeMemory";
-    arr[0x4C] = "ControlCodeMemory";
-    arr[0x4D] = "SleepSystem";
-    arr[0x4E] = "ReadWriteRegister";
-    arr[0x4F] = "SetProcessActivity";
-    arr[0x50] = "CreateSharedMemory";
-    arr[0x51] = "MapTransferMemory";
-    arr[0x52] = "UnmapTransferMemory";
-    arr[0x53] = "CreateInterruptEvent";
-    arr[0x54] = "QueryPhysicalAddress";
-    arr[0x55] = "QueryIoMapping";
-    arr[0x56] = "CreateDeviceAddressSpace";
-    arr[0x57] = "AttachDeviceAddressSpace";
-    arr[0x58] = "DetachDeviceAddressSpace";
-    arr[0x59] = "MapDeviceAddressSpaceByForce";
-    arr[0x5A] = "MapDeviceAddressSpaceAligned";
-    arr[0x5B] = "MapDeviceAddressSpace";
-    arr[0x5C] = "UnmapDeviceAddressSpace";
-    arr[0x5D] = "InvalidateProcessDataCache";
-    arr[0x5E] = "StoreProcessDataCache";
-    arr[0x5F] = "FlushProcessDataCache";
-    arr[0x60] = "DebugActiveProcess";
-    arr[0x61] = "BreakDebugProcess";
-    arr[0x62] = "TerminateDebugProcess";
-    arr[0x63] = "GetDebugEvent";
-    arr[0x64] = "ContinueDebugEvent";
-    arr[0x65] = "GetProcessList";
-    arr[0x66] = "GetThreadList";
-    arr[0x67] = "GetDebugThreadContext";
-    arr[0x68] = "SetDebugThreadContext";
-    arr[0x69] = "QueryDebugProcessMemory";
-    arr[0x6A] = "ReadDebugProcessMemory";
-    arr[0x6B] = "WriteDebugProcessMemory";
-    arr[0x6C] = "SetHardwareBreakPoint";
-    arr[0x6D] = "GetDebugThreadParam";
-    arr[0x6F] = "GetSystemInfo";
-    arr[0x70] = "CreatePort";
-    arr[0x71] = "ManageNamedPort";
-    arr[0x72] = "ConnectToPort";
-    arr[0x73] = "SetProcessMemoryPermission";
-    arr[0x74] = "MapProcessMemory";
-    arr[0x75] = "UnmapProcessMemory";
-    arr[0x76] = "QueryProcessMemory";
-    arr[0x77] = "MapProcessCodeMemory";
-    arr[0x78] = "UnmapProcessCodeMemory";
-    arr[0x79] = "CreateProcess";
-    arr[0x7A] = "StartProcess";
-    arr[0x7B] = "TerminateProcess";
-    arr[0x7C] = "GetProcessInfo";
-    arr[0x7D] = "CreateResourceLimit";
-    arr[0x7E] = "SetResourceLimitLimitValue";
-    arr[0x7F] = "CallSecureMonitor";
-
-    arr[0x80] = "MapFramebuffer";
-    arr[0x81] = "StartProcessEntrypoint";
-    arr
-};
-}

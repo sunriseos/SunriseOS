@@ -1,7 +1,7 @@
 //! Generic useful functions
 
-extern crate kfs_utils;
-pub use self::kfs_utils::*;
+extern crate kfs_libutils;
+pub use self::kfs_libutils::*;
 pub use checks::*;
 use error::KernelError;
 
