@@ -50,6 +50,7 @@ mod logger;
 mod log_impl;
 pub use logger::*;
 pub use devices::rs232::SerialLogger;
+#[macro_use]
 mod i386;
 #[cfg(target_os = "none")]
 mod gdt;

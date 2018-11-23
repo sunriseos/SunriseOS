@@ -8,6 +8,8 @@ use core::fmt;
 use alloc::boxed::Box;
 use core::ops::{Deref, DerefMut};
 
+#[macro_use]
+pub mod registers;
 pub mod stack;
 pub mod pio;
 pub mod multiboot;
@@ -187,7 +189,6 @@ pub mod instructions {
         }
     }
 }
-pub mod registers;
 
 /// Represents a protection ring level.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
