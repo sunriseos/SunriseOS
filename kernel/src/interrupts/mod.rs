@@ -1,3 +1,11 @@
+//! Interrupt handling.
+//!
+// todo document irqs.
+//! All exceptions are considered unrecoverable errors, and kill the process that issued it.
+//!
+//! Feature `panic-on-exception` makes the kernel stop and panic when a thread generates
+//! an exception. This is useful for debugging.
+
 use i386::structures::idt::{ExceptionStackFrame, PageFaultErrorCode, Idt};
 use i386::instructions::interrupts::sti;
 use i386::pio::Pio;
@@ -10,8 +18,12 @@ use i386;
 use gdt;
 use xmas_elf::ElfFile;
 use xmas_elf::sections::SectionData;
+use scheduler::get_current_thread;
+use process::{ProcessStruct, ThreadState};
+use sync::SpinLockIRQ;
+use core::sync::atomic::Ordering;
 
-use core::fmt::Write;
+use core::fmt::{Write, Arguments};
 use core::slice;
 use sync::SpinLock;
 use sync;
@@ -22,152 +34,233 @@ use scheduler;
 mod irq;
 mod syscalls;
 
+/// Checks if our thread was killed, in which case unschedule ourselves.
+pub fn check_thread_killed() {
+    if scheduler::get_current_thread().state.load(Ordering::SeqCst) == ThreadState::Killed {
+        let lock = SpinLockIRQ::new(());
+        loop { // in case of spurious wakeups
+            scheduler::unschedule(&lock, lock.lock());
+        }
+    }
+}
+
+/// Panics with an informative message.
+fn panic_on_exception(exception_string: Arguments, exception_stack_frame: &ExceptionStackFrame) -> ! {
+    ::do_panic(
+        format_args!("{} in {:?}: {:?}",
+                exception_string,
+                scheduler::try_get_current_process().as_ref().map(|p| &p.name),
+                exception_stack_frame),
+        exception_stack_frame.stack_pointer.addr(),
+        exception_stack_frame.stack_pointer.addr(),
+        exception_stack_frame.instruction_pointer.addr(),
+    )
+}
+
 extern "x86-interrupt" fn divide_by_zero_handler(stack_frame: &mut ExceptionStackFrame) {
-    panic!("Attempted to divide by zero: {:?}", stack_frame);
+    #[cfg(feature = "panic-on-exception")]
+    { panic_on_exception(format_args!("Divide Error Exception"), stack_frame); }
+
+    let thread = get_current_thread();
+    warn!("Divide Error Exception in {:#?}", thread);
+    ProcessStruct::kill_process(thread.process.clone());
+
+    check_thread_killed();
 }
 
 extern "x86-interrupt" fn debug_handler(stack_frame: &mut ExceptionStackFrame) {
-    panic!("An unexpected debug interrupt occured: {:?}", stack_frame);
+    #[cfg(feature = "panic-on-exception")]
+    { panic_on_exception(format_args!("Debug Exception"), stack_frame); }
+
+    let thread = get_current_thread();
+    warn!("Debug Exception in {:#?}", thread);
+    ProcessStruct::kill_process(thread.process.clone());
+
+    check_thread_killed();
 }
 
 extern "x86-interrupt" fn non_maskable_interrupt_handler(stack_frame: &mut ExceptionStackFrame) {
+    // unconditionally panic
     panic!("An unexpected non-maskable (but still kinda maskable) interrupt occured: {:?}", stack_frame);
 }
 
-extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut ExceptionStackFrame) {}
+extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut ExceptionStackFrame) {
+    // don't do anything
+}
 
 extern "x86-interrupt" fn overflow_handler(stack_frame: &mut ExceptionStackFrame) {
-    panic!("Unexpected overflow interrupt occured: {:?}", stack_frame);
+    #[cfg(feature = "panic-on-exception")]
+    { panic_on_exception(format_args!("Overflow Exception"), stack_frame); }
+
+    let thread = get_current_thread();
+    warn!("Overflow Exception in {:#?}", thread);
+    ProcessStruct::kill_process(thread.process.clone());
+
+    check_thread_killed();
 }
 
 extern "x86-interrupt" fn bound_range_exceeded_handler(stack_frame: &mut ExceptionStackFrame) {
-    panic!("Unexpected bound-range exception occured: {:?}", stack_frame);
+    #[cfg(feature = "panic-on-exception")]
+    { panic_on_exception(format_args!("BOUND Range Exceeded Exception"), stack_frame); }
+
+    let thread = get_current_thread();
+    warn!("BOUND Range Exceeded Exception in {:#?}", thread);
+    ProcessStruct::kill_process(thread.process.clone());
+
+    check_thread_killed();
 }
 
 extern "x86-interrupt" fn invalid_opcode_handler(stack_frame: &mut ExceptionStackFrame) {
-    panic!("An invalid opcode was executed: {:?}", stack_frame);
+    #[cfg(feature = "panic-on-exception")]
+    { panic_on_exception(format_args!("Invalid opcode Exception"), stack_frame); }
+
+    let thread = get_current_thread();
+    warn!("Invalid opcode Exception in {:#?}", thread);
+    ProcessStruct::kill_process(thread.process.clone());
+
+    check_thread_killed();
 }
 
 extern "x86-interrupt" fn device_not_available_handler(stack_frame: &mut ExceptionStackFrame) {
-    panic!("A device not available exception occured: {:?}");
+    #[cfg(feature = "panic-on-exception")]
+    { panic_on_exception(format_args!("Device Not Available Exception"), stack_frame); }
+
+    let thread = get_current_thread();
+    warn!("Device Not Available Exception in {:#?}", thread);
+    ProcessStruct::kill_process(thread.process.clone());
+
+    check_thread_killed();
 }
 
 fn double_fault_handler() {
-    // Disable interrupts forever!
-    unsafe {
-        sync::permanently_disable_interrupts();
-    }
-
-    // Acquire kernel elf.
-    let info = i386::multiboot::get_boot_information();
-    let mut module = ::elf_loader::map_grub_module(info.module_tags().nth(0).unwrap());
-    let elf = module.elf.as_mut().expect("double_fault_handler: failed to parse module kernel elf");
-
     // Get the Main TSS so I can recover some information about what happened.
     unsafe {
         // Safety: gdt::MAIN_TASK should always point to a valid TssStruct.
         if let Some(tss_main) = (gdt::MAIN_TASK.addr() as *const TssStruct).as_ref() {
-            // First print the registers
-            info!("Double fault!
+            ::do_panic(format_args!("Double fault!
                     EIP={:#010x} CR3={:#010x}
                     EAX={:#010x} EBX={:#010x} ECX={:#010x} EDX={:#010x}
                     ESI={:#010x} EDI={:#010X} ESP={:#010x} EBP={:#010x}",
-                   tss_main.eip, tss_main.cr3,
-                   tss_main.eax, tss_main.ebx, tss_main.ecx, tss_main.edx,
-                   tss_main.esi, tss_main.edi, tss_main.esp, tss_main.ebp);
-
-            // Then print the stack
-            let st = match elf.find_section_by_name(".symtab").expect("Missing .symtab").get_data(&elf).expect("Missing .symtab") {
-                SectionData::SymbolTable32(st) => st,
-                _ => panic!(".symtab is not a SymbolTable32"),
-            };
-
-            stack::KernelStack::dump_stack(tss_main.esp as usize, tss_main.ebp as usize, tss_main.eip as usize, Some((&elf, st)));
+                    tss_main.eip, tss_main.cr3,
+                    tss_main.eax, tss_main.ebx, tss_main.ecx, tss_main.edx,
+                    tss_main.esi, tss_main.edi, tss_main.esp, tss_main.ebp),
+                tss_main.esp as usize, tss_main.ebp as usize, tss_main.eip as usize
+            );
+        } else {
+            ::do_panic(format_args!("Doudble fault! Cannot get main TSS, good luck"), 0, 0, 0)
         }
-
-        // And finally, panic
-        panic!("Double fault!")
     }
 }
 
 extern "x86-interrupt" fn invalid_tss_handler(stack_frame: &mut ExceptionStackFrame, errcode: u32) {
-    panic!("Invalid TSS! {:?} {}", stack_frame, errcode);
+    // inconditionally panic
+    panic_on_exception(format_args!("Invalid TSS Exception: error code {:?}", errcode), stack_frame);
 }
 
 extern "x86-interrupt" fn segment_not_present_handler(stack_frame: &mut ExceptionStackFrame, errcode: u32) {
-    panic!("Segment Not Present: {:?} {}", stack_frame, errcode);
+    #[cfg(feature = "panic-on-exception")]
+    { panic_on_exception(format_args!("Segment Not Present: error code: {:?}", errcode), stack_frame); }
+
+    let thread = get_current_thread();
+    warn!("Segment Not Present in {:#?}", thread);
+    ProcessStruct::kill_process(thread.process.clone());
+
+    check_thread_killed();
 }
 
 extern "x86-interrupt" fn stack_segment_fault_handler(stack_frame: &mut ExceptionStackFrame, errcode: u32) {
-    panic!("Stack Segment Fault: {:?} {}", stack_frame, errcode);
+    #[cfg(feature = "panic-on-exception")]
+    { panic_on_exception(format_args!("Stack Fault Exception: error code: {:?}", errcode), stack_frame); }
+
+    let thread = get_current_thread();
+    warn!("Exception : Stack Fault Exception in {:#?}", thread);
+    ProcessStruct::kill_process(thread.process.clone());
+
+    check_thread_killed();
 }
 
 extern "x86-interrupt" fn general_protection_fault_handler(stack_frame: &mut ExceptionStackFrame, errcode: u32) {
-    // Disable interrupts forever!
-    unsafe {
-        sync::permanently_disable_interrupts();
-    }
+    #[cfg(feature = "panic-on-exception")]
+    { panic_on_exception(format_args!("General Protection Fault Exception: error code: {:?}", errcode), stack_frame); }
 
-    // Parse the ELF.
-    let info = i386::multiboot::get_boot_information();
-    let mut module = ::elf_loader::map_grub_module(info.module_tags().nth(0).unwrap());
-    let elf = module.elf.as_mut().expect("double_fault_handler: failed to parse module kernel elf");
+    let thread = get_current_thread();
+    warn!("Exception : General Protection Fault Exception in {:#?}", thread);
+    ProcessStruct::kill_process(thread.process.clone());
 
-    // Then print the stack
-    let st = match elf.find_section_by_name(".symtab").expect("Missing .symtab").get_data(&elf).expect("Missing .symtab") {
-        SectionData::SymbolTable32(st) => st,
-        _ => panic!(".symtab is not a SymbolTable32"),
-    };
-
-    stack::KernelStack::dump_stack(stack_frame.stack_pointer.addr(), stack_frame.stack_pointer.addr(), stack_frame.instruction_pointer.addr(), Some((&elf, st)));
-
-    panic!("General Protection Fault in {:?}: {:?} {}", scheduler::try_get_current_process().as_ref().map(|p| &p.name), stack_frame, errcode);
+    check_thread_killed();
 }
 
-extern "x86-interrupt" fn page_fault_handler(stack_frame: &mut ExceptionStackFrame, page: PageFaultErrorCode) {
-    // Disable interrupts forever!
-    unsafe {
-        sync::permanently_disable_interrupts();
-    }
-
-    /*
-    let info = i386::multiboot::get_boot_information();
-    let mut module = ::elf_loader::map_grub_module(info.module_tags().nth(0).unwrap());
-    let elf = module.elf.as_mut().expect("double_fault_handler: failed to parse module kernel elf");
-
-    let st = match elf.find_section_by_name(".symtab").expect("Missing .symtab").get_data(&elf).expect("Missing .symtab") {
-        SectionData::SymbolTable32(st) => st,
-        _ => panic!(".symtab is not a SymbolTable32"),
-};*/
-
-    stack::KernelStack::dump_stack(stack_frame.stack_pointer.addr(), stack_frame.stack_pointer.addr(), stack_frame.instruction_pointer.addr(), None);
-
+extern "x86-interrupt" fn page_fault_handler(stack_frame: &mut ExceptionStackFrame, errcode: PageFaultErrorCode) {
     let cause_address = ::paging::read_cr2();
-    panic!("Page fault in {:?}: {:?} {:?} {:?}", scheduler::try_get_current_process().as_ref().map(|v| &v.name), cause_address, stack_frame, page);
+
+    #[cfg(feature = "panic-on-exception")]
+    { panic_on_exception(format_args!("Page Fault accessing {:?}, error: {:?}", cause_address, errcode), stack_frame); }
+
+    let thread = get_current_thread();
+    warn!("Exception : Page Fault accessing {:?}, error: {:?} in {:#?}", cause_address, errcode, thread);
+    ProcessStruct::kill_process(thread.process.clone());
+
+    check_thread_killed();
 }
 
 extern "x86-interrupt" fn x87_floating_point_handler(stack_frame: &mut ExceptionStackFrame) {
-    panic!("x87 floating point fault: {:?}", stack_frame);
+    #[cfg(feature = "panic-on-exception")]
+    { panic_on_exception(format_args!("x87 FPU floating-point error"), stack_frame); }
+
+    let thread = get_current_thread();
+    warn!("x87 FPU floating-point error in {:#?}", thread);
+    ProcessStruct::kill_process(thread.process.clone());
+
+    check_thread_killed();
 }
 
 extern "x86-interrupt" fn alignment_check_handler(stack_frame: &mut ExceptionStackFrame, errcode: u32) {
-    panic!("Alignment check exception: {:?} {}", stack_frame, errcode);
+    #[cfg(feature = "panic-on-exception")]
+    { panic_on_exception(format_args!("Alignment Check Exception: error code: {:?}", errcode), stack_frame); }
+
+    let thread = get_current_thread();
+    warn!("Alignment Check Exception in {:#?}", thread);
+    ProcessStruct::kill_process(thread.process.clone());
+
+    check_thread_killed();
 }
 
 extern "x86-interrupt" fn machine_check_handler(stack_frame: &mut ExceptionStackFrame) {
-    panic!("Unrecoverable machine check exception: {:?}", stack_frame);
+    #[cfg(feature = "panic-on-exception")]
+    { panic_on_exception(format_args!("Machine-Check Exception"), stack_frame); }
+
+    let thread = get_current_thread();
+    warn!("Machine-Check Exception in {:#?}", thread);
+    ProcessStruct::kill_process(thread.process.clone());
+
+    check_thread_killed();
 }
 
 extern "x86-interrupt" fn simd_floating_point_handler(stack_frame: &mut ExceptionStackFrame) {
-    panic!("SIMD floating point exception: {:?}", stack_frame);
+    #[cfg(feature = "panic-on-exception")]
+    { panic_on_exception(format_args!("SIMD Floating-Point Exception"), stack_frame); }
+
+    let thread = get_current_thread();
+    warn!("SIMD Floating-Point Exception in {:#?}", thread);
+    ProcessStruct::kill_process(thread.process.clone());
+
+    check_thread_killed();
 }
 
 extern "x86-interrupt" fn virtualization_handler(stack_frame: &mut ExceptionStackFrame) {
-    panic!("Unexpected virtualization exception: {:?}", stack_frame);
+    #[cfg(feature = "panic-on-exception")]
+    { panic_on_exception(format_args!("Virtualization Exception"), stack_frame); }
+
+    let thread = get_current_thread();
+    warn!("Virtualization Exception in {:#?}", thread);
+    ProcessStruct::kill_process(thread.process.clone());
+
+    check_thread_killed();
 }
 
 extern "x86-interrupt" fn security_exception_handler(stack_frame: &mut ExceptionStackFrame, errcode: u32) {
-    panic!("Unexpected security exception: {:?} {}", stack_frame, errcode);
+    // unconditionally panic
+    panic_on_exception(format_args!("Unexpected Security Exception: error code {:?}", errcode), stack_frame);
 }
 
 /// This is the function called on int 0x80.

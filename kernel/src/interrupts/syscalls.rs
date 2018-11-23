@@ -21,6 +21,7 @@ use sync::SpinLockIRQ;
 use ipc;
 use error::{KernelError, UserspaceError};
 use kfs_libkern::{nr, SYSCALL_NAMES};
+use super::check_thread_killed;
 
 extern fn ignore_syscall(nr: usize) -> Result<(), UserspaceError> {
     // TODO: Trigger "unknown syscall" signal, for userspace signal handling.
@@ -325,10 +326,7 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
         u => registers.apply0(ignore_syscall(u))
     }
 
-    if scheduler::get_current_thread().state.load(Ordering::SeqCst) == ThreadState::Killed {
-        let lock = SpinLockIRQ::new(());
-        scheduler::unschedule(&lock, lock.lock());
-        //unreachable!();
-    }
+    // Effectively kill the thread at syscall boundary
+    check_thread_killed();
 }
 
