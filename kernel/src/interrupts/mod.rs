@@ -81,7 +81,7 @@ extern "x86-interrupt" fn debug_handler(stack_frame: &mut ExceptionStackFrame) {
 
 extern "x86-interrupt" fn non_maskable_interrupt_handler(stack_frame: &mut ExceptionStackFrame) {
     // unconditionally panic
-    panic!("An unexpected non-maskable (but still kinda maskable) interrupt occured: {:?}", stack_frame);
+    panic_on_exception(format_args!("An unexpected non-maskable (but still kinda maskable) interrupt occured"), stack_frame);
 }
 
 extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut ExceptionStackFrame) {
