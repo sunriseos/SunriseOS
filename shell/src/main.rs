@@ -1,4 +1,4 @@
-#![feature(alloc)]
+#![feature(alloc, asm)]
 #![no_std]
 
 extern crate gif;
@@ -46,6 +46,8 @@ pub fn main() {
             "gif3" => show_gif(&mut *FRAMEBUFFER.lock(), &LOUIS3[..]),
             "gif4" => show_gif(&mut *FRAMEBUFFER.lock(), &LOUIS4[..]),
             "test_threads" => test_threads(),
+            "test_divide_by_zero" => test_divide_by_zero(),
+            "test_page_fault" => test_page_fault(),
             "connect" => {
                 let handle = sm::IUserInterface::raw_new().unwrap().get_service(LE::read_u64(b"vi:\0\0\0\0\0"));
                 writeln!(&mut VBELogger, "Got handle {:?}", handle);
@@ -58,6 +60,8 @@ pub fn main() {
                 writeln!(&mut VBELogger, "gif3: Print the KFS-3 meme");
                 writeln!(&mut VBELogger, "gif4: Print the KFS-4 meme");
                 writeln!(&mut VBELogger, "test_threads: Run threads that concurrently print As and Bs");
+                writeln!(&mut VBELogger, "test_divide_by_zero: Check exception handling by throwing a divide by zero");
+                writeln!(&mut VBELogger, "test_page_fault: Check exception handling by throwing a page_fault");
             }
             _ => { writeln!(&mut VBELogger, "Unknown command"); }
         }
@@ -131,6 +135,21 @@ fn test_threads() {
 
     // thread is running b, run a meanwhile
     thread_a();
+}
+
+fn test_divide_by_zero() {
+    // don't panic, we want to actually divide by zero
+    unsafe {
+        asm!("
+        mov eax, 42
+        mov ecx, 0
+        div ecx" :::: "volatile", "intel")
+    }
+}
+
+fn test_page_fault() {
+    let ptr = 0x00000000 as *const u8;
+    let res = unsafe { *ptr };
 }
 
 static LOUIS3: &'static [u8; 1318100] = include_bytes!("../img/meme3.gif");

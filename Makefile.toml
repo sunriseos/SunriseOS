@@ -34,7 +34,7 @@ workspace = false
 description = "Compiles the kernel for debug"
 dependencies = ["kernel-linker"]
 command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-kernel"]
+args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-kernel", "-Z", "package-features", "--features=panic-on-exception"]
 
 [tasks.kernel-release]
 workspace = false

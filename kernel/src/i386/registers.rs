@@ -1,3 +1,26 @@
+#[inline(never)]
+pub extern fn eip() -> usize {
+    let eip;
+    unsafe { asm!("mov $0, [ebp + 4]" : "=r"(eip) ::: "intel"); }
+    eip
+}
+
+macro_rules! ebp {
+    () => {{
+        let ebp;
+        unsafe { asm!("mov $0, ebp" : "=r"(ebp) ::: "intel"); }
+        ebp
+    }}
+}
+
+macro_rules! esp {
+    () => {{
+        let esp;
+        unsafe { asm!("mov $0, esp" : "=r"(esp) ::: "intel"); }
+        esp
+    }}
+}
+
 pub mod eflags {
     //! Processor state stored in the EFLAGS register.
 
