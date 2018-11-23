@@ -154,6 +154,18 @@ impl KernelStack {
 
         let stack_bottom = (Self::get_stack_bottom(esp) + PAGE_SIZE) as *const u8;
 
+        // todo: a user stack is nothing like a kernel stack, and especially not STACK_SIZE
+        //       if esp is in kernel
+        //          -> get stack bottom from esp,
+        //          -> for every mapped page in 0..STACK_SIZE, accumulate in a slice
+        //          -> dump_stack that slice
+        //       if esp in in user
+        //          -> get the mapping it falls into
+        //          -> make it a slice and dump_stack it.
+        //
+        // add something in the description of this function about it possibly printing kernel memory
+        // from a malicious userspace esp/ebp.
+
         // Check we have STACK_SIZE pages mapped as readable (at least) from stack_bottom.
         for i in 0..STACK_SIZE {
             let addr = VirtualAddress(stack_bottom as usize + i * PAGE_SIZE);
@@ -207,6 +219,7 @@ pub fn dump_stack<'a>(stack: &[u8], orig_address: usize, mut esp: usize, mut ebp
     writeln!(Loggers, "# Stack start: {:#010x}, Stack end: {:#010x}", orig_address, orig_address + stack.len());
 
     // Check if ESP is in page guard.
+    // todo just check it's outside of our slice instead, otherwise we can't work on userspace stacks
     if esp < (KernelStack::get_stack_bottom(esp) + PAGE_SIZE) {
         writeln!(Loggers, "# Stack overflow detected! Using EBP as esp.");
         esp = ebp;
@@ -227,6 +240,7 @@ pub fn dump_stack<'a>(stack: &[u8], orig_address: usize, mut esp: usize, mut ebp
             }
         }
         writeln!(Loggers, "> Frame #{} - {}, eip: {:#010x} - esp: {:#010x} - ebp: {:#010x}", frame_nb, rustc_demangle(funcname), eip, esp, ebp);
+        // todo: subtracts underflows ! This made me panic in the panic handler D:
         let esp_off = esp - orig_address;
         let ebp_off = ebp - orig_address;
         if esp_off >= stack.len() { writeln!(Loggers, "Invalid esp"); break; }

@@ -200,16 +200,75 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 #[cfg(target_os = "none")]
 #[lang = "eh_personality"] #[no_mangle] pub extern fn eh_personality() {}
 
-#[cfg(target_os = "none")]
-#[panic_handler] #[no_mangle]
-pub extern fn panic_fmt(p: &::core::panic::PanicInfo) -> ! {
+/// The function executed on a panic! Can also be called at any moment.
+/// Will print some useful debugging information, and never return.
+fn do_panic(msg: core::fmt::Arguments, esp: usize, ebp: usize, eip: usize) -> ! {
 
+    // Disable interrupts forever!
+    unsafe { sync::permanently_disable_interrupts(); }
+    // Don't deadlock in the logger
     unsafe { Loggers.force_unlock(); }
+
+    //todo: force unlock the KernelMemory lock
+    //      and also the process memory lock for userspace stack dumping (only if panic-on-excetpion ?).
+
     let _ = writeln!(Loggers, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\
                                ! Panic! at the disco\n\
                                ! {}\n\
                                !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
-                     p);
+                     msg);
+
+    // Parse the ELF to get the symbol table.
+    // We must not fail, so this means a lot of Option checking :/
+    use xmas_elf::symbol_table::Entry32;
+    use xmas_elf::sections::SectionData;
+    use xmas_elf::ElfFile;
+    use elf_loader::MappedGrubModule;
+
+    let mapped_kernel_elf = i386::multiboot::try_get_boot_information()
+        .and_then(|info| info.module_tags().nth(0))
+        .and_then(|module| Some(elf_loader::map_grub_module(module)));
+
+    /// Gets the symbol table of a mapped module.
+    fn get_symbols<'a>(mapped_kernel_elf: &'a Option<MappedGrubModule>) -> Option<(&'a ElfFile<'a>, &'a[Entry32])> {
+        let module = mapped_kernel_elf.as_ref()?;
+        let elf = module.elf.as_ref().ok()?;
+        let data = elf.find_section_by_name(".symtab")?
+            .get_data(elf).ok()?;
+        let st = match data {
+            SectionData::SymbolTable32(st) => st,
+            _ => return None
+        };
+        Some((elf, st))
+    }
+
+    let elf_and_st = get_symbols(&mapped_kernel_elf);
+
+    if elf_and_st.is_none() {
+        writeln!(Loggers, "Panic handler: Failed to get kernel elf symbols");
+    }
+
+//    let mut module = ::elf_loader::map_grub_module(info.module_tags().nth(0).unwrap());
+//    let elf = module.elf.as_mut().expect("double_fault_handler: failed to parse module kernel elf");
+
+   // let st = match elf.find_section_by_name(".symtab").expect("Missing .symtab").get_data(&elf).expect("Missing .symtab") {
+   //     SectionData::SymbolTable32(st) => st,
+   //     _ => panic!(".symtab is not a SymbolTable32"),
+   // };
+
+    // Then print the stack
+    stack::KernelStack::dump_stack(esp, ebp, eip, elf_and_st);
+
+    let _ = writeln!(Loggers, "Thread : {:#x?}", scheduler::try_get_current_thread());
+
+    let _ = writeln!(Loggers, "!!!!!!!!!!!!!!!END PANIC!!!!!!!!!!!!!!\n");
 
     loop { unsafe { asm!("HLT"); } }
+}
+
+#[cfg(target_os = "none")]
+#[panic_handler] #[no_mangle]
+pub extern fn panic_fmt(p: &::core::panic::PanicInfo) -> ! {
+    // call do_panic() with our current esp, ebp, and eip.
+    do_panic(format_args!("{}", p), esp!(), ebp!(), i386::registers::eip());
 }
