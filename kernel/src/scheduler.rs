@@ -173,8 +173,7 @@ pub unsafe fn create_first_process() {
     let thread_0 = ThreadStruct::create_first_thread();
     unsafe {
         // provided we only run this function once, it hasn't been initialized yet
-        // todo do we even need to clone the arc here ?
-        set_current_thread(Arc::clone(&thread_0), || ());
+        set_current_thread(thread_0, || ());
     }
 }
 
