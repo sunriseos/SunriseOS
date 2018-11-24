@@ -178,25 +178,26 @@ pub unsafe fn create_first_process() {
 ///
 /// # Queue politics
 ///
-///          checking if process is locked
-///          and also not the current one
-///          ===============================>
-///     j--------j j--------j j--------j j--------j
-///     | current| |    X   | |        | |        |
-///     j--------j j--------j j--------j j--------j    A
-///        | A       locked,       |                   |
-///        | |       skipped       |                   |
-///        | +---------------------+                   |
-///        +-------------------------------------------+
+///                           checking if thread is unlocked
+///                           and suitable for running
+///   CURRENT_THREAD          ===============================>
+///     j--------j          j--------j j--------j j--------j
+///     | current|          |    X   | |        | |        |
+///     j--------j          j--------j j--------j j--------j    A
+///        | A               locked,       |                    |
+///        | |               skipped       |                    |
+///        | +-----------------------------+                    |
+///        +----------------------------------------------------+
 ///
 /// 1. Tries to lock the next first process. If it fails to acquire its lock,
 ///    it is ignored for now, and we move on to the next one.
-/// 2. When a candidate is found, it is moved to the start of the queue, and
-///    current process is pushed back at the end.
-/// 3. Rotates the current process at the end of the queue.
-/// 4. Performs the process switch
+/// 2. When a candidate is found, it is removed from the queue, and
+///    set as CURRENT_THREAD.
+/// 3. Pushes the previous current thread at the end of the queue.
+/// 4. Disables interrupts
+/// 5. Performs the process switch
 ///  * as new process *
-/// 5. Drops the lock to the schedule queue, re-enabling interrupts
+/// 6. Re-enables interrupts
 pub fn schedule() {
     struct NoopLock;
     impl Lock<'static, ()> for NoopLock {
