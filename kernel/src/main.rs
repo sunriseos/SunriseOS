@@ -248,16 +248,8 @@ fn do_panic(msg: core::fmt::Arguments, esp: usize, ebp: usize, eip: usize) -> ! 
         writeln!(Loggers, "Panic handler: Failed to get kernel elf symbols");
     }
 
-//    let mut module = ::elf_loader::map_grub_module(info.module_tags().nth(0).unwrap());
-//    let elf = module.elf.as_mut().expect("double_fault_handler: failed to parse module kernel elf");
-
-   // let st = match elf.find_section_by_name(".symtab").expect("Missing .symtab").get_data(&elf).expect("Missing .symtab") {
-   //     SectionData::SymbolTable32(st) => st,
-   //     _ => panic!(".symtab is not a SymbolTable32"),
-   // };
-
     // Then print the stack
-    stack::KernelStack::dump_stack(esp, ebp, eip, elf_and_st);
+    ::stack::dump_stack(esp, ebp, eip, elf_and_st);
 
     let _ = writeln!(Loggers, "Thread : {:#x?}", scheduler::try_get_current_thread());
 

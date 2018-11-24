@@ -138,55 +138,7 @@ impl KernelStack {
             : "=r"(ebp), "=r"(esp), "=r"(eip) ::: "volatile", "intel" );
         }
 
-        Self::dump_stack(esp, ebp, eip, None);
-    }
-
-    /// Dumps the stack from the given information on all the Loggers, displaying it
-    /// in a frame-by-frame format.
-    ///
-    /// This function is "relatively" safe. It checks whether the stack is properly mapped
-    /// before attempting to access it. It does create a &[u8] from a technically "shared"
-    /// resource. However, the compiler shouldn't know about this, so UB shouldn't be met.
-    pub fn dump_stack<'a>(mut esp: usize, ebp: usize, eip: usize, elf: Option<(&ElfFile<'a>, &'a [Entry32])>) {
-        let mut kmemory = get_kernel_memory();
-        let process = scheduler::get_current_process();
-        let pmemory = process.pmemory.lock();
-
-        let stack_bottom = (Self::get_stack_bottom(esp) + PAGE_SIZE) as *const u8;
-
-        // todo: a user stack is nothing like a kernel stack, and especially not STACK_SIZE
-        //       if esp is in kernel
-        //          -> get stack bottom from esp,
-        //          -> for every mapped page in 0..STACK_SIZE, accumulate in a slice
-        //          -> dump_stack that slice
-        //       if esp in in user
-        //          -> get the mapping it falls into
-        //          -> make it a slice and dump_stack it.
-        //
-        // add something in the description of this function about it possibly printing kernel memory
-        // from a malicious userspace esp/ebp.
-
-        // Check we have STACK_SIZE pages mapped as readable (at least) from stack_bottom.
-        for i in 0..STACK_SIZE {
-            let addr = VirtualAddress(stack_bottom as usize + i * PAGE_SIZE);
-            if UserLand::contains_address(addr) {
-                if let Ok(QueryMemory::Used(mapping)) = pmemory.query_memory(addr) {
-                    if mapping.flags().contains(MappingFlags::READABLE) {
-                        continue;
-                    }
-                }
-            } else if KernelLand::contains_address(addr) {
-                if let PageState::Present(_) = kmemory.mapping_state(addr) {
-                    continue;
-                }
-            }
-            return dump_stack(&[], stack_bottom as usize, esp, ebp, eip, elf);
-        }
-
-        let stack_slice = unsafe { ::core::slice::from_raw_parts(stack_bottom,
-                                                                 STACK_SIZE * PAGE_SIZE) };
-
-        dump_stack(stack_slice, stack_bottom as usize, esp, ebp, eip, elf);
+        dump_stack(esp, ebp, eip, None);
     }
 }
 
@@ -200,6 +152,94 @@ impl Drop for KernelStack {
 
 /* ********************************************************************************************** */
 
+/// Dumps the stack from the given information on all the Loggers, displaying it
+/// in a frame-by-frame format.
+///
+/// This function can work on both a KernelStack and a stack in UserLand.
+/// If `esp` is in KernelLand, this function will consider that we're dumping
+/// a KernelStack, check that every page of what we're expecting to be a stack is mapped,
+/// and dump it.
+///
+/// Otherwise, it will get the UserLand mapping that `esp` falls in, and dump only in this mapping.
+///
+/// # Safety
+///
+/// This function is "relatively" safe. It checks whether the stack is properly mapped
+/// before attempting to access it. It does create a &[u8] from a technically "shared"
+/// resource. However, the compiler shouldn't know about this, so UB shouldn't be met.
+pub fn dump_stack<'a>(esp: usize, ebp: usize, eip: usize, elf: Option<(&ElfFile<'a>, &'a [Entry32])>) {
+    use logger::*;
+    use core::fmt::Write;
+
+    writeln!(Loggers, "---------- Dumping stack ---------");
+
+    if KernelLand::contains_address(VirtualAddress(esp)) {
+        writeln!(Loggers, "# Dumping KernelStack");
+        dump_kernel_stack(esp, ebp, eip, elf)
+    } else if UserLand::contains_address(VirtualAddress(esp)) {
+        writeln!(Loggers, "# Dumping UserLand stack");
+        dump_user_stack(esp, ebp, eip, elf)
+    } else {
+        writeln!(Loggers, "# Invalid esp: {:x?}", esp);
+    }
+
+    writeln!(Loggers, "-------- End of stack dump --------");
+
+    fn dump_kernel_stack<'b>(mut esp: usize, ebp: usize, eip: usize, elf: Option<(&ElfFile<'b>, &'b [Entry32])>) {
+
+        // check if esp falls in the page_guard of what would be a KernelStack
+        if esp < (KernelStack::get_stack_bottom(esp) + PAGE_SIZE) {
+            // esp has stack overflowed. can we use ebp as esp ?
+            if KernelStack::get_stack_bottom(esp) + PAGE_SIZE <= ebp
+                && ebp < KernelStack::get_stack_bottom(esp) + STACK_SIZE_WITH_GUARD * PAGE_SIZE {
+                writeln!(Loggers, "# Stack overflow detected! Using EBP as esp. (esp was {:#x})", esp);
+                esp = ebp;
+            } else {
+                // ebp does not even fall in the same KernelStack.
+                writeln!(Loggers, "# Invalid esp and ebp. esp: {:#x}, ebp: {:#x}, eip: {:#x}", esp, ebp, eip);
+                return;
+            }
+        }
+
+        let mut kmemory = get_kernel_memory();
+
+        let stack_bottom = (KernelStack::get_stack_bottom(esp) + PAGE_SIZE);
+
+        // Check we have STACK_SIZE pages mapped as readable (at least) from stack_bottom.
+        for i in 0..STACK_SIZE {
+            let addr = VirtualAddress(stack_bottom + i * PAGE_SIZE);
+            if let PageState::Present(_) = kmemory.mapping_state(addr) {
+                continue;
+            } else {
+                // if a page was not mapped, then it's not a KernelStack
+                writeln!(Loggers, "# Invalid esp, does not point to a KernelStack. esp: {:#x}, ebp: {:#x}, eip: {:#x}", esp, ebp, eip);
+                return;
+            }
+        }
+        // all pages were mapped. if it's not a KernelStack, at least it's close enough !
+        let stack_slice = unsafe { ::core::slice::from_raw_parts(stack_bottom as *const u8,
+                                                                 STACK_SIZE * PAGE_SIZE) };
+
+        return dump_stack_from_slice(stack_slice, stack_bottom, esp, ebp, eip, elf);
+    }
+
+    fn dump_user_stack<'c>(esp: usize, ebp: usize, eip: usize, elf: Option<(&ElfFile<'c>, &'c [Entry32])>) {
+        let process = scheduler::get_current_process();
+        let pmemory = process.pmemory.lock();
+
+        // does esp point to a mapping ?
+        if let Ok(QueryMemory::Used(mapping)) = pmemory.query_memory(VirtualAddress(esp)) {
+            // a stack would at least be readable and writable
+            if mapping.flags().contains(MappingFlags::u_rw()) {
+                let stack_slice = unsafe { ::core::slice::from_raw_parts(mapping.address().addr() as *const u8,
+                                                                         mapping.length()) };
+                return dump_stack_from_slice(stack_slice, mapping.address().addr(), esp, ebp, eip, elf);
+            }
+        }
+        writeln!(Loggers, "# Invalid esp, does not point to a valid mapping. esp: {:#x}, ebp: {:#x}, eip: {:#x}", esp, ebp, eip);
+    }
+}
+
 /// Dumps a stack on all the Loggers, displaying it in a frame-by-frame format
 /// The stack is passed as a slice. The function starts at given esp, and goes down, frame by frame.
 /// The original address of the stack must be given, this way it can even work on a stack that is not identity mapped,
@@ -210,20 +250,12 @@ impl Drop for KernelStack {
 /// * any ebp/esp falling outside of the stack
 ///
 /// The data of every stack frame will be hexdumped
-pub fn dump_stack<'a>(stack: &[u8], orig_address: usize, mut esp: usize, mut ebp: usize, mut eip: usize, elf: Option<(&ElfFile<'a>, &'a [Entry32])>) {
+fn dump_stack_from_slice<'a>(stack: &[u8], orig_address: usize, mut esp: usize, mut ebp: usize, mut eip: usize, elf: Option<(&ElfFile<'a>, &'a [Entry32])>) {
     use logger::*;
     use core::fmt::Write;
     use utils::print_hexdump_as_if_at_addr;
 
-    writeln!(Loggers, "---------- Dumping stack ---------");
     writeln!(Loggers, "# Stack start: {:#010x}, Stack end: {:#010x}", orig_address, orig_address + stack.len());
-
-    // Check if ESP is in page guard.
-    // todo just check it's outside of our slice instead, otherwise we can't work on userspace stacks
-    if esp < (KernelStack::get_stack_bottom(esp) + PAGE_SIZE) {
-        writeln!(Loggers, "# Stack overflow detected! Using EBP as esp.");
-        esp = ebp;
-    }
 
     let mut frame_nb = 0;
     loop {
@@ -266,5 +298,4 @@ pub fn dump_stack<'a>(stack: &[u8], orig_address: usize, mut esp: usize, mut ebp
 
         frame_nb += 1;
     }
-    writeln!(Loggers, "-------- End of stack dump --------");
 }
