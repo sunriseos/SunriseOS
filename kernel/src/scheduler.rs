@@ -97,13 +97,10 @@ pub fn add_to_schedule_queue(thread: Arc<ThreadStruct>) {
         return;
     }
 
-    {
-        let mut oldstate = thread.state.compare_and_swap(ThreadState::Stopped, ThreadState::Scheduled, Ordering::SeqCst);
+    let mut oldstate = thread.state.compare_and_swap(ThreadState::Stopped, ThreadState::Scheduled, Ordering::SeqCst);
 
-        assert_eq!(oldstate, ThreadState::Stopped,
-                   "Process added to schedule queue was not stopped : {:?}", oldstate);
-        // TODO: Check ProcessState is Scheduled (was Stopped) or Killed
-    };
+    assert!(oldstate == ThreadState::Stopped || oldstate == ThreadState::Killed,
+               "Process added to schedule queue was not stopped : {:?}", oldstate);
 
     queue_lock.push(thread)
 }
