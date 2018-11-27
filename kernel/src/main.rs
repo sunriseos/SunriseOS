@@ -46,10 +46,7 @@ use alloc::prelude::*;
 mod paging;
 mod event;
 mod error;
-mod logger;
 mod log_impl;
-pub use logger::*;
-pub use devices::rs232::SerialLogger;
 #[macro_use]
 mod i386;
 #[cfg(target_os = "none")]
@@ -142,17 +139,14 @@ pub unsafe extern fn start() -> ! {
 #[cfg(target_os = "none")]
 #[no_mangle]
 pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
-    log_impl::early_init();
     use devices::rs232::{SerialLogger, SerialAttributes, SerialColor};
 
-    // Register some loggers
-    static mut SERIAL: SerialLogger = SerialLogger;
-    Loggers::register_logger("Serial", unsafe { &mut SERIAL });
+    log_impl::early_init();
 
 
-    let loggers = &mut Loggers;
+    let log = &mut devices::rs232::SerialLogger;
     // Say hello to the world
-    writeln!(Loggers, "\n# Welcome to {}KFS{}!\n",
+    writeln!(log, "\n# Welcome to {}KFS{}!\n",
         SerialAttributes::fg(SerialColor::LightCyan),
         SerialAttributes::default());
 
@@ -187,7 +181,6 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 
     info!("Calling main()");
 
-    writeln!(SerialLogger, "= Calling main()");
     main();
     // Die !
     // We shouldn't reach this...
@@ -207,15 +200,17 @@ fn do_panic(msg: core::fmt::Arguments, esp: usize, ebp: usize, eip: usize) -> ! 
     // Disable interrupts forever!
     unsafe { sync::permanently_disable_interrupts(); }
     // Don't deadlock in the logger
-    unsafe { Loggers.force_unlock(); }
+    unsafe { SerialLogger.force_unlock(); }
 
     //todo: force unlock the KernelMemory lock
     //      and also the process memory lock for userspace stack dumping (only if panic-on-excetpion ?).
 
-    let _ = writeln!(Loggers, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\
-                               ! Panic! at the disco\n\
-                               ! {}\n\
-                               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+    use devices::rs232::{SerialLogger, SerialAttributes, SerialColor};
+
+    let _ = writeln!(SerialLogger, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\
+                                    ! Panic! at the disco\n\
+                                    ! {}\n\
+                                    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
                      msg);
 
     // Parse the ELF to get the symbol table.
@@ -245,23 +240,15 @@ fn do_panic(msg: core::fmt::Arguments, esp: usize, ebp: usize, eip: usize) -> ! 
     let elf_and_st = get_symbols(&mapped_kernel_elf);
 
     if elf_and_st.is_none() {
-        writeln!(Loggers, "Panic handler: Failed to get kernel elf symbols");
+        writeln!(SerialLogger, "Panic handler: Failed to get kernel elf symbols");
     }
-
-//    let mut module = ::elf_loader::map_grub_module(info.module_tags().nth(0).unwrap());
-//    let elf = module.elf.as_mut().expect("double_fault_handler: failed to parse module kernel elf");
-
-   // let st = match elf.find_section_by_name(".symtab").expect("Missing .symtab").get_data(&elf).expect("Missing .symtab") {
-   //     SectionData::SymbolTable32(st) => st,
-   //     _ => panic!(".symtab is not a SymbolTable32"),
-   // };
 
     // Then print the stack
     stack::KernelStack::dump_stack(esp, ebp, eip, elf_and_st);
 
-    let _ = writeln!(Loggers, "Thread : {:#x?}", scheduler::try_get_current_thread());
+    let _ = writeln!(SerialLogger, "Thread : {:#x?}", scheduler::try_get_current_thread());
 
-    let _ = writeln!(Loggers, "!!!!!!!!!!!!!!!END PANIC!!!!!!!!!!!!!!\n");
+    let _ = writeln!(SerialLogger, "!!!!!!!!!!!!!!!END PANIC!!!!!!!!!!!!!!");
 
     loop { unsafe { asm!("HLT"); } }
 }

@@ -126,52 +126,32 @@ impl SerialInternal<Pio<u8>> {
 
 /* ********************************************************************************************** */
 
+/// A logger that sends its output to COM1.
+///
+/// Use it like this:
+/// ```
+/// use ::core::fmt::Write;
+///
+/// write!(SerialLogger, "I got {} problems, but logging ain't one", 99);
+/// ```
 pub struct SerialLogger;
 
-impl Logger for SerialLogger {
-    /// Prints a string to the serial port
-    fn print(&mut self, string: &str) {
-        let mut internal = G_SERIAL.call_once(|| SpinLock::new(SerialInternal::<Pio<u8>>::new(COM1))).lock();
-        internal.send_string(string);
-    }
-
-    /// Prints a string to the screen and adds a line feed
-    fn println(&mut self, string: &str) {
-        let mut internal = G_SERIAL.call_once(|| SpinLock::new(SerialInternal::<Pio<u8>>::new(COM1))).lock();
-        internal.send_string(string);
-        internal.send_string("\n");
-    }
-
-    /// Prints a string to the serial port with attributes
-    fn print_attr(&mut self, string: &str, attr: LogAttributes) {
-        SerialAttributes::new(attr).enable();
-        {
-            let mut internal = G_SERIAL.call_once(|| SpinLock::new(SerialInternal::<Pio<u8>>::new(COM1))).lock();
-            internal.send_string(string);
-        }
-        SerialAttributes::new(LogAttributes::default()).enable();
-    }
-
-    /// Prints a string to the serial port with attributes and adds a line feed
-    fn println_attr(&mut self, string: &str, attr: LogAttributes) {
-        let logger = &mut SerialLogger;
-        logger.print_attr(string, attr);
-        logger.print("\n");
-    }
-
-    unsafe fn force_unlock(&mut self) {
+impl SerialLogger {
+    /// Re-take the lock protecting multiple access to the device.
+    ///
+    /// # Safety
+    ///
+    /// This function should only be used when panicking.
+    pub unsafe fn force_unlock(&mut self) {
         G_SERIAL.call_once(|| SpinLock::new(SerialInternal::<Pio<u8>>::new(COM1))).force_unlock();
-    }
-
-    fn clear(&mut self) {
-        // We don't clear
     }
 }
 
-impl ::core::fmt::Write for SerialLogger {
+impl Write for SerialLogger {
+    /// Writes a string to COM1.
     fn write_str(&mut self, s: &str) -> Result<(), ::core::fmt::Error> {
-        let logger = &mut SerialLogger;
-        logger.print(s);
+        let mut internal = G_SERIAL.call_once(|| SpinLock::new(SerialInternal::<Pio<u8>>::new(COM1))).lock();
+        internal.send_string(s);
         Ok(())
     }
 }

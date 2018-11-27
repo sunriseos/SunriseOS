@@ -65,7 +65,7 @@ use core::mem;
 use core::fmt::{self, Write};
 use alloc::prelude::*;
 use log::{Level, LevelFilter, Record, Metadata};
-use logger::Loggers;
+use devices::rs232::SerialLogger;
 use smallvec::SmallVec;
 
 #[path = "string.rs"]
@@ -294,7 +294,7 @@ fn parse_spec(spec: &str) -> (Vec<Directive>, Option<inner::Filter>) {
     let mods = parts.next();
     let filter = parts.next();
     if parts.next().is_some() {
-        writeln!(Loggers, "warning: invalid logging spec '{}', \
+        writeln!(SerialLogger, "warning: invalid logging spec '{}', \
                  ignoring it (too many '/'s)", spec);
         return (dirs, None);
     }
@@ -315,14 +315,14 @@ fn parse_spec(spec: &str) -> (Vec<Directive>, Option<inner::Filter>) {
                 match part1.parse() {
                     Ok(num) => (num, Some(part0)),
                     _ => {
-                        writeln!(Loggers, "warning: invalid logging spec '{}', \
+                        writeln!(SerialLogger, "warning: invalid logging spec '{}', \
                                  ignoring it", part1);
                         continue
                     }
                 }
             },
             _ => {
-                writeln!(Loggers, "warning: invalid logging spec '{}', \
+                writeln!(SerialLogger, "warning: invalid logging spec '{}', \
                          ignoring it", s);
                 continue
             }
@@ -337,7 +337,7 @@ fn parse_spec(spec: &str) -> (Vec<Directive>, Option<inner::Filter>) {
         match inner::Filter::new(filter) {
             Ok(re) => Some(re),
             Err(e) => {
-                writeln!(Loggers, "warning: invalid regex filter - {}", e);
+                writeln!(SerialLogger, "warning: invalid regex filter - {}", e);
                 None
             }
         }
