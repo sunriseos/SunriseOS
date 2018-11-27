@@ -118,11 +118,15 @@ fn main() {
             .expect("failed starting thread for service");
     }
 
+    // TODO a to do with no body, c++ style
+
     let lock = sync::SpinLockIRQ::new(());
     loop {
         // TODO: Exit process.
         scheduler::unschedule(&lock, lock.lock());
     }
+
+    /* TODO a to do with no body, c style */
 }
 
 #[cfg(target_os = "none")]
