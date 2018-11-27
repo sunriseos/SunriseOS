@@ -90,6 +90,7 @@ pub struct SerialInternal<T> {
 impl <T> SerialInternal<T> {
     /// Creates the serial for i386
     #[cfg(target_arch="x86")]
+    #[allow(unused)]
     pub fn new(com_port: ComPort) -> SerialInternal<Pio<u8>> {
         let mut data_port       = Pio::<u8>::new(com_port.0 + 0);
         let mut interrupt_port  = Pio::<u8>::new(com_port.0 + 1);

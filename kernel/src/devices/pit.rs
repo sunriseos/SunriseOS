@@ -113,7 +113,7 @@ struct PITPorts {
 impl PITPorts {
     /// Writes a reload value in lobyte/hibyte access mode
     fn write_reload_value(&mut self, channel_selector: ChannelSelector, value: u16) {
-        let mut port = match channel_selector {
+        let port = match channel_selector {
             ChannelSelector::Channel0 => &mut self.port_chan_0,
             ChannelSelector::Channel2 => &mut self.port_chan_2
         };

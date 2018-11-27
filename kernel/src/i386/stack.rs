@@ -123,9 +123,9 @@ impl KernelStack {
 
     /// Dumps the stack, displaying it in a frame-by-frame format
     pub fn dump_current_stack() {
-        let mut ebp;
-        let mut esp;
-        let mut eip;
+        let ebp;
+        let esp;
+        let eip;
         unsafe {
             asm!("
                 mov $0, ebp
@@ -147,7 +147,7 @@ impl KernelStack {
     /// This function is "relatively" safe. It checks whether the stack is properly mapped
     /// before attempting to access it. It does create a &[u8] from a technically "shared"
     /// resource. However, the compiler shouldn't know about this, so UB shouldn't be met.
-    pub fn dump_stack<'a>(mut esp: usize, ebp: usize, eip: usize, elf: Option<(&ElfFile<'a>, &'a [Entry32])>) {
+    pub fn dump_stack<'a>(esp: usize, ebp: usize, eip: usize, elf: Option<(&ElfFile<'a>, &'a [Entry32])>) {
         let mut kmemory = get_kernel_memory();
         let process = scheduler::get_current_process();
         let pmemory = process.pmemory.lock();
@@ -211,6 +211,7 @@ impl Drop for KernelStack {
 /// * any ebp/esp falling outside of the stack
 ///
 /// The data of every stack frame will be hexdumped
+#[allow(unused_must_use)]
 pub fn dump_stack<'a>(stack: &[u8], orig_address: usize, mut esp: usize, mut ebp: usize, mut eip: usize, elf: Option<(&ElfFile<'a>, &'a [Entry32])>) {
     use devices::rs232::SerialLogger;
     use core::fmt::Write;

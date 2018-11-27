@@ -145,7 +145,6 @@ impl FrameAllocatorTrait for FrameAllocator {
                     FRAME_OCCUPIED => {
                         // hole wasn't big enough, jump to its end
                         start_index += temp_len + 1;
-                        temp_len = 0;
                         break;
                     }
                     FRAME_FREE => {

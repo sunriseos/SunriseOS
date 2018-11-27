@@ -13,6 +13,7 @@ struct Logger {
     filter: RwLock<filter::Filter>
 }
 
+#[allow(unused_must_use)]
 impl Log for Logger {
     fn enabled(&self, metadata: &Metadata) -> bool {
         self.filter.read().enabled(metadata)

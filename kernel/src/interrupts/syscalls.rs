@@ -49,7 +49,7 @@ fn map_framebuffer() -> Result<(usize, usize, usize, usize), UserspaceError> {
     Ok((addr, width, height, bpp))
 }
 
-fn create_interrupt_event(irq_num: usize, flag: u32) -> Result<usize, UserspaceError> {
+fn create_interrupt_event(irq_num: usize, _flag: u32) -> Result<usize, UserspaceError> {
     // TODO: Flags?
     let curproc = scheduler::get_current_process();
     let hnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ReadableEvent(Box::new(event::wait_event(irq_num)))));

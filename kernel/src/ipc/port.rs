@@ -138,7 +138,7 @@ impl ClientPort {
         });
 
         let mut guard = incoming.session.lock();
-        let lock = self.0.incoming_connections.lock().push(incoming.clone());
+        self.0.incoming_connections.lock().push(incoming.clone());
 
         let session = loop {
             // If no handle to the server exist anymore, give up.

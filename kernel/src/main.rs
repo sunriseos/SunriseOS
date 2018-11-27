@@ -112,7 +112,7 @@ fn main() {
     let lock = sync::SpinLockIRQ::new(());
     loop {
         // TODO: Exit process.
-        scheduler::unschedule(&lock, lock.lock());
+        let _ = scheduler::unschedule(&lock, lock.lock());
     }
 }
 
@@ -146,7 +146,7 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 
     let log = &mut devices::rs232::SerialLogger;
     // Say hello to the world
-    writeln!(log, "\n# Welcome to {}KFS{}!\n",
+    let _ = writeln!(log, "\n# Welcome to {}KFS{}!\n",
         SerialAttributes::fg(SerialColor::LightCyan),
         SerialAttributes::default());
 
@@ -240,7 +240,7 @@ fn do_panic(msg: core::fmt::Arguments, esp: usize, ebp: usize, eip: usize) -> ! 
     let elf_and_st = get_symbols(&mapped_kernel_elf);
 
     if elf_and_st.is_none() {
-        writeln!(SerialLogger, "Panic handler: Failed to get kernel elf symbols");
+        let _ = writeln!(SerialLogger, "Panic handler: Failed to get kernel elf symbols");
     }
 
     // Then print the stack

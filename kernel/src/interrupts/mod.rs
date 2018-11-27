@@ -30,7 +30,7 @@ pub fn check_thread_killed() {
     if scheduler::get_current_thread().state.load(Ordering::SeqCst) == ThreadState::Killed {
         let lock = SpinLockIRQ::new(());
         loop { // in case of spurious wakeups
-            scheduler::unschedule(&lock, lock.lock());
+            let _ = scheduler::unschedule(&lock, lock.lock());
         }
     }
 }
@@ -77,7 +77,7 @@ extern "x86-interrupt" fn non_maskable_interrupt_handler(stack_frame: &mut Excep
     panic_on_exception(format_args!("An unexpected non-maskable (but still kinda maskable) interrupt occured"), stack_frame);
 }
 
-extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut ExceptionStackFrame) {
+extern "x86-interrupt" fn breakpoint_handler(_stack_frame: &mut ExceptionStackFrame) {
     // don't do anything
 }
 

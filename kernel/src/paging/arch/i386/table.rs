@@ -36,11 +36,11 @@ impl HierarchicalTable for ActivePageTable {
 
     fn table_level() -> usize { 0 }
 
-    fn get_child_table<'a>(&'a mut self, index: usize) -> PageState<SmartHierarchicalTable<'a, <Self as HierarchicalTable>::ChildTableType>> {
+    fn get_child_table<'a>(&'a mut self, _index: usize) -> PageState<SmartHierarchicalTable<'a, <Self as HierarchicalTable>::ChildTableType>> {
         panic!("An active page table has no children");
     }
 
-    fn create_child_table<'a>(&'a mut self, index: usize) -> SmartHierarchicalTable<'a, <Self as HierarchicalTable>::ChildTableType> {
+    fn create_child_table<'a>(&'a mut self, _index: usize) -> SmartHierarchicalTable<'a, <Self as HierarchicalTable>::ChildTableType> {
         panic!("An active page table has no children");
     }
 }
@@ -124,11 +124,11 @@ impl HierarchicalTable for InactivePageTable {
 
     fn table_level() -> usize { 0 }
 
-    fn get_child_table<'a>(&'a mut self, index: usize) -> PageState<SmartHierarchicalTable<'a, <Self as HierarchicalTable>::ChildTableType>> {
+    fn get_child_table<'a>(&'a mut self, _index: usize) -> PageState<SmartHierarchicalTable<'a, <Self as HierarchicalTable>::ChildTableType>> {
         panic!("An inactive page table has no children");
     }
 
-    fn create_child_table<'a>(&'a mut self, index: usize) -> SmartHierarchicalTable<'a, <Self as HierarchicalTable>::ChildTableType> {
+    fn create_child_table<'a>(&'a mut self, _index: usize) -> SmartHierarchicalTable<'a, <Self as HierarchicalTable>::ChildTableType> {
         panic!("An inactive page table has no children");
     }
 }

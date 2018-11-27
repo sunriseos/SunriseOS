@@ -44,8 +44,6 @@ pub struct CrossProcessMapping<'a> {
     kernel_address: VirtualAddress,
     len: usize,
     mapping: &'a Mapping,
-    // keep at least one private field, to forbid it from being constructed.
-    private: ()
 }
 
 impl<'a> CrossProcessMapping<'a> {
@@ -87,7 +85,6 @@ impl<'a> CrossProcessMapping<'a> {
             kernel_address: kernel_map_start + (offset % PAGE_SIZE),
             mapping,
             len,
-            private: ()
         })
     }
 

@@ -34,7 +34,7 @@ pub fn init_gdt() {
 
     let ldt = GLOBAL_LDT.call_once(|| DescriptorTable::new());
 
-    let gdt = GDT.call_once(|| {
+    GDT.call_once(|| {
         let mut gdt = DescriptorTable::new();
         // Push the null descriptor
         gdt.push(DescriptorTableEntry::null_descriptor());
@@ -196,7 +196,7 @@ impl DescriptorTable {
     pub fn set_from_loaded(&mut self) {
         use core::slice;
 
-        let mut loaded_ptr = sgdt();
+        let loaded_ptr = sgdt();
         let loaded_table = unsafe {
             slice::from_raw_parts(loaded_ptr.base as *mut DescriptorTableEntry, loaded_ptr.limit as usize / size_of::<DescriptorTableEntry>())
         };

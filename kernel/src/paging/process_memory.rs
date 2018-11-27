@@ -59,11 +59,11 @@ impl HierarchicalTable for () {
         unimplemented!()
     }
 
-    fn get_child_table<'a>(&'a mut self, index: usize) -> PageState<SmartHierarchicalTable<'a, <Self as HierarchicalTable>::ChildTableType>> {
+    fn get_child_table<'a>(&'a mut self, _index: usize) -> PageState<SmartHierarchicalTable<'a, <Self as HierarchicalTable>::ChildTableType>> {
         unimplemented!()
     }
 
-    fn create_child_table<'a>(&'a mut self, index: usize) -> SmartHierarchicalTable<'a, <Self as HierarchicalTable>::ChildTableType> {
+    fn create_child_table<'a>(&'a mut self, _index: usize) -> SmartHierarchicalTable<'a, <Self as HierarchicalTable>::ChildTableType> {
         unimplemented!()
     }
 }
@@ -87,21 +87,21 @@ impl<'b> TableHierarchy for DynamicHierarchy<'b> {
         }
     }
 
-    fn guard(&mut self, address: VirtualAddress, mut length: usize) {
+    fn guard(&mut self, address: VirtualAddress, length: usize) {
         match self {
             &mut DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.guard(address, length),
             &mut DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.guard(address, length),
         }
     }
 
-    fn unmap<C>(&mut self, address: VirtualAddress, mut length: usize, callback: C) where C: FnMut(PhysicalAddress) {
+    fn unmap<C>(&mut self, address: VirtualAddress, length: usize, callback: C) where C: FnMut(PhysicalAddress) {
         match self {
             &mut DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.unmap(address, length, callback),
             &mut DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.unmap(address, length, callback),
         }
     }
 
-    fn for_every_entry<C>(&mut self, address: VirtualAddress, mut length: usize, callback: C) where C: FnMut(PageState<PhysicalAddress>, usize) {
+    fn for_every_entry<C>(&mut self, address: VirtualAddress, length: usize, callback: C) where C: FnMut(PageState<PhysicalAddress>, usize) {
         match self {
             &mut DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.for_every_entry(address, length, callback),
             &mut DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.for_every_entry(address, length, callback),

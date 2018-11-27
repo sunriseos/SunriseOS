@@ -159,7 +159,7 @@ impl Splittable for Mapping {
                 MappingType::Guarded => MappingType::Guarded,
                 MappingType::Regular(ref mut frames) => MappingType::Regular(frames.split_at(offset)?.unwrap()),
             //    MappingType::Stack(ref mut frames) => MappingType::Stack(frames.split_at(offset)?.unwrap()),
-                MappingType::Shared(arc) => return Err(KernelError::MmError(
+                MappingType::Shared(_) => return Err(KernelError::MmError(
                                                        MmError::SharedMapping { backtrace: Backtrace::new() })),
                 MappingType::SystemReserved => panic!("shouldn't split a SystemReserved mapping"),
             },

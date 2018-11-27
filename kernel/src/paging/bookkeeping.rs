@@ -162,7 +162,7 @@ impl UserspaceBookkeeping {
     /// Returns a KernelError if address falls in an available mapping.
     /// Returns a KernelError if the range spans multiple mappings.
     /// Returns a KernelError if the range falls in a Shared mapping, as it cannot be splitted.
-    pub fn remove_mapping_split(&mut self, address: VirtualAddress, length: usize) -> Result<Mapping, KernelError> {
+    pub fn remove_mapping_split(&mut self, _address: VirtualAddress, _length: usize) -> Result<Mapping, KernelError> {
         unimplemented!()
     }
 

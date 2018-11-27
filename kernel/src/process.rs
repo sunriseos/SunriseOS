@@ -415,7 +415,7 @@ impl ThreadStruct {
         let empty_hwcontext = SpinLockIRQ::new(ThreadHardwareContext::new());
 
         // the state of the process, Stopped
-        let state = ThreadStateAtomic::new((ThreadState::Stopped));
+        let state = ThreadStateAtomic::new(ThreadState::Stopped);
 
         let t = Arc::new(
             ThreadStruct {
