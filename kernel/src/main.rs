@@ -89,6 +89,12 @@ unsafe fn force_double_fault() {
 }
 
 fn main() {
+    /* TODO test to do tool
+     *
+     * BODY this is a test to check that the to do tool works
+     *      as expected.
+     */
+
     info!("Loading all the init processes");
     for module in i386::multiboot::get_boot_information().module_tags().skip(1) {
         info!("Loading {}", module.name());
