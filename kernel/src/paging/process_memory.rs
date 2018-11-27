@@ -124,7 +124,8 @@ impl ProcessMemory {
             userspace_bookkeping: UserspaceBookkeeping::new(),
             table_hierarchy: InactiveHierarchy::new()
         };
-        ret.guard(VirtualAddress(0x00000000), PAGE_SIZE);
+        ret.guard(VirtualAddress(0x00000000), PAGE_SIZE)
+            .expect("Cannot guard first page of ProcessMemory");
         ret
     }
 
