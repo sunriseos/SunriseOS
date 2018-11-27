@@ -143,7 +143,7 @@ impl InternalPic {
     /// Mask the given IRQ
     pub fn mask(&mut self, irq: u8) {
         let mut data = self.port_data.read();
-        data |= (1 << irq);
+        data |= 1 << irq;
         self.port_data.write(data);
     }
 }

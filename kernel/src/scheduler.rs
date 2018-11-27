@@ -8,7 +8,7 @@ use process::{ProcessStruct, ThreadStruct, ThreadState};
 use i386::process_switch::process_switch;
 use sync::{Lock, SpinLockIRQ, SpinLockIRQGuard};
 use core::sync::atomic::Ordering;
-use error::{KernelError, UserspaceError};
+use error::{UserspaceError};
 
 /// An Arc to the currently running thread.
 ///
@@ -97,7 +97,7 @@ pub fn add_to_schedule_queue(thread: Arc<ThreadStruct>) {
         return;
     }
 
-    let mut oldstate = thread.state.compare_and_swap(ThreadState::Stopped, ThreadState::Scheduled, Ordering::SeqCst);
+    let oldstate = thread.state.compare_and_swap(ThreadState::Stopped, ThreadState::Scheduled, Ordering::SeqCst);
 
     assert!(oldstate == ThreadState::Stopped || oldstate == ThreadState::Killed,
                "Process added to schedule queue was not stopped : {:?}", oldstate);
@@ -165,7 +165,7 @@ where
 ///
 /// Panics if the schedule queue was not empty
 pub unsafe fn create_first_process() {
-    let mut queue = SCHEDULE_QUEUE.lock();
+    let queue = SCHEDULE_QUEUE.lock();
     assert!(queue.is_empty());
     let thread_0 = ThreadStruct::create_first_thread();
     unsafe {

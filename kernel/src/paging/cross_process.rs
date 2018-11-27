@@ -33,11 +33,9 @@
 use mem::VirtualAddress;
 use super::{PAGE_SIZE, MappingFlags};
 use super::mapping::{Mapping, MappingType};
-use super::bookkeeping::UserspaceBookkeeping;
-use super::process_memory::ProcessMemory;
 use super::kernel_memory::get_kernel_memory;
 use super::error::MmError;
-use utils::{check_aligned, check_nonzero_length, add_or_error};
+use utils::{check_nonzero_length, add_or_error};
 use failure::Backtrace;
 use error::KernelError;
 
@@ -46,8 +44,6 @@ pub struct CrossProcessMapping<'a> {
     kernel_address: VirtualAddress,
     len: usize,
     mapping: &'a Mapping,
-    // keep at least one private field, to forbid it from being constructed.
-    private: ()
 }
 
 impl<'a> CrossProcessMapping<'a> {
@@ -89,7 +85,6 @@ impl<'a> CrossProcessMapping<'a> {
             kernel_address: kernel_map_start + (offset % PAGE_SIZE),
             mapping,
             len,
-            private: ()
         })
     }
 

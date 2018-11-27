@@ -77,16 +77,10 @@
 //! let clientsess = ipc::connect_to_named_port(b"test\0\0\0\0\0\0\0\0\0\0\0\0")?;
 //! ```
 
-use sync::{Once, SpinLock, RwLock};
-use alloc::vec::Vec;
+use sync::RwLock;
 use alloc::string::String;
-use alloc::sync::{Arc, Weak};
-use core::sync::atomic::{AtomicUsize, Ordering};
-use scheduler;
 use error::UserspaceError;
-use event::{self, Waitable};
 use hashmap_core::HashMap;
-use process::ProcessStruct;
 
 pub mod session;
 pub mod port;

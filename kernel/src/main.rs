@@ -9,13 +9,15 @@
 #![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, allocator_api, alloc, box_syntax, no_more_cas, const_vec_new, range_contains)]
 #![cfg_attr(target_os = "none", no_std)]
 #![cfg_attr(target_os = "none", no_main)]
-#![allow(unused)]
+#![warn(unused)]
+#![allow(unused_unsafe)]
+#![allow(unreachable_code)]
+#![allow(dead_code)]
 #![recursion_limit = "1024"]
 
 #[cfg(not(target_os = "none"))]
 use std as core;
 
-extern crate arrayvec;
 extern crate bit_field;
 #[macro_use]
 extern crate lazy_static;
@@ -74,10 +76,8 @@ static ALLOCATOR: heap_allocator::Allocator = heap_allocator::Allocator::new();
 
 use i386::stack;
 use paging::{PAGE_SIZE, MappingFlags};
-use mem::{PhysicalAddress, VirtualAddress};
-use paging::lands::{KernelLand, UserLand};
-use process::{ProcessStruct, ThreadStruct, ThreadState};
-use core::sync::atomic::Ordering;
+use mem::VirtualAddress;
+use process::{ProcessStruct, ThreadStruct};
 
 unsafe fn force_double_fault() {
     loop {
@@ -112,7 +112,7 @@ fn main() {
     let lock = sync::SpinLockIRQ::new(());
     loop {
         // TODO: Exit process.
-        scheduler::unschedule(&lock, lock.lock());
+        let _ = scheduler::unschedule(&lock, lock.lock());
     }
 }
 
@@ -139,14 +139,14 @@ pub unsafe extern fn start() -> ! {
 #[cfg(target_os = "none")]
 #[no_mangle]
 pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
-    use devices::rs232::{SerialLogger, SerialAttributes, SerialColor};
+    use devices::rs232::{SerialAttributes, SerialColor};
 
     log_impl::early_init();
 
 
     let log = &mut devices::rs232::SerialLogger;
     // Say hello to the world
-    writeln!(log, "\n# Welcome to {}KFS{}!\n",
+    let _ = writeln!(log, "\n# Welcome to {}KFS{}!\n",
         SerialAttributes::fg(SerialColor::LightCyan),
         SerialAttributes::default());
 
@@ -205,7 +205,7 @@ fn do_panic(msg: core::fmt::Arguments, esp: usize, ebp: usize, eip: usize) -> ! 
     //todo: force unlock the KernelMemory lock
     //      and also the process memory lock for userspace stack dumping (only if panic-on-excetpion ?).
 
-    use devices::rs232::{SerialLogger, SerialAttributes, SerialColor};
+    use devices::rs232::SerialLogger;
 
     let _ = writeln!(SerialLogger, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\
                                     ! Panic! at the disco\n\
@@ -240,7 +240,7 @@ fn do_panic(msg: core::fmt::Arguments, esp: usize, ebp: usize, eip: usize) -> ! 
     let elf_and_st = get_symbols(&mapped_kernel_elf);
 
     if elf_and_st.is_none() {
-        writeln!(SerialLogger, "Panic handler: Failed to get kernel elf symbols");
+        let _ = writeln!(SerialLogger, "Panic handler: Failed to get kernel elf symbols");
     }
 
     // Then print the stack

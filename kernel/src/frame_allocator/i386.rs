@@ -14,16 +14,15 @@
 //!
 //! We do not distinguish between reserved and occupied frames.
 
-use super::{PhysicalMemRegion, PhysicalMemRegionIter,
-            FrameAllocatorTrait, FrameAllocatorTraitPrivate};
+use super::{PhysicalMemRegion, FrameAllocatorTrait, FrameAllocatorTraitPrivate};
 
 use multiboot2::BootInformation;
 use sync::SpinLock;
 use alloc::vec::Vec;
 use bit_field::BitArray;
-use utils::{bit_array_first_one, BitArrayExt};
+use utils::BitArrayExt;
 use mem::PhysicalAddress;
-use mem::{round_to_page, round_to_page_upper, count_pages};
+use mem::{round_to_page, round_to_page_upper};
 use paging::kernel_memory::get_kernel_memory;
 use error::KernelError;
 use failure::Backtrace;
@@ -146,7 +145,6 @@ impl FrameAllocatorTrait for FrameAllocator {
                     FRAME_OCCUPIED => {
                         // hole wasn't big enough, jump to its end
                         start_index += temp_len + 1;
-                        temp_len = 0;
                         break;
                     }
                     FRAME_FREE => {

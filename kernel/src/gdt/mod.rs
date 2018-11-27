@@ -6,7 +6,6 @@
 #![allow(dead_code)]
 
 use sync::{SpinLock, Once};
-use arrayvec::ArrayVec;
 use bit_field::BitField;
 use core::mem::{self, size_of};
 use core::ops::{Deref, DerefMut};
@@ -19,7 +18,6 @@ use i386::instructions::tables::{lgdt, sgdt, DescriptorTablePointer};
 use i386::instructions::segmentation::*;
 
 use paging::PAGE_SIZE;
-use paging::lands::KernelLand;
 use paging::{MappingFlags, kernel_memory::get_kernel_memory};
 use frame_allocator::{FrameAllocator, FrameAllocatorTrait};
 use mem::VirtualAddress;
@@ -36,7 +34,7 @@ pub fn init_gdt() {
 
     let ldt = GLOBAL_LDT.call_once(|| DescriptorTable::new());
 
-    let gdt = GDT.call_once(|| {
+    GDT.call_once(|| {
         let mut gdt = DescriptorTable::new();
         // Push the null descriptor
         gdt.push(DescriptorTableEntry::null_descriptor());
@@ -198,7 +196,7 @@ impl DescriptorTable {
     pub fn set_from_loaded(&mut self) {
         use core::slice;
 
-        let mut loaded_ptr = sgdt();
+        let loaded_ptr = sgdt();
         let loaded_table = unsafe {
             slice::from_raw_parts(loaded_ptr.base as *mut DescriptorTableEntry, loaded_ptr.limit as usize / size_of::<DescriptorTableEntry>())
         };

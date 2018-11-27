@@ -1,14 +1,14 @@
 use scheduler;
 use alloc::vec::Vec;
 use alloc::sync::{Arc, Weak};
-use sync::{Once, SpinLock, RwLock};
+use sync::SpinLock;
 use error::UserspaceError;
-use event::{self, Waitable};
+use event::Waitable;
 use process::ThreadStruct;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::slice;
 use byteorder::{LE, ByteOrder};
-use paging::{self, MappingFlags, mapping::MappingType, process_memory::ProcessMemory, kernel_memory::get_kernel_memory};
+use paging::{MappingFlags, mapping::MappingType, process_memory::ProcessMemory};
 use mem::{UserSpacePtr, UserSpacePtrMut, VirtualAddress};
 use bit_field::BitField;
 
@@ -141,7 +141,8 @@ struct Request {
     sender: Arc<ThreadStruct>,
     answered: Arc<SpinLock<Option<Result<(), UserspaceError>>>>,
 }
-
+// TODO finish buf_map
+#[allow(unused)]
 fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mut ProcessMemory, to_mem: &mut ProcessMemory, flags: MappingFlags) -> Result<(), UserspaceError> {
     let lowersize = LE::read_u32(&from_buf[*curoff..*curoff + 4]);
     let loweraddr = LE::read_u32(&from_buf[*curoff + 4..*curoff + 8]);
@@ -294,6 +295,8 @@ impl ServerSession {
     }
 }
 
+// TODO finish pass_message
+#[allow(unused)]
 fn pass_message(from_buf: &[u8], from_proc: Arc<ThreadStruct>, to_buf: &mut [u8], to_proc: Arc<ThreadStruct>) -> Result<(), UserspaceError> {
     // TODO: Handle case where from == to. Might want to add some logic in those mutex lockings.
     // TODO: also handle case where from and to are both active.

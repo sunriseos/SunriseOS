@@ -9,7 +9,7 @@ use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
 use event::Waitable;
-use sync::{RwLock, RwLockWriteGuard, SpinLockIRQ, SpinLock, Mutex, MutexGuard};
+use sync::{SpinLockIRQ, SpinLock, Mutex};
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use core::fmt::{self, Debug};
 use scheduler;
@@ -415,7 +415,7 @@ impl ThreadStruct {
         let empty_hwcontext = SpinLockIRQ::new(ThreadHardwareContext::new());
 
         // the state of the process, Stopped
-        let state = ThreadStateAtomic::new((ThreadState::Stopped));
+        let state = ThreadStateAtomic::new(ThreadState::Stopped);
 
         let t = Arc::new(
             ThreadStruct {

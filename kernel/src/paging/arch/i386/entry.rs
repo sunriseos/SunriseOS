@@ -94,7 +94,7 @@ impl HierarchicalEntry for I386Entry {
     }
 
     /// Sets the entry
-    fn set(&mut self, frame_phys_addr: PhysicalAddress, mut flags: I386EntryFlags) {
+    fn set(&mut self, frame_phys_addr: PhysicalAddress, flags: I386EntryFlags) {
         assert_eq!(flags.contains(I386EntryFlags::PRESENT)
                 && flags.contains(I386EntryFlags::GUARD_PAGE), false,
                 "a GUARD_PAGE cannot also be PRESENT");

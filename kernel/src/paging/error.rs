@@ -1,6 +1,6 @@
 //! Errors specific to memory management
 
-use error::{KernelError, UserspaceError};
+use error::UserspaceError;
 use mem::VirtualAddress;
 use failure::Backtrace;
 

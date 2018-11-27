@@ -4,11 +4,11 @@
 
 use alloc::vec::Vec;
 use mem::PhysicalAddress;
-use utils::{align_down, align_up, div_ceil, check_aligned};
+use utils::{align_down, div_ceil, check_aligned};
 use utils::Splittable;
-use core::ops::{Index, Range};
+use core::ops::Range;
 use core::iter::StepBy;
-use core::fmt::{Formatter, Error, Display, Debug};
+use core::fmt::{Formatter, Error, Debug};
 use core::marker::PhantomData;
 use error::KernelError;
 
