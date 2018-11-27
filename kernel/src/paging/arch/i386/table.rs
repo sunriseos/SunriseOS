@@ -1,20 +1,16 @@
 //! i386 Page Tables hierarchy
 
-use core::ops::{Index, IndexMut, Bound, RangeBounds};
-
 use super::{PAGE_SIZE, ENTRY_COUNT};
 use super::entry::{I386Entry, I386EntryFlags};
 use super::super::super::hierarchical_table::{HierarchicalTable, SmartHierarchicalTable,
                                               TableHierarchy, InactiveHierarchyTrait,
                                               PagingCacheFlusher, PageState, NoFlush,
                                               HierarchicalEntry};
-use super::super::super::lands::{KernelLand, UserLand, RecursiveTablesLand, VirtualSpaceLand};
+use super::super::super::lands::{KernelLand, UserLand, VirtualSpaceLand};
 use super::super::super::kernel_memory::get_kernel_memory;
 use super::super::super::MappingFlags;
 use mem::{VirtualAddress, PhysicalAddress};
 use frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
-use core::ops::{Deref, DerefMut};
-use core::marker::PhantomData;
 
 /// When paging is on, accessing this address loops back to the directory itself thanks to
 /// recursive mapping on directory's last entry

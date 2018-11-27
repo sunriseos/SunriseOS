@@ -8,26 +8,17 @@
 
 use i386::structures::idt::{ExceptionStackFrame, PageFaultErrorCode, Idt};
 use i386::instructions::interrupts::sti;
-use i386::pio::Pio;
-use io::Io;
-use mem::{VirtualAddress, PhysicalAddress};
-use paging::lands::KernelLand;
-use paging::{MappingFlags, kernel_memory::get_kernel_memory};
-use i386::{stack, TssStruct, PrivilegeLevel};
-use i386;
+use mem::VirtualAddress;
+use paging::kernel_memory::get_kernel_memory;
+use i386::{TssStruct, PrivilegeLevel};
 use gdt;
-use xmas_elf::ElfFile;
-use xmas_elf::sections::SectionData;
 use scheduler::get_current_thread;
 use process::{ProcessStruct, ThreadState};
 use sync::SpinLockIRQ;
 use core::sync::atomic::Ordering;
 
-use core::fmt::{Write, Arguments};
-use core::slice;
+use core::fmt::Arguments;
 use sync::SpinLock;
-use sync;
-use utils;
 use devices::pic;
 use scheduler;
 

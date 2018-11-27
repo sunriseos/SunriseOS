@@ -3,8 +3,6 @@
 pub mod entry;
 pub mod table;
 
-use self::table::{ActiveHierarchy, InactiveHierarchy};
-
 use mem::{VirtualAddress, PhysicalAddress};
 
 pub const PAGE_SIZE: usize = 4096;

@@ -1,7 +1,4 @@
-use i386::pio::Pio;
-use io::Io;
 use i386::structures::idt::ExceptionStackFrame;
-use core::fmt::Write;
 use devices::pic;
 
 fn acknowledge_irq(irq: u8) {

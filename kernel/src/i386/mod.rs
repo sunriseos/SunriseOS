@@ -4,7 +4,6 @@
 #![cfg(target_arch = "x86")]
 #![allow(dead_code)]
 
-use core::fmt;
 use alloc::boxed::Box;
 use core::ops::{Deref, DerefMut};
 
@@ -328,9 +327,6 @@ impl Default for TssStruct {
 }
 
 const_assert_eq!(tss_struct_size; ::core::mem::size_of::<TssStruct>(), 0x68);
-
-use i386::structures::gdt::SegmentSelector;
-use mem::PhysicalAddress;
 
 impl TssStruct {
     /// Creates a new TssStruct.

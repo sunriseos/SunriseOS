@@ -6,7 +6,6 @@
 #![allow(dead_code)]
 
 use sync::{SpinLock, Once};
-use arrayvec::ArrayVec;
 use bit_field::BitField;
 use core::mem::{self, size_of};
 use core::ops::{Deref, DerefMut};
@@ -19,7 +18,6 @@ use i386::instructions::tables::{lgdt, sgdt, DescriptorTablePointer};
 use i386::instructions::segmentation::*;
 
 use paging::PAGE_SIZE;
-use paging::lands::KernelLand;
 use paging::{MappingFlags, kernel_memory::get_kernel_memory};
 use frame_allocator::{FrameAllocator, FrameAllocatorTrait};
 use mem::VirtualAddress;

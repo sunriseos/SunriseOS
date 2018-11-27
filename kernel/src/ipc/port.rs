@@ -1,13 +1,11 @@
 use scheduler;
 use alloc::vec::Vec;
 use alloc::sync::{Arc, Weak};
-use sync::{Once, SpinLock, RwLock};
-use error::{KernelError, UserspaceError};
+use sync::SpinLock;
+use error::UserspaceError;
 use event::{self, Waitable};
 use process::ThreadStruct;
 use core::sync::atomic::{AtomicUsize, Ordering};
-use hashmap_core::HashMap;
-use alloc::prelude::*;
 use ipc::session::{self, ClientSession, ServerSession};
 
 /// An endpoint which can be connected to.

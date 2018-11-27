@@ -2,24 +2,19 @@
 
 use i386;
 use mem::{VirtualAddress, PhysicalAddress};
-use mem::{FatPtr, UserSpacePtr, UserSpacePtrMut};
-use paging::{PAGE_SIZE, MappingFlags};
-use paging::lands::{UserLand, KernelLand};
+use mem::{UserSpacePtr, UserSpacePtrMut};
+use paging::MappingFlags;
 use frame_allocator::PhysicalMemRegion;
-use process::{Handle, ThreadStruct, ThreadState, ProcessStruct};
+use process::{Handle, ThreadStruct, ProcessStruct};
 use event::{self, Waitable};
 use scheduler::{self, get_current_thread, get_current_process};
-use utils;
 use devices::pit;
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use core::mem;
-use core::sync::atomic::Ordering;
-use sync::SpinLockIRQ;
 use ipc;
-use error::{KernelError, UserspaceError};
+use error::UserspaceError;
 use kfs_libkern::{nr, SYSCALL_NAMES};
 use super::check_thread_killed;
 
@@ -290,7 +285,6 @@ pub struct Registers {
 
 // TODO: Get a 6th argument in by putting the syscall_nr in the interrupt struct.
 pub extern fn syscall_handler_inner(registers: &mut Registers) {
-    use devices::rs232::SerialLogger;
 
     let (syscall_nr, x0, x1, x2, x3, x4, x5) = (registers.eax, registers.ebx, registers.ecx, registers.edx, registers.esi, registers.edi, registers.ebp);
 

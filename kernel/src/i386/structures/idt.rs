@@ -16,8 +16,7 @@ use core::ops::{Index, IndexMut};
 use bit_field::BitField;
 use i386::{AlignedTssStruct, TssStruct, PrivilegeLevel};
 use mem::VirtualAddress;
-use paging::{PAGE_SIZE, lands::KernelLand, kernel_memory::get_kernel_memory};
-use i386::structures::gdt::SegmentSelector;
+use paging::{PAGE_SIZE, kernel_memory::get_kernel_memory};
 use alloc::boxed::Box;
 use gdt;
 
@@ -520,7 +519,6 @@ impl<F> IdtEntry<F> {
     }
 
     pub fn set_handler_task_gate_addr(&mut self, addr: u32) {
-        use i386::instructions::segmentation;
 
         self.pointer_low = 0;
         self.pointer_high = 0;

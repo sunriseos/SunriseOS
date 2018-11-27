@@ -76,10 +76,8 @@ static ALLOCATOR: heap_allocator::Allocator = heap_allocator::Allocator::new();
 
 use i386::stack;
 use paging::{PAGE_SIZE, MappingFlags};
-use mem::{PhysicalAddress, VirtualAddress};
-use paging::lands::{KernelLand, UserLand};
-use process::{ProcessStruct, ThreadStruct, ThreadState};
-use core::sync::atomic::Ordering;
+use mem::VirtualAddress;
+use process::{ProcessStruct, ThreadStruct};
 
 unsafe fn force_double_fault() {
     loop {
@@ -141,7 +139,7 @@ pub unsafe extern fn start() -> ! {
 #[cfg(target_os = "none")]
 #[no_mangle]
 pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
-    use devices::rs232::{SerialLogger, SerialAttributes, SerialColor};
+    use devices::rs232::{SerialAttributes, SerialColor};
 
     log_impl::early_init();
 
@@ -207,7 +205,7 @@ fn do_panic(msg: core::fmt::Arguments, esp: usize, ebp: usize, eip: usize) -> ! 
     //todo: force unlock the KernelMemory lock
     //      and also the process memory lock for userspace stack dumping (only if panic-on-excetpion ?).
 
-    use devices::rs232::{SerialLogger, SerialAttributes, SerialColor};
+    use devices::rs232::SerialLogger;
 
     let _ = writeln!(SerialLogger, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\
                                     ! Panic! at the disco\n\

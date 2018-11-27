@@ -14,8 +14,8 @@ use core::fmt::Debug;
 use alloc::sync::Arc;
 use sync::SpinLockIRQ;
 use alloc::vec::Vec;
-use error::{KernelError, UserspaceError};
-use process::{ThreadStruct, ThreadState};
+use error::UserspaceError;
+use process::ThreadStruct;
 use scheduler;
 
 // TODO: maybe we should use the libcore's task:: stuff...

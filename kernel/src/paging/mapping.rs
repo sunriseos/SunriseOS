@@ -2,7 +2,7 @@
 
 use mem::VirtualAddress;
 use paging::{PAGE_SIZE, MappingFlags, error::MmError};
-use error::{KernelError, ArithmeticOperation};
+use error::KernelError;
 use frame_allocator::PhysicalMemRegion;
 use alloc::{vec::Vec, sync::Arc};
 use utils::{check_aligned, check_nonzero_length, Splittable};

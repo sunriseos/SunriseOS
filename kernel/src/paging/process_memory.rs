@@ -17,19 +17,15 @@ pub use super::bookkeeping::QueryMemory;
 
 use super::hierarchical_table::*;
 use super::arch::{PAGE_SIZE, InactiveHierarchy, ActiveHierarchy};
-use super::lands::{UserLand, KernelLand, VirtualSpaceLand};
-use super::kernel_memory::get_kernel_memory;
+use super::lands::{UserLand, VirtualSpaceLand};
 use super::bookkeeping::UserspaceBookkeeping;
-use super::mapping::{Mapping, MappingType};
+use super::mapping::Mapping;
 use super::cross_process::CrossProcessMapping;
 use super::MappingFlags;
 use mem::{VirtualAddress, PhysicalAddress};
-use frame_allocator::{FrameAllocator, FrameAllocatorTrait, PhysicalMemRegion, mark_frame_bootstrap_allocated};
-use sync::{Mutex, MutexGuard};
-use paging::arch::EntryFlags;
+use frame_allocator::{FrameAllocator, FrameAllocatorTrait, PhysicalMemRegion};
 use paging::arch::Entry;
 use error::KernelError;
-use failure::Backtrace;
 use utils::{check_aligned, check_nonzero_length};
 use alloc::{vec::Vec, sync::Arc};
 

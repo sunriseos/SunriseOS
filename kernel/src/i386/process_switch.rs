@@ -2,10 +2,8 @@
 //!
 //! This modules describe low-level functions and structures needed to perform a process switch
 
-use process::{ProcessStruct, ThreadStruct, ThreadState};
-use paging::process_memory::ProcessMemory;
+use process::ThreadStruct;
 use gdt;
-use sync::{SpinLockIRQ, RwLock};
 use alloc::sync::Arc;
 use core::mem::size_of;
 use i386::TssStruct;

@@ -1,18 +1,16 @@
 //! Arch-independent traits for architectures that implement paging as a hierarchy of page tables
 
 // what the architecture code still has define
-use super::arch::{PAGE_SIZE, ENTRY_COUNT, Entry, EntryFlags};
-use super::lands::{KernelLand, UserLand, RecursiveTablesLand, VirtualSpaceLand};
+use super::arch::{PAGE_SIZE, ENTRY_COUNT};
+use super::lands::{RecursiveTablesLand, VirtualSpaceLand};
 use super::MappingFlags;
 
 use mem::{VirtualAddress, PhysicalAddress};
-use frame_allocator::{PhysicalMemRegion, FrameAllocatorTrait};
+use frame_allocator::{PhysicalMemRegion};
 use utils::align_up_checked;
-use core::ops::IndexMut;
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
-use core::iter::{Flatten, Iterator, Peekable};
-use core::slice::Iter;
+use core::iter::{Iterator, Peekable};
 
 /// A hierarchical paging is composed of entries. An entry can be in the following states:
 ///

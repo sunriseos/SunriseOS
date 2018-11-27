@@ -1,17 +1,13 @@
 //! Bookkeeping of mappings in UserLand
 
 use mem::VirtualAddress;
-use paging::{PAGE_SIZE, MappingFlags};
-use paging::lands::{UserLand, KernelLand, RecursiveTablesLand, VirtualSpaceLand};
-use frame_allocator::PhysicalMemRegion;
-use alloc::vec::Vec;
-use alloc::sync::Arc;
+use paging::lands::{KernelLand, RecursiveTablesLand, VirtualSpaceLand};
 use alloc::collections::BTreeMap;
-use error::{KernelError, UserspaceError};
+use error::KernelError;
 use super::error::MmError;
-use utils::{Splittable, check_aligned, check_nonzero_length};
+use utils::check_nonzero_length;
 use failure::Backtrace;
-use super::mapping::{Mapping, MappingType};
+use super::mapping::Mapping;
 
 /// A bookkeeping is just a list of Mappings
 ///

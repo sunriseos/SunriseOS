@@ -8,7 +8,7 @@ use process::{ProcessStruct, ThreadStruct, ThreadState};
 use i386::process_switch::process_switch;
 use sync::{Lock, SpinLockIRQ, SpinLockIRQGuard};
 use core::sync::atomic::Ordering;
-use error::{KernelError, UserspaceError};
+use error::{UserspaceError};
 
 /// An Arc to the currently running thread.
 ///

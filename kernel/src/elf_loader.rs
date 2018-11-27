@@ -14,12 +14,10 @@
 //! does not do any dynamic loading or provide ASLR (though that is up for change)
 
 use multiboot2::ModuleTag;
-use core::fmt::Write;
 use core::slice;
 use xmas_elf::ElfFile;
 use xmas_elf::program::{ProgramHeader, Type::Load, SegmentData};
 use mem::{VirtualAddress, PhysicalAddress};
-use paging::lands::{KernelLand, UserLand};
 use paging::{PAGE_SIZE, MappingFlags, process_memory::ProcessMemory, kernel_memory::get_kernel_memory};
 use frame_allocator::PhysicalMemRegion;
 use utils::{self, align_up};

@@ -1,14 +1,14 @@
 use scheduler;
 use alloc::vec::Vec;
 use alloc::sync::{Arc, Weak};
-use sync::{Once, SpinLock, RwLock};
+use sync::SpinLock;
 use error::UserspaceError;
-use event::{self, Waitable};
+use event::Waitable;
 use process::ThreadStruct;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::slice;
 use byteorder::{LE, ByteOrder};
-use paging::{self, MappingFlags, mapping::MappingType, process_memory::ProcessMemory, kernel_memory::get_kernel_memory};
+use paging::{MappingFlags, mapping::MappingType, process_memory::ProcessMemory};
 use mem::{UserSpacePtr, UserSpacePtrMut, VirtualAddress};
 use bit_field::BitField;
 
