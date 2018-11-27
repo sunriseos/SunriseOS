@@ -18,7 +18,6 @@
 #[cfg(not(target_os = "none"))]
 use std as core;
 
-extern crate arrayvec;
 extern crate bit_field;
 #[macro_use]
 extern crate lazy_static;

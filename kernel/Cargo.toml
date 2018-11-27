@@ -32,10 +32,6 @@ bitfield = "0.13"
 default-features = false
 version = "0.6.2"
 
-[dependencies.arrayvec]
-default-features = false
-version = "0.4.7"
-
 [dependencies.byteorder]
 default-features = false
 version = "1.2.1"
