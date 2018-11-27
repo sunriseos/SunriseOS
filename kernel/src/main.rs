@@ -143,6 +143,7 @@ pub unsafe extern fn start() -> ! {
 #[no_mangle]
 pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     log_impl::early_init();
+    use devices::rs232::{SerialLogger, SerialAttributes, SerialColor};
 
     // Register some loggers
     static mut SERIAL: SerialLogger = SerialLogger;
@@ -151,10 +152,9 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 
     let loggers = &mut Loggers;
     // Say hello to the world
-    write!(Loggers, "\n# Welcome to ");
-    loggers.print_attr("KFS",
-                             LogAttributes::new_fg(LogColor::LightCyan));
-    writeln!(Loggers, "!\n");
+    writeln!(Loggers, "\n# Welcome to {}KFS{}!\n",
+        SerialAttributes::fg(SerialColor::LightCyan),
+        SerialAttributes::default());
 
     // Parse the multiboot infos
     let boot_info = unsafe { multiboot2::load(multiboot_info_addr) };
