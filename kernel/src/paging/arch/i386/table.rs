@@ -13,7 +13,6 @@ use super::super::super::kernel_memory::get_kernel_memory;
 use super::super::super::MappingFlags;
 use mem::{VirtualAddress, PhysicalAddress};
 use frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
-use logger::Loggers;
 use core::ops::{Deref, DerefMut};
 use core::marker::PhantomData;
 

@@ -3,7 +3,7 @@
 mod filter;
 
 use log::{self, Log, Metadata, Record, LevelFilter};
-use logger::Loggers;
+use devices::rs232::SerialLogger;
 use core::fmt::Write;
 use i386::multiboot::get_boot_information;
 use sync::{RwLock, Once};
@@ -21,9 +21,9 @@ impl Log for Logger {
     fn log(&self, record: &Record) {
         if self.filter.read().matches(record) {
             if let Some(thread) = scheduler::try_get_current_thread() {
-                writeln!(Loggers, "[{}] - {} - {} - {}", record.level(), record.target(), thread.process.name, record.args());
+                writeln!(SerialLogger, "[{}] - {} - {} - {}", record.level(), record.target(), thread.process.name, record.args());
             } else {
-                writeln!(Loggers, "[{}] - {} - {}", record.level(), record.target(), record.args());
+                writeln!(SerialLogger, "[{}] - {} - {}", record.level(), record.target(), record.args());
             }
         }
     }

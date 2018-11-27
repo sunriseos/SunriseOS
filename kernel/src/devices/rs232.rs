@@ -1,10 +1,9 @@
 //! RS-232
 
-use core::fmt::Write;
+use core::fmt::{Display, Write, Error, Formatter};
 use sync::{Once, SpinLock};
 use io::Io;
 use i386::pio::Pio;
-use logger::*;
 
 /// The port of a COM
 #[derive(Debug, Copy, Clone)]
@@ -43,48 +42,41 @@ pub enum SerialColor {
     White        = 67,
 }
 
-impl SerialColor {
-    fn from_log_color(orig: LogColor, ) -> SerialColor {
-        match orig {
-            LogColor::DefaultForeground       => SerialColor::Default,
-            LogColor::DefaultBackground       => SerialColor::Default,
+#[derive(Debug, Copy, Clone)]
+/// A foreground and a background combination
+pub struct SerialAttributes {
+    fg: SerialColor,
+    bg: SerialColor,
+}
 
-            LogColor::Black         => SerialColor::Black,
-            LogColor::White         => SerialColor::White,
-            LogColor::Blue          => SerialColor::Blue,
-            LogColor::Green         => SerialColor::Green,
-            LogColor::Cyan          => SerialColor::Cyan,
-            LogColor::Red           => SerialColor::Red,
-            LogColor::Magenta       => SerialColor::Magenta,
-            LogColor::Yellow        => SerialColor::Yellow,
-            LogColor::LightGray     => SerialColor::LightGray,
-            LogColor::DarkGray      => SerialColor::DarkGray,
-            LogColor::LightBlue     => SerialColor::LightBlue,
-            LogColor::LightGreen    => SerialColor::LightGreen,
-            LogColor::LightCyan     => SerialColor::LightCyan,
-            LogColor::LightRed      => SerialColor::LightRed,
-            LogColor::LightYellow   => SerialColor::Yellow,
-            LogColor::LightMagenta  => SerialColor::Magenta,
+impl SerialAttributes {
+    pub fn fg(fg: SerialColor) -> SerialAttributes {
+        SerialAttributes { fg, bg: SerialColor::Default }
+    }
 
-            // fallback colors
-            LogColor::Brown         => SerialColor::Red,
-            LogColor::Pink          => SerialColor::LightMagenta,
-        }
+    pub fn fg_bg(fg: SerialColor, bg: SerialColor) -> SerialAttributes {
+        SerialAttributes { fg, bg }
+    }
+
+    pub fn default() -> SerialAttributes {
+        SerialAttributes { fg: SerialColor::Default, bg: SerialColor::Default }
     }
 }
 
-#[derive(Debug, Copy, Clone)]
-struct SerialAttributes(LogAttributes);
-
-impl SerialAttributes {
-    pub fn new(attr: LogAttributes) -> SerialAttributes {
-        SerialAttributes(attr)
-    }
-
-    pub fn enable(&self) {
-        let fg = SerialColor::from_log_color(self.0.foreground);
-        let bg = SerialColor::from_log_color(self.0.background);
-        write!(SerialLogger, "\x1B[{};{}m", fg as u8 + 30, bg as u8 + 40);
+/// To log something with color attributes do something like this:
+///
+/// ```
+/// use ::device::rs232::{SerialLogger, SerialAttributes, SerialColor};
+/// use ::core::fmt::Write;
+///
+/// write!(SerialLogger, "Hello {}World{}!",
+///     SerialAttributes::fg(SerialColor::Green), // a green foreground with default background.
+///     SerialAttributes::default() // don't forget to set back to default attributes at the end.
+/// );
+/// ```
+impl Display for SerialAttributes {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        write!(f, "\x1B[{};{}m", self.fg as u8 + 30, self.bg as u8 + 40)
     }
 }
 
@@ -134,52 +126,32 @@ impl SerialInternal<Pio<u8>> {
 
 /* ********************************************************************************************** */
 
+/// A logger that sends its output to COM1.
+///
+/// Use it like this:
+/// ```
+/// use ::core::fmt::Write;
+///
+/// write!(SerialLogger, "I got {} problems, but logging ain't one", 99);
+/// ```
 pub struct SerialLogger;
 
-impl Logger for SerialLogger {
-    /// Prints a string to the serial port
-    fn print(&mut self, string: &str) {
-        let mut internal = G_SERIAL.call_once(|| SpinLock::new(SerialInternal::<Pio<u8>>::new(COM1))).lock();
-        internal.send_string(string);
-    }
-
-    /// Prints a string to the screen and adds a line feed
-    fn println(&mut self, string: &str) {
-        let mut internal = G_SERIAL.call_once(|| SpinLock::new(SerialInternal::<Pio<u8>>::new(COM1))).lock();
-        internal.send_string(string);
-        internal.send_string("\n");
-    }
-
-    /// Prints a string to the serial port with attributes
-    fn print_attr(&mut self, string: &str, attr: LogAttributes) {
-        SerialAttributes::new(attr).enable();
-        {
-            let mut internal = G_SERIAL.call_once(|| SpinLock::new(SerialInternal::<Pio<u8>>::new(COM1))).lock();
-            internal.send_string(string);
-        }
-        SerialAttributes::new(LogAttributes::default()).enable();
-    }
-
-    /// Prints a string to the serial port with attributes and adds a line feed
-    fn println_attr(&mut self, string: &str, attr: LogAttributes) {
-        let logger = &mut SerialLogger;
-        logger.print_attr(string, attr);
-        logger.print("\n");
-    }
-
-    unsafe fn force_unlock(&mut self) {
+impl SerialLogger {
+    /// Re-take the lock protecting multiple access to the device.
+    ///
+    /// # Safety
+    ///
+    /// This function should only be used when panicking.
+    pub unsafe fn force_unlock(&mut self) {
         G_SERIAL.call_once(|| SpinLock::new(SerialInternal::<Pio<u8>>::new(COM1))).force_unlock();
-    }
-
-    fn clear(&mut self) {
-        // We don't clear
     }
 }
 
-impl ::core::fmt::Write for SerialLogger {
+impl Write for SerialLogger {
+    /// Writes a string to COM1.
     fn write_str(&mut self, s: &str) -> Result<(), ::core::fmt::Error> {
-        let logger = &mut SerialLogger;
-        logger.print(s);
+        let mut internal = G_SERIAL.call_once(|| SpinLock::new(SerialInternal::<Pio<u8>>::new(COM1))).lock();
+        internal.send_string(s);
         Ok(())
     }
 }

@@ -3,7 +3,6 @@ use io::Io;
 use i386::structures::idt::ExceptionStackFrame;
 use core::fmt::Write;
 use devices::pic;
-use logger::Loggers;
 
 fn acknowledge_irq(irq: u8) {
     pic::get().acknowledge(irq)

@@ -290,7 +290,6 @@ pub struct Registers {
 
 // TODO: Get a 6th argument in by putting the syscall_nr in the interrupt struct.
 pub extern fn syscall_handler_inner(registers: &mut Registers) {
-    use logger::Logger;
     use devices::rs232::SerialLogger;
 
     let (syscall_nr, x0, x1, x2, x3, x4, x5) = (registers.eax, registers.ebx, registers.ecx, registers.edx, registers.esi, registers.edi, registers.ebp);

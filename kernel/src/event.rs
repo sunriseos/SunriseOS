@@ -173,7 +173,6 @@ pub fn dispatch_event(irq: usize) {
     IRQ_STATES[irq].counter.fetch_add(1, Ordering::SeqCst);
     let mut processes = IRQ_STATES[irq].waiting_processes.lock();
     while let Some(process) = processes.pop() {
-        info!("Unregistering {:010x} for irq {}", &*process as *const _ as usize, IRQ_STATES[irq].irqnum);
         scheduler::add_to_schedule_queue(process);
     }
 }
