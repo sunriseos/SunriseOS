@@ -266,7 +266,9 @@ impl KernelMemory {
                                     KernelLand::length() + RecursiveTablesLand::length(),
         |entry_state, length| {
             if let PageState::Present(mapped_frame) = entry_state {
-                mark_frame_bootstrap_allocated(mapped_frame)
+                for offset in (0..length).step_by(PAGE_SIZE) {
+                    mark_frame_bootstrap_allocated(mapped_frame + offset)
+                }
             }
         });
     }
