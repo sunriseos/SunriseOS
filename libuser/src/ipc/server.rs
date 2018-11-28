@@ -54,7 +54,7 @@ impl WaitableManager {
 }
 
 pub trait Object {
-    fn dispatch(&mut self, cmdid: u32, buf: &mut [u8]) -> Result<(), usize>;
+    fn dispatch(&mut self, manager: &WaitableManager, cmdid: u32, buf: &mut [u8]) -> Result<(), usize>;
 }
 
 #[repr(C, align(16))]
@@ -112,7 +112,7 @@ impl<T: Object> IWaitable for SessionWrapper<T> {
         match ty {
             // TODO: Handle other types.
             4 | 6 => {
-                self.object.dispatch(cmdid, &mut self.buf[..])?;
+                self.object.dispatch(manager, cmdid, &mut self.buf[..])?;
                 self.handle.reply(&mut self.buf[..])?;
             },
             _ => unimplemented!()
