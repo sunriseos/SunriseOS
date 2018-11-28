@@ -51,7 +51,7 @@ impl<'a> From<&'a MappingType> for kfs_libkern::MemoryType {
             // such as "Heap", "CodeMemory", "SharedMemory", "TransferMemory", etc...
 
             MappingType::Available => kfs_libkern::MemoryType::Unmapped,
-            MappingType::Guarded => kfs_libkern::MemoryType::Unmapped,
+            MappingType::Guarded => kfs_libkern::MemoryType::Reserved,
             MappingType::Regular(_) => kfs_libkern::MemoryType::Normal,
             MappingType::Shared(_) => kfs_libkern::MemoryType::SharedMemory,
             MappingType::SystemReserved => kfs_libkern::MemoryType::Reserved,
