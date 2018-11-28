@@ -47,17 +47,14 @@ pub fn find_free_address(size: usize, align: usize) -> Result<usize, usize> {
     loop {
         let (meminfo, _) = syscalls::query_memory(addr)?;
         if meminfo.memtype == kfs_libkern::MemoryType::Unmapped {
-            let alignedbaseaddr = kfs_libutils::align_up(meminfo.baseaddr, align);
+            let alignedbaseaddr = kfs_libutils::align_up_checked(meminfo.baseaddr, align).ok_or(1usize)?;
+
             let alignment = alignedbaseaddr - meminfo.baseaddr;
-            if alignment + size < meminfo.size {
+            if alignment.checked_add(size).ok_or(1usize)? < meminfo.size {
                 return Ok(alignedbaseaddr)
             }
         }
-        match meminfo.baseaddr.checked_add(meminfo.size) {
-            Some(s) => addr = s,
-            // TODO: Return a proper error.
-            None => return Err(1)
-        }
+        addr = meminfo.baseaddr.checked_add(meminfo.size).ok_or(1usize)?;
     }
 }
 

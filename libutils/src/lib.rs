@@ -14,11 +14,26 @@ use core::fmt::Write;
 mod cursor;
 pub use cursor::*;
 
+/// Align the address to the next alignment.
+///
+/// The given number should be a power of two to get coherent results!
+///
+/// # Panics
+///
+/// Panics on underflow if align is 0.
+/// Panics on overflow if the expression `addr + (align - 1)` overflows.
 pub fn align_up<T: Num + Not<Output = T> + BitAnd<Output = T> + Copy>(addr: T, align: T) -> T
 {
-    align_down(addr + align - T::one(), align)
+    align_down(addr + (align - T::one()), align)
 }
 
+/// Align the address to the previous alignment.
+///
+/// The given number should be a power of two to get coherent results!
+///
+/// # Panics
+///
+/// Panics on underflow if align is 0.
 pub fn align_down<T: Num + Not<Output = T> + BitAnd<Output = T> + Copy>(addr: T, align: T) -> T
 {
     addr & !(align - T::one())
