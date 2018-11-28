@@ -41,6 +41,25 @@ fn init_heap() {
     }
 }
 
+pub fn find_free_address(size: usize, align: usize) -> Result<usize, usize> {
+    let mut addr = 0;
+    // Go over the address space.
+    loop {
+        let (meminfo, _) = syscalls::query_memory(addr)?;
+        if meminfo.memtype == kfs_libkern::MemoryType::Unmapped {
+            let alignedbaseaddr = kfs_libutils::align_up(meminfo.baseaddr, align);
+            let alignment = alignedbaseaddr - meminfo.baseaddr;
+            if alignment + size < meminfo.size {
+                return Ok(alignedbaseaddr)
+            }
+        }
+        match meminfo.baseaddr.checked_add(meminfo.size) {
+            Some(s) => addr = s,
+            // TODO: Return a proper error.
+            None => return Err(1)
+        }
+    }
+}
 
 #[lang = "eh_personality"] #[no_mangle] pub extern fn eh_personality() {}
 

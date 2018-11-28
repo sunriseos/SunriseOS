@@ -7,6 +7,7 @@ use frame_allocator::PhysicalMemRegion;
 use alloc::{vec::Vec, sync::Arc};
 use utils::{check_aligned, check_nonzero_length, Splittable};
 use failure::Backtrace;
+use kfs_libkern;
 
 /// A memory mapping.
 /// Stores the address, the length, and the type it maps.
@@ -39,6 +40,23 @@ pub enum MappingType {
 //    Stack(Vec<PhysicalMemRegion>),
     Shared(Arc<Vec<PhysicalMemRegion>>),
     SystemReserved // used for anything that UserSpace isn't authorized to address
+}
+
+impl<'a> From<&'a MappingType> for kfs_libkern::MemoryType {
+    fn from(ty: &'a MappingType) -> kfs_libkern::MemoryType {
+        match ty {
+            // TODO: Extend MappingType to cover all MemoryTypes
+            // BODY: Currently, MappingType only covers a very limited view of the mappings.
+            // It should have the ability to understand all the various kind of memory allocations,
+            // such as "Heap", "CodeMemory", "SharedMemory", "TransferMemory", etc...
+
+            MappingType::Available => kfs_libkern::MemoryType::Unmapped,
+            MappingType::Guarded => kfs_libkern::MemoryType::Unmapped,
+            MappingType::Regular(_) => kfs_libkern::MemoryType::Normal,
+            MappingType::Shared(_) => kfs_libkern::MemoryType::SharedMemory,
+            MappingType::SystemReserved => kfs_libkern::MemoryType::Reserved,
+        }
+    }
 }
 
 impl Mapping {
