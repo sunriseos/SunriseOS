@@ -93,8 +93,8 @@ macro_rules! object {
     // - The function cannot be generic.
     //
     // Outputs the function, resets the meta list, and go to the next function.
-    (@functions meta=($($meta:meta),*), fn $funcname:ident $(<$($lifetime:lifetime),*>)* (&mut self, $($args:tt)*) -> Result<($($ret:tt)*), usize> $body:block $($tt:tt)*) => {
-        object!(@rewriteargs ($($meta),*), $funcname, ($($($lifetime),*)*), (), ($($ret)*), $body, $($args)*);
+    (@functions meta=($($meta:meta),*), fn $funcname:ident $(<$($lifetime:lifetime),*>)* (&mut $self:ident, $($args:tt)*) -> Result<($($ret:tt)*), usize> $body:block $($tt:tt)*) => {
+        object!(@rewriteargs ($($meta),*), $funcname, ($($($lifetime),*)*), $self, (), ($($ret)*), $body, $($args)*);
         object!(@functions meta=(), $($tt)*);
     };
     // All functions have been processed. We can now stop parsing.
@@ -103,18 +103,21 @@ macro_rules! object {
     // ------------------ Arg Rewriting Block ------------
     // We're going to do some light processing on arguments to remove some invalid
     // syntax. We want to turn Handle<move> and Handle<copy> into Handle.
-    (@rewriteargs ($($meta:meta),*), $funcname:ident, ($($lifetime:lifetime),*), ($($argname:ident : $argty:ty),*), ($($ret:tt)*), $body:block, $name:ident : Handle<copy>, $($rest:tt)*) => {
-        object!(@rewriteargs ($($meta:meta),*), $funcname, ($($lifetime),*), ($($argname: $argty,)* $name: Handle), ($($ret)*), $body, $($rest)*);
+    //
+    // Note: we're taking self as an independant parameter to make sure we don't
+    // break hygiene.
+    (@rewriteargs ($($meta:meta),*), $funcname:ident, ($($lifetime:lifetime),*), $self:ident, ($($argname:ident : $argty:ty),*), ($($ret:tt)*), $body:block, $name:ident : Handle<copy>, $($rest:tt)*) => {
+        object!(@rewriteargs ($($meta:meta),*), $funcname, ($($lifetime),*), $self, ($($argname: $argty,)* $name: Handle), ($($ret)*), $body, $($rest)*);
     };
-    (@rewriteargs ($($meta:meta),*), $funcname:ident, ($($lifetime:lifetime),*), ($($argname:ident : $argty:ty),*), ($($ret:tt)*), $body:block, $name:ident : Handle<move>, $($rest:tt)*) => {
-        object!(@rewriteargs ($($meta:meta),*), $funcname, ($($lifetime),*), ($($argname: $argty,)* $name: Handle), ($($ret)*), $body, $($rest)*);
+    (@rewriteargs ($($meta:meta),*), $funcname:ident, ($($lifetime:lifetime),*), $self:ident, ($($argname:ident : $argty:ty),*), ($($ret:tt)*), $body:block, $name:ident : Handle<move>, $($rest:tt)*) => {
+        object!(@rewriteargs ($($meta:meta),*), $funcname, ($($lifetime),*), $self, ($($argname: $argty,)* $name: Handle), ($($ret)*), $body, $($rest)*);
     };
-    (@rewriteargs ($($meta:meta),*), $funcname:ident, ($($lifetime:lifetime),*), ($($argname:ident : $argty:ty),*), ($($ret:tt)*), $body:block, $name:ident : $ty:ty, $($rest:tt)*) => {
-        object!(@rewriteargs ($($meta:meta),*), $funcname, ($($lifetime),*), ($($argname: $argty,)* $name: $ty), ($($ret)*), $body, $($rest)*);
+    (@rewriteargs ($($meta:meta),*), $funcname:ident, ($($lifetime:lifetime),*), $self:ident, ($($argname:ident : $argty:ty),*), ($($ret:tt)*), $body:block, $name:ident : $ty:ty, $($rest:tt)*) => {
+        object!(@rewriteargs ($($meta:meta),*), $funcname, ($($lifetime),*), $self, ($($argname: $argty,)* $name: $ty), ($($ret)*), $body, $($rest)*);
     };
-    (@rewriteargs ($($meta:meta),*), $funcname:ident, ($($lifetime:lifetime),*), ($($args:tt)*), ($($ret:tt)*), $body:block, ) => {
+    (@rewriteargs ($($meta:meta),*), $funcname:ident, ($($lifetime:lifetime),*), $self:ident, ($($args:tt)*), ($($ret:tt)*), $body:block, ) => {
         $(#[$meta])*
-        fn $funcname <$($lifetime),*> (&mut self, $($args)*) -> Result<($($ret)*), usize> $body
+        fn $funcname <$($lifetime),*> (&mut $self, $($args)*) -> Result<($($ret)*), usize> $body
     };
 
 
