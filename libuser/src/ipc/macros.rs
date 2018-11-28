@@ -454,7 +454,7 @@ macro_rules! object {
     (@movecount Handle, $($tt:tt)*) => {
         1 + object!(@movecount $($tt)*)
     };
-    (@movecount $ty:path, $($tt:tt)*) => {
+    (@movecount $ty:ty, $($tt:tt)*) => {
         object!(@movecount $($tt)*)
     };
     (@movecount $name:ident: $($tt:tt)*) => {
