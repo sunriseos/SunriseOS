@@ -3,7 +3,7 @@
 use i386;
 use mem::{VirtualAddress, PhysicalAddress};
 use mem::{UserSpacePtr, UserSpacePtrMut};
-use paging::{MappingFlags, process_memory::QueryMemory};
+use paging::{MappingFlags};
 use frame_allocator::PhysicalMemRegion;
 use process::{Handle, ThreadStruct, ProcessStruct};
 use event::{self, Waitable};
@@ -16,7 +16,7 @@ use alloc::vec::Vec;
 use ipc;
 use super::check_thread_killed;
 use error::UserspaceError;
-use kfs_libkern::{nr, SYSCALL_NAMES, MemoryInfo, MemoryType, MemoryAttributes, MemoryPermissions};
+use kfs_libkern::{nr, SYSCALL_NAMES, MemoryInfo, MemoryAttributes};
 
 extern fn ignore_syscall(nr: usize) -> Result<(), UserspaceError> {
     // TODO: Trigger "unknown syscall" signal, for userspace signal handling.
@@ -234,25 +234,21 @@ fn create_port(max_sessions: u32, _is_light: bool, _name_ptr: UserSpacePtr<[u8; 
 #[inline(never)]
 fn query_memory(mut meminfo: UserSpacePtrMut<MemoryInfo>, _unk: usize, addr: usize) -> Result<usize, UserspaceError> {
     let curproc = scheduler::get_current_process();
-    *meminfo = match curproc.pmemory.lock().query_memory(VirtualAddress(addr))? {
-        QueryMemory::Available(mapping) => MemoryInfo {
-            baseaddr: mapping.address().addr(),
-            size: mapping.length(),
-            memtype: MemoryType::Unmapped,
-            memattr: MemoryAttributes::empty(),
-            perms: MemoryPermissions::empty(),
-            ipc_ref_count: 0,
-            device_ref_count: 0,
-        },
-        QueryMemory::Used(mapping) => MemoryInfo {
-            baseaddr: mapping.address().addr(),
-            size: mapping.length(),
-            memtype: mapping.mtype_ref().into(),
-            memattr: MemoryAttributes::empty(),
-            perms: mapping.flags().into(),
-            ipc_ref_count: 0,
-            device_ref_count: 0,
-        },
+    let memlock = curproc.pmemory.lock();
+    let qmem = memlock.query_memory(VirtualAddress(addr))?;
+    let mapping = qmem.as_ref();
+    *meminfo = MemoryInfo {
+        baseaddr: mapping.address().addr(),
+        size: mapping.length(),
+        memtype: mapping.mtype_ref().into(),
+        // TODO: Handle MemoryAttributes and refcounts in query_memory
+        // BODY: QueryMemory gives userspace the ability to query if a memory
+        // area is being used as an IPC buffer or a device address space. We
+        // should implement this.
+        memattr: MemoryAttributes::empty(),
+        perms: mapping.flags().into(),
+        ipc_ref_count: 0,
+        device_ref_count: 0,
     };
     // TODO: PageInfo Handling
     // BODY: Properly return Page Information. The horizon/NX page-info stuff
