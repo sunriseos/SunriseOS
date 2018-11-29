@@ -7,10 +7,10 @@ impl IUserInterface {
 		    use syscalls;
 
         loop {
-            const NOT_REGISTERED: usize = 7 << 9 | 0x21;
+            const NO_SUCH_ENTRY: usize = 121 << 9 | 1;
 		        let _ = match syscalls::connect_to_named_port("sm:\0") {
                 Ok(s) => return Ok(IUserInterface(s)),
-                Err(NOT_REGISTERED) => syscalls::sleep_thread(0),
+                Err(NO_SUCH_ENTRY) => syscalls::sleep_thread(0),
                 Err(err) => return Err(err)
             };
         }
