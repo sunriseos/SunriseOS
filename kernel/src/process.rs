@@ -17,6 +17,7 @@ use error::{KernelError, UserspaceError};
 use ipc::{ServerPort, ClientPort, ServerSession, ClientSession};
 use mem::VirtualAddress;
 use failure::Backtrace;
+use frame_allocator::PhysicalMemRegion;
 
 /// The struct representing a process. There's one for every process.
 ///
@@ -121,6 +122,7 @@ pub enum Handle {
     ServerSession(ServerSession),
     ClientSession(ClientSession),
     Thread(Weak<ThreadStruct>),
+    SharedMemory(Arc<Vec<PhysicalMemRegion>>),
 }
 
 impl Handle {
@@ -159,6 +161,14 @@ impl Handle {
 
     pub fn as_thread_handle(&self) -> Result<Weak<ThreadStruct>, UserspaceError> {
         if let &Handle::Thread(ref s) = self {
+            Ok((*s).clone())
+        } else {
+            Err(UserspaceError::InvalidHandle)
+        }
+    }
+
+    pub fn as_shared_memory(&self) -> Result<Arc<Vec<PhysicalMemRegion>>, UserspaceError> {
+        if let &Handle::SharedMemory(ref s) = self {
             Ok((*s).clone())
         } else {
             Err(UserspaceError::InvalidHandle)

@@ -136,6 +136,27 @@ pub fn sleep_thread(nanos: usize) -> Result<(), usize> {
     }
 }
 
+pub fn create_shared_memory(size: usize, myperm: MemoryPermissions, otherperm: MemoryPermissions) -> Result<SharedMemory, usize> {
+    unsafe {
+        let (out_handle, ..) = syscall(nr::CreateSharedMemory, size, myperm.bits() as _, otherperm.bits() as _, 0, 0, 0)?;
+        Ok(SharedMemory(Handle::new(out_handle as _)))
+    }
+}
+
+pub fn map_shared_memory(handle: &SharedMemory, addr: usize, size: usize, perm: MemoryPermissions) -> Result<(), usize> {
+    unsafe {
+        syscall(nr::MapSharedMemory, (handle.0).0.get() as _, addr, size, perm.bits() as _, 0, 0)?;
+        Ok(())
+    }
+}
+
+pub fn unmap_shared_memory(handle: &SharedMemory, addr: usize, size: usize) -> Result<(), usize> {
+    unsafe {
+        syscall(nr::UnmapSharedMemory, (handle.0).0.get() as _, addr, size, 0, 0, 0)?;
+        Ok(())
+    }
+}
+
 // Not totally public because it's not safe to use directly
 pub(crate) fn close_handle(handle: u32) -> Result<(), usize> {
     unsafe {
