@@ -41,6 +41,12 @@ fn init_heap() {
     }
 }
 
+/// # Panics
+///
+/// Panics on underflow when size = 0.
+///
+/// Panics on underflow when align = 0.
+///
 pub fn find_free_address(size: usize, align: usize) -> Result<usize, usize> {
     let mut addr = 0;
     // Go over the address space.
@@ -50,7 +56,7 @@ pub fn find_free_address(size: usize, align: usize) -> Result<usize, usize> {
             let alignedbaseaddr = kfs_libutils::align_up_checked(meminfo.baseaddr, align).ok_or(1usize)?;
 
             let alignment = alignedbaseaddr - meminfo.baseaddr;
-            if alignment.checked_add(size).ok_or(1usize)? < meminfo.size {
+            if alignment.checked_add(size - 1).ok_or(1usize)? < meminfo.size {
                 return Ok(alignedbaseaddr)
             }
         }
