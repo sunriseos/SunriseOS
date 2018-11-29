@@ -288,31 +288,31 @@ macro_rules! object {
 
     // We got an InBuffer (type A). Let's call pop_in_buffer.
     (@callargs $sel:expr, $manager:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: InBuffer<$ty:ty>, $($tt:tt)*) => {
-        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_in_buffer::<$ty>()), $($tt)*);
+        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_in_buffer::<$ty>()?), $($tt)*);
     };
     // We got an OutBuffer (type B). Let's call pop_out_buffer.
     (@callargs $sel:expr, $manager:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: OutBuffer<$ty:ty>, $($tt:tt)*) => {
-        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_out_buffer::<$ty>()), $($tt)*);
+        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_out_buffer::<$ty>()?), $($tt)*);
     };
     // We got an InPointer (type X). Let's call pop_in_pointer.
     (@callargs $sel:expr, $manager:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: InPointer<$ty:ty>, $($tt:tt)*) => {
-        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_in_pointer::<$ty>()), $($tt)*);
+        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_in_pointer::<$ty>()?), $($tt)*);
     };
     // We got an OutPointer (type C). Let's call pop_out_pointer.
     (@callargs $sel:expr, $manager:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: OutPointer<$ty:ty>, $($tt:tt)*) => {
-        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_out_pointer::<$ty>()), $($tt)*);
+        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_out_pointer::<$ty>()?), $($tt)*);
     };
     // We got a Handle. Let's call pop_handle_move.
     (@callargs $sel:expr, $manager:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: Handle<move>, $($tt:tt)*) => {
-        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_handle_move()), $($tt)*);
+        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_handle_move()?), $($tt)*);
     };
     // We got a Handle. Let's call pop_handle_copy.
     (@callargs $sel:expr, $manager:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: Handle<copy>, $($tt:tt)*) => {
-        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_handle_copy()), $($tt)*);
+        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_handle_copy()?), $($tt)*);
     };
     // We got a Pid. Let's call pop_pid.
     (@callargs $sel:expr, $manager:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: Pid, $($tt:tt)*) => {
-        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_pid()), $($tt)*);
+        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_pid()?), $($tt)*);
     };
     // We got a WaitableManager. Let's send the manager argument
     (@callargs $sel:expr, $manager:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: &WaitableManager, $($tt:tt)*) => {

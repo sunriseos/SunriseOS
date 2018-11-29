@@ -32,7 +32,8 @@ impl IUserInterface {
 
 		    self.0.send_sync_request_with_user_buffer(&mut buf[..])?;
 		    let mut res : Message<(), [_; 0], [_; 0], [_; 1]> = Message::unpack(&buf[..]);
-		    Ok(ClientSession(res.pop_handle_move()))
+        res.error()?;
+		    Ok(ClientSession(res.pop_handle_move()?))
     }
 
     pub fn register_service(&self, name: u64, is_light: bool, max_handles: u32) -> Result<ServerPort, usize> {
@@ -55,6 +56,7 @@ impl IUserInterface {
 
 		    self.0.send_sync_request_with_user_buffer(&mut buf[..])?;
 		    let mut res : Message<(), [_; 0], [_; 0], [_; 1]> = Message::unpack(&buf[..]);
-		    Ok(ServerPort(res.pop_handle_move()))
+        res.error()?;
+		    Ok(ServerPort(res.pop_handle_move()?))
     }
 }

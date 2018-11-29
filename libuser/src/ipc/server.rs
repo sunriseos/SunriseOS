@@ -108,7 +108,6 @@ impl<T: Object> IWaitable for SessionWrapper<T> {
     fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<(), usize> {
         self.handle.receive(&mut self.buf[..], Some(0))?;
         let (ty, cmdid) = super::find_ty_cmdid(&self.buf[..]);
-        syscalls::output_debug_string(&format!("ty={}, cmdid={}", ty, cmdid));
         match ty {
             // TODO: Handle other types.
             4 | 6 => {
