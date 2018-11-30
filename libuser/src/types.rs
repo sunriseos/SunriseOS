@@ -1,6 +1,7 @@
 use core::marker::PhantomData;
 use syscalls;
 use core::num::NonZeroU32;
+use kfs_libkern::MemoryPermissions;
 
 // Guarantees: A Handle is a u32. An Option<Handle> is *also* a u32, with None
 // represented as 0 - useful for the ReplyTarget argument of ReplyAndReceive.
@@ -90,6 +91,62 @@ pub struct Thread(pub Handle);
 impl Thread {
     pub fn start(&self) -> Result<(), usize> {
         syscalls::start_thread(self)
+    }
+}
+
+#[repr(transparent)]
+#[derive(Debug)]
+pub struct SharedMemory(pub Handle);
+
+impl SharedMemory {
+    pub fn new(length: usize, myperm: MemoryPermissions, otherperm: MemoryPermissions) -> Result<SharedMemory, usize> {
+        syscalls::create_shared_memory(length, myperm, otherperm)
+    }
+
+    pub fn map(self, addr: usize, size: usize, perm: MemoryPermissions) -> Result<MappedSharedMemory, usize> {
+        syscalls::map_shared_memory(&self, addr, size, perm)?;
+        Ok(MappedSharedMemory {
+            handle: self,
+            addr,
+            size,
+        })
+    }
+}
+
+pub struct MappedSharedMemory {
+    handle: SharedMemory,
+    addr: usize,
+    size: usize
+}
+
+impl MappedSharedMemory {
+    pub unsafe fn get(&self) -> &[u8] {
+        ::core::slice::from_raw_parts(self.addr as *const u8, self.size)
+    }
+    pub unsafe fn get_mut(&self) -> &mut [u8] {
+        ::core::slice::from_raw_parts_mut(self.addr as *mut u8, self.size)
+    }
+
+    pub fn as_ptr(&self) -> *const u8 {
+        self.addr as *const u8
+    }
+
+    pub fn as_mut_ptr(&self) -> *mut u8 {
+        self.addr as *mut u8
+    }
+
+    pub fn len(&self) -> usize {
+        self.size
+    }
+
+    pub fn as_shared_mem(&self) -> &SharedMemory {
+        &self.handle
+    }
+}
+
+impl Drop for MappedSharedMemory {
+    fn drop(&mut self) {
+        let _ = syscalls::unmap_shared_memory(&self.handle, self.addr, self.size);
     }
 }
 

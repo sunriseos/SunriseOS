@@ -15,7 +15,7 @@ pub enum UserspaceError {
     MemoryFull = 104,
     HandleTableFull = 105,
     // InvalidMemState = 106,
-    // InvalidMemPerms = 108,
+    InvalidMemPerms = 108,
     // InvalidMemRange = 110,
     // InvalidThreadPrio = 112,
     // InvalidProcId = 113,

@@ -3,8 +3,8 @@
 use i386;
 use mem::{VirtualAddress, PhysicalAddress};
 use mem::{UserSpacePtr, UserSpacePtrMut};
-use paging::{MappingFlags};
-use frame_allocator::PhysicalMemRegion;
+use paging::{MappingFlags, PAGE_SIZE, mapping::MappingType};
+use frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
 use process::{Handle, ThreadStruct, ProcessStruct};
 use event::{self, Waitable};
 use scheduler::{self, get_current_thread, get_current_process};
@@ -16,7 +16,7 @@ use alloc::vec::Vec;
 use ipc;
 use super::check_thread_killed;
 use error::UserspaceError;
-use kfs_libkern::{nr, SYSCALL_NAMES, MemoryInfo, MemoryAttributes};
+use kfs_libkern::{nr, SYSCALL_NAMES, MemoryInfo, MemoryAttributes, MemoryPermissions};
 
 extern fn ignore_syscall(nr: usize) -> Result<(), UserspaceError> {
     // TODO: Trigger "unknown syscall" signal, for userspace signal handling.
@@ -231,6 +231,66 @@ fn create_port(max_sessions: u32, _is_light: bool, _name_ptr: UserSpacePtr<[u8; 
     Ok((clienthnd as _, serverhnd as _))
 }
 
+fn create_shared_memory(size: u32, _myperm: u32, _otherperm: u32) -> Result<usize, UserspaceError> {
+    // TODO: Frame Allocator should take lengths in bytes.
+    // BODY: The frame allocator currently takes frame numbers instead of byte
+    // lengths. This forces all the error handling upon the callers, which is a
+    // bit of a pain. Instead, it should take byte lengths, and handle the error
+    // cases itself.
+    if size as usize % PAGE_SIZE != 0 || size == 0 {
+        return Err(UserspaceError::InvalidSize);
+    }
+    let frames = FrameAllocator::allocate_frames_fragmented((size as usize) / PAGE_SIZE)?;
+    let handle = Arc::new(Handle::SharedMemory(Arc::new(frames)));
+    let curproc = get_current_process();
+    let hnd = curproc.phandles.lock().add_handle(handle);
+    Ok(hnd as _)
+}
+
+fn map_shared_memory(handle: u32, addr: usize, size: usize, perm: u32) -> Result<(), UserspaceError> {
+    let perm = MemoryPermissions::from_bits(perm).ok_or(UserspaceError::InvalidMemPerms)?;
+    let curproc = get_current_process();
+    let mem = curproc.phandles.lock().get_handle(handle)?.as_shared_memory()?;
+    // TODO: RE the switch: can we map a subsection of a shared memory?
+    if size != mem.iter().map(|v| v.size()).sum() {
+        return Err(UserspaceError::InvalidSize)
+    }
+    curproc.pmemory.lock().map_shared_mapping(mem, VirtualAddress(addr), perm.into())?;
+    Ok(())
+}
+
+fn unmap_shared_memory(handle: u32, addr: usize, size: usize) -> Result<(), UserspaceError> {
+    let curproc = get_current_process();
+    let hmem = curproc.phandles.lock().get_handle(handle)?.as_shared_memory()?;
+    let addr = VirtualAddress(addr);
+    let mut memlock = curproc.pmemory.lock();
+    {
+        let qmem = memlock.query_memory(addr)?;
+        let mapping = qmem.as_ref();
+
+        // Check that the given addr/size covers the full mapping.
+        // TODO: Can we unmap a subsection of a shared memory?
+        // BODY: I am unsure if it is allowed to unmap a subsection of a shared memory mapping.
+        // This will require some reverse engineering work.
+        if mapping.address() != addr {
+            return Err(UserspaceError::InvalidAddress)
+        }
+        if mapping.length() != size {
+            return Err(UserspaceError::InvalidSize)
+        }
+
+        // Check that we have the correct shared mapping.
+        match mapping.mtype_ref() {
+            MappingType::Shared(ref cmem) if Arc::ptr_eq(&hmem, cmem) => (),
+            _ => return Err(UserspaceError::InvalidAddress)
+        }
+    }
+    // We know that mapping = addr + size, and we know that handle == mapping.
+    // Let's unmap.
+    memlock.unmap(addr, size)?;
+    Ok(())
+}
+
 #[inline(never)]
 fn query_memory(mut meminfo: UserSpacePtrMut<MemoryInfo>, _unk: usize, addr: usize) -> Result<usize, UserspaceError> {
     let curproc = scheduler::get_current_process();
@@ -324,6 +384,8 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
         nr::StartThread => registers.apply0(start_thread(x0 as _)),
         nr::ExitThread => registers.apply0(exit_thread()),
         nr::SleepThread => registers.apply0(sleep_thread(x0)),
+        nr::MapSharedMemory => registers.apply0(map_shared_memory(x0 as _, x1 as _, x2 as _, x3 as _)),
+        nr::UnmapSharedMemory => registers.apply0(unmap_shared_memory(x0 as _, x1 as _, x2 as _)),
         nr::CloseHandle => registers.apply0(close_handle(x0 as _)),
         nr::WaitSynchronization => registers.apply1(wait_synchronization(UserSpacePtr::from_raw_parts(x0 as _, x1), x2)),
         nr::ConnectToNamedPort => registers.apply1(connect_to_named_port(UserSpacePtr(x0 as _))),
@@ -334,6 +396,7 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
         // The ARM64 spec allows x0-x7 as input arguments, so *ideally* we need 2
         // more registers.
         nr::ReplyAndReceiveWithUserBuffer => registers.apply1(reply_and_receive_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), UserSpacePtr::from_raw_parts(x2 as _, x3), x4 as _, x5)),
+        nr::CreateSharedMemory => registers.apply1(create_shared_memory(x0 as _, x1 as _, x2 as _)),
         nr::CreateInterruptEvent => registers.apply1(create_interrupt_event(x0, x1 as u32)),
         nr::CreatePort => registers.apply2(create_port(x0 as _, x1 != 0, UserSpacePtr(x2 as _))),
         nr::ManageNamedPort => registers.apply1(manage_named_port(UserSpacePtr(x0 as _), x1 as _)),
