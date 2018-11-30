@@ -232,6 +232,14 @@ fn create_port(max_sessions: u32, _is_light: bool, _name_ptr: UserSpacePtr<[u8; 
 }
 
 fn create_shared_memory(size: u32, _myperm: u32, _otherperm: u32) -> Result<usize, UserspaceError> {
+    // TODO: Frame Allocator should take lengths in bytes.
+    // BODY: The frame allocator currently takes frame numbers instead of byte
+    // lengths. This forces all the error handling upon the callers, which is a
+    // bit of a pain. Instead, it should take byte lengths, and handle the error
+    // cases itself.
+    if size as usize % PAGE_SIZE != 0 || size == 0 {
+        return Err(UserspaceError::InvalidSize);
+    }
     let frames = FrameAllocator::allocate_frames_fragmented((size as usize) / PAGE_SIZE)?;
     let handle = Arc::new(Handle::SharedMemory(Arc::new(frames)));
     let curproc = get_current_process();
