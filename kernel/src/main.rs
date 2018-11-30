@@ -46,28 +46,28 @@ extern crate kfs_libkern;
 use core::fmt::Write;
 use alloc::prelude::*;
 
-mod paging;
-mod event;
-mod error;
-mod log_impl;
+pub mod paging;
+pub mod event;
+pub mod error;
+pub mod log_impl;
 #[macro_use]
-mod i386;
+pub mod i386;
 #[cfg(target_os = "none")]
-mod gdt;
-mod interrupts;
-mod frame_allocator;
+pub mod gdt;
+pub mod interrupts;
+pub mod frame_allocator;
 
-mod heap_allocator;
-mod io;
-mod devices;
-mod sync;
-mod process;
-mod scheduler;
-mod mem;
-mod ipc;
-mod elf_loader;
-mod utils;
-mod checks;
+pub mod heap_allocator;
+pub mod io;
+pub mod devices;
+pub mod sync;
+pub mod process;
+pub mod scheduler;
+pub mod mem;
+pub mod ipc;
+pub mod elf_loader;
+pub mod utils;
+pub mod checks;
 
 // Make rust happy about rust_oom being no_mangle...
 pub use heap_allocator::rust_oom;
