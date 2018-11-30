@@ -1,6 +1,8 @@
 #![feature(alloc)]
 #![no_std]
 
+#![warn(missing_docs)]
+
 #[macro_use]
 extern crate kfs_libuser as libuser;
 #[macro_use]

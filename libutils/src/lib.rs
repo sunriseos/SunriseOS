@@ -2,6 +2,7 @@
 //! Should probably be further split into several useful libraries.
 
 #![no_std]
+#![warn(missing_docs)]
 
 extern crate byteorder;
 extern crate bit_field;

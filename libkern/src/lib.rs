@@ -1,6 +1,7 @@
 //! Types shared by user and kernel
 
 #![no_std]
+#![warn(missing_docs)]
 
 #[macro_use]
 extern crate kfs_libutils;

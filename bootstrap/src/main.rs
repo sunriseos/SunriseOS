@@ -26,6 +26,7 @@
 #![cfg_attr(target_os = "none", no_std)]
 #![cfg_attr(target_os = "none", no_main)]
 #![allow(unused)]
+#![warn(missing_docs)]
 #[cfg(not(target_os = "none"))]
 use std as core;
 
