@@ -12,6 +12,7 @@ mod bookkeeping;
 
 pub use self::arch::{PAGE_SIZE, read_cr2};
 pub use self::hierarchical_table::PageState;
+use kfs_libkern;
 
 bitflags! {
     /// The flags of a mapping.
@@ -20,6 +21,29 @@ bitflags! {
         const WRITABLE =        1 << 1;
         const EXECUTABLE =      1 << 2;
         const USER_ACCESSIBLE = 1 << 3;
+    }
+}
+
+impl From<MappingFlags> for kfs_libkern::MemoryPermissions {
+    fn from(perms: MappingFlags) -> Self {
+        let mut newperms = kfs_libkern::MemoryPermissions::empty();
+        if !perms.contains(MappingFlags::USER_ACCESSIBLE) {
+            return newperms;
+        }
+        newperms.set(kfs_libkern::MemoryPermissions::READABLE, perms.contains(MappingFlags::READABLE));
+        newperms.set(kfs_libkern::MemoryPermissions::WRITABLE, perms.contains(MappingFlags::WRITABLE));
+        newperms.set(kfs_libkern::MemoryPermissions::EXECUTABLE, perms.contains(MappingFlags::EXECUTABLE));
+        newperms
+    }
+}
+
+impl From<kfs_libkern::MemoryPermissions> for MappingFlags {
+    fn from(perms: kfs_libkern::MemoryPermissions) -> Self {
+        let mut newperms = MappingFlags::USER_ACCESSIBLE;
+        newperms.set(MappingFlags::READABLE, perms.contains(kfs_libkern::MemoryPermissions::READABLE));
+        newperms.set(MappingFlags::WRITABLE, perms.contains(kfs_libkern::MemoryPermissions::WRITABLE));
+        newperms.set(MappingFlags::EXECUTABLE, perms.contains(kfs_libkern::MemoryPermissions::EXECUTABLE));
+        newperms
     }
 }
 

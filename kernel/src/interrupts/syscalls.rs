@@ -3,7 +3,7 @@
 use i386;
 use mem::{VirtualAddress, PhysicalAddress};
 use mem::{UserSpacePtr, UserSpacePtrMut};
-use paging::MappingFlags;
+use paging::{MappingFlags};
 use frame_allocator::PhysicalMemRegion;
 use process::{Handle, ThreadStruct, ProcessStruct};
 use event::{self, Waitable};
@@ -14,9 +14,9 @@ use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use ipc;
-use error::UserspaceError;
-use kfs_libkern::{nr, SYSCALL_NAMES};
 use super::check_thread_killed;
+use error::UserspaceError;
+use kfs_libkern::{nr, SYSCALL_NAMES, MemoryInfo, MemoryAttributes};
 
 extern fn ignore_syscall(nr: usize) -> Result<(), UserspaceError> {
     // TODO: Trigger "unknown syscall" signal, for userspace signal handling.
@@ -231,6 +231,31 @@ fn create_port(max_sessions: u32, _is_light: bool, _name_ptr: UserSpacePtr<[u8; 
     Ok((clienthnd as _, serverhnd as _))
 }
 
+#[inline(never)]
+fn query_memory(mut meminfo: UserSpacePtrMut<MemoryInfo>, _unk: usize, addr: usize) -> Result<usize, UserspaceError> {
+    let curproc = scheduler::get_current_process();
+    let memlock = curproc.pmemory.lock();
+    let qmem = memlock.query_memory(VirtualAddress(addr))?;
+    let mapping = qmem.as_ref();
+    *meminfo = MemoryInfo {
+        baseaddr: mapping.address().addr(),
+        size: mapping.length(),
+        memtype: mapping.mtype_ref().into(),
+        // TODO: Handle MemoryAttributes and refcounts in query_memory
+        // BODY: QueryMemory gives userspace the ability to query if a memory
+        // area is being used as an IPC buffer or a device address space. We
+        // should implement this.
+        memattr: MemoryAttributes::empty(),
+        perms: mapping.flags().into(),
+        ipc_ref_count: 0,
+        device_ref_count: 0,
+    };
+    // TODO: PageInfo Handling
+    // BODY: Properly return Page Information. The horizon/NX page-info stuff
+    //       is not really documented yet, so this will require some RE work.
+    Ok(0)
+}
+
 impl Registers {
     fn apply0(&mut self, ret: Result<(), UserspaceError>) {
         self.apply3(ret.map(|_| (0, 0, 0)))
@@ -293,6 +318,7 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
 
     match syscall_nr {
         // Horizon-inspired syscalls!
+        nr::QueryMemory => registers.apply1(query_memory(UserSpacePtrMut(x0 as _), x1, x2)),
         nr::ExitProcess => registers.apply0(exit_process()),
         nr::CreateThread => registers.apply1(create_thread(x0, x1, x2, x3 as _, x4 as _)),
         nr::StartThread => registers.apply0(start_thread(x0 as _)),

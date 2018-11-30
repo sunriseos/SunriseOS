@@ -5,6 +5,7 @@ use types::*;
 use alloc::prelude::*;
 use core::fmt::Write;
 use kfs_libkern::nr;
+pub use kfs_libkern::{MemoryInfo, MemoryPermissions};
 
 global_asm!("
 .intel_syntax noprefix
@@ -82,6 +83,14 @@ unsafe fn syscall(nr: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize,
     } else {
         Err(registers.eax)
     }
+}
+
+pub fn query_memory(addr: usize) -> Result<(MemoryInfo, usize), usize> {
+    let mut meminfo = MemoryInfo::default();
+    let (pageinfo, ..) = unsafe {
+        syscall(nr::QueryMemory, &mut meminfo as *mut _ as usize, 0, addr, 0, 0, 0)?
+    };
+    Ok((meminfo, pageinfo))
 }
 
 pub fn exit_process() -> ! {

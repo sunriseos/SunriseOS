@@ -41,6 +41,28 @@ fn init_heap() {
     }
 }
 
+/// # Panics
+///
+/// Panics on underflow when size = 0.
+///
+/// Panics on underflow when align = 0.
+///
+pub fn find_free_address(size: usize, align: usize) -> Result<usize, usize> {
+    let mut addr = 0;
+    // Go over the address space.
+    loop {
+        let (meminfo, _) = syscalls::query_memory(addr)?;
+        if meminfo.memtype == kfs_libkern::MemoryType::Unmapped {
+            let alignedbaseaddr = kfs_libutils::align_up_checked(meminfo.baseaddr, align).ok_or(1usize)?;
+
+            let alignment = alignedbaseaddr - meminfo.baseaddr;
+            if alignment.checked_add(size - 1).ok_or(1usize)? < meminfo.size {
+                return Ok(alignedbaseaddr)
+            }
+        }
+        addr = meminfo.baseaddr.checked_add(meminfo.size).ok_or(1usize)?;
+    }
+}
 
 #[lang = "eh_personality"] #[no_mangle] pub extern fn eh_personality() {}
 

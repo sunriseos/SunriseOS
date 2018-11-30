@@ -29,6 +29,15 @@ pub enum QueryMemory<'a> {
     Used(&'a Mapping)
 }
 
+impl<'a> QueryMemory<'a> {
+    pub fn as_ref(&self) -> &Mapping {
+        match self {
+            QueryMemory::Available(mem) => mem,
+            QueryMemory::Used(mem) => mem,
+        }
+    }
+}
+
 impl UserspaceBookkeeping {
     /// Constructs a UserspaceBookkeeping
     ///
