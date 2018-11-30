@@ -13,13 +13,21 @@ use core::marker::PhantomData;
 use error::KernelError;
 use alloc::vec::Vec;
 
-/// A span of physical frames. A frame is PAGE_SIZE.
+/// A span of adjacent physical frames. A frame is [PAGE_SIZE].
 ///
-/// PhysicalMemRegions are allocated by the FRAME_ALLOCATOR.
-/// Dropping a PhysicalMemRegion frees it.
+/// `PhysicalMemRegions` are allocated by the [FrameAllocator].
+/// Dropping a `PhysicalMemRegion` frees it.
 pub struct PhysicalMemRegion {
+    /// The number of frames in this region.
     pub(super) frames: usize,
+    /// The (physical) address of the start of this region.
     pub(super) start_addr: usize,
+    /// Denotes if the frames held in this region should be freed when the whole region is freed.
+    /// The default have this set to `true`.
+    ///
+    /// We provide (unsafe) methods for duplicating `PhysicalMemRegions`, to ease working with them,
+    /// but the duplicated region must not also free the frames when dropped,
+    /// as this would cause a double-free.
     pub(super) should_free_on_drop: bool
 }
 
@@ -30,17 +38,17 @@ impl PhysicalMemRegion {
     /// Get the size this PhysicalMemRegion spans
     pub fn size(&self) -> usize { self.frames * PAGE_SIZE }
 
-    /// Constructs a PhysicalMemRegiom by circumventing the FAME_ALLOCATOR.
+    /// Constructs a `PhysicalMemRegion` by circumventing the [FrameAllocator].
     /// Used for accessing fixed mmio regions, as they should have been marked
-    /// reserved in the FRAME_ALLOCATOR and will never be returned by it.
+    /// reserved in the [FrameAllocator] and will never be returned by it.
     ///
-    /// On drop the region won't be given back to the FRAME_ALLOCATOR,
+    /// On drop the region won't be given back to the [FrameAllocator],
     /// and thous stay marked as reserved.
     ///
     /// # Panic
     ///
-    /// Panics if any of the frames in this span wasn't marked as reserved in
-    /// the frame allocator, as it could had mistakenly given it as regular ram.
+    /// * Panics if any of the frames in this span wasn't marked as reserved in
+    /// the [FrameAllocator], as it could had mistakenly given it as regular ram.
     pub unsafe fn on_fixed_mmio(start_addr: PhysicalAddress, len: usize) -> Self {
         let region = PhysicalMemRegion {
             start_addr: align_down(start_addr.addr(), PAGE_SIZE),
@@ -51,12 +59,12 @@ impl PhysicalMemRegion {
         region
     }
 
-    /// Constructs a PhysicalMemRegion from a physical address, and a len.
-    /// Region will be given back to the FRAME_ALLOCATOR on drop.
+    /// Constructs a `PhysicalMemRegion` from a physical address, and a len.
+    /// Region will be given back to the [FrameAllocator] on drop.
     ///
     /// # Unsafe
     ///
-    /// This function by-passes the FRAME_ALLOCATOR, and should only be used
+    /// This function by-passes the [FrameAllocator], and should only be used
     /// for frames that have been deconstructed and put in the Page Tables,
     /// and that are lacking any other form of tracking.
     /// This is the case for kernel pages.
@@ -66,10 +74,10 @@ impl PhysicalMemRegion {
     ///
     /// # Panic
     ///
-    /// Panics if any of the frames in this span wasn't marked as allocated in
+    /// * Panics if any of the frames in this span wasn't marked as allocated in
     /// the frame allocator.
-    /// Panics when the address is not framesize-aligned
-    /// Panics when the len is not framesize-aligned
+    /// * Panics when the address is not framesize-aligned
+    /// * Panics when the len is not framesize-aligned
     pub unsafe fn reconstruct(physical_addr: PhysicalAddress, len: usize) -> Self {
         assert_eq!(physical_addr.addr() % PAGE_SIZE, 0,
                    "PhysicalMemRegion must be constructed from a framesize-aligned pointer");
@@ -84,12 +92,12 @@ impl PhysicalMemRegion {
         region
     }
 
-    /// Constructs a PhysicalMemRegion from a physical address, and a len.
-    /// Region won't be given back to the FRAME_ALLOCATOR on drop.
+    /// Constructs a `PhysicalMemRegion` from a physical address, and a len.
+    /// Region won't be given back to the [FrameAllocator] on drop.
     ///
     /// # Unsafe
     ///
-    /// This function by-passes the FRAME_ALLOCATOR, and should only be used
+    /// This function by-passes the [FrameAllocator], and should only be used
     /// for frames that have been deconstructed and put in the Page Tables,
     /// and that are lacking any other form of tracking.
     /// This is the case for kernel pages.
@@ -99,10 +107,10 @@ impl PhysicalMemRegion {
     ///
     /// # Panic
     ///
-    /// Panics if any of the frames in this span wasn't marked as allocated in
+    /// * Panics if any of the frames in this span wasn't marked as allocated in
     /// the frame allocator.
-    /// Panics when the address is not framesize-aligned
-    /// Panics when the len is not framesize-aligned
+    /// * Panics when the address is not framesize-aligned
+    /// * Panics when the len is not framesize-aligned
     pub unsafe fn reconstruct_no_dealloc(physical_addr: PhysicalAddress, len: usize) -> Self {
         let mut ret = Self::reconstruct(physical_addr, len);
         ret.should_free_on_drop = false;
@@ -111,6 +119,7 @@ impl PhysicalMemRegion {
 }
 
 impl Drop for PhysicalMemRegion {
+    /// Dropping a `PhysicalMemRegion` may free its frames.
     fn drop(&mut self) {
         if self.should_free_on_drop {
             FrameAllocator::free_region(self)
@@ -118,6 +127,7 @@ impl Drop for PhysicalMemRegion {
     }
 }
 
+/// An iterator over a physical region. Yields the address of each contained frame.
 #[derive(Debug, Clone)]
 pub struct PhysicalMemRegionIter<'a>(StepBy<Range<usize>>, PhantomData<&'a ()>);
 

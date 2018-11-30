@@ -24,6 +24,7 @@ pub struct UserspaceBookkeeping {
 /// Because we do not store Available mappings internally, we need this enum to return
 /// a new available mappings, or a reference to the stored mapping.
 #[derive(Debug)]
+#[allow(missing_docs)]
 pub enum QueryMemory<'a> {
     Available(Mapping),
     Used(&'a Mapping)

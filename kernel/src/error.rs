@@ -8,6 +8,7 @@ use core::fmt::{self, Display};
 pub use kfs_libkern::error::KernelError as UserspaceError;
 
 #[derive(Debug, Clone, Copy)]
+#[allow(missing_docs)]
 pub enum ArithmeticOperation { Add, Sub, Mul, Div, Mod, Pow }
 
 impl Display for ArithmeticOperation {
@@ -23,7 +24,15 @@ impl Display for ArithmeticOperation {
     }
 }
 
+/// Kernel Error.
+///
+/// Used pretty much everywhere that an error can occur. Holds the reason of the error,
+/// and a backtrace of its origin, for debug.
+///
+/// When a KernelError must be propagated to userspace, i.e. a syscall failed, it must be
+/// converted to a [UserspaceError].
 #[derive(Debug, Fail)]
+#[allow(missing_docs)]
 pub enum KernelError {
     #[fail(display = "Frame allocation error: physical address space exhausted")]
     PhysicalMemoryExhaustion {

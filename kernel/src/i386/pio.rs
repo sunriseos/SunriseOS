@@ -1,5 +1,6 @@
 //! Port IO
-//! Copied from (redox io)[https://gitlab.redox-os.org/redox-os/syscall/blob/master/src/io/pio.rs]
+//!
+//! Copied from [redox pio](https://gitlab.redox-os.org/redox-os/syscall/blob/master/src/io/pio.rs)
 
 use core::marker::PhantomData;
 

@@ -240,6 +240,7 @@ impl PrivilegeLevel {
 /// ([see OSDEV](https://wiki.osdev.org/TSS))
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
+#[allow(missing_docs)]
 pub struct TssStruct {
     pub link: u16,
     _reserved1: u16,

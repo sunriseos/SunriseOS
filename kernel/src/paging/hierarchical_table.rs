@@ -22,8 +22,14 @@ use core::iter::{Iterator, Peekable};
 /// Option type.
 #[derive(Debug)]
 pub enum PageState<T> {
+    /// Available, aka unused.
+    /// Will page fault on use.
     Available,
+    /// Guarded. Reserved and will cause a pagefault on use.
+    /// Used to create guard pages (in KernelStack, etc.) in KernelLand, where the tracking of
+    /// the type of each memory region is done directly in the page tables.
     Guarded,
+    /// Present. Used and has a backing physical address.
     Present(T)
 }
 

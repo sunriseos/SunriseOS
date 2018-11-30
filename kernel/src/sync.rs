@@ -12,8 +12,9 @@ use i386::instructions::interrupts::*;
 use core::sync::atomic::{AtomicBool, Ordering};
 use scheduler;
 
-/// Placeholder for future Mutex implementation
+/// Placeholder for future Mutex implementation.
 pub type Mutex<T> = SpinLock<T>;
+/// Placeholder for future Mutex implementation.
 pub type MutexGuard<'a, T> = SpinLockGuard<'a, T>;
 
 /// Decrement the interrupt disable counter.
@@ -124,6 +125,7 @@ impl<T: ?Sized> SpinLockIRQ<T> {
         }
     }
 
+    /// Force unlocks the lock.
     pub unsafe fn force_unlock(&self) {
         self.internal.force_unlock()
     }
@@ -142,6 +144,7 @@ impl<T: fmt::Debug> fmt::Debug for SpinLockIRQ<T> {
     }
 }
 
+/// The SpinLockIrq lock guard.
 #[derive(Debug)]
 pub struct SpinLockIRQGuard<'a, T: ?Sized + 'a>(ManuallyDrop<SpinLockGuard<'a, T>>);
 

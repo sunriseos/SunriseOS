@@ -76,15 +76,22 @@ impl FrameAllocatori386 {
     }
 }
 
+/// The physical memory manager.
+///
+/// Serves physical memory in atomic blocks of size [PAGE_SIZE](::paging::PAGE_SIZE), called frames.
+///
+/// An allocation request returns a [PhysicalMemRegion], which represents a list of
+/// physically adjacent frames. When this returned `PhysicalMemRegion` is eventually dropped
+/// the frames are automatically freed and can be re-served by the FrameAllocator.
 pub struct FrameAllocator;
 
 impl FrameAllocatorTraitPrivate for FrameAllocator {
-    /// Frees an allocated frame.
+    /// Frees an allocated physical region.
     ///
     /// # Panic
     ///
-    /// Panics if the frame was not allocated
-    /// Panics if FRAME_ALLOCATOR was not initialized
+    /// * Panics if the frame was not allocated.
+    /// * Panics if FRAME_ALLOCATOR was not initialized.
     fn free_region(region: &PhysicalMemRegion) {
         // don't bother taking the lock if there is no frames to free
         if region.frames > 0 {
@@ -100,9 +107,11 @@ impl FrameAllocatorTraitPrivate for FrameAllocator {
         }
     }
 
+    /// Checks that a physical region was allocated.
+    ///
     /// # Panic
     ///
-    /// Panics if FRAME_ALLOCATOR was not initialized
+    /// * Panics if FRAME_ALLOCATOR was not initialized.
     fn check_is_allocated(region: &PhysicalMemRegion) -> bool {
         let allocator = FRAME_ALLOCATOR.lock();
         assert!(allocator.initialized, "The frame allocator was not initialized");
@@ -112,9 +121,13 @@ impl FrameAllocatorTraitPrivate for FrameAllocator {
         })
     }
 
+    /// Checks that a physical region is marked reserved.
+    /// This implementation does not distinguish between allocated and reserved frames,
+    /// so for us it's equivalent to `check_is_allocated`.
+    ///
     /// # Panic
     ///
-    /// Panics if FRAME_ALLOCATOR was not initialized
+    /// * Panics if FRAME_ALLOCATOR was not initialized.
     fn check_is_reserved(region: &PhysicalMemRegion) -> bool {
         // we have no way to distinguish between 'allocated' and 'reserved'
         Self::check_is_allocated(region)
@@ -122,7 +135,7 @@ impl FrameAllocatorTraitPrivate for FrameAllocator {
 }
 
 impl FrameAllocatorTrait for FrameAllocator {
-    /// Allocates a single PhysicalMemRegion.
+    /// Allocates a single [PhysicalMemRegion].
     /// Frames are physically consecutive.
     ///
     /// # Error
@@ -181,7 +194,7 @@ impl FrameAllocatorTrait for FrameAllocator {
     ///
     /// # Panic
     ///
-    /// Panics if FRAME_ALLOCATOR was not initialized
+    /// * Panics if FRAME_ALLOCATOR was not initialized.
     fn allocate_frames_fragmented(length: usize) -> Result<Vec<PhysicalMemRegion>, KernelError> {
         check_nonzero_length(length)?;
         check_aligned(length, PAGE_SIZE)?;
@@ -237,7 +250,7 @@ impl FrameAllocatorTrait for FrameAllocator {
     }
 }
 
-/// Initialize the FrameAllocator by parsing the multiboot information
+/// Initialize the [FrameAllocator] by parsing the multiboot information
 /// and marking some memory areas as unusable
 pub fn init(boot_info: &BootInformation) {
     let mut allocator = FRAME_ALLOCATOR.lock();

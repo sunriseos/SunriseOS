@@ -1,5 +1,6 @@
 //! The management of kernel memory
 //!
+//! ```
 //! j-------------------------------j j---------------------j
 //! |        Process Memory         | |    Kernel Memory    |
 //! j-------------------------------j j---------------------j
@@ -12,6 +13,7 @@
 //! |           User Land            |   Kernel Land  | RTL |
 //! j--------------------------------+----------------~-----j
 //!                         Page tables
+//! ```
 //!
 //! We choose to separate UserLand and KernelLand + RecursiveTablesLand memory management.
 //! This way we can allow concurrent access on different lands, and modifying the kernel memory

@@ -117,6 +117,15 @@ fn main() {
     }
 }
 
+/// The entry point of our kernel.
+///
+/// This function is jump'd into from the bootstrap code, which:
+///
+/// * enabled paging,
+/// * gave us a valid KernelStack,
+/// * mapped grub's multiboot information structure in KernelLand (its address in $ebx),
+///
+/// What we do is just bzero the .bss, and call a rust function, passing it the content of $ebx.
 #[cfg(target_os = "none")]
 #[no_mangle]
 pub unsafe extern fn start() -> ! {
@@ -137,6 +146,8 @@ pub unsafe extern fn start() -> ! {
 }
 
 /// CRT0 starts here.
+///
+/// This function takes care of initializing the kernel, before calling the main function.
 #[cfg(target_os = "none")]
 #[no_mangle]
 pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
@@ -194,7 +205,9 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 #[cfg(target_os = "none")]
 #[lang = "eh_personality"] #[no_mangle] pub extern fn eh_personality() {}
 
-/// The function executed on a panic! Can also be called at any moment.
+/// The kernel panic function.
+///
+/// Executed on a `panic!`, but can also be called directly.
 /// Will print some useful debugging information, and never return.
 fn do_panic(msg: core::fmt::Arguments, esp: usize, ebp: usize, eip: usize) -> ! {
 
@@ -254,6 +267,9 @@ fn do_panic(msg: core::fmt::Arguments, esp: usize, ebp: usize, eip: usize) -> ! 
     loop { unsafe { asm!("HLT"); } }
 }
 
+/// Function called on `panic!` invocation.
+///
+/// Kernel panics.
 #[cfg(target_os = "none")]
 #[panic_handler] #[no_mangle]
 pub extern fn panic_fmt(p: &::core::panic::PanicInfo) -> ! {

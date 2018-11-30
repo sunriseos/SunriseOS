@@ -1,3 +1,6 @@
+//! i386 registers reading
+
+/// Gets the current $eip.
 #[inline(never)]
 pub extern fn eip() -> usize {
     let eip;
@@ -5,6 +8,7 @@ pub extern fn eip() -> usize {
     eip
 }
 
+/// Gets the current $ebp.
 macro_rules! ebp {
     () => {{
         let ebp;
@@ -13,6 +17,7 @@ macro_rules! ebp {
     }}
 }
 
+/// Gets the current $esp.
 macro_rules! esp {
     () => {{
         let esp;
