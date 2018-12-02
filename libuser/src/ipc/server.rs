@@ -78,7 +78,7 @@ impl<T, Idx> Index<Idx> for Align16<T> where T: Index<Idx> {
     }
 }
 
-struct SessionWrapper<T: Object> {
+pub struct SessionWrapper<T: Object> {
     handle: ServerSession,
     object: T,
 

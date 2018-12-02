@@ -316,6 +316,14 @@ fn query_memory(mut meminfo: UserSpacePtrMut<MemoryInfo>, _unk: usize, addr: usi
     Ok(0)
 }
 
+fn create_session(_is_light: bool, _unk: usize) -> Result<(usize, usize), UserspaceError> {
+    let (server, client) = ipc::session::new();
+    let curproc = scheduler::get_current_process();
+    let serverhnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ServerSession(server)));
+    let clienthnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ClientSession(client)));
+    Ok((serverhnd as _, clienthnd as _))
+}
+
 impl Registers {
     fn apply0(&mut self, ret: Result<(), UserspaceError>) {
         self.apply3(ret.map(|_| (0, 0, 0)))
@@ -391,6 +399,7 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
         nr::ConnectToNamedPort => registers.apply1(connect_to_named_port(UserSpacePtr(x0 as _))),
         nr::SendSyncRequestWithUserBuffer => registers.apply0(send_sync_request_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), x2 as _)),
         nr::OutputDebugString => registers.apply0(output_debug_string(UserSpacePtr::from_raw_parts(x0 as _, x1))),
+        nr::CreateSession => registers.apply2(create_session(x0 != 0, x1 as _)),
         nr::AcceptSession => registers.apply1(accept_session(x0 as _)),
         // TODO: We need one more register for the timeout. Sad panda.
         // The ARM64 spec allows x0-x7 as input arguments, so *ideally* we need 2

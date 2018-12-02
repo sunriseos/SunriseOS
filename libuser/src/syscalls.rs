@@ -193,6 +193,13 @@ pub fn output_debug_string(s: &str) -> Result<(), usize> {
     }
 }
 
+pub fn create_session(is_light: bool, unk: usize) -> Result<(ServerSession, ClientSession), usize> {
+    unsafe {
+        let (serverhandle, clienthandle, ..) = syscall(nr::CreateSession, is_light as _, unk, 0, 0, 0, 0)?;
+        Ok((ServerSession(Handle::new(serverhandle as _)), ClientSession(Handle::new(clienthandle as _))))
+    }
+}
+
 pub fn accept_session(port: &ServerPort) -> Result<ServerSession, usize> {
     unsafe {
         let (out_handle, ..) = syscall(nr::AcceptSession, (port.0).0.get() as _, 0, 0, 0, 0, 0)?;
