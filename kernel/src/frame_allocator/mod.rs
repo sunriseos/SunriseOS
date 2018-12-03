@@ -4,6 +4,7 @@
 
 use alloc::vec::Vec;
 use error::KernelError;
+use paging::PAGE_SIZE;
 
 pub mod physical_mem_region;
 pub use self::physical_mem_region::{PhysicalMemRegion, PhysicalMemRegionIter};
@@ -16,14 +17,14 @@ pub use self::i386::{FrameAllocator, init, mark_frame_bootstrap_allocated};
 pub trait FrameAllocatorTrait: FrameAllocatorTraitPrivate {
     /// Allocates a single PhysicalMemRegion.
     /// Frames are physically consecutive.
-    fn allocate_region(nr_frames: usize) -> Result<PhysicalMemRegion, KernelError>;
+    fn allocate_region(length: usize) -> Result<PhysicalMemRegion, KernelError>;
 
-    /// Allocates `nr` physical frames, possibly fragmented across several physical regions.
-    fn allocate_frames_fragmented(nr: usize) -> Result<Vec<PhysicalMemRegion>, KernelError>;
+    /// Allocates physical frames, possibly fragmented across several physical regions.
+    fn allocate_frames_fragmented(length: usize) -> Result<Vec<PhysicalMemRegion>, KernelError>;
 
     /// Allocates a single physical frame.
     fn allocate_frame() -> Result<PhysicalMemRegion, KernelError> {
-        Self::allocate_region(1)
+        Self::allocate_region(PAGE_SIZE)
     }
 }
 

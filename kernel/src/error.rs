@@ -117,6 +117,15 @@ impl From<KernelError> for UserspaceError {
             KernelError::PhysicalMemoryExhaustion { .. } => UserspaceError::MemoryFull,
             KernelError::VirtualMemoryExhaustion { .. } => UserspaceError::MemoryFull,
             KernelError::ThreadAlreadyStarted { .. } => UserspaceError::ProcessAlreadyStarted,
+            KernelError::InvalidAddress { .. } => UserspaceError::InvalidAddress,
+            KernelError::ZeroLengthError { .. } => UserspaceError::InvalidSize,
+            // TODO: AlignementError should discriminate unaligned size and unaligned address
+            // BODY: We can only convey InvalidSize and InvalidAddress to userspace.
+            // BODY: We should define two check functions, that work on a either size or an address,
+            // BODY: and can propagate the right error to userspace automatically.
+            // BODY:
+            // BODY: We must then remove KernelError::AlignmentError.
+            KernelError::AlignmentError { .. } => UserspaceError::InvalidAddress,
             //KernelError::
             KernelError::ThisWillNeverHappenButPleaseDontMatchExhaustively => unreachable!(),
             // todo

@@ -169,7 +169,7 @@ impl KernelMemory {
     pub fn map_allocate_to(&mut self, va: VirtualAddress, length: usize, flags: MappingFlags) {
         assert!(KernelLand::contains_region(va, length));
         assert!(length % PAGE_SIZE == 0, "length must be a multiple of PAGE_SIZE");
-        let mut prs = FrameAllocator::allocate_frames_fragmented(length / PAGE_SIZE).unwrap();
+        let mut prs = FrameAllocator::allocate_frames_fragmented(length).unwrap();
         self.tables.map_to_from_iterator(prs.iter().flatten(), va, flags);
 
         // do not drop the frames, they are mapped in the page tables !

@@ -18,6 +18,7 @@ use paging::PAGE_SIZE;
 use multiboot2::BootInformation;
 use sync::SpinLock;
 use alloc::vec::Vec;
+use utils::{check_aligned, check_nonzero_length};
 use bit_field::BitArray;
 use utils::BitArrayExt;
 use mem::PhysicalAddress;
@@ -124,13 +125,19 @@ impl FrameAllocatorTrait for FrameAllocator {
     /// Allocates a single PhysicalMemRegion.
     /// Frames are physically consecutive.
     ///
+    /// # Error
+    ///
+    /// * Error if `length` == 0.
+    /// * Error if `length` is not a multiple of [PAGE_SIZE].
+    ///
     /// # Panic
     ///
-    /// Panics if nr_frames == 0.
-    /// Panics if FRAME_ALLOCATOR was not initialized.
-    fn allocate_region(nr_frames: usize) -> Result<PhysicalMemRegion, KernelError> {
+    /// * Panics if FRAME_ALLOCATOR was not initialized.
+    fn allocate_region(length: usize) -> Result<PhysicalMemRegion, KernelError> {
+        check_nonzero_length(length)?;
+        check_aligned(length, PAGE_SIZE)?;
+        let nr_frames = length / PAGE_SIZE;
         let mut allocator = FRAME_ALLOCATOR.lock();
-        assert!(nr_frames > 0, "The frame allocator cannot allocate zero-size region");
         assert!(allocator.initialized, "The frame allocator was not initialized");
 
         let mut start_index = 0usize;
@@ -165,15 +172,22 @@ impl FrameAllocatorTrait for FrameAllocator {
         Err(KernelError::PhysicalMemoryExhaustion { backtrace: Backtrace::new() })
     }
 
-    /// Allocates `nr` physical frames, possibly fragmented across several physical regions.
+    /// Allocates physical frames, possibly fragmented across several physical regions.
+    ///
+    /// # Error
+    ///
+    /// * Error if `length` == 0.
+    /// * Error if `length` is not a multiple of [PAGE_SIZE].
     ///
     /// # Panic
     ///
-    /// Panics if nr_frames == 0.
     /// Panics if FRAME_ALLOCATOR was not initialized
-    fn allocate_frames_fragmented(requested: usize) -> Result<Vec<PhysicalMemRegion>, KernelError> {
+    fn allocate_frames_fragmented(length: usize) -> Result<Vec<PhysicalMemRegion>, KernelError> {
+        check_nonzero_length(length)?;
+        check_aligned(length, PAGE_SIZE)?;
+        let requested = length / PAGE_SIZE;
+
         let mut allocator_lock = FRAME_ALLOCATOR.lock();
-        assert!(requested > 0, "The frame allocator cannot allocate zero-size region");
         assert!(allocator_lock.initialized, "The frame allocator was not initialized");
 
         let mut collected_frames = 0;

@@ -196,7 +196,7 @@ impl ProcessMemory {
         check_nonzero_length(length)?;
         UserLand::check_contains_region(address, length)?;
         self.userspace_bookkeping.check_vacant(address, length)?;
-        let frames = FrameAllocator::allocate_frames_fragmented(length / PAGE_SIZE)?;
+        let frames = FrameAllocator::allocate_frames_fragmented(length)?;
         // ok, everything seems good, from now on treat errors as unexpected
 
         self.get_hierarchy().map_to_from_iterator(frames.iter().flatten(), address, flags);

@@ -56,7 +56,7 @@ impl KernelStack {
         let mut memory = get_kernel_memory();
         let va = memory.find_virtual_space_aligned(STACK_SIZE_WITH_GUARD * PAGE_SIZE,
                                                    2usize.pow(STACK_ALIGNEMENT as u32))?;
-        let region = FrameAllocator::allocate_region(STACK_SIZE)?;
+        let region = FrameAllocator::allocate_region(STACK_SIZE * PAGE_SIZE)?;
 
         memory.map_phys_region_to(region, va + PAGE_SIZE, MappingFlags::k_rw());
         memory.guard(va, PAGE_SIZE);
