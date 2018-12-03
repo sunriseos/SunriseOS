@@ -43,11 +43,11 @@ extern crate bitflags;
 #[macro_use]
 extern crate static_assertions;
 extern crate xmas_elf;
+extern crate kfs_libutils;
 
 use core::fmt::Write;
 use spin::Once;
 
-mod utils;
 mod bootstrap_logging;
 mod gdt;
 mod address;

@@ -8,7 +8,7 @@ use xmas_elf::ElfFile;
 use xmas_elf::program::{ProgramHeader, Type::Load, SegmentData};
 use paging::{PagingOffPageSet, PAGE_SIZE, UserLand, MappingType, PageTablesSet, EntryFlags};
 use address::{PhysicalAddress, VirtualAddress};
-use utils::{self, align_up};
+use kfs_libutils::{self, align_up};
 use frame_alloc::FrameAllocator;
 
 /// Loads the kernel in high memory
