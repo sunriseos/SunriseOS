@@ -2,7 +2,8 @@
 //!
 //! A [PhysicalMemRegion] is a span of consecutive physical frames.
 
-use super::{FrameAllocator, FrameAllocatorTraitPrivate, MEMORY_FRAME_SIZE};
+use super::{FrameAllocator, FrameAllocatorTraitPrivate};
+use paging::PAGE_SIZE;
 use mem::PhysicalAddress;
 use utils::{align_down, div_ceil, check_aligned, Splittable};
 use core::ops::Range;
@@ -12,7 +13,7 @@ use core::marker::PhantomData;
 use error::KernelError;
 use alloc::vec::Vec;
 
-/// A span of physical frames. A frame is MEMORY_FRAME_SIZE.
+/// A span of physical frames. A frame is PAGE_SIZE.
 ///
 /// PhysicalMemRegions are allocated by the FRAME_ALLOCATOR.
 /// Dropping a PhysicalMemRegion frees it.
@@ -27,7 +28,7 @@ impl PhysicalMemRegion {
     pub fn address(&self) -> PhysicalAddress { PhysicalAddress(self.start_addr) }
 
     /// Get the size this PhysicalMemRegion spans
-    pub fn size(&self) -> usize { self.frames * MEMORY_FRAME_SIZE }
+    pub fn size(&self) -> usize { self.frames * PAGE_SIZE }
 
     /// Constructs a PhysicalMemRegiom by circumventing the FAME_ALLOCATOR.
     /// Used for accessing fixed mmio regions, as they should have been marked
@@ -42,8 +43,8 @@ impl PhysicalMemRegion {
     /// the frame allocator, as it could had mistakenly given it as regular ram.
     pub unsafe fn on_fixed_mmio(start_addr: PhysicalAddress, len: usize) -> Self {
         let region = PhysicalMemRegion {
-            start_addr: align_down(start_addr.addr(), MEMORY_FRAME_SIZE),
-            frames: div_ceil(len, MEMORY_FRAME_SIZE),
+            start_addr: align_down(start_addr.addr(), PAGE_SIZE),
+            frames: div_ceil(len, PAGE_SIZE),
             should_free_on_drop: false
         };
         assert!(FrameAllocator::check_is_reserved(&region));
@@ -70,13 +71,13 @@ impl PhysicalMemRegion {
     /// Panics when the address is not framesize-aligned
     /// Panics when the len is not framesize-aligned
     pub unsafe fn reconstruct(physical_addr: PhysicalAddress, len: usize) -> Self {
-        assert_eq!(physical_addr.addr() % MEMORY_FRAME_SIZE, 0,
+        assert_eq!(physical_addr.addr() % PAGE_SIZE, 0,
                    "PhysicalMemRegion must be constructed from a framesize-aligned pointer");
-        assert_eq!(len % MEMORY_FRAME_SIZE, 0,
+        assert_eq!(len % PAGE_SIZE, 0,
                    "PhysicalMemRegion must have a framesize-aligned length");
         let region = PhysicalMemRegion {
             start_addr: physical_addr.addr(),
-            frames: len / MEMORY_FRAME_SIZE,
+            frames: len / PAGE_SIZE,
             should_free_on_drop: true
         };
         assert!(FrameAllocator::check_is_allocated(&region));
@@ -133,26 +134,26 @@ impl<'a> IntoIterator for &'a PhysicalMemRegion {
     type IntoIter = PhysicalMemRegionIter<'a>;
 
     fn into_iter(self) -> <Self as IntoIterator>::IntoIter {
-        PhysicalMemRegionIter((self.start_addr..self.start_addr + (self.frames * MEMORY_FRAME_SIZE)).step_by(MEMORY_FRAME_SIZE), PhantomData)
+        PhysicalMemRegionIter((self.start_addr..self.start_addr + (self.frames * PAGE_SIZE)).step_by(PAGE_SIZE), PhantomData)
     }
 }
 
 impl Debug for PhysicalMemRegion {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         write!(f, "P region {:#010x} - {:#010x}, {} frames", self.start_addr,
-               self.start_addr + self.frames * MEMORY_FRAME_SIZE - 1, self.frames)
+               self.start_addr + self.frames * PAGE_SIZE - 1, self.frames)
     }
 }
 
 impl Splittable for PhysicalMemRegion {
     /// Splits the given PhysicalMemRegion in two parts, at the given offset.
     fn split_at(&mut self, offset: usize) -> Result<Option<Self>, KernelError> {
-        check_aligned(offset, MEMORY_FRAME_SIZE)?;
+        check_aligned(offset, PAGE_SIZE)?;
         if offset != 0 && offset < self.size() {
             let frames_count = self.frames;
-            self.frames = offset / MEMORY_FRAME_SIZE;
+            self.frames = offset / PAGE_SIZE;
             Ok(Some(PhysicalMemRegion {
-                start_addr: self.start_addr + self.frames * MEMORY_FRAME_SIZE,
+                start_addr: self.start_addr + self.frames * PAGE_SIZE,
                 frames: frames_count - self.frames,
                 should_free_on_drop: self.should_free_on_drop
             }))
@@ -168,15 +169,15 @@ impl Splittable for Vec<PhysicalMemRegion> {
     /// If the offset falls in the middle of a PhysicalMemRegion, it is splitted,
     /// and the right part is moved to the second Vec.
     fn split_at(&mut self, offset: usize) -> Result<Option<Self>, KernelError> {
-        check_aligned(offset, MEMORY_FRAME_SIZE)?;
+        check_aligned(offset, PAGE_SIZE)?;
         if offset == 0 { return Ok(None) };
 
         let mut length_acc = 0;
         let split_pos_in_vec_opt = self.iter().position(|r| {
-            if length_acc + r.frames * MEMORY_FRAME_SIZE > offset {
+            if length_acc + r.frames * PAGE_SIZE > offset {
                 true
             } else {
-                length_acc += r.frames * MEMORY_FRAME_SIZE;
+                length_acc += r.frames * PAGE_SIZE;
                 false
             }
         });

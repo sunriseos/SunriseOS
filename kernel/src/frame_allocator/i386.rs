@@ -1,7 +1,5 @@
 //! i386 implementation of the frame allocator.
 //!
-//! We define a frame as the same size as a page, to make things easy for us.
-//!
 //! It keeps tracks of the allocated frames by mean of a giant bitmap mapping every
 //! physical memory frame in the address space to a bit representing if it is free or not.
 //! This works because the address space in 32 bits is only 4GB, so ~1 million frames only
@@ -16,6 +14,7 @@
 
 use super::{PhysicalMemRegion, FrameAllocatorTrait, FrameAllocatorTraitPrivate};
 
+use paging::PAGE_SIZE;
 use multiboot2::BootInformation;
 use sync::SpinLock;
 use alloc::vec::Vec;
@@ -27,16 +26,13 @@ use paging::kernel_memory::get_kernel_memory;
 use error::KernelError;
 use failure::Backtrace;
 
-/// A memory frame is the same size as a page
-pub const MEMORY_FRAME_SIZE: usize = ::paging::PAGE_SIZE;
-
 const FRAME_OFFSET_MASK: usize = 0xFFF;              // The offset part in a frame
 const FRAME_BASE_MASK:   usize = !FRAME_OFFSET_MASK; // The base part in a frame
 
 const FRAME_BASE_LOG: usize = 12; // frame_number = addr >> 12
 
 /// The size of the frames_bitmap (~128ko)
-const FRAMES_BITMAP_SIZE: usize = usize::max_value() / MEMORY_FRAME_SIZE / 8 + 1;
+const FRAMES_BITMAP_SIZE: usize = usize::max_value() / PAGE_SIZE / 8 + 1;
 
 /// Gets the frame number from a physical address
 #[inline]
@@ -198,7 +194,7 @@ impl FrameAllocatorTrait for FrameAllocator {
                 }
             }
             // we reached the end of the hole
-            let next_hole = PhysicalMemRegion { start_addr: current_hole.start_addr + (current_hole.frames + 1) * MEMORY_FRAME_SIZE,
+            let next_hole = PhysicalMemRegion { start_addr: current_hole.start_addr + (current_hole.frames + 1) * PAGE_SIZE,
                                                 frames: 0, should_free_on_drop: true };
             if current_hole.frames > 0 {
                 // add it to our collected regions

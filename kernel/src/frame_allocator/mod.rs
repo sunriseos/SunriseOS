@@ -10,7 +10,7 @@ pub use self::physical_mem_region::{PhysicalMemRegion, PhysicalMemRegionIter};
 
 /// Architecture specific-behaviour
 mod i386;
-pub use self::i386::{MEMORY_FRAME_SIZE, FrameAllocator, init, mark_frame_bootstrap_allocated};
+pub use self::i386::{FrameAllocator, init, mark_frame_bootstrap_allocated};
 
 /// An arch-specific FrameAllocator must expose the following functions
 pub trait FrameAllocatorTrait: FrameAllocatorTraitPrivate {
