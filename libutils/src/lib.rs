@@ -166,3 +166,29 @@ pub fn bit_array_first_one(bitarray: &[u8]) -> Option<usize> {
     // not found
     None
 }
+
+/// Returns the index of the first instance of count contiguous 1 in a bit array
+pub fn bit_array_first_count_one(bitarray: &[u8], count: usize) -> Option<usize> {
+    let mut curcount = 0;
+    for (index, &byte) in bitarray.iter().enumerate() {
+        if byte == 0x00 {
+            // not here
+            curcount = 0;
+            continue;
+        }
+        // We've got a one in this byte
+        for offset in 0..8 {
+            if (byte & (1 << offset)) != 0 {
+                curcount += 1;
+                if curcount == count {
+                    return Some((index * 8 + offset) - (count - 1));
+                }
+            } else {
+                curcount = 0;
+            }
+        }
+    }
+    // not found
+    None
+}
+

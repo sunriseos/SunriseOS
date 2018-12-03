@@ -16,7 +16,6 @@ use spin::Mutex;
 use ::core::fmt::Write;
 use ::core::ops::Deref;
 use core;
-use utils;
 use bootstrap_logging::Serial;
 
 pub const PAGE_SIZE: usize = 4096;
@@ -112,7 +111,7 @@ pub unsafe fn map_bootstrap(boot_info : &BootInformation) -> PagingOffPageSet {
         }
 
         let from = section.start_address() as usize;
-        let to = from + utils::align_up(section.size() as usize, PAGE_SIZE);
+        let to = from + kfs_libutils::align_up(section.size() as usize, PAGE_SIZE);
         writeln!(Serial, "= Identity mapping {:#010x}-{:#010x}", from, to);
 
         new_pages.identity_map_region(PhysicalAddress(section.start_address() as usize),
