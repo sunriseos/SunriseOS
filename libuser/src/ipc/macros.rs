@@ -8,7 +8,7 @@
 /// object! {
 ///     impl Service {
 ///         #[cmdid(0)]
-///         fn test(&mut self, val: u32,) -> Result<(u32,), usize> {
+///         fn test(&mut self, val: u32,) -> Result<(u32,), Error> {
 ///             Ok((0,))
 ///         }
 ///     }
@@ -33,7 +33,7 @@
 ///   handle list, or as a domain object
 /// - T where T: Copy, Clone, repr(C): passed through Raw Data.
 ///
-/// Important note: the return value **has** to be a `Result<(Type,...), usize>`.
+/// Important note: the return value **has** to be a `Result<(Type,...), Error>`.
 /// The function *must* take &mut self as a first argument. And right now, as a
 /// small caveat, the argument list and return tuple list must end with a coma.
 ///
@@ -66,7 +66,7 @@ macro_rules! object {
         }
 
         impl $crate::ipc::server::Object for $tyname {
-            fn dispatch(&mut self, manager: &WaitableManager, cmdid: u32, buf: &mut [u8]) -> Result<(), usize> {
+            fn dispatch(&mut self, manager: &$crate::ipc::server::WaitableManager, cmdid: u32, buf: &mut [u8]) -> Result<(), $crate::error::Error> {
                 //object!(@enum $($fns)*)
                 object!(@dispatch self, manager, cmdid=cmdid, buf=buf, fns=(), $($fns)*)
             }
@@ -94,7 +94,11 @@ macro_rules! object {
     // - The function cannot be generic.
     //
     // Outputs the function, resets the meta list, and go to the next function.
-    (@functions meta=($($meta:meta),*), fn $funcname:ident $(<$($lifetime:lifetime),*>)* (&mut $self:ident, $($args:tt)*) -> Result<($($ret:tt)*), usize> $body:block $($tt:tt)*) => {
+    //
+    // TODO: Object Macro: Take Error type as $ty
+    // BODY: We currently match the Error token exactly, which is overly restrictive.
+    // BODY: A user might want to rename the Error type, etc...
+    (@functions meta=($($meta:meta),*), fn $funcname:ident $(<$($lifetime:lifetime),*>)* (&mut $self:ident, $($args:tt)*) -> Result<($($ret:tt)*), Error> $body:block $($tt:tt)*) => {
         object!(@rewriteargs ($($meta),*), $funcname, ($($($lifetime),*)*), $self, (), ($($ret)*), $body, $($args)*);
         object!(@functions meta=(), $($tt)*);
     };
@@ -118,7 +122,7 @@ macro_rules! object {
     };
     (@rewriteargs ($($meta:meta),*), $funcname:ident, ($($lifetime:lifetime),*), $self:ident, ($($args:tt)*), ($($ret:tt)*), $body:block, ) => {
         $(#[$meta])*
-        fn $funcname <$($lifetime),*> (&mut $self, $($args)*) -> Result<($($ret)*), usize> $body
+        fn $funcname <$($lifetime),*> (&mut $self, $($args)*) -> Result<($($ret)*), Error> $body
     };
 
 
@@ -158,7 +162,7 @@ macro_rules! object {
     //
     // Refer to the comments in the macro for how it works inside the hood.
     (@dispatch $sel:expr, $manager:expr, cmdid=$cmdid:expr, buf=$buf:expr, fns=($($fcmdid:expr => $fcmdfn:block),*), fcmdid=$curfcmdid:expr,
-       fn $funcname:ident $(<$($lifetime:lifetime),*>)* (&mut self, $($args:tt)*) -> Result<($($ret:tt)*), usize> $body:block $($tt:tt)*) => {
+       fn $funcname:ident $(<$($lifetime:lifetime),*>)* (&mut self, $($args:tt)*) -> Result<($($ret:tt)*), Error> $body:block $($tt:tt)*) => {
         // Recursively call ourselves with the next function, adding a new cmdid => block to the fns aggregation.
         object!(@dispatch $sel, $manager, cmdid=$cmdid, buf=$buf, fns=($($fcmdid => $fcmdfn,)* $curfcmdid => {
             // In this block, we start by generating a `struct Args` that will
@@ -181,7 +185,7 @@ macro_rules! object {
             // all the arguments to msgout.
             match ret {
                 Ok(ret) => object!(@genret fields=(), retfields=(), msgout, ret, $($ret)*),
-                Err(err) => { msgout.set_error(err as u32); }
+                Err(err) => { msgout.set_error(err.into_code()); }
             }
             // Pack the message to msgout and we're done :D
             msgout.pack($buf);
@@ -195,7 +199,7 @@ macro_rules! object {
             $($fcmdid => $fcmd,)*
             cmd => {
                 let _ = $crate::syscalls::output_debug_string(&format!("Unknown cmdid: {}", cmd));
-                Err(0xF601)
+                Err($crate::error::KernelError::PortRemoteDead.into())
             }
         }
     };

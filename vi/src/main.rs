@@ -16,16 +16,7 @@ use libuser::ipc::server::{WaitableManager, PortHandler, IWaitable};
 use libuser::types::*;
 use hashmap_core::map::{HashMap, Entry};
 use spin::Mutex;
-
-enum Error {
-    None = 0
-}
-
-impl Into<usize> for Error {
-    fn into(self) -> usize {
-        ((self as usize) << 9) | 0x21
-    }
-}
+use libuser::error::{KernelError, Error};
 
 #[derive(Default)]
 struct ViInterface;
@@ -34,7 +25,7 @@ object! {
     impl ViInterface {
         // TODO: Take some transfer memory
         #[cmdid(0)]
-        fn create_buffer(&mut self, handle: Handle<copy>,) -> Result<(Handle,), usize> {
+        fn create_buffer(&mut self, handle: Handle<copy>,) -> Result<(Handle,), Error> {
             /*let sharedmem = SharedMemory::from_raw(handle);
             addr = find_vaddr();
             sharedmem.map(addr);
@@ -43,7 +34,7 @@ object! {
             };
             let (server, client) = syscalls::create_session(false, 0);
             //session = SessionWrapper::new();*/
-            Err(0xFC01)
+            Err(KernelError::PortRemoteDead.into())
         }
     }
 }

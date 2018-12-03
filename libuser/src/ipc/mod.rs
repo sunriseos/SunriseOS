@@ -5,6 +5,7 @@ use arrayvec::{ArrayVec, Array};
 use utils::{self, align_up, CursorWrite, CursorRead};
 use types::{Handle, HandleRef, Pid};
 use bit_field::BitField;
+use error::{Error, LibuserError};
 
 #[macro_use]
 pub mod macros;
@@ -179,11 +180,11 @@ where
         self
     }
 
-    pub fn error(&self) -> Result<(), usize> {
+    pub fn error(&self) -> Result<(), Error> {
         if self.cmdid_error == 0 {
             Ok(())
         } else {
-            Err(self.cmdid_error as _)
+            Err(Error::from_code(self.cmdid_error))
         }
     }
 
@@ -215,25 +216,22 @@ where
     /*fn pop_in_buffer<T>(&mut self) -> InBuffer<T> {
 }*/
 
-    pub fn pop_handle_move(&mut self) -> Result<Handle, usize> {
-        // TODO: Actual error
+    pub fn pop_handle_move(&mut self) -> Result<Handle, Error> {
         self.move_handles.pop_at(0)
             .map(Handle::new)
-            .ok_or(12)
+            .ok_or(LibuserError::InvalidMoveHandleCount.into())
     }
 
-    pub fn pop_handle_copy(&mut self) -> Result<Handle, usize> {
-        // TODO: Actual error
+    pub fn pop_handle_copy(&mut self) -> Result<Handle, Error> {
         self.copy_handles.pop_at(0)
             .map(Handle::new)
-            .ok_or(13)
+            .ok_or(LibuserError::InvalidCopyHandleCount.into())
     }
 
-    pub fn pop_pid(&mut self) -> Result<Pid, usize> {
-        // TODO: Actual error
+    pub fn pop_pid(&mut self) -> Result<Pid, Error> {
         self.pid.take()
             .map(Pid)
-            .ok_or(14)
+            .ok_or(LibuserError::PidMissing.into())
     }
 
 

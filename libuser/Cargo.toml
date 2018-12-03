@@ -10,6 +10,7 @@ bit_field = "0.9"
 spin = "0.4"
 kfs-libutils = { path = "../libutils" }
 kfs-libkern = { path = "../libkern" }
+failure = { version = "0.1", default-features = false, features = ["derive"] }
 
 [dependencies.byteorder]
 default-features = false
