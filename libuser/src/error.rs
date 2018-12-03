@@ -23,6 +23,16 @@ impl Error {
             _ => Error::Unknown(errcode, Backtrace::new())
         }
     }
+
+    pub fn into_code(&self) -> u32 {
+        match *self {
+            Error::Kernel(err, ..) => err.description() << 9 | Module::Kernel.0,
+            Error::Sm(err, ..) => err.0 << 9 | Module::Sm.0,
+            //Error::Vi(err, ..) => err.0 << 9 | Module::Vi.0,
+            Error::Libuser(err, ..) => err.0 << 9 | Module::Libuser.0,
+            Error::Unknown(err, ..) => err,
+        }
+    }
 }
 
 impl fmt::Display for Error {
