@@ -9,6 +9,8 @@ extern crate bitflags;
 #[macro_use]
 extern crate lazy_static;
 
+pub mod error;
+
 enum_with_val! {
     #[derive(Default, Clone, Copy, PartialEq, Eq)]
     pub struct MemoryType(u32) {

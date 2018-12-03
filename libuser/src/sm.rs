@@ -1,22 +1,22 @@
 use types::*;
+use error::{KernelError, Error};
 
 pub struct IUserInterface(ClientSession);
 
 impl IUserInterface {
-	  pub fn raw_new() -> Result<IUserInterface, usize> {
+	  pub fn raw_new() -> Result<IUserInterface, Error> {
 		    use syscalls;
 
         loop {
-            const NO_SUCH_ENTRY: usize = 121 << 9 | 1;
 		        let _ = match syscalls::connect_to_named_port("sm:\0") {
                 Ok(s) => return Ok(IUserInterface(s)),
-                Err(NO_SUCH_ENTRY) => syscalls::sleep_thread(0),
-                Err(err) => return Err(err)
+                Err(KernelError::NoSuchEntry) => syscalls::sleep_thread(0),
+                Err(err) => Err(err)?
             };
         }
 	  }
 
-    pub fn get_service(&self, name: u64) -> Result<ClientSession, usize> {
+    pub fn get_service(&self, name: u64) -> Result<ClientSession, Error> {
 		    use ipc::Message;
         let mut buf = [0; 0x100];
 
@@ -36,7 +36,7 @@ impl IUserInterface {
 		    Ok(ClientSession(res.pop_handle_move()?))
     }
 
-    pub fn register_service(&self, name: u64, is_light: bool, max_handles: u32) -> Result<ServerPort, usize> {
+    pub fn register_service(&self, name: u64, is_light: bool, max_handles: u32) -> Result<ServerPort, Error> {
 		    use ipc::Message;
         let mut buf = [0; 0x100];
 
