@@ -120,6 +120,7 @@ impl<'a> IPCBuffer<'a> {
     }
 }
 
+#[derive(Debug)]
 pub struct Message<'a, RAW, BUFF = [IPCBuffer<'a>; 0], COPY = [u32; 0], MOVE = [u32; 0]>
 where
     BUFF: Array<Item=IPCBuffer<'a>>,
@@ -178,6 +179,14 @@ where
         self
     }
 
+    pub fn error(&self) -> Result<(), usize> {
+        if self.cmdid_error == 0 {
+            Ok(())
+        } else {
+            Err(self.cmdid_error as _)
+        }
+    }
+
     pub fn push_raw(&mut self, raw: RAW) -> &mut Self {
         self.raw = raw;
         self
@@ -204,19 +213,27 @@ where
 
     // TODO: Figure out a better API for buffers. This sucks.
     /*fn pop_in_buffer<T>(&mut self) -> InBuffer<T> {
-    }*/
-    pub fn pop_handle_move(&mut self) -> Handle {
-        // TODO: avoid panic, return an error instead.
-        Handle::new(self.move_handles.remove(0))
+}*/
+
+    pub fn pop_handle_move(&mut self) -> Result<Handle, usize> {
+        // TODO: Actual error
+        self.move_handles.pop_at(0)
+            .map(Handle::new)
+            .ok_or(12)
     }
 
-    pub fn pop_handle_copy(&mut self) -> Handle {
-        // TODO: avoid panic, return an error instead.
-        Handle::new(self.move_handles.remove(0))
+    pub fn pop_handle_copy(&mut self) -> Result<Handle, usize> {
+        // TODO: Actual error
+        self.copy_handles.pop_at(0)
+            .map(Handle::new)
+            .ok_or(13)
     }
 
-    pub fn pop_pid(&mut self) -> Pid {
-        Pid(self.pid.take().unwrap())
+    pub fn pop_pid(&mut self) -> Result<Pid, usize> {
+        // TODO: Actual error
+        self.pid.take()
+            .map(Pid)
+            .ok_or(14)
     }
 
 
@@ -441,6 +458,8 @@ where
         }
     }
 
+    // TODO: Don't panic here! Unpacking happens in the server, we should return an
+    // error if the unpacking failed.
     pub fn unpack(data: &[u8]) -> Message<'a, RAW, BUFF, COPY, MOVE> {
 
         let cursor = CursorRead::new(data);

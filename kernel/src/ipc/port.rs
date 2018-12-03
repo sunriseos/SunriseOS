@@ -65,7 +65,12 @@ impl Waitable for ServerPort {
     }
 
     fn register(&self) {
-        self.0.accepters.lock().push(Arc::downgrade(&scheduler::get_current_thread()));
+        let mut accepters = self.0.accepters.lock();
+        let curproc = scheduler::get_current_thread();
+
+        if !accepters.iter().filter_map(|v| v.upgrade()).any(|v| Arc::ptr_eq(&curproc, &v)) {
+            accepters.push(Arc::downgrade(&curproc));
+        }
     }
 }
 
