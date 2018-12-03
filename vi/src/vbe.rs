@@ -6,16 +6,12 @@ use alloc::prelude::*;
 //use i386::mem::paging::{self, EntryFlags, PageTablesSet};
 //use frame_alloc::PhysicalAddress;
 //use multiboot2::{BootInformation, FramebufferInfoTag};
-use logger::{Logger, LogAttributes, LogColor};
-use font_rs::{font, font::{Font, GlyphBitmap}};
+//use logger::{Logger, LogAttributes, LogColor};
+//use font_rs::{font, font::{Font, GlyphBitmap}};
 use spin::{Mutex, MutexGuard, Once};
 use hashmap_core::HashMap;
-use kfs_libuser::syscalls::{self, MemoryPermissions};
-use kfs_libuser;
-use kfs_libuser::types::{SharedMemory, MappedSharedMemory};
-use kfs_libuser::error::Error;
-use vi::{ViInterface, IBuffer};
-use kfs_libutils::align_up;
+use syscalls;
+use libuser::error::Error;
 
 /// A rgb color
 #[derive(Copy, Clone, Debug)]
@@ -25,54 +21,33 @@ pub struct VBEColor {
     r: u8,
 }
 
-pub struct Window {
-    buf: MappedSharedMemory,
-    handle: IBuffer,
+pub struct Framebuffer {
+    buf: &'static mut [u8],
     width: usize,
     height: usize,
     bpp: usize
 }
 
 
-impl Window {
-    /// Creates a window in the vi compositor.
-    pub fn new(top: i32, left: i32, width: u32, height: u32) -> Result<Window, Error> {
-        let mut vi = ViInterface::raw_new()?;
+impl Framebuffer {
+    /// Creates an instance of the linear framebuffer from a multiboot2 BootInfo.
+    ///
+    /// # Safety
+    ///
+    /// This function should only be called once, to ensure there is only a
+    /// single mutable reference to the underlying framebuffer.
+    pub fn new() -> Result<Framebuffer, Error> {
+        let (buf, width, height, bpp) = syscalls::map_framebuffer()?;
 
-        let bpp = 4;
-        let size = height * width * bpp;
-
-        let sharedmem = SharedMemory::new(align_up(size, 0x1000) as _, MemoryPermissions::READABLE | MemoryPermissions::WRITABLE, MemoryPermissions::READABLE)?;
-        let addr = kfs_libuser::find_free_address(size as _, 0x1000)?;
-        let buf = sharedmem.map(addr, align_up(size as _, 0x1000), MemoryPermissions::READABLE | MemoryPermissions::WRITABLE)?;
-        let handle = vi.create_buffer(buf.as_shared_mem(), top, left, width, height)?;
-
-        let mut fb = Window {
+        //debug!("VBE vaddr: {:#010x}", buf.as_ptr() as usize);
+        let mut fb = Framebuffer {
             buf,
-            handle,
-            width: width as _,
-            height: height as _,
-            bpp: 4
+            width,
+            height,
+            bpp
         };
         fb.clear();
         Ok(fb)
-    }
-
-    pub fn draw(&mut self) -> Result<(), Error> {
-        for y in 0..self.height {
-            for x in 0..self.width {
-                let offset = self.get_px_offset(x, y);
-                unsafe {
-                    let r = self.buf.get()[offset + 0];
-                    let g = self.buf.get()[offset + 1];
-                    let b = self.buf.get()[offset + 2];
-                    if r != 0 || g != 0 || b != 0 {
-                        //let _ = syscalls::output_debug_string(&format!("Non-black pixel at {} {}", x, y));
-                    }
-                }
-            }
-        }
-        self.handle.draw()
     }
 
     /// framebuffer width in pixels. Does not account for bpp
@@ -110,11 +85,9 @@ impl Window {
     /// Panics if offset is invalid
     #[inline]
     pub fn write_px(&mut self, offset: usize, color: &VBEColor) {
-        unsafe {
-            self.buf.get_mut()[offset + 0] = color.b;
-            self.buf.get_mut()[offset + 1] = color.g;
-            self.buf.get_mut()[offset + 2] = color.r;
-        }
+        self.buf[offset + 0] = color.b;
+        self.buf[offset + 1] = color.g;
+        self.buf[offset + 2] = color.r;
     }
 
     /// Writes a pixel in the framebuffer respecting the bgr pattern
@@ -125,15 +98,15 @@ impl Window {
     /// Panics if coords are invalid
     #[inline]
     pub fn write_px_at(&mut self, x: usize, y: usize, color: &VBEColor) {
-        //let _ = syscalls::output_debug_string(&format!("Printing {:?} at {} {}", color, x, y));
         let offset = self.get_px_offset(x, y);
+        if offset == 4096000 {
+            syscalls::output_debug_string(&format!("What the fuck: {} {}", x, y));
+        }
         self.write_px(offset, color);
     }
 
     pub fn get_fb(&mut self) -> &mut [u8] {
-        unsafe {
-            self.buf.get_mut()
-        }
+        self.buf
     }
 
     /// Clears the whole screen
@@ -141,6 +114,18 @@ impl Window {
         let fb = self.get_fb();
         for i in fb.iter_mut() { *i = 0x00; }
     }
+
+    pub fn clear_at(&mut self, x: usize, y: usize, width: usize, height: usize) {
+        for y in y..y + height {
+            for x in x..x + width {
+                self.write_px_at(x, y, &VBEColor::rgb(0, 0, 0));
+            }
+        }
+    }
+}
+
+lazy_static! {
+    pub static ref FRAMEBUFFER: Mutex<Framebuffer> = Mutex::new(Framebuffer::new().unwrap());
 }
 
 /* ********************************************************************************************** */
@@ -149,11 +134,11 @@ impl Window {
 
 /// Some colors for the vbe
 impl VBEColor {
-    fn rgb(r: u8, g: u8, b: u8) -> VBEColor {
+    pub fn rgb(r: u8, g: u8, b: u8) -> VBEColor {
         VBEColor {r, g, b }
     }
 
-    fn from_log_color(orig: LogColor) -> VBEColor {
+    /*fn from_log_color(orig: LogColor) -> VBEColor {
         match orig {
             LogColor::DefaultBackground => Self::rgb(0x00, 0x00, 0x00),
             LogColor::DefaultForeground => Self::rgb(0xff, 0xff, 0xff),
@@ -180,9 +165,9 @@ impl VBEColor {
             LogColor::Pink          => Self::rgb(0xff, 0xc0, 0xcb),
             LogColor::LightYellow   => Self::rgb(0xff, 0xff, 0xe0),
         }
-    }
+    }*/
 }
-
+/*
 /// Just an x and a y
 #[derive(Copy, Clone, Debug)]
 struct Pos {
@@ -192,8 +177,7 @@ struct Pos {
 
 /// A struct for logging text to the vbe screen.
 /// Renders characters from a .ttf font using the font-rs crate
-pub struct VBELogger {
-    framebuffer: Window,
+struct VBELoggerInternal {
     cursor_pos: Pos,        /* Cursor pos, in pixels. Does not account for bpp.
                                Reprensents the pen position on the baseline. */
     font: Font<'static>,
@@ -207,13 +191,13 @@ pub struct VBELogger {
 }
 
 /// The font we choose to render in
-static FONT:  &'static [u8] = include_bytes!("../../shell/img/Monaco.ttf");
+//static FONT:  &'static [u8] = include_bytes!("../img/Monaco.ttf");
 
 /// The size we choose to render in
 const FONT_SIZE: u32 = 10;
 
-impl VBELogger {
-    pub fn new() -> Result<Self, Error> {
+impl VBELoggerInternal {
+    fn new() -> Self {
 
         let my_font = font::parse(FONT)
             .expect("Failed parsing provided font");
@@ -223,12 +207,12 @@ impl VBELogger {
         let my_advance_width =  my_font.max_advance_width(FONT_SIZE).unwrap() as usize;
 
         let my_linespace = my_descent + my_ascent;
-        let top = 1280 - (my_linespace + 1) as i32;
 
-        let framebuffer = Window::new(0, 0, 1280, 800/*my_linespace as u32 + 1*/)?;
-
-        Ok(VBELogger {
-            framebuffer,
+        {
+            let vbe = FRAMEBUFFER.lock();
+            assert!(my_advance_width < vbe.width() && my_linespace < vbe.height(), "font size is too large");
+        }
+        VBELoggerInternal {
             font: my_font,
             cached_glyphs: HashMap::with_capacity(128), // the ascii table
             advance_width: my_advance_width,
@@ -236,11 +220,7 @@ impl VBELogger {
             ascent: my_ascent,
             descent: my_descent,
             cursor_pos: Pos { x: 0, y: my_ascent },
-        })
-    }
-
-    pub fn draw(&mut self) -> Result<(), Error> {
-        self.framebuffer.draw()
+        }
     }
 
     #[inline]
@@ -251,20 +231,19 @@ impl VBELogger {
     #[inline]
     fn line_feed(&mut self) {
         // Are we already on the last line ?
-        if self.cursor_pos.y + self.linespace + self.descent >= self.framebuffer.height() {
+        if self.cursor_pos.y + self.linespace + self.descent >= FRAMEBUFFER.lock().height() {
             self.scroll_screen();
         } else {
             self.cursor_pos.y += self.linespace;
         }
         self.carriage_return();
-        let _ = self.draw();
     }
 
     #[inline]
     fn advance_pos(&mut self) {
         self.cursor_pos.x += self.advance_width;
         // is next displayed char going to be cut out of screen ?
-        if self.cursor_pos.x + self.advance_width >= self.framebuffer.width() {
+        if self.cursor_pos.x + self.advance_width >= FRAMEBUFFER.lock().width() {
             self.line_feed();
         }
     }
@@ -279,28 +258,29 @@ impl VBELogger {
     /// scrolls the whole screen by one line.
     /// self.pos must be on last baseline.
     fn scroll_screen(&mut self) {
-        let linespace_size_in_framebuffer = self.framebuffer.get_px_offset(0, self.linespace);
-        let lastline_top_left_corner = self.framebuffer.get_px_offset(0, self.cursor_pos.y - self.ascent);
+        let mut framebuffer = FRAMEBUFFER.lock();
+        let linespace_size_in_framebuffer = framebuffer.get_px_offset(0, self.linespace);
+        let lastline_top_left_corner = framebuffer.get_px_offset(0, self.cursor_pos.y - self.ascent);
         // Copy up from the line under it
-        assert!(lastline_top_left_corner + linespace_size_in_framebuffer < self.framebuffer.buf.len(), "Window is drunk: {} + {} < {}", lastline_top_left_corner, linespace_size_in_framebuffer, self.framebuffer.buf.len());
+        assert!(lastline_top_left_corner + linespace_size_in_framebuffer < framebuffer.buf.len(), "Framebuffer is drunk");
         unsafe {
             // memmove in the same slice. Should be safe with the assert above.
-            ::core::ptr::copy(self.framebuffer.buf.as_ptr().offset(linespace_size_in_framebuffer as isize),
-                              self.framebuffer.buf.as_mut_ptr(),
+            ::core::ptr::copy(framebuffer.buf[linespace_size_in_framebuffer..].as_ptr(),
+                              framebuffer.buf.as_mut_ptr(),
                               lastline_top_left_corner);
         }
         // Erase last line
         unsafe {
             // memset to 0x00. Should be safe with the assert above
-            ::core::ptr::write_bytes(self.framebuffer.buf.as_mut_ptr().offset(lastline_top_left_corner as isize),
+            ::core::ptr::write_bytes(framebuffer.buf[lastline_top_left_corner..].as_mut_ptr(),
                                     0x00,
-                                    self.framebuffer.buf.len() - lastline_top_left_corner);
+                                    framebuffer.buf[lastline_top_left_corner..].len());
         }
     }
 
     /// Clears the whole screen and reset cursor
     fn clear(&mut self) {
-        self.framebuffer.clear();
+        FRAMEBUFFER.lock().clear();
         self.cursor_pos = Pos { x: 0, y: self.ascent };
     }
 
@@ -312,13 +292,13 @@ impl VBELogger {
                 '\x08' => {
                     self.move_pos_back();
                     let empty_glyph = GlyphBitmap { width: 0, height: 0, top: 0, left: 0, data: Vec::new() };
-                    Self::display_glyph_in_box(&empty_glyph, &mut self.framebuffer,
+                    Self::display_glyph_in_box(&empty_glyph, &mut *FRAMEBUFFER.lock(),
                                                self.advance_width, self.ascent, self.descent,
                                                 &fg, &bg, self.cursor_pos);
                 }
                 mychar => {
                     {
-                        let VBELogger {
+                        let VBELoggerInternal {
                             cached_glyphs, font, advance_width, ascent, descent, cursor_pos, ..
                         } = self;
 
@@ -331,7 +311,7 @@ impl VBELogger {
                                         .and_then(|glyphid| font.render_glyph(glyphid, FONT_SIZE))
                                         .unwrap_or(GlyphBitmap { width: 0, height: 0, top: 0, left: 0, data: Vec::new() })
                                 });
-                            Self::display_glyph_in_box(glyph, &mut self.framebuffer,
+                            Self::display_glyph_in_box(glyph, &mut *FRAMEBUFFER.lock(),
                                                        *advance_width, *ascent, *descent,
                                                        &fg, &bg, *cursor_pos);
                         } else {
@@ -339,7 +319,7 @@ impl VBELogger {
                             let glyph = font.lookup_glyph_id(mychar as u32)
                                 .and_then(|glyphid| font.render_glyph(glyphid, FONT_SIZE))
                                 .unwrap_or(GlyphBitmap { width: 0, height: 0, top: 0, left: 0, data: Vec::new() });
-                            Self::display_glyph_in_box(&glyph, &mut self.framebuffer,
+                            Self::display_glyph_in_box(&glyph, &mut *FRAMEBUFFER.lock(),
                                                        *advance_width, *ascent, *descent,
                                                        &fg, &bg, *cursor_pos);
                         }
@@ -355,7 +335,7 @@ impl VBELogger {
     /// # Panics
     ///
     /// Panics if pos makes writing the glyph overflow the screen
-    fn display_glyph_in_box(glyph: &GlyphBitmap, framebuffer: &mut Window,
+    fn display_glyph_in_box(glyph: &GlyphBitmap, framebuffer: &mut Framebuffer,
                             box_width: usize, box_ascent: usize, box_descent: usize,
                             fg: &VBEColor, bg: &VBEColor, pos: Pos) {
 
@@ -404,47 +384,70 @@ impl VBELogger {
     }
 }
 
+/// A logger that prints renders text to the vbe screen
+pub struct VBELogger;
+
+static G_VBELOGGER: Once<Mutex<VBELoggerInternal>> = Once::new();
+
+impl VBELogger {
+    fn get_internal(&mut self) -> MutexGuard<VBELoggerInternal> {
+        G_VBELOGGER.call_once(|| Mutex::new(VBELoggerInternal::new())).lock()
+    }
+
+    unsafe fn internal_force_unlock(&mut self) {
+        G_VBELOGGER.call_once(|| Mutex::new(VBELoggerInternal::new())).force_unlock()
+    }
+}
+
 impl Logger for VBELogger {
 
     /// Prints a string to the screen
     fn print(&mut self, string: &str) {
         let fg = VBEColor::from_log_color(LogColor::DefaultForeground);
         let bg = VBEColor::from_log_color(LogColor::DefaultBackground);
-        self.print_attr(string, fg, bg);
+        self.get_internal().print_attr(string, fg, bg);
     }
 
     /// Prints a string to the screen and adds a line feed
     fn println(&mut self, string: &str) {
         let fg = VBEColor::from_log_color(LogColor::DefaultForeground);
         let bg = VBEColor::from_log_color(LogColor::DefaultBackground);
-        self.print_attr(string, fg, bg);
-        self.line_feed();
+        let mut internal = self.get_internal();
+        internal.print_attr(string, fg, bg);
+        internal.line_feed();
     }
 
     /// Prints a string to the screen with attributes
     fn print_attr(&mut self, string: &str, attr: LogAttributes) {
         let fg = VBEColor::from_log_color(attr.foreground);
         let bg = VBEColor::from_log_color(attr.background);
-        self.print_attr(string, fg, bg);
+        self.get_internal().print_attr(string, fg, bg);
     }
 
     /// Prints a string to the screen with attributes and adds a line feed
     fn println_attr(&mut self, string: &str, attr: LogAttributes) {
         let fg = VBEColor::from_log_color(attr.foreground);
         let bg = VBEColor::from_log_color(attr.background);
-        self.print_attr(string, fg, bg);
-        self.line_feed();
+        let mut internal = self.get_internal();
+        internal.print_attr(string, fg, bg);
+        internal.line_feed();
+    }
+
+    unsafe fn force_unlock(&mut self) {
+        self.internal_force_unlock();
     }
 
     /// Clears the whole screen and resets cursor to top left
     fn clear(&mut self) {
-        self.clear();
+        self.get_internal().clear();
     }
 }
 
 impl ::core::fmt::Write for VBELogger {
     fn write_str(&mut self, s: &str) -> Result<(), ::core::fmt::Error> {
-        self.print(s);
+        let logger = &mut VBELogger;
+        logger.print(s);
         Ok(())
     }
 }
+*/

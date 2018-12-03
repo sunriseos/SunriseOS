@@ -126,6 +126,7 @@ impl SharedMemory {
     }
 }
 
+#[derive(Debug)]
 pub struct MappedSharedMemory {
     handle: SharedMemory,
     addr: usize,

@@ -112,6 +112,7 @@ dependencies = [
  "font-rs 0.1.3 (git+https://github.com/orycterope/font-rs)",
  "hashmap_core 0.1.9 (git+https://github.com/pepyakin/hashmap_core?rev=add-alloc-layout-extra)",
  "kfs-libuser 0.1.0",
+ "kfs-libutils 0.1.0",
  "lazy_static 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "spin 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -202,6 +203,7 @@ version = "0.1.0"
 dependencies = [
  "hashmap_core 0.1.9 (git+https://github.com/pepyakin/hashmap_core?rev=add-alloc-layout-extra)",
  "kfs-libuser 0.1.0",
+ "kfs-libutils 0.1.0",
  "lazy_static 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "spin 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
