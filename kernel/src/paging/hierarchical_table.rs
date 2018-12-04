@@ -548,8 +548,11 @@ pub trait TableHierarchy {
                     (0, PageState::Present(_)) | (_, PageState::Guarded) => {
                         // hole was not big enough :(
                         // start a new hole on the next aligned address
+                        hole.start_addr = (hole.start_addr + hole.len)
+                                            .checked_add(T::entry_vm_size())
+                                            .and_then(|addr| align_up_checked(addr, alignment))
+                                            .unwrap_or(usize::max_value());
                         hole.len = 0;
-                        hole.start_addr = hole.start_addr.saturating_add(alignment);
                     },
                     (_, PageState::Present(_)) => {
                         // we must look into child table
