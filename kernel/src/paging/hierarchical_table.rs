@@ -552,6 +552,10 @@ pub trait TableHierarchy {
                                             .checked_add(T::entry_vm_size())
                                             .and_then(|addr| align_up_checked(addr, alignment))
                                             .unwrap_or(usize::max_value());
+                        // if we're at the end of the address space, doing the arithmetic
+                        // would overflow. We catch this case, and make the hole's start_address
+                        // usize::max_value(). This case is then handled on the next iteration,
+                        // the checks will see that desired_length is no longer obtainable, and return.
                         hole.len = 0;
                     },
                     (_, PageState::Present(_)) => {
