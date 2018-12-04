@@ -22,7 +22,7 @@ use paging::{MappingFlags, kernel_memory::get_kernel_memory};
 use frame_allocator::{FrameAllocator, FrameAllocatorTrait};
 use mem::VirtualAddress;
 use alloc::vec::Vec;
-use utils::div_ceil;
+use utils::align_up;
 
 static GDT: Once<SpinLock<GdtManager>> = Once::new();
 
@@ -159,7 +159,7 @@ pub fn push_task_segment(task: &'static TssStruct) -> u16 {
 lazy_static! {
     pub static ref MAIN_TASK: VirtualAddress = {
         // We need TssStruct + 0x2001 bytes of IOPB.
-        let pregion = FrameAllocator::allocate_region(div_ceil(size_of::<TssStruct>() + 0x2001, PAGE_SIZE))
+        let pregion = FrameAllocator::allocate_region(align_up(size_of::<TssStruct>() + 0x2001, PAGE_SIZE))
             .expect("Failed to allocate physical region for tss MAIN_TASK");
         let vaddr = get_kernel_memory().map_phys_region(pregion, MappingFlags::WRITABLE);
         let tss = vaddr.addr() as *mut TssStruct;
