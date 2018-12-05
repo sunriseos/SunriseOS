@@ -105,6 +105,9 @@ unsafe impl<'a> GlobalAlloc for Allocator {
 
 // required: define how Out Of Memory (OOM) conditions should be handled
 // *if* no other crate has already defined `oom`
+/// Called when the kernel heap allocator detects Out Of Memory (OOM) condition.
+///
+/// It simply panics.
 #[lang = "oom"]
 #[no_mangle]
 pub fn rust_oom(_: Layout) -> ! {

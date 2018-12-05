@@ -1,5 +1,6 @@
 //! The management of a process' memory
 //!
+//! ```
 //! j-------------------------------j j---------------------j
 //! |        Process Memory         | |    Kernel Memory    |
 //! j-------------------------------j j---------------------j
@@ -12,6 +13,7 @@
 //! |           User Land            |   Kernel Land  | RTL |
 //! j--------------------------------+----------------~-----j
 //!                         Page tables
+//! ```
 
 pub use super::bookkeeping::QueryMemory;
 

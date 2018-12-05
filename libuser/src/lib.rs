@@ -3,6 +3,7 @@
 //! Provides an allocator, various lang items.
 
 #![no_std]
+#![warn(missing_docs)]
 #![feature(global_asm, asm, start, lang_items, core_intrinsics, const_fn, alloc)]
 
 extern crate linked_list_allocator;

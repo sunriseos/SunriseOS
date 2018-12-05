@@ -21,6 +21,7 @@ pub struct ThreadHardwareContext {
 }
 
 impl ThreadHardwareContext {
+    /// Creates an empty ThreadHardwareContext.
     pub fn new() -> Self {
         // the saved esp will be overwritten on schedule-out anyway
         Self { esp: 0x55555555 }

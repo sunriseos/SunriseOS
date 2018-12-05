@@ -19,7 +19,7 @@ const COM3: ComPort = ComPort(0x3E8);
 const COM4: ComPort = ComPort(0x2E8);
 
 /// The possible colors for serial
-#[allow(dead_code)]
+#[allow(missing_docs)]
 #[repr(u8)]
 #[derive(Debug, Copy, Clone)]
 pub enum SerialColor {
@@ -50,14 +50,17 @@ pub struct SerialAttributes {
 }
 
 impl SerialAttributes {
+    /// Creates a color attribute with `fg` foreground and default background.
     pub fn fg(fg: SerialColor) -> SerialAttributes {
         SerialAttributes { fg, bg: SerialColor::Default }
     }
 
+    /// Creates a color attribute with `fg` foreground and `bg` background.
     pub fn fg_bg(fg: SerialColor, bg: SerialColor) -> SerialAttributes {
         SerialAttributes { fg, bg }
     }
 
+    /// Creates a color attribute with default foreground and default background.
     pub fn default() -> SerialAttributes {
         SerialAttributes { fg: SerialColor::Default, bg: SerialColor::Default }
     }
@@ -82,7 +85,7 @@ impl Display for SerialAttributes {
 
 static G_SERIAL: Once<SpinLock<SerialInternal<Pio<u8>>>> = Once::new();
 
-pub struct SerialInternal<T> {
+struct SerialInternal<T> {
     data_port: T,
     status_port: T
 }

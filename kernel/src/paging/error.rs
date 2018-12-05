@@ -6,6 +6,7 @@ use failure::Backtrace;
 
 /// An error related to Memory Management
 #[derive(Debug, Fail)]
+#[allow(missing_docs)]
 pub enum MmError {
     #[fail(display = "Memory management error: Virtual region is already occupied")]
     OccupiedMapping {

@@ -1,4 +1,4 @@
-//! A module defining a physical memory manager that allocates and frees memory frames
+//! Physical memory manager.
 //!
 //! This module can only allocate and free whole frames.
 

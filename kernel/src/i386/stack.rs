@@ -37,8 +37,9 @@ use xmas_elf::symbol_table::{Entry32, Entry};
 use rustc_demangle::demangle as rustc_demangle;
 use scheduler;
 
-/// The size of a kernel stack, not accounting for the page guard
+/// The size of a kernel stack in pages, not accounting for the page guard.
 pub const STACK_SIZE: usize            = 4;
+/// The size of a kernel stack in pages, with the page guard.
 pub const STACK_SIZE_WITH_GUARD: usize = STACK_SIZE + 1;
 
 /// The alignment of the stack. ceil(log2(STACK_SIZE_WITH_GUARD * PAGE_SIZE))

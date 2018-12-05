@@ -34,12 +34,23 @@ pub struct Mapping {
 /// They will be de-allocated when this enum is dropped.
 #[derive(Debug)]
 pub enum MappingType {
+    /// Available, nothing is stored there. Accessing to it will page fault.
+    /// An allocation can use this region.
     Available,
+    /// Guarded, like Available, but nothing can be allocated here.
+    /// Used to implement guard pages.
     Guarded,
+    /// Regular, a region known only by this process.
+    /// Access rights are stored in Mapping.mtype.
     Regular(Vec<PhysicalMemRegion>),
 //    Stack(Vec<PhysicalMemRegion>),
+    /// Shared, a region that can be mapped in multiple processes.
+    /// Access rights are stored in Mapping.mtype.
     Shared(Arc<Vec<PhysicalMemRegion>>),
-    SystemReserved // used for anything that UserSpace isn't authorized to address
+    /// SystemReserved, used to denote the KernelLand and other similar regions that the user
+    /// cannot access, and shouldn't know anything more about.
+    /// Cannot be unmapped, nor modified in any way.
+    SystemReserved
 }
 
 impl<'a> From<&'a MappingType> for kfs_libkern::MemoryType {

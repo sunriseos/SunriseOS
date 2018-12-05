@@ -1,6 +1,8 @@
 #![feature(alloc, asm)]
 #![no_std]
 
+#![warn(missing_docs)]
+
 extern crate gif;
 extern crate font_rs;
 extern crate spin;

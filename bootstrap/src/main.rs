@@ -26,6 +26,7 @@
 #![cfg_attr(target_os = "none", no_std)]
 #![cfg_attr(target_os = "none", no_main)]
 #![allow(unused)]
+#![warn(missing_docs)]
 #[cfg(not(target_os = "none"))]
 use std as core;
 
@@ -48,13 +49,13 @@ extern crate kfs_libutils;
 use core::fmt::Write;
 use spin::Once;
 
-mod bootstrap_logging;
-mod gdt;
-mod address;
-mod paging;
-mod frame_alloc;
-mod elf_loader;
-mod bootstrap_stack;
+pub mod bootstrap_logging;
+pub mod gdt;
+pub mod address;
+pub mod paging;
+pub mod frame_alloc;
+pub mod elf_loader;
+pub mod bootstrap_stack;
 
 use bootstrap_logging::Serial;
 use frame_alloc::FrameAllocator;
@@ -62,12 +63,35 @@ use paging::{PageTablesSet, KernelLand, EntryFlags, ACTIVE_PAGE_TABLES};
 use bootstrap_stack::BootstrapStack;
 use address::VirtualAddress;
 
+/// 4 pages, PAGE_SIZE aligned.
 #[repr(align(4096))]
 pub struct AlignedStack([u8; 4096 * 4]);
 
+/// The stack we start on.
+///
+/// The first thing we do is to make $esp point to it.
 pub static mut STACK: AlignedStack = AlignedStack([0; 4096 * 4]);
 
-/// The very start
+/// Prints raw hexdump of the stack.
+/// Use this if everything went wrong and you're really hopeless.
+pub fn print_stack() {
+    unsafe {
+        let sp: usize;
+        asm!("mov $0, esp" : "=r"(sp) : : : "intel");
+        let sp_start = sp - ::STACK.0.as_ptr() as usize;
+        kfs_libutils::print_hexdump(&mut Serial, &::STACK.0[sp_start..]);
+    }
+}
+
+/// The very start.
+///
+/// We are called from grub, with the address of the multiboot informations in $ebx.
+///
+/// What we do is :
+///
+/// * bzero the .bss.
+/// * make $esp and $ebp point to [STACK].
+/// * call [do_bootstrap], passing it $ebx.
 #[cfg(target_os = "none")]
 #[no_mangle]
 pub unsafe extern fn bootstrap_start() -> ! {
@@ -167,6 +191,9 @@ pub extern "C" fn do_bootstrap(multiboot_info_addr: usize) -> ! {
 #[cfg(target_os = "none")]
 #[lang = "eh_personality"] #[no_mangle] pub extern fn eh_personality() {}
 
+/// The bootstrap panic function.
+///
+/// Something went really wrong, just print a message on serial output, and spin indefinitely.
 #[cfg(target_os = "none")]
 #[panic_handler] #[no_mangle]
 pub extern fn panic_fmt(p: &::core::panic::PanicInfo) -> ! {

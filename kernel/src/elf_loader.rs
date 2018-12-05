@@ -26,10 +26,14 @@ use byteorder::{LittleEndian, ByteOrder};
 
 /// Represents a grub module once mapped in kernel memory
 pub struct MappedGrubModule<'a> {
+    /// The address of the mapping, in KernelLand.
     pub mapping_addr: VirtualAddress,
-    pub start: VirtualAddress, // the start of the module in the mapping, if it was not page aligned
+    /// The start of the module in the mapping, if it was not page aligned.
+    pub start: VirtualAddress,
+    /// The length of the module.
     pub len: usize,
-    pub elf: Result<ElfFile<'a>, &'static str> // the module parsed as an elf file,
+    /// The module parsed as an ElfFile.
+    pub elf: Result<ElfFile<'a>, &'static str>
 }
 
 /// Maps a grub module, which already lives in reserved physical memory, into the KernelLand.

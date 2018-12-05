@@ -126,6 +126,7 @@ pub enum Handle {
 }
 
 impl Handle {
+    /// Gets the handle as a [Waitable], or return a `UserspaceError` if the handle cannot be waited on.
     pub fn as_waitable(&self) -> Result<&Waitable, UserspaceError> {
         match self {
             &Handle::ReadableEvent(ref waitable) => Ok(&**waitable),
@@ -135,6 +136,7 @@ impl Handle {
         }
     }
 
+    /// Casts the handle as a [ClientPort], or returns a `UserspaceError`.
     pub fn as_client_port(&self) -> Result<ClientPort, UserspaceError> {
         if let &Handle::ClientPort(ref s) = self {
             Ok((*s).clone())
@@ -143,6 +145,7 @@ impl Handle {
         }
     }
 
+    /// Casts the handle as a [ServerSession], or returns a `UserspaceError`.
     pub fn as_server_session(&self) -> Result<ServerSession, UserspaceError> {
         if let &Handle::ServerSession(ref s) = self {
             Ok((*s).clone())
@@ -151,6 +154,7 @@ impl Handle {
         }
     }
 
+    /// Casts the handle as a [ClientSession], or returns a `UserspaceError`.
     pub fn as_client_session(&self) -> Result<ClientSession, UserspaceError> {
         if let &Handle::ClientSession(ref s) = self {
             Ok((*s).clone())
@@ -159,6 +163,7 @@ impl Handle {
         }
     }
 
+    /// Casts the handle as a Weak<[ThreadStruct]>, or returns a `UserspaceError`.
     pub fn as_thread_handle(&self) -> Result<Weak<ThreadStruct>, UserspaceError> {
         if let &Handle::Thread(ref s) = self {
             Ok((*s).clone())
@@ -222,9 +227,13 @@ impl HandleTable {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(usize)]
 pub enum ThreadState {
+    /// Currently on the CPU.
     Running = 0,
+    /// Scheduled to be running.
     Scheduled = 1,
+    /// Not in the scheduled queue, waiting for an event.
     Stopped = 2,
+    /// Dying, will be unscheduled and dropped at syscall boundary.
     Killed = 3,
 }
 
@@ -240,6 +249,7 @@ impl ThreadState {
     }
 }
 
+/// Stores a ThreadState atomically.
 pub struct ThreadStateAtomic(AtomicUsize);
 
 impl Debug for ThreadStateAtomic {
@@ -248,6 +258,7 @@ impl Debug for ThreadStateAtomic {
     }
 }
 
+#[allow(missing_docs)]
 impl ThreadStateAtomic {
     pub fn new(state: ThreadState) -> ThreadStateAtomic {
         ThreadStateAtomic(AtomicUsize::new(state as usize))

@@ -1,7 +1,11 @@
 use core::fmt;
 
 enum_with_val! {
+    /// Kernel syscall error codes.
+    ///
+    /// When a syscall fails, it returns one of this values as a reason for the fail.
     #[derive(Clone, Copy, PartialEq, Eq)]
+    #[allow(missing_docs)]
     pub struct KernelError(u32) {
         InvalidKernelCaps = 14,
         NotImplemented = 33,

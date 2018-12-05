@@ -9,6 +9,7 @@
 #![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, allocator_api, alloc, box_syntax, no_more_cas, const_vec_new, range_contains)]
 #![cfg_attr(target_os = "none", no_std)]
 #![cfg_attr(target_os = "none", no_main)]
+#![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
 #![warn(unused)]
 #![allow(unused_unsafe)]
 #![allow(unreachable_code)]
@@ -45,28 +46,28 @@ extern crate kfs_libkern;
 use core::fmt::Write;
 use alloc::prelude::*;
 
-mod paging;
-mod event;
-mod error;
-mod log_impl;
+pub mod paging;
+pub mod event;
+pub mod error;
+pub mod log_impl;
 #[macro_use]
-mod i386;
+pub mod i386;
 #[cfg(target_os = "none")]
-mod gdt;
-mod interrupts;
-mod frame_allocator;
+pub mod gdt;
+pub mod interrupts;
+pub mod frame_allocator;
 
-mod heap_allocator;
-mod io;
-mod devices;
-mod sync;
-mod process;
-mod scheduler;
-mod mem;
-mod ipc;
-mod elf_loader;
-mod utils;
-mod checks;
+pub mod heap_allocator;
+pub mod io;
+pub mod devices;
+pub mod sync;
+pub mod process;
+pub mod scheduler;
+pub mod mem;
+pub mod ipc;
+pub mod elf_loader;
+pub mod utils;
+pub mod checks;
 
 // Make rust happy about rust_oom being no_mangle...
 pub use heap_allocator::rust_oom;
@@ -116,6 +117,15 @@ fn main() {
     }
 }
 
+/// The entry point of our kernel.
+///
+/// This function is jump'd into from the bootstrap code, which:
+///
+/// * enabled paging,
+/// * gave us a valid KernelStack,
+/// * mapped grub's multiboot information structure in KernelLand (its address in $ebx),
+///
+/// What we do is just bzero the .bss, and call a rust function, passing it the content of $ebx.
 #[cfg(target_os = "none")]
 #[no_mangle]
 pub unsafe extern fn start() -> ! {
@@ -136,6 +146,8 @@ pub unsafe extern fn start() -> ! {
 }
 
 /// CRT0 starts here.
+///
+/// This function takes care of initializing the kernel, before calling the main function.
 #[cfg(target_os = "none")]
 #[no_mangle]
 pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
@@ -193,7 +205,9 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 #[cfg(target_os = "none")]
 #[lang = "eh_personality"] #[no_mangle] pub extern fn eh_personality() {}
 
-/// The function executed on a panic! Can also be called at any moment.
+/// The kernel panic function.
+///
+/// Executed on a `panic!`, but can also be called directly.
 /// Will print some useful debugging information, and never return.
 fn do_panic(msg: core::fmt::Arguments, esp: usize, ebp: usize, eip: usize) -> ! {
 
@@ -253,6 +267,9 @@ fn do_panic(msg: core::fmt::Arguments, esp: usize, ebp: usize, eip: usize) -> ! 
     loop { unsafe { asm!("HLT"); } }
 }
 
+/// Function called on `panic!` invocation.
+///
+/// Kernel panics.
 #[cfg(target_os = "none")]
 #[panic_handler] #[no_mangle]
 pub extern fn panic_fmt(p: &::core::panic::PanicInfo) -> ! {

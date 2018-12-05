@@ -1,4 +1,20 @@
 //! Paging.
+//!
+//! ```
+//! j-------------------------------j j---------------------j
+//! |        Process Memory         | |    Kernel Memory    |
+//! j-------------------------------j j---------------------j
+//!                 |                            |
+//!     j-----------------------j                |
+//!     | Userspace Bookkeeping |                |
+//!     j-----------------------j                |
+//!                 |                            |
+//! j--------------------------------+----------------~-----j
+//! |           User Land            |   Kernel Land  | RTL |
+//! j--------------------------------+----------------~-----j
+//!                         Page tables
+//! ```
+
 
 pub mod process_memory;
 pub mod kernel_memory;
@@ -17,9 +33,14 @@ use kfs_libkern;
 bitflags! {
     /// The flags of a mapping.
     pub struct MappingFlags : u32 {
+        /// Mapping is readable.
         const READABLE =        1 << 0;
+        /// Mapping is writable.
         const WRITABLE =        1 << 1;
+        /// Mapping is executable.
         const EXECUTABLE =      1 << 2;
+        /// Mapping can be accessed from userland,
+        /// with the same permissions as the kernel.
         const USER_ACCESSIBLE = 1 << 3;
     }
 }

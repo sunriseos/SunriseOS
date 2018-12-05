@@ -2,6 +2,7 @@
 //! Should probably be further split into several useful libraries.
 
 #![no_std]
+#![warn(missing_docs)]
 
 extern crate byteorder;
 extern crate bit_field;
@@ -48,6 +49,13 @@ pub fn align_up_checked(addr: usize, align: usize) -> Option<usize> {
 }
 
 
+/// Counts the numbers of `b` in `a`, rounding the result up.
+///
+/// Ex:
+/// ```
+///     let pages_count = div_ceil(0x3002, PAGE_SIZE);
+/// ```
+/// counts the number of pages needed to store 0x3002 bytes.
 pub fn div_ceil<T: Num + Copy>(a: T, b: T) -> T {
     if a % b != T::zero() {
         a / b + T::one()
@@ -118,7 +126,9 @@ pub fn print_hexdump_as_if_at_addr<T: Write>(f: &mut T, mem: &[u8], display_addr
     }
 }
 
+/// Extension of the [BitField] trait, that adds the `set_bits_area` function.
 pub trait BitArrayExt<U: ::bit_field::BitField>: ::bit_field::BitArray<U> {
+    /// Sets a range of bits to `value` in the BitField.
     fn set_bits_area(&mut self, range: ::core::ops::Range<usize>, value: bool) {
         for i in range {
             self.set_bit(i, value);
@@ -131,7 +141,7 @@ impl<T: ?Sized, U: ::bit_field::BitField> BitArrayExt<U> for T where T: ::bit_fi
 // We could have made a generic implementation of this two functions working for either 1 or 0,
 // but it will just be slower checking "what is our needle again ?" in every loop
 
-/// Returns the index of the first 0 in a bit array
+/// Returns the index of the first 0 in a bit array.
 pub fn bit_array_first_zero(bitarray: &[u8]) -> Option<usize> {
     for (index, &byte) in bitarray.iter().enumerate() {
         if byte == 0xFF {
@@ -149,7 +159,7 @@ pub fn bit_array_first_zero(bitarray: &[u8]) -> Option<usize> {
     None
 }
 
-/// Returns the index of the first 1 in a bit array
+/// Returns the index of the first 1 in a bit array.
 pub fn bit_array_first_one(bitarray: &[u8]) -> Option<usize> {
     for (index, &byte) in bitarray.iter().enumerate() {
         if byte == 0x00 {
