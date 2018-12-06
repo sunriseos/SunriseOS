@@ -104,7 +104,10 @@ fn draw(buf: &Buffer, top: u32, left: u32, width: u32, height: u32) {
                         let _ = syscalls::output_debug_string(&format!("Non-black pixel {:02X}{:02X}{:02X} at {} {}", r, g, b, curleft, curtop));
                     }
                     //let pixel = FRAMEBUFFER.read_px_at(curleft, curtop);
-                    // TODO: Alpha blend!
+                    // TODO: Vi: Implement alpha blending
+                    // BODY: Vi currently does not do alpha blending at all.
+                    // BODY: In the interest of pretty transparent window, this
+                    // BODY: needs fixing!
                     FRAMEBUFFER.lock().write_px_at(curleft as usize, curtop as usize, &VBEColor::rgb(r, g, b));
                     curleft += 1;
                 }
