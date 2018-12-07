@@ -39,7 +39,7 @@ fn map_framebuffer() -> Result<(usize, usize, usize, usize), UserspaceError> {
     let mut memory = process.pmemory.lock();
     //let framebuffer_vaddr = memory.find_virtual_space::<UserLand>(frame_buffer_phys_region.size())?;
     // todo make user provide the address
-    let framebuffer_vaddr = VirtualAddress(0x80000000);
+    let framebuffer_vaddr = VirtualAddress(0x40000000);
     memory.map_phys_region_to(frame_buffer_phys_region, framebuffer_vaddr, MappingFlags::u_rw())?;
 
     let addr = framebuffer_vaddr.0;

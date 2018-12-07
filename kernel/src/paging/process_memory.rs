@@ -42,8 +42,15 @@ use failure::Backtrace;
 /// A process is the only owner of a ProcessMemory
 #[derive(Debug)]
 pub struct ProcessMemory {
+    /// The list of mappings in this address space.
     userspace_bookkeping: UserspaceBookkeeping,
+    /// The architecture-dependent paging hierarchy.
     table_hierarchy: InactiveHierarchy,
+    /// The start of the heap of this process. The heap is managed as a brk
+    /// by the [set_heap_size] syscall.
+    ///
+    /// The location of each process's heap should be random, to implement ASLR.
+    heap_base_address: VirtualAddress,
 }
 
 enum DynamicHierarchy<'a> {
@@ -125,10 +132,15 @@ impl ProcessMemory {
     /// Creates a ProcessMemory, allocating the userspace-bookkeeping,
     /// and the top-level table of the table hierarchy.
     pub fn new() -> Self {
+        // we don't have ASRL yet :(
+        let heap_base_address = VirtualAddress(0x80000000);
+
         let mut ret = ProcessMemory {
             userspace_bookkeping: UserspaceBookkeeping::new(),
-            table_hierarchy: InactiveHierarchy::new()
+            table_hierarchy: InactiveHierarchy::new(),
+            heap_base_address,
         };
+        // unconditionally guard the very first page, for NULL pointers.
         ret.guard(VirtualAddress(0x00000000), PAGE_SIZE)
             .expect("Cannot guard first page of ProcessMemory");
         ret
@@ -143,7 +155,9 @@ impl ProcessMemory {
     pub unsafe fn from_active_page_tables() -> Self {
         ProcessMemory {
             userspace_bookkeping: UserspaceBookkeeping::new(),
-            table_hierarchy: InactiveHierarchy::from_currently_active()
+            table_hierarchy: InactiveHierarchy::from_currently_active(),
+            heap_base_address: VirtualAddress(0x55555555), // just a dummy value, the first process
+                                                           // should never use its process's heap !
         }
     }
 
@@ -432,6 +446,43 @@ impl ProcessMemory {
         let mapping = self.userspace_bookkeping.occupied_mapping_at(address)?;
         let offset = address - mapping.address();
         CrossProcessMapping::mirror_mapping(mapping, offset, length)
+    }
+
+    /// Resize the heap of this process, just like a brk.
+    /// It can both expand or shrink the heap.
+    ///
+    /// If `new_size` == 0, it is completely de-allocated.
+    ///
+    /// # Return
+    ///
+    /// The address of the start of the heap.
+    ///
+    /// # Error
+    ///
+    /// * InvalidSize if `new_size` is not [PAGE_SIZE] aligned.
+    /// * InvalidSize if \[`address`..`new_size`\] does not fall in UserLand,
+    ///   or overlaps an existing mapping.
+    pub fn resize_heap(&mut self, new_size: usize) -> Result<VirtualAddress, KernelError> {
+        enum HeapState { NoHeap, Heap(usize) };
+        UserLand::check_contains_region(self.heap_base_address, new_size)?;
+        // get the previous heap size
+        let previous_heap_state = {
+            let query = self.userspace_bookkeping.mapping_at(self.heap_base_address);
+            let heap = query.as_ref();
+            if let MappingType::Available = heap.mtype_ref() {
+                HeapState::NoHeap
+            } else {
+                HeapState::Heap(heap.length())
+            }
+        };
+        let heap_base_address = self.heap_base_address;
+        match previous_heap_state {
+            HeapState::NoHeap if new_size == 0 => (), // don't do anything
+            HeapState::NoHeap => self.create_regular_mapping(heap_base_address, new_size, MappingFlags::u_rw())?,
+            HeapState::Heap(old_size) if new_size < old_size => { self.shrink_mapping(heap_base_address, new_size)?; },
+            HeapState::Heap(_) => self.expand_mapping(heap_base_address, new_size)?
+        }
+        Ok(self.heap_base_address)
     }
 
     /// Switches to this process memory
