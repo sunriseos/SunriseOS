@@ -52,26 +52,13 @@ impl Window {
             handle,
             width: width as _,
             height: height as _,
-            bpp: 4
+            bpp: 32
         };
         fb.clear();
         Ok(fb)
     }
 
     pub fn draw(&mut self) -> Result<(), Error> {
-        for y in 0..self.height {
-            for x in 0..self.width {
-                let offset = self.get_px_offset(x, y);
-                unsafe {
-                    let r = self.buf.get()[offset + 0];
-                    let g = self.buf.get()[offset + 1];
-                    let b = self.buf.get()[offset + 2];
-                    if r != 0 || g != 0 || b != 0 {
-                        //let _ = syscalls::output_debug_string(&format!("Non-black pixel at {} {}", x, y));
-                    }
-                }
-            }
-        }
         self.handle.draw()
     }
 
@@ -125,7 +112,6 @@ impl Window {
     /// Panics if coords are invalid
     #[inline]
     pub fn write_px_at(&mut self, x: usize, y: usize, color: &VBEColor) {
-        //let _ = syscalls::output_debug_string(&format!("Printing {:?} at {} {}", color, x, y));
         let offset = self.get_px_offset(x, y);
         self.write_px(offset, color);
     }
@@ -212,9 +198,12 @@ static FONT:  &'static [u8] = include_bytes!("../../shell/img/Monaco.ttf");
 /// The size we choose to render in
 const FONT_SIZE: u32 = 10;
 
-impl VBELogger {
-    pub fn new() -> Result<Self, Error> {
+pub enum WindowSize {
+    Fullscreen, FontLines(i32, bool), Manual(i32, i32, u32, u32)
+}
 
+impl VBELogger {
+    pub fn new(size: WindowSize) -> Result<Self, Error> {
         let my_font = font::parse(FONT)
             .expect("Failed parsing provided font");
 
@@ -223,9 +212,25 @@ impl VBELogger {
         let my_advance_width =  my_font.max_advance_width(FONT_SIZE).unwrap() as usize;
 
         let my_linespace = my_descent + my_ascent;
-        let top = 1280 - (my_linespace + 1) as i32;
 
-        let framebuffer = Window::new(0, 0, 1280, 800/*my_linespace as u32 + 1*/)?;
+        let framebuffer = match size {
+            WindowSize::Fullscreen => Window::new(0, 0, 1280, 800)?,
+            WindowSize::FontLines(lines, is_bottom) => {
+                let height = if lines < 0 {
+                    let max_lines = 800 / my_linespace;
+                    my_linespace * ((max_lines as i32) + lines) as usize
+                } else {
+                    my_linespace * lines as usize
+                };
+                let top = if is_bottom {
+                    800 - height
+                } else {
+                    0
+                };
+                Window::new(top as i32, 0, 1280, height as u32)?
+            }
+            WindowSize::Manual(top, left, width, height) => Window::new(0, 0, width, height)?
+        };
 
         Ok(VBELogger {
             framebuffer,
@@ -250,6 +255,7 @@ impl VBELogger {
 
     #[inline]
     fn line_feed(&mut self) {
+        let _ = self.draw();
         // Are we already on the last line ?
         if self.cursor_pos.y + self.linespace + self.descent >= self.framebuffer.height() {
             self.scroll_screen();
@@ -257,7 +263,6 @@ impl VBELogger {
             self.cursor_pos.y += self.linespace;
         }
         self.carriage_return();
-        let _ = self.draw();
     }
 
     #[inline]
