@@ -85,13 +85,16 @@ fn show_gif(louis: &[u8]) {
             }
         }
         window.draw().unwrap();
-        match syscalls::wait_synchronization(&events, Some(100 * 1_000_000)) {
+        if ps2::try_read_key().is_some() {
+            return
+        }
+        /*match syscalls::wait_synchronization(&events, Some(100 * 1_000_000)) {
             Ok(idx) if ps2::try_read_key().is_some() => return,
             Ok(idx) => (),
             Err(err) => {
                 // timeout
             }
-        }
+        }*/
     }
 }
 
