@@ -90,7 +90,6 @@ fn draw(buf: &Buffer, top: u32, left: u32, width: u32, height: u32) {
         // Calculate first offset in data
         if let Some(intersect) = get_intersect((dtop, dleft, dwidth, dheight), (top, left, width, height)) {
             let (top, left, width, height) = intersect;
-            syscalls::output_debug_string(&format!("Intersection is {} {} {} {}", top, left, width, height));
             let mut curtop = top;
             while curtop < top + height {
                 let mut curleft = left;
@@ -100,9 +99,6 @@ fn draw(buf: &Buffer, top: u32, left: u32, width: u32, height: u32) {
                     let g = data[dataidx as usize + 1];
                     let b = data[dataidx as usize + 2];
                     let a = data[dataidx as usize + 3];
-                    if (r != 0 || g != 0 || b != 0 || a != 0) {
-                        let _ = syscalls::output_debug_string(&format!("Non-black pixel {:02X}{:02X}{:02X} at {} {}", r, g, b, curleft, curtop));
-                    }
                     //let pixel = FRAMEBUFFER.read_px_at(curleft, curtop);
                     // TODO: Vi: Implement alpha blending
                     // BODY: Vi currently does not do alpha blending at all.
@@ -151,7 +147,6 @@ object! {
             FRAMEBUFFER.lock().clear_at(dleft as _, dtop as _, dwidth as _, dheight as _);
             for buffer in BUFFERS.lock().iter() {
                 if let Some(buffer) = buffer.upgrade() {
-                    let _ = syscalls::output_debug_string(&format!("Drawing {:?}, {} {} {} {}", buffer, dtop, dleft, dwidth, dheight));
                     draw(&*buffer, dtop, dleft, dwidth, dheight)
                 }
             }
