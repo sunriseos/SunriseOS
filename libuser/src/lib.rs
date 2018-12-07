@@ -4,6 +4,7 @@
 
 #![no_std]
 #![warn(missing_docs)]
+#![allow(unused_unsafe)]
 #![feature(global_asm, asm, start, lang_items, core_intrinsics, const_fn, alloc)]
 
 extern crate linked_list_allocator;
@@ -27,24 +28,13 @@ pub mod types;
 pub mod ipc;
 pub mod sm;
 pub mod error;
+pub mod allocator;
 
 use kfs_libutils as utils;
-use linked_list_allocator::LockedHeap;
 use error::{Error, LibuserError};
 
 #[global_allocator]
-static ALLOCATOR: LockedHeap = LockedHeap::empty();
-
-// Let's grant ourselves 10MB of heap
-static mut ALLOCATOR_BUF: [u8; 10_000_000] = [0; 10_000_000];
-
-fn init_heap() {
-    unsafe {
-        let heap_start = ALLOCATOR_BUF.as_ptr() as usize;
-        let heap_size = ALLOCATOR_BUF.len();
-        ALLOCATOR.lock().init(heap_start, heap_size);
-    }
-}
+static ALLOCATOR: allocator::Allocator = allocator::Allocator::new();
 
 /// # Panics
 ///
@@ -107,7 +97,6 @@ pub unsafe extern fn start() -> ! {
         fn main(argc: isize, argv: *const *const u8) -> i32;
     }
 
-    init_heap();
     let _ret = main(0, core::ptr::null());
     syscalls::exit_process();
 }
