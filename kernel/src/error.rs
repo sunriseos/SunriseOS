@@ -48,6 +48,11 @@ pub enum KernelError {
         length: usize,
         backtrace: Backtrace,
     },
+    #[fail(display = "Invalid size: size {} is considered invalid", size)]
+    InvalidSize {
+        size: usize,
+        backtrace: Backtrace,
+    },
     #[fail(display = "Alignment error: expected alignment {}, got {}", needed, given)]
     AlignmentError {
         given: usize,
@@ -87,6 +92,7 @@ impl From<KernelError> for UserspaceError {
             KernelError::VirtualMemoryExhaustion { .. } => UserspaceError::MemoryFull,
             KernelError::ThreadAlreadyStarted { .. } => UserspaceError::ProcessAlreadyStarted,
             KernelError::InvalidAddress { .. } => UserspaceError::InvalidAddress,
+            KernelError::InvalidSize { .. } => UserspaceError::InvalidSize,
             KernelError::ZeroLengthError { .. } => UserspaceError::InvalidSize,
             // TODO: AlignementError should discriminate unaligned size and unaligned address
             // BODY: We can only convey InvalidSize and InvalidAddress to userspace.
