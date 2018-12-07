@@ -18,9 +18,9 @@ use super::check_thread_killed;
 use error::UserspaceError;
 use kfs_libkern::{nr, SYSCALL_NAMES, MemoryInfo, MemoryAttributes, MemoryPermissions};
 
-extern fn ignore_syscall(nr: usize) -> Result<(), UserspaceError> {
+fn ignore_syscall(nr: usize) -> Result<(), UserspaceError> {
     // TODO: Trigger "unknown syscall" signal, for userspace signal handling.
-    info!("Unknown syscall {}", nr);
+    warn!("Unknown syscall {}", nr);
     Err(UserspaceError::NotImplemented)
 }
 
@@ -179,7 +179,6 @@ fn start_thread(thread_handle: u32) -> Result<(), UserspaceError> {
 
 fn connect_to_named_port(name: UserSpacePtr<[u8; 12]>) -> Result<usize, UserspaceError> {
     let session = ipc::connect_to_named_port(*name)?;
-    info!("Got session {:?}", session);
     let curproc = scheduler::get_current_process();
     let hnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ClientSession(session)));
     Ok(hnd as _)
@@ -392,7 +391,7 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
 
     let (syscall_nr, x0, x1, x2, x3, x4, x5) = (registers.eax, registers.ebx, registers.ecx, registers.edx, registers.esi, registers.edi, registers.ebp);
 
-    info!("Handling syscall {} - x0: {}, x1: {}, x2: {}, x3: {}, x4: {}, x5: {}",
+    debug!("Handling syscall {} - x0: {}, x1: {}, x2: {}, x3: {}, x4: {}, x5: {}",
           SYSCALL_NAMES[syscall_nr], x0, x1, x2, x3, x4, x5);
 
     match syscall_nr {
