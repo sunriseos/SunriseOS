@@ -86,6 +86,29 @@ unsafe fn syscall(nr: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize,
     }
 }
 
+/// Resize the heap of a process, just like a brk.
+/// It can both expand, and shrink the heap.
+///
+/// If `new_size` == 0, the heap space is entirely de-allocated.
+///
+/// # Return
+///
+/// The address of the start of the heap.
+///
+/// # Error
+///
+/// * `new_size` must be PAGE_SIZE aligned.
+///
+/// # Unsafety
+///
+/// This function can free memory, potentially invalidating references to structs that were in it.
+pub unsafe fn set_heap_size(new_size: usize) -> Result<usize, KernelError> {
+    let (heap_address_base, ..) = unsafe {
+        syscall(nr::SetHeapSize, new_size, 0, 0, 0, 0, 0)?
+    };
+    Ok(heap_address_base)
+}
+
 pub fn query_memory(addr: usize) -> Result<(MemoryInfo, usize), KernelError> {
     let mut meminfo = MemoryInfo::default();
     let (pageinfo, ..) = unsafe {
