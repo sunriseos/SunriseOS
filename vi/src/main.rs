@@ -83,11 +83,16 @@ fn get_intersect((atop, aleft, awidth, aheight): (u32, u32, u32, u32), (btop, bl
 
 fn draw(buf: &Buffer, top: u32, left: u32, width: u32, height: u32) {
     unsafe {
-        // TODO: Safety. We need to guarantee that, while this slice exists, the
-        // other owner of the sharedmem does not mutate it. How?
+        // TODO: Safety of the vi::draw IPC method
+        // BODY: When calling vi::draw, vi reads from the shared memory. There is
+        // BODY: no borrow-checking mechanism in place to ensure that the other
+        // BODY: process does not mutate it while this happens. Maybe we should
+        // BODY: have some kind of cross-process mutex? How to implement this
+        // BODY: properly?
         let data = buf.mem.get();
         let (dtop, dleft, dwidth, dheight) = buf.get_real_bounds();
         // Calculate first offset in data
+        let mut framebuffer = FRAMEBUFFER.lock();
         if let Some(intersect) = get_intersect((dtop, dleft, dwidth, dheight), (top, left, width, height)) {
             let (top, left, width, height) = intersect;
             let mut curtop = top;
@@ -95,16 +100,14 @@ fn draw(buf: &Buffer, top: u32, left: u32, width: u32, height: u32) {
                 let mut curleft = left;
                 while curleft < left + width {
                     let dataidx = ((curtop as i32 - buf.top) as u32 * width + (curleft as i32 - buf.left) as u32) * 4;
-                    let r = data[dataidx as usize + 0];
-                    let g = data[dataidx as usize + 1];
-                    let b = data[dataidx as usize + 2];
-                    let a = data[dataidx as usize + 3];
-                    //let pixel = FRAMEBUFFER.read_px_at(curleft, curtop);
+                    let fbidx = framebuffer.get_px_offset(curleft as usize, curtop as usize);
                     // TODO: Vi: Implement alpha blending
                     // BODY: Vi currently does not do alpha blending at all.
                     // BODY: In the interest of pretty transparent window, this
                     // BODY: needs fixing!
-                    FRAMEBUFFER.lock().write_px_at(curleft as usize, curtop as usize, &VBEColor::rgb(r, g, b));
+                    framebuffer.get_fb()[fbidx as usize + 0] = data[dataidx as usize + 0];
+                    framebuffer.get_fb()[fbidx as usize + 1] = data[dataidx as usize + 1];
+                    framebuffer.get_fb()[fbidx as usize + 2] = data[dataidx as usize + 2];
                     curleft += 1;
                 }
                 curtop += 1;
@@ -143,13 +146,21 @@ object! {
         #[cmdid(0)]
         #[inline(never)]
         fn draw(&mut self, ) -> Result<(), Error> {
+            // TODO: Vi: Heavy flickering.
+            // BODY: When drawing the whole screen, we can see some extreme
+            // BODY: amount of flickering on the screen. We should look into
+            // BODY: better compositing algorithms, maybe we don't need to redraw
+            // BODY: the whole screen all the time? And also, look into VSYNC.
             let (dtop, dleft, dwidth, dheight) = self.buffer.get_real_bounds();
             FRAMEBUFFER.lock().clear_at(dleft as _, dtop as _, dwidth as _, dheight as _);
-            for buffer in BUFFERS.lock().iter() {
+            BUFFERS.lock().retain(|buffer| {
                 if let Some(buffer) = buffer.upgrade() {
-                    draw(&*buffer, dtop, dleft, dwidth, dheight)
+                    draw(&*buffer, dtop, dleft, dwidth, dheight);
+                    true
+                } else {
+                    false
                 }
-            }
+            });
             Ok(())
         }
     }
