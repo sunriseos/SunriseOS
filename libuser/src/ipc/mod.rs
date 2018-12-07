@@ -121,6 +121,12 @@ impl<'a> IPCBuffer<'a> {
     }
 }
 
+pub enum MessageTy {
+    Close,
+    Request,
+    Control,
+}
+
 #[derive(Debug)]
 pub struct Message<'a, RAW, BUFF = [IPCBuffer<'a>; 0], COPY = [u32; 0], MOVE = [u32; 0]>
 where
@@ -149,7 +155,7 @@ where
 {
     pub fn new_request(token: Option<u32>, cmdid: u32) -> Message<'a, RAW, BUFF, COPY, MOVE> {
         Message {
-            ty: 4,
+            ty: token.map(|_| 6).unwrap_or(4),
             pid: None,
             buffers: ArrayVec::new(),
             copy_handles: ArrayVec::new(),
@@ -163,7 +169,7 @@ where
 
     pub fn new_response(token: Option<u32>) -> Message<'a, RAW, BUFF, COPY, MOVE> {
         Message {
-            ty: 4,
+            ty: token.map(|_| 6).unwrap_or(4),
             pid: None,
             buffers: ArrayVec::new(),
             copy_handles: ArrayVec::new(),
@@ -173,6 +179,17 @@ where
             token: token,
             raw: RAW::default()
         }
+    }
+
+    pub fn set_ty(&mut self, ty: MessageTy) -> &mut Self {
+        match (ty, self.token) {
+            (MessageTy::Close, _) => self.ty = 2,
+            (MessageTy::Request, Some(_)) => self.ty = 4,
+            (MessageTy::Request, None) => self.ty = 6,
+            (MessageTy::Control, Some(_)) => self.ty = 5,
+            (MessageTy::Control, None) => self.ty = 7,
+        }
+        self
     }
 
     pub fn set_error(&mut self, err: u32) -> &mut Self {

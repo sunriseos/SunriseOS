@@ -52,7 +52,7 @@ object! {
             let (server, client) = syscalls::create_session(false, 0)?;
             let wrapper = SessionWrapper::new(server, buf);
             manager.add_waitable(Box::new(wrapper) as Box<dyn IWaitable>);
-            Ok((client.0,))
+            Ok((client.into_handle(),))
         }
 
         #[cmdid(1)]
@@ -139,6 +139,25 @@ impl Buffer {
 
 struct IBuffer {
     buffer: Arc<Buffer>,
+}
+
+impl Drop for IBuffer {
+    fn drop(&mut self) {
+        let (dtop, dleft, dwidth, dheight) = self.buffer.get_real_bounds();
+        FRAMEBUFFER.lock().clear_at(dleft as _, dtop as _, dwidth as _, dheight as _);
+        BUFFERS.lock().retain(|buffer| {
+            if let Some(buffer) = buffer.upgrade() {
+                if Arc::ptr_eq(&self.buffer, &buffer) {
+                    false
+                } else {
+                    draw(&*buffer, dtop, dleft, dwidth, dheight);
+                    true
+                }
+            } else {
+                false
+            }
+        });
+    }
 }
 
 object! {

@@ -9,7 +9,7 @@ use error::Error;
 pub trait IWaitable {
     fn get_handle<'a>(&'a self) -> HandleRef<'a>;
     fn into_handle(self) -> Handle;
-    fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<(), Error>;
+    fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<bool, Error>;
 }
 
 pub struct WaitableManager {
@@ -40,7 +40,8 @@ impl WaitableManager {
             };
 
             match waitables[idx].handle_signaled(self) {
-                Ok(()) => (),
+                Ok(false) => (),
+                Ok(true) => { waitables.remove(idx); },
                 Err(err) => {
                     syscalls::output_debug_string(&format!("Error: {}", err));
                     waitables.remove(idx);
@@ -106,7 +107,7 @@ impl<T: Object> IWaitable for SessionWrapper<T> {
         self.handle.0
     }
 
-    fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<(), Error> {
+    fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<bool, Error> {
         self.handle.receive(&mut self.buf[..], Some(0))?;
         let (ty, cmdid) = super::find_ty_cmdid(&self.buf[..]);
         match ty {
@@ -114,10 +115,11 @@ impl<T: Object> IWaitable for SessionWrapper<T> {
             4 | 6 => {
                 self.object.dispatch(manager, cmdid, &mut self.buf[..])?;
                 self.handle.reply(&mut self.buf[..])?;
+                Ok(false)
             },
-            _ => unimplemented!()
+            2 => Ok(true),
+            _ => Ok(true)
         }
-        Ok(())
     }
 }
 
@@ -135,14 +137,14 @@ impl<T: Object + Default + 'static> IWaitable for PortHandler<T> {
         self.handle.0
     }
 
-    fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<(), Error> {
+    fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<bool, Error> {
         let session = Box::new(SessionWrapper {
             object: T::default(),
             handle: self.handle.accept()?,
             buf: Align16([0; 0x100])
         });
         manager.add_waitable(session);
-        Ok(())
+        Ok(false)
     }
 }
 

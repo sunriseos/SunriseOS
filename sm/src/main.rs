@@ -63,7 +63,7 @@ object! {
         #[cmdid(1)]
         fn get_service(&mut self, servicename: u64,) -> Result<(Handle,), Error> {
             match SERVICES.lock().get(&servicename) {
-                Some(port) => port.connect().map(|v| (v.0,)),
+                Some(port) => port.connect().map(|v| (v.into_handle(),)),
                 None => Err(SmError::ServiceNotRegistered.into())
             }
         }
