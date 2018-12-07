@@ -21,15 +21,18 @@ use super::hierarchical_table::*;
 use super::arch::{PAGE_SIZE, InactiveHierarchy, ActiveHierarchy};
 use super::lands::{UserLand, VirtualSpaceLand};
 use super::bookkeeping::UserspaceBookkeeping;
-use super::mapping::Mapping;
+use super::mapping::{Mapping, MappingType};
 use super::cross_process::CrossProcessMapping;
+use super::error::MmError;
 use super::MappingFlags;
 use mem::{VirtualAddress, PhysicalAddress};
 use frame_allocator::{FrameAllocator, FrameAllocatorTrait, PhysicalMemRegion};
 use paging::arch::Entry;
 use error::KernelError;
 use utils::{check_aligned, check_nonzero_length};
+use utils::Splittable;
 use alloc::{vec::Vec, sync::Arc};
+use failure::Backtrace;
 
 /// The struct representing a process' memory, stored in the ProcessStruct behind a lock.
 ///
@@ -285,6 +288,127 @@ impl ProcessMemory {
     pub fn query_memory(&self, address: VirtualAddress) -> Result<QueryMemory, KernelError> {
         UserLand::check_contains_address(address)?;
         Ok(self.userspace_bookkeping.mapping_at(address))
+    }
+
+    /// Shrink the mapping at `address` to `new_size`.
+    ///
+    /// If `new_size` == 0, the mapping is unmapped entirely.
+    ///
+    /// The removed part is returned, it is no longer mapped.
+    ///
+    /// If `new_size` is equal to old size, nothing is done, and Ok(None) is returned.
+    ///
+    /// Because it is reference counted, a Shared mapping cannot be resized.
+    ///
+    /// # Error
+    ///
+    /// * WasAvailable if `address` does not match any existent mapping.
+    /// * InvalidSize if `new_size` > previous mapping length.
+    /// * InvalidSize if `new_size` is not PAGE_SIZE aligned.
+    /// * SharedMapping if `address` falls in a shared mapping.
+    /// * InvalidMapping if `address` falls in a system reserved mapping.
+    pub fn shrink_mapping(&mut self, address: VirtualAddress, new_size: usize) -> Result<Option<Mapping>, KernelError> {
+        check_aligned(new_size, PAGE_SIZE)?;
+        // 1. get the previous mapping's address and size.
+        let (start_addr, old_size) = {
+            let old_mapping_ref = self.userspace_bookkeping.occupied_mapping_at(address)?;
+            (old_mapping_ref.address(), old_mapping_ref.length())
+        };
+        if new_size == 0 {
+            // remove the mapping entirely, return everything as spill.
+            return self.unmap(start_addr, old_size).map(|mapping| Some(mapping))
+        }
+        if new_size == old_size {
+            // don't do anything, and produce no spill
+            return Ok(None)
+        }
+        if new_size > old_size {
+            return Err(KernelError::InvalidSize { size: new_size, backtrace: Backtrace::new() });
+        }
+        // 2. remove it from the bookkeeping
+        let mut mapping = self.userspace_bookkeping.remove_mapping(start_addr, old_size)
+            .expect("shrink_mapping: removing the mapping failed.");
+        // 3. split it in two
+        let spill = mapping.split_at(new_size)?
+            .expect("shrink_mapping: shrinking did not produce a right part, but new size < old size");
+        // 4. re-add the left part
+        self.userspace_bookkeping.add_mapping(mapping)
+            .expect("shrink_mapping: re-adding the mapping failed");
+        // 5. unmap the right part from the page_tables
+        self.get_hierarchy().unmap(spill.address(), spill.length(), |_| {
+            /* leak the mapped frames here, we still have them in `mapping` */
+        });
+        Ok(Some(spill))
+    }
+
+    /// Expand the mapping at `address` to `new_size`.
+    ///
+    /// If the mapping used to map physical memory, new frames are allocated to match `new_size`.
+    ///
+    /// If `new_size` is equal to old size, nothing is done.
+    ///
+    /// Because it is reference counted, a Shared mapping cannot be resized.
+    ///
+    /// # Error
+    ///
+    /// * WasAvailable if `address` does not match any existent mapping.
+    /// * SharedMapping if `address` falls in a shared mapping.
+    /// * InvalidMapping if `address` falls in a system reserved mapping.
+    /// * InvalidSize if `new_size` < previous mapping length.
+    /// * InvalidSize if `new_size` is not PAGE_SIZE aligned.
+    /// * InvalidSize if \[`address`..`new_size`\] does not fall in UserLand.
+    /// * WasOccupied if a mapping was already present in the expanding area.
+    pub fn expand_mapping(&mut self, address: VirtualAddress, new_size: usize) -> Result<(), KernelError> {
+        check_aligned(new_size, PAGE_SIZE)?;
+        // 1. get the previous mapping's address and size.
+        let (start_addr, old_size) = {
+            let old_mapping_ref = self.userspace_bookkeping.occupied_mapping_at(address)?;
+            // check it's not a shared mapping.
+            if let MappingType::Shared(..) = old_mapping_ref.mtype_ref() {
+                return Err(KernelError::MmError(MmError::SharedMapping { backtrace: Backtrace::new() }));
+            }
+            if let MappingType::SystemReserved = old_mapping_ref.mtype_ref() {
+                return Err(KernelError::MmError(MmError::InvalidMapping { backtrace: Backtrace::new() }));
+            }
+            (old_mapping_ref.address(), old_mapping_ref.length())
+        };
+        UserLand::check_contains_region(start_addr, new_size)?;
+        if new_size < old_size {
+            return Err(KernelError::InvalidSize { size: new_size, backtrace: Backtrace::new() });
+        }
+        if new_size == old_size {
+            return Ok(()) // don't do anything.
+        }
+        let added_length = new_size - old_size;
+        self.userspace_bookkeping.check_vacant(start_addr + old_size, added_length)?;
+        // 2. remove it from the bookkeeping.
+        let old_mapping = self.userspace_bookkeping.remove_mapping(start_addr, old_size)
+            .expect("expand_mapping: removing the mapping failed.");
+        let flags = old_mapping.flags();
+        // 3. construct a new bigger mapping, with the same type and flags.
+        // 4. map the added part accordingly.
+        let new_mapping = match old_mapping.mtype() {
+            MappingType::Available | MappingType::Shared(..) | MappingType::SystemReserved => unreachable!(),
+            MappingType::Guarded => {
+                // guard the added part in the page tables.
+                self.get_hierarchy().guard(start_addr + old_size, added_length);
+                Mapping::new_guard(start_addr, new_size)
+                    .expect("expand_mapping: couldn't recreate mapping")
+            },
+            MappingType::Regular(mut frames) => {
+                // allocate the new frames.
+                let mut new_frames = FrameAllocator::allocate_frames_fragmented(added_length)?;
+                // map them.
+                self.get_hierarchy().map_to_from_iterator(new_frames.iter().flatten(), start_addr + old_size, flags);
+                // create a mapping from the two parts.
+                frames.append(&mut new_frames);
+                Mapping::new_regular(start_addr, frames, flags)
+                    .expect("expand_mapping: couldn't recreate mapping")
+            },
+        };
+        self.userspace_bookkeping.add_mapping(new_mapping)
+            .expect("expand_mapping: failed re-adding the mapping to the bookkeeping");
+        Ok(())
     }
 
     /// Finds a hole in virtual space at least `length` long.
