@@ -4,15 +4,8 @@
 extern crate kfs_libuser;
 #[macro_use]
 extern crate alloc;
-extern crate font_rs;
-extern crate spin;
-extern crate hashmap_core;
-extern crate kfs_libutils;
 
-mod vbe;
-mod logger;
-
-use vbe::{VBELogger, WindowSize};
+use kfs_libuser::terminal::{Terminal, WindowSize};
 use kfs_libuser::vi;
 use kfs_libuser::io::{self, Io};
 use kfs_libuser::syscalls;
@@ -98,7 +91,7 @@ fn main() {
 
     rtc.enable_update_ended_int();
 
-    let mut logger = VBELogger::new(WindowSize::FontLines(1, true)).unwrap();
+    let mut logger = Terminal::new(WindowSize::FontLines(1, true)).unwrap();
 
     loop {
         syscalls::wait_synchronization(&[irq.0.as_ref()], None).unwrap();

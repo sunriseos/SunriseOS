@@ -180,7 +180,7 @@ struct VBELoggerInternal {
 }
 
 /// The font we choose to render in
-static FONT:  &'static [u8] = include_bytes!("../img/Monaco.ttf");
+static FONT:  &'static [u8] = include_bytes!("../../libuser/fonts/Monaco.ttf");
 
 /// The size we choose to render in
 const FONT_SIZE: u32 = 10;
