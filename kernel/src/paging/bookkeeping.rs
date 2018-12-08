@@ -86,7 +86,7 @@ impl UserspaceBookkeeping {
             // todo this could overflow for 0x00000000-0xffffffff.
         };
         QueryMemory::Available(
-            Mapping::new_available(address, length)
+            Mapping::new_available(start_addr, length)
                 .expect("Failed creating an available mapping")
         )
     }
