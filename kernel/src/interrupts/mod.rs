@@ -11,7 +11,7 @@ use i386::instructions::interrupts::sti;
 use mem::VirtualAddress;
 use paging::kernel_memory::get_kernel_memory;
 use i386::{TssStruct, PrivilegeLevel};
-use gdt;
+use i386::gdt;
 use scheduler::get_current_thread;
 use process::{ProcessStruct, ThreadState};
 use sync::SpinLockIRQ;
