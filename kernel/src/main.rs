@@ -14,6 +14,7 @@
 #![allow(unused_unsafe)]
 #![allow(unreachable_code)]
 #![allow(dead_code)]
+#![cfg_attr(test, allow(unused_imports))]
 #![recursion_limit = "1024"]
 
 #[cfg(not(target_os = "none"))]
@@ -42,6 +43,8 @@ extern crate failure;
 #[macro_use]
 extern crate bitfield;
 extern crate kfs_libkern;
+#[macro_use]
+extern crate mashup;
 
 use core::fmt::Write;
 use alloc::prelude::*;

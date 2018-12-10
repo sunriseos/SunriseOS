@@ -208,8 +208,184 @@ impl Splittable for Mapping {
 
 #[cfg(test)]
 mod test {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4)
+    use super::Mapping;
+    use super::MappingFlags;
+    use mem::{VirtualAddress, PhysicalAddress};
+    use paging::PAGE_SIZE;
+    use frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
+    use std::sync::Arc;
+
+    /// Applies the same tests to guard, available and system_reserved.
+    macro_rules! test_empty_mapping {
+        ($($x:ident),*) => {
+            mashup! {
+                $(
+                m["new_" $x] = new_ $x;
+                m["mapping_ok_" $x] = $x _mapping_ok;
+                m["mapping_zero_length_" $x] = $x _mapping_zero_length;
+                m["mapping_non_aligned_addr_" $x] = $x _mapping_non_aligned_addr;
+                m["mapping_non_aligned_length_" $x] = $x _mapping_non_aligned_length;
+                m["mapping_length_threshold_" $x] = $x _mapping_length_threshold;
+                m["mapping_length_overflow_" $x] = $x _mapping_length_overflow;
+                )*
+            }
+            m! {
+                $(
+                #[test]
+                fn "mapping_ok_" $x () {
+                    Mapping:: "new_" $x (VirtualAddress(0x40000000), 3 * PAGE_SIZE).unwrap();
+                }
+
+                #[test]
+                fn "mapping_zero_length_" $x () {
+                    Mapping:: "new_" $x (VirtualAddress(0x40000000), 0).unwrap_err();
+                }
+
+                #[test]
+                fn "mapping_non_aligned_addr_" $x () {
+                    Mapping::"new_" $x (VirtualAddress(0x40000007), 3 * PAGE_SIZE).unwrap_err();
+                }
+
+                #[test]
+                fn "mapping_non_aligned_length_" $x () {
+                    Mapping::"new_" $x (VirtualAddress(0x40000000), 3).unwrap_err();
+                }
+
+                #[test]
+                fn "mapping_length_threshold_" $x () {
+                    Mapping::"new_" $x (VirtualAddress(usize::max_value() - 2 * PAGE_SIZE + 1), 2 * PAGE_SIZE).unwrap();
+                }
+
+                #[test]
+                fn "mapping_length_overflow_" $x () {
+                    Mapping::"new_" $x (VirtualAddress(usize::max_value() - 2 * PAGE_SIZE + 1), 3 * PAGE_SIZE).unwrap_err();
+                }
+                )*
+            }
+        }
     }
+
+    test_empty_mapping!(guard, available, system_reserved);
+
+    #[test]
+    fn mapping_regular_ok() {
+        let _f = ::frame_allocator::init();
+        let frames = FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap();
+        let flags = MappingFlags::u_rw();
+        let _mapping = Mapping::new_regular(VirtualAddress(0x40000000), frames, flags).unwrap();
+    }
+
+    #[test]
+    fn mapping_shared_ok() {
+        let _f = ::frame_allocator::init();
+        let frames = Arc::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap());
+        let flags = MappingFlags::u_rw();
+        let _mapping = Mapping::new_shared(VirtualAddress(0x40000000), frames, flags).unwrap();
+    }
+
+    #[test]
+    fn mapping_regular_empty_vec() {
+        let _f = ::frame_allocator::init();
+        let frames = Vec::new();
+        let flags = MappingFlags::u_rw();
+        let _mapping_err = Mapping::new_regular(VirtualAddress(0x40000000), frames, flags).unwrap_err();
+    }
+
+    #[test]
+    fn mapping_shared_empty_vec() {
+        let _f = ::frame_allocator::init();
+        let frames = Arc::new(Vec::new());
+        let flags = MappingFlags::u_rw();
+        let _mapping_err = Mapping::new_shared(VirtualAddress(0x40000000), frames, flags).unwrap_err();
+    }
+
+    #[test]
+    fn mapping_regular_zero_sized_region() {
+        let _f = ::frame_allocator::init();
+        let region = unsafe { PhysicalMemRegion::reconstruct_no_dealloc(PhysicalAddress(PAGE_SIZE), 0) };
+        let frames = vec![region];
+        let flags = MappingFlags::u_rw();
+        let _mapping_err = Mapping::new_regular(VirtualAddress(0x40000000), frames, flags).unwrap_err();
+    }
+
+    #[test]
+    fn mapping_regular_zero_sized_regions() {
+        let _f = ::frame_allocator::init();
+        let region1 = unsafe { PhysicalMemRegion::reconstruct_no_dealloc(PhysicalAddress(PAGE_SIZE), 0) };
+        let region2 = unsafe { PhysicalMemRegion::reconstruct_no_dealloc(PhysicalAddress(PAGE_SIZE), 0) };
+        let frames = vec![region1, region2];
+        let flags = MappingFlags::u_rw();
+        let _mapping_err = Mapping::new_regular(VirtualAddress(0x40000000), frames, flags).unwrap_err();
+    }
+
+    #[test]
+    fn mapping_regular_unaligned_addr() {
+        let _f = ::frame_allocator::init();
+        let frames = FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap();
+        let flags = MappingFlags::u_rw();
+        let _mapping_err = Mapping::new_regular(VirtualAddress(0x40000007), frames, flags).unwrap_err();
+    }
+
+    #[test]
+    fn mapping_shared_unaligned_addr() {
+        let _f = ::frame_allocator::init();
+        let frames = Arc::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap());
+        let flags = MappingFlags::u_rw();
+        let _mapping_err = Mapping::new_shared(VirtualAddress(0x40000007), frames, flags).unwrap_err();
+    }
+
+
+    #[test]
+    #[should_panic]
+    fn mapping_regular_unaligned_len() {
+        let _f = ::frame_allocator::init();
+        let frames = FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE + 7).unwrap();
+        let flags = MappingFlags::u_rw();
+        let _mapping = Mapping::new_regular(VirtualAddress(0x40000000), frames, flags).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn mapping_shared_unaligned_len() {
+        let _f = ::frame_allocator::init();
+        let frames = Arc::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE + 7).unwrap());
+        let flags = MappingFlags::u_rw();
+        let _mapping = Mapping::new_shared(VirtualAddress(0x40000000), frames, flags).unwrap();
+    }
+
+    #[test]
+    fn mapping_regular_threshold() {
+        let _f = ::frame_allocator::init();
+        let frames = FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap();
+        let flags = MappingFlags::u_rw();
+        let _mapping = Mapping::new_regular(VirtualAddress(usize::max_value() - 2 * PAGE_SIZE + 1), frames, flags).unwrap();
+    }
+
+    #[test]
+    fn mapping_shared_threshold() {
+        let _f = ::frame_allocator::init();
+        let frames = Arc::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap());
+        let flags = MappingFlags::u_rw();
+        let _mapping = Mapping::new_shared(VirtualAddress(usize::max_value() - 2 * PAGE_SIZE + 1), frames, flags).unwrap();
+    }
+
+    #[test]
+    fn mapping_regular_overflow() {
+        let _f = ::frame_allocator::init();
+        let frames = FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap();
+        let flags = MappingFlags::u_rw();
+        let _mapping_err = Mapping::new_regular(VirtualAddress(usize::max_value() - 2 * PAGE_SIZE), frames, flags).unwrap_err();
+    }
+
+    #[test]
+    fn mapping_shared_overflow() {
+        let _f = ::frame_allocator::init();
+        let frames = Arc::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap());
+        let flags = MappingFlags::u_rw();
+        let _mapping_err = Mapping::new_shared(VirtualAddress(usize::max_value() - 2 * PAGE_SIZE), frames, flags).unwrap_err();
+    }
+
+    // TODO: Test Splittable<Mapping>
+    // BODY: Write some tests for splitting a Mapping,
+    // BODY: as I am really not confident it works as expected.
 }
