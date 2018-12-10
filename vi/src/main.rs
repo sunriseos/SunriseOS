@@ -90,7 +90,7 @@ fn draw(buf: &Buffer, top: u32, left: u32, width: u32, height: u32) {
         // BODY: have some kind of cross-process mutex? How to implement this
         // BODY: properly?
         let data = buf.mem.get();
-        let (dtop, dleft, dwidth, dheight) = buf.get_real_bounds();
+        let (dtop, dleft, dwidth, dheight) = buf.get_real_bounds(width, height);
         // Calculate first offset in data
         let mut framebuffer = FRAMEBUFFER.lock();
         if let Some(intersect) = get_intersect((dtop, dleft, dwidth, dheight), (top, left, width, height)) {
@@ -128,11 +128,11 @@ struct Buffer {
 }
 
 impl Buffer {
-    fn get_real_bounds(&self) -> (u32, u32, u32, u32) {
-        let dtop = max(self.top, 0) as u32;
-        let dleft = max(self.left, 0) as u32;
-        let dwidth = min(self.width as i32, self.left + (self.width as i32)) as u32;
-        let dheight = min(self.height as i32, self.top + (self.height as i32)) as u32;
+    fn get_real_bounds(&self, framebuffer_width: u32, framebuffer_height: u32) -> (u32, u32, u32, u32) {
+        let dtop = min(max(self.top, 0) as u32, framebuffer_height);
+        let dleft = min(max(self.left, 0) as u32, framebuffer_width);
+        let dwidth = min(framebuffer_height - dtop, self.height);
+        let dheight = min(framebuffer_width - dleft, self.width);
         (dtop, dleft, dwidth, dheight)
     }
 }
@@ -143,7 +143,7 @@ struct IBuffer {
 
 impl Drop for IBuffer {
     fn drop(&mut self) {
-        let (dtop, dleft, dwidth, dheight) = self.buffer.get_real_bounds();
+        let (dtop, dleft, dwidth, dheight) = self.buffer.get_real_bounds(FRAMEBUFFER.lock().width() as u32, FRAMEBUFFER.lock().height() as u32);
         FRAMEBUFFER.lock().clear_at(dleft as _, dtop as _, dwidth as _, dheight as _);
         BUFFERS.lock().retain(|buffer| {
             if let Some(buffer) = buffer.upgrade() {
@@ -170,7 +170,7 @@ object! {
             // BODY: amount of flickering on the screen. We should look into
             // BODY: better compositing algorithms, maybe we don't need to redraw
             // BODY: the whole screen all the time? And also, look into VSYNC.
-            let (dtop, dleft, dwidth, dheight) = self.buffer.get_real_bounds();
+            let (dtop, dleft, dwidth, dheight) = self.buffer.get_real_bounds(FRAMEBUFFER.lock().width() as u32, FRAMEBUFFER.lock().height() as u32);
             FRAMEBUFFER.lock().clear_at(dleft as _, dtop as _, dwidth as _, dheight as _);
             BUFFERS.lock().retain(|buffer| {
                 if let Some(buffer) = buffer.upgrade() {
