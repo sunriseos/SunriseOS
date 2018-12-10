@@ -180,3 +180,9 @@ args = ["rustdoc", "--target=i386-unknown-none", "--package=kfs-kernel", "--", "
 workspace = false
 description = "Document the project fully"
 dependencies = ["fulldoc-bootstrap", "fulldoc-kernel"]
+
+[tasks.test]
+workspace = false
+description = "Run the tests in 32bit mode"
+command = "cargo"
+args = ["test", "--target=i686-unknown-linux-gnu"]
