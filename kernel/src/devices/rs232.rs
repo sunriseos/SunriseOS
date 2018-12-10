@@ -9,14 +9,18 @@ use i386::pio::Pio;
 #[derive(Debug, Copy, Clone)]
 pub struct ComPort(u16);
 
-#[cfg(target_arch="x86")]
+#[cfg(all(target_arch="x86", not(test)))]
 const COM1: ComPort = ComPort(0x3F8);
-#[cfg(target_arch="x86")]
+#[cfg(all(target_arch="x86", not(test)))]
 const COM2: ComPort = ComPort(0x2F8);
-#[cfg(target_arch="x86")]
+#[cfg(all(target_arch="x86", not(test)))]
 const COM3: ComPort = ComPort(0x3E8);
-#[cfg(target_arch="x86")]
+#[cfg(all(target_arch="x86", not(test)))]
 const COM4: ComPort = ComPort(0x2E8);
+
+// TODO: device drivers should be compiled only for i386
+#[cfg(test)]
+const COM1: ComPort = ComPort(0x7777);
 
 /// The possible colors for serial
 #[allow(missing_docs)]
@@ -92,7 +96,7 @@ struct SerialInternal<T> {
 
 impl <T> SerialInternal<T> {
     /// Creates the serial for i386
-    #[cfg(target_arch="x86")]
+    #[cfg(all(target_arch="x86", not(test)))]
     #[allow(unused)]
     pub fn new(com_port: ComPort) -> SerialInternal<Pio<u8>> {
         let mut data_port       = Pio::<u8>::new(com_port.0 + 0);
@@ -115,6 +119,9 @@ impl <T> SerialInternal<T> {
 
         SerialInternal { data_port, status_port }
     }
+
+    #[cfg(test)]
+    pub fn new(_com_port: ComPort) -> SerialInternal<Pio<u8>> { panic!("mock implementation !") }
 }
 
 impl SerialInternal<Pio<u8>> {

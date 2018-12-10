@@ -1,5 +1,8 @@
 //! i386 registers reading
 
+#![allow(unused_macros)]
+#![allow(dead_code)]
+
 /// Gets the current $eip.
 #[inline(never)]
 pub extern fn eip() -> usize {

@@ -6,6 +6,7 @@ isofiles/boot/kfs-*
 os.iso
 .idea
 .gdbinit
+.gdb_history
 /CMakeLists.txt
 /kfs.iml
 /cmake-build-debug

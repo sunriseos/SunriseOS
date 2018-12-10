@@ -30,7 +30,7 @@
 #[cfg(not(target_os = "none"))]
 use std as core;
 
-#[cfg(not(target_os = "none"))]
+#[cfg(not(any(target_arch = "x86", test)))]
 compile_error!("WTF");
 
 extern crate arrayvec;
@@ -168,6 +168,7 @@ pub extern "C" fn do_bootstrap(multiboot_info_addr: usize) -> ! {
 
     writeln!(Serial, "= Jumping to kernel");
 
+    #[cfg(not(test))]
     unsafe {
     asm!("
         // save multiboot info pointer

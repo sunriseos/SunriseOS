@@ -7,16 +7,17 @@ addons:
   apt:
     packages:
     - grub-common
+    - gcc-multilib
 
 # Install cargo-make and rust-src rustup component
 before_install:
 - cargo install cargo-make || echo "cargo-make already installed"
 - rustup component add rust-src || echo "rust-src already installed"
+- rustup target install i686-unknown-linux-gnu || echo "target i686-unknown-linux-gnu already installed"
 
 script:
 - cargo make iso
-# TODO: Run tests.
-
-# TODO: Create an ISO artifact on release.
+- cargo make iso-release
+- cargo make test
 
 cache: cargo

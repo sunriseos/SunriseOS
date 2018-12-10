@@ -33,7 +33,18 @@ const FRAME_BASE_MASK:   usize = !FRAME_OFFSET_MASK; // The base part in a frame
 const FRAME_BASE_LOG: usize = 12; // frame_number = addr >> 12
 
 /// The size of the frames_bitmap (~128ko)
+#[cfg(not(test))]
 const FRAMES_BITMAP_SIZE: usize = usize::max_value() / PAGE_SIZE / 8 + 1;
+// TODO: report rustc panic
+// BODY: Having the FRAMES_BITMAP_SIZE set to this value on a 64 bit target
+// BODY: causes rustc to panic in a really random assertion when creating
+// BODY: the array (which would be too big).
+// BODY:
+// BODY: I think we should report that.
+
+/// For unit tests we use a much smaller array.
+#[cfg(test)]
+const FRAMES_BITMAP_SIZE: usize = 64;
 
 /// Gets the frame number from a physical address
 #[inline]

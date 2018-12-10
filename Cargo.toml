@@ -4,5 +4,8 @@ members = ["kernel", "bootstrap", "shell", "libuser", "clock", "sm", "vi", "libu
 [profile.release]
 debug = true
 
+[profile.test]
+debug = true
+
 [patch.crates-io]
 hashmap_core = { git = "https://github.com/pepyakin/hashmap_core", rev = "add-alloc-layout-extra" }

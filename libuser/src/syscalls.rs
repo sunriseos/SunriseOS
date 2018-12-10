@@ -8,6 +8,7 @@ use kfs_libkern::nr;
 pub use kfs_libkern::{MemoryInfo, MemoryPermissions};
 use error::KernelError;
 
+#[cfg(all(target_arch = "x86", not(test)))]
 global_asm!("
 .intel_syntax noprefix
 .global syscall_inner
