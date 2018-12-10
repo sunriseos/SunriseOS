@@ -1,3 +1,9 @@
+//! Visual Compositor
+//!
+//! This process takes care of compositing multiple windows on the framebuffer.
+//! In the future, it will also be capable of talking to the GPU to provide an
+//! OpenGL abstraction layer.
+
 #![feature(alloc, const_vec_new)]
 #![no_std]
 
@@ -28,11 +34,19 @@ use libuser::error::{KernelError, Error};
 use libuser::syscalls::MemoryPermissions;
 use kfs_libutils::align_up;
 
+/// Entry point interface.
 #[derive(Default)]
 struct ViInterface;
 
 object! {
     impl ViInterface {
+        /// Create a window.
+        ///
+        /// This creates a window at the given coordinates, with the given
+        /// height. The passed handle should be a SharedMemory handle containing
+        /// a framebuffer of type `[[u8; width]; height]`.
+        ///
+        /// It is allowed to place the framebuffer outside the field of view.
         #[cmdid(0)]
         fn create_buffer(&mut self, manager: &WaitableManager, handle: Handle<copy>, top: i32, left: i32, width: u32, height: u32,) -> Result<(Handle,), Error> {
             let sharedmem = SharedMemory(handle);
@@ -55,6 +69,7 @@ object! {
             Ok((client.into_handle(),))
         }
 
+        /// Gets the screen resolution.
         #[cmdid(1)]
         fn get_resolution(&mut self,) -> Result<(u32, u32,), Error> {
             Ok((1280, 800))
@@ -62,8 +77,12 @@ object! {
     }
 }
 
+/// A list of the buffers currently alive.
+///
+/// Used to draw the framebuffer.
 static BUFFERS: Mutex<Vec<Weak<Buffer>>> = Mutex::new(Vec::new());
 
+/// Gets the intersection between two rectangles.
 fn get_intersect((atop, aleft, awidth, aheight): (u32, u32, u32, u32), (btop, bleft, bwidth, bheight): (u32, u32, u32, u32)) -> Option<(u32, u32, u32, u32)> {
     if atop > (btop + bheight) || btop > atop + aheight {
         return None
@@ -81,6 +100,7 @@ fn get_intersect((atop, aleft, awidth, aheight): (u32, u32, u32, u32), (btop, bl
     Some((top, left, width, height))
 }
 
+/// Draw a portion of a buffer onto the framebuffer.
 fn draw(buf: &Buffer, top: u32, left: u32, width: u32, height: u32) {
     unsafe {
         // TODO: Safety of the vi::draw IPC method
@@ -118,6 +138,7 @@ fn draw(buf: &Buffer, top: u32, left: u32, width: u32, height: u32) {
     }
 }
 
+/// Internal representation of a window.
 #[derive(Debug)]
 struct Buffer {
     top: i32,
@@ -128,6 +149,8 @@ struct Buffer {
 }
 
 impl Buffer {
+    /// Returns the buffer's bounds within the given width/height, cropping as
+    /// necessary.
     fn get_real_bounds(&self, framebuffer_width: u32, framebuffer_height: u32) -> (u32, u32, u32, u32) {
         let dtop = min(max(self.top, 0) as u32, framebuffer_height);
         let dleft = min(max(self.left, 0) as u32, framebuffer_width);
@@ -137,11 +160,14 @@ impl Buffer {
     }
 }
 
+/// IPC Window object
 struct IBuffer {
     buffer: Arc<Buffer>,
 }
 
 impl Drop for IBuffer {
+    /// Redraw the zone where the buffer was when dropping it, to make sure it
+    /// disappears.
     fn drop(&mut self) {
         let (dtop, dleft, dwidth, dheight) = self.buffer.get_real_bounds(FRAMEBUFFER.lock().width() as u32, FRAMEBUFFER.lock().height() as u32);
         FRAMEBUFFER.lock().clear_at(dleft as _, dtop as _, dwidth as _, dheight as _);
@@ -162,6 +188,7 @@ impl Drop for IBuffer {
 
 object! {
     impl IBuffer {
+        /// Blit the buffer to the framebuffer.
         #[cmdid(0)]
         #[inline(never)]
         fn draw(&mut self, ) -> Result<(), Error> {
