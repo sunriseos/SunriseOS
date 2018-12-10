@@ -53,8 +53,6 @@ pub mod log_impl;
 #[cfg(any(target_arch = "x86", test))]
 #[macro_use]
 pub mod i386;
-#[cfg(any(target_arch = "x86", test))]
-pub mod gdt;
 pub mod interrupts;
 pub mod frame_allocator;
 
@@ -175,7 +173,7 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 
     // Set up (read: inhibit) the GDT.
     info!("Initializing gdt...");
-    gdt::init_gdt();
+    i386::gdt::init_gdt();
     info!("Gdt initialized");
 
     i386::multiboot::init(boot_info);

@@ -12,7 +12,7 @@ use core::ops::{Deref, DerefMut};
 use core::slice;
 use core::fmt;
 
-use super::i386::{PrivilegeLevel, TssStruct};
+use i386::{PrivilegeLevel, TssStruct};
 use i386::structures::gdt::SegmentSelector;
 use i386::instructions::tables::{lgdt, sgdt, DescriptorTablePointer};
 use i386::instructions::segmentation::*;

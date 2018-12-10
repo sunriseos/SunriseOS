@@ -18,7 +18,7 @@ use i386::{AlignedTssStruct, TssStruct, PrivilegeLevel};
 use mem::VirtualAddress;
 use paging::{PAGE_SIZE, kernel_memory::get_kernel_memory};
 use alloc::boxed::Box;
-use gdt;
+use i386::gdt;
 
 /// An Interrupt Descriptor Table with 256 entries.
 ///

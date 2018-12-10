@@ -176,6 +176,11 @@ impl Splittable for Mapping {
     /// Splits a mapping at a given offset.
     ///
     /// Because it is reference counted, a Shared mapping cannot be splitted.
+    ///
+    /// # Error
+    ///
+    /// * SharedMapping if it's a shared mapping.
+    /// * InvalidMapping if it's a system reserved mapping.
     fn split_at(&mut self, offset: usize) -> Result<Option<Self>, KernelError> {
         check_aligned(offset, PAGE_SIZE)?;
         if offset == 0 || offset >= self.length { return Ok(None) };
@@ -190,7 +195,8 @@ impl Splittable for Mapping {
             //    MappingType::Stack(ref mut frames) => MappingType::Stack(frames.split_at(offset)?.unwrap()),
                 MappingType::Shared(_) => return Err(KernelError::MmError(
                                                        MmError::SharedMapping { backtrace: Backtrace::new() })),
-                MappingType::SystemReserved => panic!("shouldn't split a SystemReserved mapping"),
+                MappingType::SystemReserved => return Err(KernelError::MmError(
+                                                       MmError::InvalidMapping { backtrace: Backtrace::new() })),
             },
         };
         // split succeeded, now modify left part

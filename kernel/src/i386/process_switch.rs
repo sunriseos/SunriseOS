@@ -3,7 +3,7 @@
 //! This modules describe low-level functions and structures needed to perform a process switch
 
 use process::ThreadStruct;
-use gdt;
+use i386::gdt;
 use alloc::sync::Arc;
 use core::mem::size_of;
 use i386::TssStruct;
