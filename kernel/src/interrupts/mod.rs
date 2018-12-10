@@ -46,15 +46,17 @@ pub fn check_thread_killed() {
 
 /// Panics with an informative message.
 fn panic_on_exception(exception_string: Arguments, exception_stack_frame: &ExceptionStackFrame) -> ! {
-    ::do_panic(
-        format_args!("{} in {:?}: {:?}",
-                exception_string,
-                scheduler::try_get_current_process().as_ref().map(|p| &p.name),
-                exception_stack_frame),
-        exception_stack_frame.stack_pointer.addr(),
-        exception_stack_frame.stack_pointer.addr(),
-        exception_stack_frame.instruction_pointer.addr(),
-    )
+    unsafe {
+        // safe: we're not passing a stackdump_source
+        //       so it will use our current kernel stack, which is safe.
+        ::do_panic(
+            format_args!("{} in {:?}: {:?}",
+                         exception_string,
+                         scheduler::try_get_current_process().as_ref().map(|p| &p.name),
+                         exception_stack_frame),
+            None,
+        )
+    }
 }
 
 extern "x86-interrupt" fn divide_by_zero_handler(stack_frame: &mut ExceptionStackFrame) {
@@ -137,6 +139,8 @@ fn double_fault_handler() {
     unsafe {
         // Safety: gdt::MAIN_TASK should always point to a valid TssStruct.
         if let Some(tss_main) = (gdt::MAIN_TASK.addr() as *const TssStruct).as_ref() {
+
+            // safe: we're in an exception handler, nobody can modify the faulty thread's stack.
             ::do_panic(format_args!("Double fault!
                     EIP={:#010x} CR3={:#010x}
                     EAX={:#010x} EBX={:#010x} ECX={:#010x} EDX={:#010x}
@@ -144,10 +148,13 @@ fn double_fault_handler() {
                     tss_main.eip, tss_main.cr3,
                     tss_main.eax, tss_main.ebx, tss_main.ecx, tss_main.edx,
                     tss_main.esi, tss_main.edi, tss_main.esp, tss_main.ebp),
-                tss_main.esp as usize, tss_main.ebp as usize, tss_main.eip as usize
-            );
+                Some(::stack::StackDumpSource::new(
+                    tss_main.esp as usize, tss_main.ebp as usize, tss_main.eip as usize
+                    )));
         } else {
-            ::do_panic(format_args!("Doudble fault! Cannot get main TSS, good luck"), 0, 0, 0)
+            // safe: we're not passing a stackdump_source
+            //       so it will use our current stack, which is safe.
+            ::do_panic(format_args!("Doudble fault! Cannot get main TSS, good luck"), None)
         }
     }
 }

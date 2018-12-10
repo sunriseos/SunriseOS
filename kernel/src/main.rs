@@ -202,7 +202,18 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 
 /// The function executed on a panic! Can also be called at any moment.
 /// Will print some useful debugging information, and never return.
-fn do_panic(msg: core::fmt::Arguments, esp: usize, ebp: usize, eip: usize) -> ! {
+///
+/// This function will print a stack dump, from `stackdump_source`.
+/// If `None` is passed, it will dump the current KernelStack instead, this is the default for a panic!.
+/// It is usefull being able to debug another stack that our own, especially when we double-faulted.
+///
+/// # Safety
+///
+/// When a `stackdump_source` is passed, this function cannot check the requirements of
+/// [dump_stack](::stack::dump_stack), it is the caller's job to do it.
+///
+/// Note that if `None` is passed, this function is safe.
+unsafe fn do_panic(msg: core::fmt::Arguments, stackdump_source: Option<stack::StackDumpSource>) -> ! {
 
     // Disable interrupts forever!
     unsafe { sync::permanently_disable_interrupts(); }
@@ -249,7 +260,14 @@ fn do_panic(msg: core::fmt::Arguments, esp: usize, ebp: usize, eip: usize) -> ! 
     }
 
     // Then print the stack
-    ::stack::dump_stack(esp, ebp, eip, elf_and_st);
+    if let Some(sds) = stackdump_source {
+        unsafe {
+            // this is unsafe, caller must check safety
+            ::stack::dump_stack(sds, elf_and_st)
+        }
+    } else {
+        ::stack::KernelStack::dump_current_stack(elf_and_st)
+    }
 
     let _ = writeln!(Loggers, "Thread : {:#x?}", scheduler::try_get_current_thread());
 
@@ -261,6 +279,9 @@ fn do_panic(msg: core::fmt::Arguments, esp: usize, ebp: usize, eip: usize) -> ! 
 #[cfg(target_os = "none")]
 #[panic_handler] #[no_mangle]
 pub extern fn panic_fmt(p: &::core::panic::PanicInfo) -> ! {
-    // call do_panic() with our current esp, ebp, and eip.
-    do_panic(format_args!("{}", p), esp!(), ebp!(), i386::registers::eip());
+    unsafe {
+        // safe: we're not passing a stackdump_source
+        //       so it will use our current stack, which is safe.
+        do_panic(format_args!("{}", p), None);
+    }
 }

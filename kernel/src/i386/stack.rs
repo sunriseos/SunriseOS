@@ -122,7 +122,9 @@ impl KernelStack {
     }
 
     /// Dumps the stack on all the Loggers, displaying it in a frame-by-frame format
-    pub fn dump_current_stack() {
+    ///
+    /// It can accepts an elf symbols which will be used to enhance the stack dump.
+    pub fn dump_current_stack<'a>(elf_symbols: Option<(&ElfFile<'a>, &'a [Entry32])>) {
         let mut ebp;
         let mut esp;
         let mut eip;
@@ -138,7 +140,14 @@ impl KernelStack {
             : "=r"(ebp), "=r"(esp), "=r"(eip) ::: "volatile", "intel" );
         }
 
-        dump_stack(esp, ebp, eip, None);
+        let source = StackDumpSource::new(esp, ebp, eip);
+
+        unsafe {
+            // safe: the constructed slice will be "under" the current stack top,
+            //       it is considered temporarily immutable,
+            //       and nobody except our thread has access to it.
+            dump_stack(source, elf_symbols);
+        }
     }
 }
 
@@ -152,6 +161,27 @@ impl Drop for KernelStack {
 
 /* ********************************************************************************************** */
 
+/// The minimal information needed to perform a stack dump.
+pub struct StackDumpSource {
+    /// The initial top of the stack.
+    esp: usize,
+    /// The initial bottom of the first stack frame.
+    ebp: usize,
+    /// The initial pc.
+    eip: usize
+}
+
+impl StackDumpSource {
+    /// Creates a StackDumpSource from :
+    ///
+    /// * the initial top of the stack.
+    /// * the initial bottom of the first stack frame.
+    /// * the initial ip.
+    pub fn new(esp: usize, ebp: usize, eip: usize) -> Self {
+        Self { esp, ebp, eip }
+    }
+}
+
 /// Dumps the stack from the given information on all the Loggers, displaying it
 /// in a frame-by-frame format.
 ///
@@ -164,27 +194,31 @@ impl Drop for KernelStack {
 ///
 /// # Safety
 ///
-/// This function is "relatively" safe. It checks whether the stack is properly mapped
-/// before attempting to access it. It does create a &[u8] from a technically "shared"
-/// resource. However, the compiler shouldn't know about this, so UB shouldn't be met.
-pub fn dump_stack<'a>(esp: usize, ebp: usize, eip: usize, elf: Option<(&ElfFile<'a>, &'a [Entry32])>) {
+/// This function checks whether the stack is properly mapped before attempting to access it.
+/// It then creates a &[u8] from what could be a shared resource.
+///
+/// The caller must make sure the mapping pointed to by `esp` cannot be modified while this
+/// function is at work. This will often mean checking that the thread whose stack we're dumping
+/// is stopped and will remain unscheduled at least until this function returns.
+pub unsafe fn dump_stack<'a>(source: StackDumpSource, elf_symbols: Option<(&ElfFile<'a>, &'a [Entry32])>) {
     use logger::*;
     use core::fmt::Write;
 
     writeln!(Loggers, "---------- Dumping stack ---------");
 
-    if KernelLand::contains_address(VirtualAddress(esp)) {
+    if KernelLand::contains_address(VirtualAddress(source.esp)) {
         writeln!(Loggers, "# Dumping KernelStack");
-        dump_kernel_stack(esp, ebp, eip, elf)
-    } else if UserLand::contains_address(VirtualAddress(esp)) {
+        dump_kernel_stack(source.esp, source.ebp, source.eip, elf_symbols)
+    } else if UserLand::contains_address(VirtualAddress(source.esp)) {
         writeln!(Loggers, "# Dumping UserLand stack");
-        dump_user_stack(esp, ebp, eip, elf)
+        dump_user_stack(source.esp, source.ebp, source.eip, elf_symbols)
     } else {
-        writeln!(Loggers, "# Invalid esp: {:x?}", esp);
+        writeln!(Loggers, "# Invalid esp: {:x?}", source.esp);
     }
 
     writeln!(Loggers, "-------- End of stack dump --------");
 
+    /// Attempts to dump a KernelStack.
     fn dump_kernel_stack<'b>(mut esp: usize, ebp: usize, eip: usize, elf: Option<(&ElfFile<'b>, &'b [Entry32])>) {
 
         // check if esp falls in the page_guard of what would be a KernelStack
@@ -223,6 +257,7 @@ pub fn dump_stack<'a>(esp: usize, ebp: usize, eip: usize, elf: Option<(&ElfFile<
         return dump_stack_from_slice(stack_slice, stack_bottom, esp, ebp, eip, elf);
     }
 
+    /// Takes the mapping `esp` falls into, consider it a stack and attempts to dump it.
     fn dump_user_stack<'c>(esp: usize, ebp: usize, eip: usize, elf: Option<(&ElfFile<'c>, &'c [Entry32])>) {
         let process = scheduler::get_current_process();
         let pmemory = process.pmemory.lock();
@@ -246,10 +281,11 @@ pub fn dump_stack<'a>(esp: usize, ebp: usize, eip: usize, elf: Option<(&ElfFile<
 /// therefore it should even be possible to use it on a user stack
 ///
 /// The function will stop if it encounters:
+///
 /// * a null pointer as saved ebp/eip (expected at the bottom of the stack)
 /// * any ebp/esp falling outside of the stack
 ///
-/// The data of every stack frame will be hexdumped
+/// The data of every stack frame will be hexdumped.
 fn dump_stack_from_slice<'a>(stack: &[u8], orig_address: usize, mut esp: usize, mut ebp: usize, mut eip: usize, elf: Option<(&ElfFile<'a>, &'a [Entry32])>) {
     use logger::*;
     use core::fmt::Write;
