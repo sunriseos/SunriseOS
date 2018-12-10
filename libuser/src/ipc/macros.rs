@@ -4,6 +4,9 @@
 /// generating the dispatcher logic. The syntax for using it is as under:
 ///
 /// ```rust
+/// # #[macro_use] extern crate kfs_libuser; fn main() {
+/// use kfs_libuser::error::Error;
+///
 /// struct Service;
 /// object! {
 ///     impl Service {
@@ -13,6 +16,7 @@
 ///         }
 ///     }
 /// }
+/// # }
 /// ```
 ///
 /// Allowed argument types:
