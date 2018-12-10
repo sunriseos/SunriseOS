@@ -72,19 +72,19 @@ pub struct UserLand;
 pub struct RecursiveTablesLand;
 
 // if 32 bit, we define UserLand and KernelLand here
-#[cfg(target_pointer_width = "32")]
+#[cfg(any(target_pointer_width = "32", test))]
 impl UserLand {
     const fn start_addr() -> VirtualAddress { VirtualAddress(0x00000000) }
     const fn end_addr()   -> VirtualAddress { VirtualAddress(0xbfffffff) }
 }
 
-#[cfg(target_pointer_width = "32")]
+#[cfg(any(target_pointer_width = "32", test))]
 impl KernelLand {
     const fn start_addr() -> VirtualAddress { VirtualAddress(0xc0000000) }
     const fn end_addr()   -> VirtualAddress { VirtualAddress(0xffbfffff) }
 }
 
-#[cfg(target_pointer_width = "32")]
+#[cfg(any(target_pointer_width = "32", test))]
 impl RecursiveTablesLand {
     const fn start_addr() -> VirtualAddress { VirtualAddress(0xffc00000) }
     const fn end_addr()   -> VirtualAddress { VirtualAddress(0xffffffff) }

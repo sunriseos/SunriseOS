@@ -108,6 +108,7 @@ unsafe impl<'a> GlobalAlloc for Allocator {
 /// Called when the kernel heap allocator detects Out Of Memory (OOM) condition.
 ///
 /// It simply panics.
+#[cfg(target_os = "none")]
 #[lang = "oom"]
 #[no_mangle]
 pub fn rust_oom(_: Layout) -> ! {

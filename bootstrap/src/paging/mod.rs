@@ -38,6 +38,7 @@ fn is_paging_on() -> bool {
 }
 
 unsafe fn enable_paging(page_directory_address: PhysicalAddress) {
+    #[cfg(not(test))]
     asm!("mov eax, $0
           mov cr3, eax
 
@@ -53,6 +54,7 @@ unsafe fn enable_paging(page_directory_address: PhysicalAddress) {
 
 /// Flush the Translation Lookaside Buffer [https://wiki.osdev.org/TLB]
 fn flush_tlb() {
+    #[cfg(not(test))]
     unsafe {
         asm!("mov eax, cr3
           mov cr3, eax  "

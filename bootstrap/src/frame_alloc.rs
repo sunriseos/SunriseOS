@@ -30,7 +30,12 @@ const FRAME_BASE_MASK:   usize = !FRAME_OFFSET_MASK; // The base part in a frame
 const FRAME_BASE_LOG: usize = 12; // frame_number = addr >> 12
 
 /// The size of the frames_bitmap (~128ko)
+#[cfg(not(test))]
 const FRAMES_BITMAP_SIZE: usize = usize::max_value() / MEMORY_FRAME_SIZE / 8 + 1;
+
+/// When testing we use a much smaller array.
+#[cfg(test)]
+const FRAMES_BITMAP_SIZE: usize = 64;
 
 /// Gets the frame number from a physical address
 #[inline]

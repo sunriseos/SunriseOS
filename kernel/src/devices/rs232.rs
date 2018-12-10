@@ -18,6 +18,10 @@ const COM3: ComPort = ComPort(0x3E8);
 #[cfg(target_arch="x86")]
 const COM4: ComPort = ComPort(0x2E8);
 
+// TODO: device drivers should be compiled only for i386
+#[cfg(test)]
+const COM1: ComPort = ComPort(0x7777);
+
 /// The possible colors for serial
 #[allow(missing_docs)]
 #[repr(u8)]
@@ -115,6 +119,9 @@ impl <T> SerialInternal<T> {
 
         SerialInternal { data_port, status_port }
     }
+
+    #[cfg(test)]
+    pub fn new(_com_port: ComPort) -> SerialInternal<Pio<u8>> { panic!("mock implementation !") }
 }
 
 impl SerialInternal<Pio<u8>> {

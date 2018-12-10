@@ -1,7 +1,7 @@
 //! This crate is x86_64's little brother. It provides i386 specific functions
 //! and data structures, and access to various system registers.
 
-#![cfg(target_arch = "x86")]
+#![cfg(any(target_arch = "x86", test))]
 #![allow(dead_code)]
 
 use core::fmt;

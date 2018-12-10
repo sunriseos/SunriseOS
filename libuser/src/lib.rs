@@ -32,12 +32,18 @@ use kfs_libutils as utils;
 use linked_list_allocator::LockedHeap;
 use error::{Error, LibuserError};
 
+// TODO: report #[cfg(not(test))] and #[global_allocator]
+// BODY: `#[cfg(not(test))]` still compiles this item with cargo test,
+// BODY: but `#[cfg(target_os = "none")] does not. I think this is a bug,
+// BODY: we should report it.
+#[cfg(target_os = "none")]
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
 // Let's grant ourselves 10MB of heap
 static mut ALLOCATOR_BUF: [u8; 10_000_000] = [0; 10_000_000];
 
+#[cfg(target_os = "none")]
 fn init_heap() {
     unsafe {
         let heap_start = ALLOCATOR_BUF.as_ptr() as usize;
@@ -69,6 +75,7 @@ pub fn find_free_address(size: usize, align: usize) -> Result<usize, Error> {
     }
 }
 
+#[cfg(target_os = "none")]
 #[lang = "eh_personality"] #[no_mangle] pub extern fn eh_personality() {}
 
 #[cfg(target_os = "none")]
@@ -82,6 +89,7 @@ use core::alloc::Layout;
 
 // required: define how Out Of Memory (OOM) conditions should be handled
 // *if* no other crate has already defined `oom`
+#[cfg(target_os = "none")]
 #[lang = "oom"]
 #[no_mangle]
 pub fn rust_oom(_: Layout) -> ! {
@@ -112,16 +120,19 @@ pub unsafe extern fn start() -> ! {
     syscalls::exit_process();
 }
 
+#[cfg(target_os = "none")]
 #[lang = "termination"]
 trait Termination {
     fn report(self) -> i32;
 }
 
+#[cfg(target_os = "none")]
 impl Termination for () {
     #[inline]
     fn report(self) -> i32 { 0 }
 }
 
+#[cfg(target_os = "none")]
 #[lang = "start"]
 fn main<T: Termination>(main: fn(), _argc: isize, _argv: *const *const u8) -> isize {
     main().report() as isize

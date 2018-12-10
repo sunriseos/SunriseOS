@@ -138,6 +138,7 @@ impl DescriptorTable {
         };
 
         // TODO: Figure out how to chose CS.
+        #[cfg(not(test))]
         unsafe {
             lgdt(&ptr);
 

@@ -50,9 +50,10 @@ pub mod paging;
 pub mod event;
 pub mod error;
 pub mod log_impl;
+#[cfg(any(target_arch = "x86", test))]
 #[macro_use]
 pub mod i386;
-#[cfg(target_os = "none")]
+#[cfg(any(target_arch = "x86", test))]
 pub mod gdt;
 pub mod interrupts;
 pub mod frame_allocator;
@@ -69,9 +70,11 @@ pub mod elf_loader;
 pub mod utils;
 pub mod checks;
 
+#[cfg(target_os = "none")]
 // Make rust happy about rust_oom being no_mangle...
 pub use heap_allocator::rust_oom;
 
+#[cfg(not(test))]
 #[global_allocator]
 static ALLOCATOR: heap_allocator::Allocator = heap_allocator::Allocator::new();
 
