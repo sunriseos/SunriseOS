@@ -4,11 +4,12 @@ use core::marker::PhantomData;
 use alloc::prelude::*;
 use spin::Mutex;
 use core::ops::{Deref, DerefMut, Index};
+use error::Error;
 
 pub trait IWaitable {
     fn get_handle<'a>(&'a self) -> HandleRef<'a>;
     fn into_handle(self) -> Handle;
-    fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<(), usize>;
+    fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<(), Error>;
 }
 
 pub struct WaitableManager {
@@ -54,7 +55,7 @@ impl WaitableManager {
 }
 
 pub trait Object {
-    fn dispatch(&mut self, cmdid: u32, buf: &mut [u8]) -> Result<(), usize>;
+    fn dispatch(&mut self, manager: &WaitableManager, cmdid: u32, buf: &mut [u8]) -> Result<(), Error>;
 }
 
 #[repr(C, align(16))]
@@ -78,7 +79,7 @@ impl<T, Idx> Index<Idx> for Align16<T> where T: Index<Idx> {
     }
 }
 
-struct SessionWrapper<T: Object> {
+pub struct SessionWrapper<T: Object> {
     handle: ServerSession,
     object: T,
 
@@ -105,14 +106,13 @@ impl<T: Object> IWaitable for SessionWrapper<T> {
         self.handle.0
     }
 
-    fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<(), usize> {
+    fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<(), Error> {
         self.handle.receive(&mut self.buf[..], Some(0))?;
         let (ty, cmdid) = super::find_ty_cmdid(&self.buf[..]);
-        syscalls::output_debug_string(&format!("ty={}, cmdid={}", ty, cmdid));
         match ty {
             // TODO: Handle other types.
             4 | 6 => {
-                self.object.dispatch(cmdid, &mut self.buf[..])?;
+                self.object.dispatch(manager, cmdid, &mut self.buf[..])?;
                 self.handle.reply(&mut self.buf[..])?;
             },
             _ => unimplemented!()
@@ -135,7 +135,7 @@ impl<T: Object + Default + 'static> IWaitable for PortHandler<T> {
         self.handle.0
     }
 
-    fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<(), usize> {
+    fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<(), Error> {
         let session = Box::new(SessionWrapper {
             object: T::default(),
             handle: self.handle.accept()?,
@@ -157,7 +157,7 @@ fn encode_bytes(s: &str) -> u64 {
 }
 
 impl<T: Object + Default> PortHandler<T> {
-    pub fn new(server_name: &str) -> Result<PortHandler<T>, usize> {
+    pub fn new(server_name: &str) -> Result<PortHandler<T>, Error> {
         use sm::IUserInterface;
         let port = IUserInterface::raw_new()?.register_service(encode_bytes(server_name), false, 0)?;
         Ok(PortHandler {
@@ -166,7 +166,7 @@ impl<T: Object + Default> PortHandler<T> {
         })
     }
 
-    pub fn new_managed(server_name: &str) -> Result<PortHandler<T>, usize> {
+    pub fn new_managed(server_name: &str) -> Result<PortHandler<T>, Error> {
         let port = syscalls::manage_named_port(server_name, 0)?;
         Ok(PortHandler {
             handle: port,

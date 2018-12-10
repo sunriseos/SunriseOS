@@ -1,18 +1,16 @@
 //! Arch-independent traits for architectures that implement paging as a hierarchy of page tables
 
 // what the architecture code still has define
-use super::arch::{PAGE_SIZE, ENTRY_COUNT, Entry, EntryFlags};
-use super::lands::{KernelLand, UserLand, RecursiveTablesLand, VirtualSpaceLand};
+use super::arch::{PAGE_SIZE, ENTRY_COUNT};
+use super::lands::{RecursiveTablesLand, VirtualSpaceLand};
 use super::MappingFlags;
 
 use mem::{VirtualAddress, PhysicalAddress};
-use frame_allocator::{PhysicalMemRegion, FrameAllocatorTrait};
+use frame_allocator::{PhysicalMemRegion};
 use utils::align_up_checked;
-use core::ops::IndexMut;
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
-use core::iter::{Flatten, Iterator, Peekable};
-use core::slice::Iter;
+use core::iter::{Iterator, Peekable};
 
 /// A hierarchical paging is composed of entries. An entry can be in the following states:
 ///
@@ -24,8 +22,14 @@ use core::slice::Iter;
 /// Option type.
 #[derive(Debug)]
 pub enum PageState<T> {
+    /// Available, aka unused.
+    /// Will page fault on use.
     Available,
+    /// Guarded. Reserved and will cause a pagefault on use.
+    /// Used to create guard pages (in KernelStack, etc.) in KernelLand, where the tracking of
+    /// the type of each memory region is done directly in the page tables.
     Guarded,
+    /// Present. Used and has a backing physical address.
     Present(T)
 }
 
@@ -550,8 +554,15 @@ pub trait TableHierarchy {
                     (0, PageState::Present(_)) | (_, PageState::Guarded) => {
                         // hole was not big enough :(
                         // start a new hole on the next aligned address
+                        hole.start_addr = (hole.start_addr + hole.len)
+                                            .checked_add(T::entry_vm_size())
+                                            .and_then(|addr| align_up_checked(addr, alignment))
+                                            .unwrap_or(usize::max_value());
+                        // if we're at the end of the address space, doing the arithmetic
+                        // would overflow. We catch this case, and make the hole's start_address
+                        // usize::max_value(). This case is then handled on the next iteration,
+                        // the checks will see that desired_length is no longer obtainable, and return.
                         hole.len = 0;
-                        hole.start_addr = hole.start_addr.saturating_add(alignment);
                     },
                     (_, PageState::Present(_)) => {
                         // we must look into child table

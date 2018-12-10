@@ -7,7 +7,6 @@ use sync::{SpinLock, Once};
 use core::ops::Deref;
 use core::ptr::NonNull;
 use linked_list_allocator::{Heap, align_up};
-use paging::lands::KernelLand;
 use paging::{PAGE_SIZE, MappingFlags, kernel_memory::get_kernel_memory};
 use frame_allocator::{FrameAllocator, FrameAllocatorTrait};
 use mem::VirtualAddress;
@@ -106,6 +105,9 @@ unsafe impl<'a> GlobalAlloc for Allocator {
 
 // required: define how Out Of Memory (OOM) conditions should be handled
 // *if* no other crate has already defined `oom`
+/// Called when the kernel heap allocator detects Out Of Memory (OOM) condition.
+///
+/// It simply panics.
 #[lang = "oom"]
 #[no_mangle]
 pub fn rust_oom(_: Layout) -> ! {

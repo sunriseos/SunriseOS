@@ -8,26 +8,17 @@
 
 use i386::structures::idt::{ExceptionStackFrame, PageFaultErrorCode, Idt};
 use i386::instructions::interrupts::sti;
-use i386::pio::Pio;
-use io::Io;
-use mem::{VirtualAddress, PhysicalAddress};
-use paging::lands::KernelLand;
-use paging::{MappingFlags, kernel_memory::get_kernel_memory};
-use i386::{stack, TssStruct, PrivilegeLevel};
-use i386;
+use mem::VirtualAddress;
+use paging::kernel_memory::get_kernel_memory;
+use i386::{TssStruct, PrivilegeLevel};
 use gdt;
-use xmas_elf::ElfFile;
-use xmas_elf::sections::SectionData;
 use scheduler::get_current_thread;
 use process::{ProcessStruct, ThreadState};
 use sync::SpinLockIRQ;
 use core::sync::atomic::Ordering;
 
-use core::fmt::{Write, Arguments};
-use core::slice;
+use core::fmt::Arguments;
 use sync::SpinLock;
-use sync;
-use utils;
 use devices::pic;
 use scheduler;
 
@@ -39,7 +30,7 @@ pub fn check_thread_killed() {
     if scheduler::get_current_thread().state.load(Ordering::SeqCst) == ThreadState::Killed {
         let lock = SpinLockIRQ::new(());
         loop { // in case of spurious wakeups
-            scheduler::unschedule(&lock, lock.lock());
+            let _ = scheduler::unschedule(&lock, lock.lock());
         }
     }
 }
@@ -60,8 +51,9 @@ fn panic_on_exception(exception_string: Arguments, exception_stack_frame: &Excep
 }
 
 extern "x86-interrupt" fn divide_by_zero_handler(stack_frame: &mut ExceptionStackFrame) {
-    #[cfg(feature = "panic-on-exception")]
-    { panic_on_exception(format_args!("Divide Error Exception"), stack_frame); }
+    if cfg!(feature = "panic-on-exception") {
+        panic_on_exception(format_args!("Divide Error Exception"), stack_frame);
+    }
 
     let thread = get_current_thread();
     warn!("Divide Error Exception in {:#?}", thread);
@@ -71,8 +63,9 @@ extern "x86-interrupt" fn divide_by_zero_handler(stack_frame: &mut ExceptionStac
 }
 
 extern "x86-interrupt" fn debug_handler(stack_frame: &mut ExceptionStackFrame) {
-    #[cfg(feature = "panic-on-exception")]
-    { panic_on_exception(format_args!("Debug Exception"), stack_frame); }
+    if cfg!(feature = "panic-on-exception") {
+        panic_on_exception(format_args!("Debug Exception"), stack_frame);
+    }
 
     let thread = get_current_thread();
     warn!("Debug Exception in {:#?}", thread);
@@ -86,13 +79,14 @@ extern "x86-interrupt" fn non_maskable_interrupt_handler(stack_frame: &mut Excep
     panic_on_exception(format_args!("An unexpected non-maskable (but still kinda maskable) interrupt occured"), stack_frame);
 }
 
-extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut ExceptionStackFrame) {
+extern "x86-interrupt" fn breakpoint_handler(_stack_frame: &mut ExceptionStackFrame) {
     // don't do anything
 }
 
 extern "x86-interrupt" fn overflow_handler(stack_frame: &mut ExceptionStackFrame) {
-    #[cfg(feature = "panic-on-exception")]
-    { panic_on_exception(format_args!("Overflow Exception"), stack_frame); }
+    if cfg!(feature = "panic-on-exception") {
+        panic_on_exception(format_args!("Overflow Exception"), stack_frame);
+    }
 
     let thread = get_current_thread();
     warn!("Overflow Exception in {:#?}", thread);
@@ -102,8 +96,9 @@ extern "x86-interrupt" fn overflow_handler(stack_frame: &mut ExceptionStackFrame
 }
 
 extern "x86-interrupt" fn bound_range_exceeded_handler(stack_frame: &mut ExceptionStackFrame) {
-    #[cfg(feature = "panic-on-exception")]
-    { panic_on_exception(format_args!("BOUND Range Exceeded Exception"), stack_frame); }
+    if cfg!(feature = "panic-on-exception") {
+        panic_on_exception(format_args!("BOUND Range Exceeded Exception"), stack_frame);
+    }
 
     let thread = get_current_thread();
     warn!("BOUND Range Exceeded Exception in {:#?}", thread);
@@ -113,8 +108,9 @@ extern "x86-interrupt" fn bound_range_exceeded_handler(stack_frame: &mut Excepti
 }
 
 extern "x86-interrupt" fn invalid_opcode_handler(stack_frame: &mut ExceptionStackFrame) {
-    #[cfg(feature = "panic-on-exception")]
-    { panic_on_exception(format_args!("Invalid opcode Exception"), stack_frame); }
+    if cfg!(feature = "panic-on-exception") {
+        panic_on_exception(format_args!("Invalid opcode Exception"), stack_frame);
+    }
 
     let thread = get_current_thread();
     warn!("Invalid opcode Exception in {:#?}", thread);
@@ -124,8 +120,9 @@ extern "x86-interrupt" fn invalid_opcode_handler(stack_frame: &mut ExceptionStac
 }
 
 extern "x86-interrupt" fn device_not_available_handler(stack_frame: &mut ExceptionStackFrame) {
-    #[cfg(feature = "panic-on-exception")]
-    { panic_on_exception(format_args!("Device Not Available Exception"), stack_frame); }
+    if cfg!(feature = "panic-on-exception") {
+        panic_on_exception(format_args!("Device Not Available Exception"), stack_frame);
+    }
 
     let thread = get_current_thread();
     warn!("Device Not Available Exception in {:#?}", thread);
@@ -165,8 +162,9 @@ extern "x86-interrupt" fn invalid_tss_handler(stack_frame: &mut ExceptionStackFr
 }
 
 extern "x86-interrupt" fn segment_not_present_handler(stack_frame: &mut ExceptionStackFrame, errcode: u32) {
-    #[cfg(feature = "panic-on-exception")]
-    { panic_on_exception(format_args!("Segment Not Present: error code: {:?}", errcode), stack_frame); }
+    if cfg!(feature = "panic-on-exception") {
+        panic_on_exception(format_args!("Segment Not Present: error code: {:?}", errcode), stack_frame);
+    }
 
     let thread = get_current_thread();
     warn!("Segment Not Present in {:#?}", thread);
@@ -176,8 +174,9 @@ extern "x86-interrupt" fn segment_not_present_handler(stack_frame: &mut Exceptio
 }
 
 extern "x86-interrupt" fn stack_segment_fault_handler(stack_frame: &mut ExceptionStackFrame, errcode: u32) {
-    #[cfg(feature = "panic-on-exception")]
-    { panic_on_exception(format_args!("Stack Fault Exception: error code: {:?}", errcode), stack_frame); }
+    if cfg!(feature = "panic-on-exception") {
+        panic_on_exception(format_args!("Stack Fault Exception: error code: {:?}", errcode), stack_frame);
+    }
 
     let thread = get_current_thread();
     warn!("Exception : Stack Fault Exception in {:#?}", thread);
@@ -187,8 +186,9 @@ extern "x86-interrupt" fn stack_segment_fault_handler(stack_frame: &mut Exceptio
 }
 
 extern "x86-interrupt" fn general_protection_fault_handler(stack_frame: &mut ExceptionStackFrame, errcode: u32) {
-    #[cfg(feature = "panic-on-exception")]
-    { panic_on_exception(format_args!("General Protection Fault Exception: error code: {:?}", errcode), stack_frame); }
+    if cfg!(feature = "panic-on-exception") {
+        panic_on_exception(format_args!("General Protection Fault Exception: error code: {:?}", errcode), stack_frame);
+    }
 
     let thread = get_current_thread();
     warn!("Exception : General Protection Fault Exception in {:#?}", thread);
@@ -200,8 +200,9 @@ extern "x86-interrupt" fn general_protection_fault_handler(stack_frame: &mut Exc
 extern "x86-interrupt" fn page_fault_handler(stack_frame: &mut ExceptionStackFrame, errcode: PageFaultErrorCode) {
     let cause_address = ::paging::read_cr2();
 
-    #[cfg(feature = "panic-on-exception")]
-    { panic_on_exception(format_args!("Page Fault accessing {:?}, error: {:?}", cause_address, errcode), stack_frame); }
+    if cfg!(feature = "panic-on-exception") {
+        panic_on_exception(format_args!("Page Fault accessing {:?}, error: {:?}", cause_address, errcode), stack_frame);
+    }
 
     let thread = get_current_thread();
     warn!("Exception : Page Fault accessing {:?}, error: {:?} in {:#?}", cause_address, errcode, thread);
@@ -211,8 +212,9 @@ extern "x86-interrupt" fn page_fault_handler(stack_frame: &mut ExceptionStackFra
 }
 
 extern "x86-interrupt" fn x87_floating_point_handler(stack_frame: &mut ExceptionStackFrame) {
-    #[cfg(feature = "panic-on-exception")]
-    { panic_on_exception(format_args!("x87 FPU floating-point error"), stack_frame); }
+    if cfg!(feature = "panic-on-exception") {
+        panic_on_exception(format_args!("x87 FPU floating-point error"), stack_frame);
+    }
 
     let thread = get_current_thread();
     warn!("x87 FPU floating-point error in {:#?}", thread);
@@ -222,8 +224,9 @@ extern "x86-interrupt" fn x87_floating_point_handler(stack_frame: &mut Exception
 }
 
 extern "x86-interrupt" fn alignment_check_handler(stack_frame: &mut ExceptionStackFrame, errcode: u32) {
-    #[cfg(feature = "panic-on-exception")]
-    { panic_on_exception(format_args!("Alignment Check Exception: error code: {:?}", errcode), stack_frame); }
+    if cfg!(feature = "panic-on-exception") {
+        panic_on_exception(format_args!("Alignment Check Exception: error code: {:?}", errcode), stack_frame);
+    }
 
     let thread = get_current_thread();
     warn!("Alignment Check Exception in {:#?}", thread);
@@ -238,8 +241,9 @@ extern "x86-interrupt" fn machine_check_handler(stack_frame: &mut ExceptionStack
 }
 
 extern "x86-interrupt" fn simd_floating_point_handler(stack_frame: &mut ExceptionStackFrame) {
-    #[cfg(feature = "panic-on-exception")]
-    { panic_on_exception(format_args!("SIMD Floating-Point Exception"), stack_frame); }
+    if cfg!(feature = "panic-on-exception") {
+        panic_on_exception(format_args!("SIMD Floating-Point Exception"), stack_frame);
+    }
 
     let thread = get_current_thread();
     warn!("SIMD Floating-Point Exception in {:#?}", thread);
@@ -249,8 +253,9 @@ extern "x86-interrupt" fn simd_floating_point_handler(stack_frame: &mut Exceptio
 }
 
 extern "x86-interrupt" fn virtualization_handler(stack_frame: &mut ExceptionStackFrame) {
-    #[cfg(feature = "panic-on-exception")]
-    { panic_on_exception(format_args!("Virtualization Exception"), stack_frame); }
+    if cfg!(feature = "panic-on-exception") {
+        panic_on_exception(format_args!("Virtualization Exception"), stack_frame);
+    }
 
     let thread = get_current_thread();
     warn!("Virtualization Exception in {:#?}", thread);

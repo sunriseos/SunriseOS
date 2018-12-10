@@ -37,8 +37,9 @@ use xmas_elf::symbol_table::{Entry32, Entry};
 use rustc_demangle::demangle as rustc_demangle;
 use scheduler;
 
-/// The size of a kernel stack, not accounting for the page guard
+/// The size of a kernel stack in pages, not accounting for the page guard.
 pub const STACK_SIZE: usize            = 4;
+/// The size of a kernel stack in pages, with the page guard.
 pub const STACK_SIZE_WITH_GUARD: usize = STACK_SIZE + 1;
 
 /// The alignment of the stack. ceil(log2(STACK_SIZE_WITH_GUARD * PAGE_SIZE))
@@ -56,7 +57,7 @@ impl KernelStack {
         let mut memory = get_kernel_memory();
         let va = memory.find_virtual_space_aligned(STACK_SIZE_WITH_GUARD * PAGE_SIZE,
                                                    2usize.pow(STACK_ALIGNEMENT as u32))?;
-        let region = FrameAllocator::allocate_region(STACK_SIZE)?;
+        let region = FrameAllocator::allocate_region(STACK_SIZE * PAGE_SIZE)?;
 
         memory.map_phys_region_to(region, va + PAGE_SIZE, MappingFlags::k_rw());
         memory.guard(va, PAGE_SIZE);
@@ -121,13 +122,13 @@ impl KernelStack {
                                    - Self::STACK_POISON_SIZE
     }
 
-    /// Dumps the stack on all the Loggers, displaying it in a frame-by-frame format
+    /// Dumps the stack, displaying it in a frame-by-frame format.
     ///
     /// It can accepts an elf symbols which will be used to enhance the stack dump.
     pub fn dump_current_stack<'a>(elf_symbols: Option<(&ElfFile<'a>, &'a [Entry32])>) {
-        let mut ebp;
-        let mut esp;
-        let mut eip;
+        let ebp;
+        let esp;
+        let eip;
         unsafe {
             asm!("
                 mov $0, ebp
@@ -182,7 +183,7 @@ impl StackDumpSource {
     }
 }
 
-/// Dumps the stack from the given information on all the Loggers, displaying it
+/// Dumps the stack from the given information, displaying it
 /// in a frame-by-frame format.
 ///
 /// This function can work on both a KernelStack and a stack in UserLand.
@@ -200,23 +201,24 @@ impl StackDumpSource {
 /// The caller must make sure the mapping pointed to by `esp` cannot be modified while this
 /// function is at work. This will often mean checking that the thread whose stack we're dumping
 /// is stopped and will remain unscheduled at least until this function returns.
+#[allow(unused_must_use)]
 pub unsafe fn dump_stack<'a>(source: StackDumpSource, elf_symbols: Option<(&ElfFile<'a>, &'a [Entry32])>) {
-    use logger::*;
+    use devices::rs232::SerialLogger;
     use core::fmt::Write;
 
-    writeln!(Loggers, "---------- Dumping stack ---------");
+    writeln!(SerialLogger, "---------- Dumping stack ---------");
 
     if KernelLand::contains_address(VirtualAddress(source.esp)) {
-        writeln!(Loggers, "# Dumping KernelStack");
+        writeln!(SerialLogger, "# Dumping KernelStack");
         dump_kernel_stack(source.esp, source.ebp, source.eip, elf_symbols)
     } else if UserLand::contains_address(VirtualAddress(source.esp)) {
-        writeln!(Loggers, "# Dumping UserLand stack");
+        writeln!(SerialLogger, "# Dumping UserLand stack");
         dump_user_stack(source.esp, source.ebp, source.eip, elf_symbols)
     } else {
-        writeln!(Loggers, "# Invalid esp: {:x?}", source.esp);
+        writeln!(SerialLogger, "# Invalid esp: {:x?}", source.esp);
     }
 
-    writeln!(Loggers, "-------- End of stack dump --------");
+    writeln!(SerialLogger, "-------- End of stack dump --------");
 
     /// Attempts to dump a KernelStack.
     fn dump_kernel_stack<'b>(mut esp: usize, ebp: usize, eip: usize, elf: Option<(&ElfFile<'b>, &'b [Entry32])>) {
@@ -226,18 +228,18 @@ pub unsafe fn dump_stack<'a>(source: StackDumpSource, elf_symbols: Option<(&ElfF
             // esp has stack overflowed. can we use ebp as esp ?
             if KernelStack::get_stack_bottom(esp) + PAGE_SIZE <= ebp
                 && ebp < KernelStack::get_stack_bottom(esp) + STACK_SIZE_WITH_GUARD * PAGE_SIZE {
-                writeln!(Loggers, "# Stack overflow detected! Using EBP as esp. (esp was {:#x})", esp);
+                writeln!(SerialLogger, "# Stack overflow detected! Using EBP as esp. (esp was {:#x})", esp);
                 esp = ebp;
             } else {
                 // ebp does not even fall in the same KernelStack.
-                writeln!(Loggers, "# Invalid esp and ebp. esp: {:#x}, ebp: {:#x}, eip: {:#x}", esp, ebp, eip);
+                writeln!(SerialLogger, "# Invalid esp and ebp. esp: {:#x}, ebp: {:#x}, eip: {:#x}", esp, ebp, eip);
                 return;
             }
         }
 
         let mut kmemory = get_kernel_memory();
 
-        let stack_bottom = (KernelStack::get_stack_bottom(esp) + PAGE_SIZE);
+        let stack_bottom = KernelStack::get_stack_bottom(esp) + PAGE_SIZE;
 
         // Check we have STACK_SIZE pages mapped as readable (at least) from stack_bottom.
         for i in 0..STACK_SIZE {
@@ -246,7 +248,7 @@ pub unsafe fn dump_stack<'a>(source: StackDumpSource, elf_symbols: Option<(&ElfF
                 continue;
             } else {
                 // if a page was not mapped, then it's not a KernelStack
-                writeln!(Loggers, "# Invalid esp, does not point to a KernelStack. esp: {:#x}, ebp: {:#x}, eip: {:#x}", esp, ebp, eip);
+                writeln!(SerialLogger, "# Invalid esp, does not point to a KernelStack. esp: {:#x}, ebp: {:#x}, eip: {:#x}", esp, ebp, eip);
                 return;
             }
         }
@@ -271,11 +273,12 @@ pub unsafe fn dump_stack<'a>(source: StackDumpSource, elf_symbols: Option<(&ElfF
                 return dump_stack_from_slice(stack_slice, mapping.address().addr(), esp, ebp, eip, elf);
             }
         }
-        writeln!(Loggers, "# Invalid esp, does not point to a valid mapping. esp: {:#x}, ebp: {:#x}, eip: {:#x}", esp, ebp, eip);
+        writeln!(SerialLogger, "# Invalid esp, does not point to a valid mapping. esp: {:#x}, ebp: {:#x}, eip: {:#x}", esp, ebp, eip);
     }
 }
 
-/// Dumps a stack on all the Loggers, displaying it in a frame-by-frame format
+/// Dumps a stack, displaying it in a frame-by-frame format.
+///
 /// The stack is passed as a slice. The function starts at given esp, and goes down, frame by frame.
 /// The original address of the stack must be given, this way it can even work on a stack that is not identity mapped,
 /// therefore it should even be possible to use it on a user stack
@@ -286,12 +289,13 @@ pub unsafe fn dump_stack<'a>(source: StackDumpSource, elf_symbols: Option<(&ElfF
 /// * any ebp/esp falling outside of the stack
 ///
 /// The data of every stack frame will be hexdumped.
+#[allow(unused_must_use)]
 fn dump_stack_from_slice<'a>(stack: &[u8], orig_address: usize, mut esp: usize, mut ebp: usize, mut eip: usize, elf: Option<(&ElfFile<'a>, &'a [Entry32])>) {
-    use logger::*;
+    use devices::rs232::SerialLogger;
     use core::fmt::Write;
     use utils::print_hexdump_as_if_at_addr;
 
-    writeln!(Loggers, "# Stack start: {:#010x}, Stack end: {:#010x}", orig_address, orig_address + stack.len());
+    writeln!(SerialLogger, "# Stack start: {:#010x}, Stack end: {:#010x}", orig_address, orig_address + stack.len());
 
     let mut frame_nb = 0;
     loop {
@@ -307,21 +311,21 @@ fn dump_stack_from_slice<'a>(stack: &[u8], orig_address: usize, mut esp: usize, 
                 }
             }
         }
-        writeln!(Loggers, "> Frame #{} - {}, eip: {:#010x} - esp: {:#010x} - ebp: {:#010x}", frame_nb, rustc_demangle(funcname), eip, esp, ebp);
+        writeln!(SerialLogger, "> Frame #{} - {}, eip: {:#010x} - esp: {:#010x} - ebp: {:#010x}", frame_nb, rustc_demangle(funcname), eip, esp, ebp);
         // todo: subtracts underflows ! This made me panic in the panic handler D:
         let esp_off = esp - orig_address;
         let ebp_off = ebp - orig_address;
-        if esp_off >= stack.len() { writeln!(Loggers, "Invalid esp"); break; }
-        if ebp_off >  stack.len() { writeln!(Loggers, "Invalid ebp"); break; }
+        if esp_off >= stack.len() { writeln!(SerialLogger, "Invalid esp"); break; }
+        if ebp_off >  stack.len() { writeln!(SerialLogger, "Invalid ebp"); break; }
         let frame_slice = &stack[esp_off..ebp_off];
-        print_hexdump_as_if_at_addr(&mut Loggers, frame_slice, orig_address + esp_off);
+        print_hexdump_as_if_at_addr(&mut SerialLogger, frame_slice, orig_address + esp_off);
 
         // fetch saved ebp/eip at [ebp]
-        if ebp_off + 8 > stack.len() { writeln!(Loggers, "Cannot access saved ebp/eip"); break; }
+        if ebp_off + 8 > stack.len() { writeln!(SerialLogger, "Cannot access saved ebp/eip"); break; }
         let saved_ebp_addr = &stack[ebp_off + 0] as *const u8 as *const usize;
         let saved_eip_addr = &stack[ebp_off + 4] as *const u8 as *const usize;
 
-        writeln!(Loggers, "Saved ebp: {:#010x} @ {:#010x} (ebp) - Saved eip: {:#010x} @ {:#010x} (ebp + 4)",
+        writeln!(SerialLogger, "Saved ebp: {:#010x} @ {:#010x} (ebp) - Saved eip: {:#010x} @ {:#010x} (ebp + 4)",
                  unsafe {*saved_ebp_addr}, saved_ebp_addr as usize,
                  unsafe {*saved_eip_addr}, saved_eip_addr as usize);
 

@@ -8,7 +8,7 @@
 /// object! {
 ///     impl Service {
 ///         #[cmdid(0)]
-///         fn test(&mut self, val: u32,) -> Result<(u32,), usize> {
+///         fn test(&mut self, val: u32,) -> Result<(u32,), Error> {
 ///             Ok((0,))
 ///         }
 ///     }
@@ -21,6 +21,7 @@
 /// - Handle<copy>: A Handle in the Handle Descriptor's copy handle list.
 // TODO: Input Object! We should be able to take an ObjectWrapper<T: IObject>
 /// - InBuffer/OutBuffer/InPointer/OutPointer: Equivalent to A/B/C/X buffers.
+/// - &WaitableManager: The manager that signaled us.
 /// - T where T: Copy, Clone, repr(C): passed through Raw Data.
 ///
 /// Allowed return types:
@@ -32,7 +33,7 @@
 ///   handle list, or as a domain object
 /// - T where T: Copy, Clone, repr(C): passed through Raw Data.
 ///
-/// Important note: the return value **has** to be a `Result<(Type,...), usize>`.
+/// Important note: the return value **has** to be a `Result<(Type,...), Error>`.
 /// The function *must* take &mut self as a first argument. And right now, as a
 /// small caveat, the argument list and return tuple list must end with a coma.
 ///
@@ -65,9 +66,9 @@ macro_rules! object {
         }
 
         impl $crate::ipc::server::Object for $tyname {
-            fn dispatch(&mut self, cmdid: u32, buf: &mut [u8]) -> Result<(), usize> {
+            fn dispatch(&mut self, manager: &$crate::ipc::server::WaitableManager, cmdid: u32, buf: &mut [u8]) -> Result<(), $crate::error::Error> {
                 //object!(@enum $($fns)*)
-                object!(@dispatch self, cmdid=cmdid, buf=buf, fns=(), $($fns)*)
+                object!(@dispatch self, manager, cmdid=cmdid, buf=buf, fns=(), $($fns)*)
             }
         }
     };
@@ -93,8 +94,12 @@ macro_rules! object {
     // - The function cannot be generic.
     //
     // Outputs the function, resets the meta list, and go to the next function.
-    (@functions meta=($($meta:meta),*), fn $funcname:ident $(<$($lifetime:lifetime),*>)* (&mut self, $($args:tt)*) -> Result<($($ret:tt)*), usize> $body:block $($tt:tt)*) => {
-        object!(@rewriteargs ($($meta),*), $funcname, ($($($lifetime),*)*), (), ($($ret)*), $body, $($args)*);
+    //
+    // TODO: Object Macro: Take Error type as $ty
+    // BODY: We currently match the Error token exactly, which is overly restrictive.
+    // BODY: A user might want to rename the Error type, etc...
+    (@functions meta=($($meta:meta),*), fn $funcname:ident $(<$($lifetime:lifetime),*>)* (&mut $self:ident, $($args:tt)*) -> Result<($($ret:tt)*), Error> $body:block $($tt:tt)*) => {
+        object!(@rewriteargs ($($meta),*), $funcname, ($($($lifetime),*)*), $self, (), ($($ret)*), $body, $($args)*);
         object!(@functions meta=(), $($tt)*);
     };
     // All functions have been processed. We can now stop parsing.
@@ -103,18 +108,21 @@ macro_rules! object {
     // ------------------ Arg Rewriting Block ------------
     // We're going to do some light processing on arguments to remove some invalid
     // syntax. We want to turn Handle<move> and Handle<copy> into Handle.
-    (@rewriteargs ($($meta:meta),*), $funcname:ident, ($($lifetime:lifetime),*), ($($argname:ident : $argty:ty),*), ($($ret:tt)*), $body:block, $name:ident : Handle<copy>, $($rest:tt)*) => {
-        object!(@rewriteargs ($($meta:meta),*), $funcname, ($($lifetime),*), ($($argname: $argty,)* $name: Handle), ($($ret)*), $body, $($rest)*);
+    //
+    // Note: we're taking self as an independant parameter to make sure we don't
+    // break hygiene.
+    (@rewriteargs ($($meta:meta),*), $funcname:ident, ($($lifetime:lifetime),*), $self:ident, ($($argname:ident : $argty:ty),*), ($($ret:tt)*), $body:block, $name:ident : Handle<copy>, $($rest:tt)*) => {
+        object!(@rewriteargs ($($meta:meta),*), $funcname, ($($lifetime),*), $self, ($($argname: $argty,)* $name: Handle), ($($ret)*), $body, $($rest)*);
     };
-    (@rewriteargs ($($meta:meta),*), $funcname:ident, ($($lifetime:lifetime),*), ($($argname:ident : $argty:ty),*), ($($ret:tt)*), $body:block, $name:ident : Handle<move>, $($rest:tt)*) => {
-        object!(@rewriteargs ($($meta:meta),*), $funcname, ($($lifetime),*), ($($argname: $argty,)* $name: Handle), ($($ret)*), $body, $($rest)*);
+    (@rewriteargs ($($meta:meta),*), $funcname:ident, ($($lifetime:lifetime),*), $self:ident, ($($argname:ident : $argty:ty),*), ($($ret:tt)*), $body:block, $name:ident : Handle<move>, $($rest:tt)*) => {
+        object!(@rewriteargs ($($meta:meta),*), $funcname, ($($lifetime),*), $self, ($($argname: $argty,)* $name: Handle), ($($ret)*), $body, $($rest)*);
     };
-    (@rewriteargs ($($meta:meta),*), $funcname:ident, ($($lifetime:lifetime),*), ($($argname:ident : $argty:ty),*), ($($ret:tt)*), $body:block, $name:ident : $ty:ty, $($rest:tt)*) => {
-        object!(@rewriteargs ($($meta:meta),*), $funcname, ($($lifetime),*), ($($argname: $argty,)* $name: $ty), ($($ret)*), $body, $($rest)*);
+    (@rewriteargs ($($meta:meta),*), $funcname:ident, ($($lifetime:lifetime),*), $self:ident, ($($argname:ident : $argty:ty),*), ($($ret:tt)*), $body:block, $name:ident : $ty:ty, $($rest:tt)*) => {
+        object!(@rewriteargs ($($meta:meta),*), $funcname, ($($lifetime),*), $self, ($($argname: $argty,)* $name: $ty), ($($ret)*), $body, $($rest)*);
     };
-    (@rewriteargs ($($meta:meta),*), $funcname:ident, ($($lifetime:lifetime),*), ($($args:tt)*), ($($ret:tt)*), $body:block, ) => {
+    (@rewriteargs ($($meta:meta),*), $funcname:ident, ($($lifetime:lifetime),*), $self:ident, ($($args:tt)*), ($($ret:tt)*), $body:block, ) => {
         $(#[$meta])*
-        fn $funcname <$($lifetime),*> (&mut self, $($args)*) -> Result<($($ret)*), usize> $body
+        fn $funcname <$($lifetime),*> (&mut $self, $($args)*) -> Result<($($ret)*), Error> $body
     };
 
 
@@ -137,26 +145,26 @@ macro_rules! object {
 
     // Again, let's start by looking for a cmdid block. If we find one, save it
     // as a new fcmdid argument.
-    (@dispatch $sel:expr, cmdid=$cmdid:expr, buf=$buf:expr, fns=($($fns:tt)*), #[cmdid($fcmdid:expr)] $($tt:tt)*) => {
-        object!(@dispatch $sel, cmdid=$cmdid, buf=$buf, fns=($($fns)*), fcmdid=$fcmdid, $($tt)*);
+    (@dispatch $sel:expr, $manager:expr, cmdid=$cmdid:expr, buf=$buf:expr, fns=($($fns:tt)*), #[cmdid($fcmdid:expr)] $($tt:tt)*) => {
+        object!(@dispatch $sel, $manager, cmdid=$cmdid, buf=$buf, fns=($($fns)*), fcmdid=$fcmdid, $($tt)*);
     };
     // If we find any other meta item before cmdid, skip it.
-    (@dispatch $sel:expr, cmdid=$cmdid:expr, buf=$buf:expr, fns=($($fns:tt)*), #[$fmeta:meta] $($tt:tt)*) => {
-        object!(@dispatch $sel, cmdid=$cmdid, buf=$buf, fns=($($fns)*), $($tt)*);
+    (@dispatch $sel:expr, $manager:expr, cmdid=$cmdid:expr, buf=$buf:expr, fns=($($fns:tt)*), #[$fmeta:meta] $($tt:tt)*) => {
+        object!(@dispatch $sel, $manager, cmdid=$cmdid, buf=$buf, fns=($($fns)*), $($tt)*);
     };
     // If we find any other meta item after cmdid, skip it.
-    (@dispatch $sel:expr, cmdid=$cmdid:expr, buf=$buf:expr, fns=($($fns:tt)*), fcmdid=$fcmdid:expr, #[$fmeta:meta] $($tt:tt)*) => {
-        object!(@dispatch $sel, cmdid=$cmdid, buf=$buf, fns=($($fns)*), fcmdid=$fcmdid, $($tt)*);
+    (@dispatch $sel:expr, $manager:expr, cmdid=$cmdid:expr, buf=$buf:expr, fns=($($fns:tt)*), fcmdid=$fcmdid:expr, #[$fmeta:meta] $($tt:tt)*) => {
+        object!(@dispatch $sel, $manager, cmdid=$cmdid, buf=$buf, fns=($($fns)*), fcmdid=$fcmdid, $($tt)*);
     };
     // Match the actual function. Add to the fns list a new cmdid => block item
     // for the currently matched function (this is the $cufcmdid => {} block).
     // This block will contain the actual parsing code.
     //
     // Refer to the comments in the macro for how it works inside the hood.
-    (@dispatch $sel:expr, cmdid=$cmdid:expr, buf=$buf:expr, fns=($($fcmdid:expr => $fcmdfn:block),*), fcmdid=$curfcmdid:expr,
-       fn $funcname:ident $(<$($lifetime:lifetime),*>)* (&mut self, $($args:tt)*) -> Result<($($ret:tt)*), usize> $body:block $($tt:tt)*) => {
+    (@dispatch $sel:expr, $manager:expr, cmdid=$cmdid:expr, buf=$buf:expr, fns=($($fcmdid:expr => $fcmdfn:block),*), fcmdid=$curfcmdid:expr,
+       fn $funcname:ident $(<$($lifetime:lifetime),*>)* (&mut self, $($args:tt)*) -> Result<($($ret:tt)*), Error> $body:block $($tt:tt)*) => {
         // Recursively call ourselves with the next function, adding a new cmdid => block to the fns aggregation.
-        object!(@dispatch $sel, cmdid=$cmdid, buf=$buf, fns=($($fcmdid => $fcmdfn,)* $curfcmdid => {
+        object!(@dispatch $sel, $manager, cmdid=$cmdid, buf=$buf, fns=($($fcmdid => $fcmdfn,)* $curfcmdid => {
             // In this block, we start by generating a `struct Args` that will
             // contain all the *raw* arguments.
             object!(@genstruct Args fields=(), $($args)*);
@@ -166,7 +174,7 @@ macro_rules! object {
                                             [_; object!(@movecount $($args)*)]>::unpack($buf);
             // This will generate the self.function(); invocation with all the
             // correct arguments popped from the msgin struct.
-            let ret = object!(@callargs $sel, funcname=$funcname, msgin=msgin, args=(), $($args)*);
+            let ret = object!(@callargs $sel, $manager, funcname=$funcname, msgin=msgin, args=(), $($args)*);
             // We now want to create the msgout. Basically the same as msgin, but
             // using the return types instead. Note that bufcount and co work on
             // both name: ty, and ty, lists.
@@ -177,7 +185,7 @@ macro_rules! object {
             // all the arguments to msgout.
             match ret {
                 Ok(ret) => object!(@genret fields=(), retfields=(), msgout, ret, $($ret)*),
-                Err(err) => { msgout.set_error(err as u32); }
+                Err(err) => { msgout.set_error(err.into_code()); }
             }
             // Pack the message to msgout and we're done :D
             msgout.pack($buf);
@@ -186,12 +194,12 @@ macro_rules! object {
     };
     // We parsed all the functions \o/. All that's left to do is taking the fns
     // list, and creating a big match from it.
-    (@dispatch $sel:expr, cmdid=$cmdid:expr, buf=$buf:expr, fns=($($fcmdid:expr => $fcmd:block),*), ) => {
+    (@dispatch $sel:expr, $manager:expr, cmdid=$cmdid:expr, buf=$buf:expr, fns=($($fcmdid:expr => $fcmd:block),*), ) => {
         match $cmdid {
             $($fcmdid => $fcmd,)*
             cmd => {
                 let _ = $crate::syscalls::output_debug_string(&format!("Unknown cmdid: {}", cmd));
-                Err(0xF601)
+                Err($crate::error::KernelError::PortRemoteDead.into())
             }
         }
     };
@@ -243,6 +251,10 @@ macro_rules! object {
     (@genstruct $ident:ident fields=($($args:tt)*), $name:ident: Pid, $($tt:tt)*) => {
         object!(@genstruct $ident fields=($($args)*), $($tt)*)
     };
+    // Let's skip all the WaitableManager references.
+    (@genstruct $ident:ident fields=($($args:tt)*), $name:ident: &WaitableManager, $($tt:tt)*) => {
+        object!(@genstruct $ident fields=($($args)*), $($tt)*)
+    };
     // Match a raw type! We want to add it to the fields list, as $name: $ty.
     // We again use the same old trick to append a coma if the list is non-empty.
     (@genstruct $ident:ident fields=($($iname:ident: $ity:ty),*), $name:ident: $ty:ty, $($tt:tt)*) => {
@@ -279,39 +291,44 @@ macro_rules! object {
     // Alternatively, have a HandleCopy and HandleMove types, but meh.
 
     // We got an InBuffer (type A). Let's call pop_in_buffer.
-    (@callargs $sel:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: InBuffer<$ty:ty>, $($tt:tt)*) => {
-        object!(@callargs $sel, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_in_buffer::<$ty>()), $($tt)*);
+    (@callargs $sel:expr, $manager:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: InBuffer<$ty:ty>, $($tt:tt)*) => {
+        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_in_buffer::<$ty>()?), $($tt)*);
     };
     // We got an OutBuffer (type B). Let's call pop_out_buffer.
-    (@callargs $sel:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: OutBuffer<$ty:ty>, $($tt:tt)*) => {
-        object!(@callargs $sel, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_out_buffer::<$ty>()), $($tt)*);
+    (@callargs $sel:expr, $manager:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: OutBuffer<$ty:ty>, $($tt:tt)*) => {
+        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_out_buffer::<$ty>()?), $($tt)*);
     };
     // We got an InPointer (type X). Let's call pop_in_pointer.
-    (@callargs $sel:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: InPointer<$ty:ty>, $($tt:tt)*) => {
-        object!(@callargs $sel, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_in_pointer::<$ty>()), $($tt)*);
+    (@callargs $sel:expr, $manager:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: InPointer<$ty:ty>, $($tt:tt)*) => {
+        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_in_pointer::<$ty>()?), $($tt)*);
     };
     // We got an OutPointer (type C). Let's call pop_out_pointer.
-    (@callargs $sel:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: OutPointer<$ty:ty>, $($tt:tt)*) => {
-        object!(@callargs $sel, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_out_pointer::<$ty>()), $($tt)*);
+    (@callargs $sel:expr, $manager:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: OutPointer<$ty:ty>, $($tt:tt)*) => {
+        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_out_pointer::<$ty>()?), $($tt)*);
     };
     // We got a Handle. Let's call pop_handle_move.
-    (@callargs $sel:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: Handle<move>, $($tt:tt)*) => {
-        object!(@callargs $sel, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_handle_move()), $($tt)*);
+    (@callargs $sel:expr, $manager:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: Handle<move>, $($tt:tt)*) => {
+        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_handle_move()?), $($tt)*);
     };
-    (@callargs $sel:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: Handle<copy>, $($tt:tt)*) => {
-        object!(@callargs $sel, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_handle_copy()), $($tt)*);
+    // We got a Handle. Let's call pop_handle_copy.
+    (@callargs $sel:expr, $manager:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: Handle<copy>, $($tt:tt)*) => {
+        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_handle_copy()?), $($tt)*);
     };
     // We got a Pid. Let's call pop_pid.
-    (@callargs $sel:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: Pid, $($tt:tt)*) => {
-        object!(@callargs $sel, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_pid()), $($tt)*);
+    (@callargs $sel:expr, $manager:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: Pid, $($tt:tt)*) => {
+        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_pid()?), $($tt)*);
+    };
+    // We got a WaitableManager. Let's send the manager argument
+    (@callargs $sel:expr, $manager:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: &WaitableManager, $($tt:tt)*) => {
+        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $manager), $($tt)*);
     };
     // We got any other type. We want to recover it from the raw() structure. See
     // @genargs for more information about how the raw structure looks like.
-    (@callargs $sel:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: $ty:ty, $($tt:tt)*) => {
-        object!(@callargs $sel, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.raw().$name), $($tt)*);
+    (@callargs $sel:expr, $manager:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: $ty:ty, $($tt:tt)*) => {
+        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.raw().$name), $($tt)*);
     };
     // We're done parsing everything! Let's generate the actual call.
-    (@callargs $sel:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), ) => {
+    (@callargs $sel:expr, $manager:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), ) => {
         $sel.$funcname($($arg),*)
     };
 
@@ -441,7 +458,7 @@ macro_rules! object {
     (@movecount Handle, $($tt:tt)*) => {
         1 + object!(@movecount $($tt)*)
     };
-    (@movecount $ty:path, $($tt:tt)*) => {
+    (@movecount $ty:ty, $($tt:tt)*) => {
         object!(@movecount $($tt)*)
     };
     (@movecount $name:ident: $($tt:tt)*) => {

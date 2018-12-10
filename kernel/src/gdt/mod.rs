@@ -6,7 +6,6 @@
 #![allow(dead_code)]
 
 use sync::{SpinLock, Once};
-use arrayvec::ArrayVec;
 use bit_field::BitField;
 use core::mem::{self, size_of};
 use core::ops::{Deref, DerefMut};
@@ -19,12 +18,11 @@ use i386::instructions::tables::{lgdt, sgdt, DescriptorTablePointer};
 use i386::instructions::segmentation::*;
 
 use paging::PAGE_SIZE;
-use paging::lands::KernelLand;
 use paging::{MappingFlags, kernel_memory::get_kernel_memory};
 use frame_allocator::{FrameAllocator, FrameAllocatorTrait};
 use mem::VirtualAddress;
 use alloc::vec::Vec;
-use utils::div_ceil;
+use utils::align_up;
 
 static GDT: Once<SpinLock<GdtManager>> = Once::new();
 
@@ -36,7 +34,7 @@ pub fn init_gdt() {
 
     let ldt = GLOBAL_LDT.call_once(|| DescriptorTable::new());
 
-    let gdt = GDT.call_once(|| {
+    GDT.call_once(|| {
         let mut gdt = DescriptorTable::new();
         // Push the null descriptor
         gdt.push(DescriptorTableEntry::null_descriptor());
@@ -161,7 +159,7 @@ pub fn push_task_segment(task: &'static TssStruct) -> u16 {
 lazy_static! {
     pub static ref MAIN_TASK: VirtualAddress = {
         // We need TssStruct + 0x2001 bytes of IOPB.
-        let pregion = FrameAllocator::allocate_region(div_ceil(size_of::<TssStruct>() + 0x2001, PAGE_SIZE))
+        let pregion = FrameAllocator::allocate_region(align_up(size_of::<TssStruct>() + 0x2001, PAGE_SIZE))
             .expect("Failed to allocate physical region for tss MAIN_TASK");
         let vaddr = get_kernel_memory().map_phys_region(pregion, MappingFlags::WRITABLE);
         let tss = vaddr.addr() as *mut TssStruct;
@@ -198,7 +196,7 @@ impl DescriptorTable {
     pub fn set_from_loaded(&mut self) {
         use core::slice;
 
-        let mut loaded_ptr = sgdt();
+        let loaded_ptr = sgdt();
         let loaded_table = unsafe {
             slice::from_raw_parts(loaded_ptr.base as *mut DescriptorTableEntry, loaded_ptr.limit as usize / size_of::<DescriptorTableEntry>())
         };

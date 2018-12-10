@@ -4,6 +4,7 @@ extern crate spin;
 
 pub use self::spin::{Once, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
+use core::fmt;
 use core::mem::ManuallyDrop;
 use core::ops::{Deref, DerefMut};
 pub use self::spin::{Mutex as SpinLock, MutexGuard as SpinLockGuard};
@@ -11,8 +12,9 @@ use i386::instructions::interrupts::*;
 use core::sync::atomic::{AtomicBool, Ordering};
 use scheduler;
 
-/// Placeholder for future Mutex implementation
+/// Placeholder for future Mutex implementation.
 pub type Mutex<T> = SpinLock<T>;
+/// Placeholder for future Mutex implementation.
 pub type MutexGuard<'a, T> = SpinLockGuard<'a, T>;
 
 /// Decrement the interrupt disable counter.
@@ -73,7 +75,6 @@ pub unsafe fn permanently_disable_interrupts() {
 /// Note that it is allowed to lock/unlock the locks in a different order. It uses
 /// a global counter to disable/enable interrupts. View INTERRUPT_DISABLE_COUNTER
 /// documentation for more information.
-#[derive(Debug)]
 pub struct SpinLockIRQ<T: ?Sized> {
     internal: SpinLock<T>
 }
@@ -124,11 +125,26 @@ impl<T: ?Sized> SpinLockIRQ<T> {
         }
     }
 
+    /// Force unlocks the lock.
     pub unsafe fn force_unlock(&self) {
         self.internal.force_unlock()
     }
 }
 
+impl<T: fmt::Debug> fmt::Debug for SpinLockIRQ<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.try_lock() {
+            Some(d) => {
+                write!(f, "SpinLockIRQ {{ data: ")?;
+                d.fmt(f)?;
+                write!(f, "}}")
+            },
+            None => write!(f, "SpinLockIRQ {{ <locked> }}")
+        }
+    }
+}
+
+/// The SpinLockIrq lock guard.
 #[derive(Debug)]
 pub struct SpinLockIRQGuard<'a, T: ?Sized + 'a>(ManuallyDrop<SpinLockGuard<'a, T>>);
 

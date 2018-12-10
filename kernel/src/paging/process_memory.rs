@@ -1,5 +1,6 @@
 //! The management of a process' memory
 //!
+//! ```
 //! j-------------------------------j j---------------------j
 //! |        Process Memory         | |    Kernel Memory    |
 //! j-------------------------------j j---------------------j
@@ -12,24 +13,21 @@
 //! |           User Land            |   Kernel Land  | RTL |
 //! j--------------------------------+----------------~-----j
 //!                         Page tables
+//! ```
 
 pub use super::bookkeeping::QueryMemory;
 
 use super::hierarchical_table::*;
 use super::arch::{PAGE_SIZE, InactiveHierarchy, ActiveHierarchy};
-use super::lands::{UserLand, KernelLand, VirtualSpaceLand};
-use super::kernel_memory::get_kernel_memory;
+use super::lands::{UserLand, VirtualSpaceLand};
 use super::bookkeeping::UserspaceBookkeeping;
-use super::mapping::{Mapping, MappingType};
+use super::mapping::Mapping;
 use super::cross_process::CrossProcessMapping;
 use super::MappingFlags;
 use mem::{VirtualAddress, PhysicalAddress};
-use frame_allocator::{FrameAllocator, FrameAllocatorTrait, PhysicalMemRegion, mark_frame_bootstrap_allocated};
-use sync::{Mutex, MutexGuard};
-use paging::arch::EntryFlags;
+use frame_allocator::{FrameAllocator, FrameAllocatorTrait, PhysicalMemRegion};
 use paging::arch::Entry;
 use error::KernelError;
-use failure::Backtrace;
 use utils::{check_aligned, check_nonzero_length};
 use alloc::{vec::Vec, sync::Arc};
 
@@ -63,11 +61,11 @@ impl HierarchicalTable for () {
         unimplemented!()
     }
 
-    fn get_child_table<'a>(&'a mut self, index: usize) -> PageState<SmartHierarchicalTable<'a, <Self as HierarchicalTable>::ChildTableType>> {
+    fn get_child_table<'a>(&'a mut self, _index: usize) -> PageState<SmartHierarchicalTable<'a, <Self as HierarchicalTable>::ChildTableType>> {
         unimplemented!()
     }
 
-    fn create_child_table<'a>(&'a mut self, index: usize) -> SmartHierarchicalTable<'a, <Self as HierarchicalTable>::ChildTableType> {
+    fn create_child_table<'a>(&'a mut self, _index: usize) -> SmartHierarchicalTable<'a, <Self as HierarchicalTable>::ChildTableType> {
         unimplemented!()
     }
 }
@@ -91,21 +89,21 @@ impl<'b> TableHierarchy for DynamicHierarchy<'b> {
         }
     }
 
-    fn guard(&mut self, address: VirtualAddress, mut length: usize) {
+    fn guard(&mut self, address: VirtualAddress, length: usize) {
         match self {
             &mut DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.guard(address, length),
             &mut DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.guard(address, length),
         }
     }
 
-    fn unmap<C>(&mut self, address: VirtualAddress, mut length: usize, callback: C) where C: FnMut(PhysicalAddress) {
+    fn unmap<C>(&mut self, address: VirtualAddress, length: usize, callback: C) where C: FnMut(PhysicalAddress) {
         match self {
             &mut DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.unmap(address, length, callback),
             &mut DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.unmap(address, length, callback),
         }
     }
 
-    fn for_every_entry<C>(&mut self, address: VirtualAddress, mut length: usize, callback: C) where C: FnMut(PageState<PhysicalAddress>, usize) {
+    fn for_every_entry<C>(&mut self, address: VirtualAddress, length: usize, callback: C) where C: FnMut(PageState<PhysicalAddress>, usize) {
         match self {
             &mut DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.for_every_entry(address, length, callback),
             &mut DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.for_every_entry(address, length, callback),
@@ -128,7 +126,8 @@ impl ProcessMemory {
             userspace_bookkeping: UserspaceBookkeeping::new(),
             table_hierarchy: InactiveHierarchy::new()
         };
-        ret.guard(VirtualAddress(0x00000000), PAGE_SIZE);
+        ret.guard(VirtualAddress(0x00000000), PAGE_SIZE)
+            .expect("Cannot guard first page of ProcessMemory");
         ret
     }
 
@@ -199,7 +198,7 @@ impl ProcessMemory {
         check_nonzero_length(length)?;
         UserLand::check_contains_region(address, length)?;
         self.userspace_bookkeping.check_vacant(address, length)?;
-        let frames = FrameAllocator::allocate_frames_fragmented(length / PAGE_SIZE)?;
+        let frames = FrameAllocator::allocate_frames_fragmented(length)?;
         // ok, everything seems good, from now on treat errors as unexpected
 
         self.get_hierarchy().map_to_from_iterator(frames.iter().flatten(), address, flags);

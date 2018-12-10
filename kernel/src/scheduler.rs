@@ -8,7 +8,7 @@ use process::{ProcessStruct, ThreadStruct, ThreadState};
 use i386::process_switch::process_switch;
 use sync::{Lock, SpinLockIRQ, SpinLockIRQGuard};
 use core::sync::atomic::Ordering;
-use error::{KernelError, UserspaceError};
+use error::{UserspaceError};
 
 /// An Arc to the currently running thread.
 ///
@@ -84,40 +84,30 @@ static SCHEDULE_QUEUE: SpinLockIRQ<Vec<Arc<ThreadStruct>>> = SpinLockIRQ::new(Ve
 /// Adds a thread at the end of the schedule queue, and changes its state to 'scheduled'
 /// Thread must be ready to be scheduled.
 ///
-/// Note that if the lock protecting thread was not available, this function might schedule
-///
 /// If the thread was already scheduled, this function is a Noop.
 ///
 /// # Panics
 ///
 /// Panics if the thread's state was already "Scheduled"
 pub fn add_to_schedule_queue(thread: Arc<ThreadStruct>) {
-    // todo maybe delete this assert, it adds a lot of overhead
-    //assert!(!is_in_schedule_queue(&process),
-    //        "Process was already in schedule queue : {:?}", process);
 
-    if is_in_schedule_queue(&thread) {
+    let mut queue_lock = SCHEDULE_QUEUE.lock();
+
+    if is_in_schedule_queue(&queue_lock, &thread) {
         return;
     }
 
-    // todo: no lock is held here, thread could had been added between the check and us re-taking the lock.
+    let oldstate = thread.state.compare_and_swap(ThreadState::Stopped, ThreadState::Scheduled, Ordering::SeqCst);
 
-    let mut queue_lock = {
-        let queue_lock = SCHEDULE_QUEUE.lock();
-        let mut oldstate = thread.state.compare_and_swap(ThreadState::Stopped, ThreadState::Scheduled, Ordering::SeqCst);
-        assert_eq!(oldstate, ThreadState::Stopped,
-                   "Process added to schedule queue was not stopped : {:?}", oldstate);
-        // TODO: Check ProcessState is Scheduled (was Stopped) or Killed
-        queue_lock
-    };
+    assert!(oldstate == ThreadState::Stopped || oldstate == ThreadState::Killed,
+               "Process added to schedule queue was not stopped : {:?}", oldstate);
 
     queue_lock.push(thread)
 }
 
-/// Checks if a process is in the schedule queue
-// todo: should take the queue's lock as a parameter. Dropping it after having made the check makes no sense.
-pub fn is_in_schedule_queue(thread: &Arc<ThreadStruct>) -> bool {
-    let queue = SCHEDULE_QUEUE.lock();
+/// Checks if a thread is already either in the schedule queue or currently running.
+pub fn is_in_schedule_queue(queue: &SpinLockIRQGuard<Vec<Arc<ThreadStruct>>>,
+                            thread: &Arc<ThreadStruct>) -> bool {
     unsafe { CURRENT_THREAD.iter() }.filter(|v| {
         v.state.load(Ordering::SeqCst) != ThreadState::Stopped
     }).chain(queue.iter()).any(|elem| Arc::ptr_eq(thread, elem))
@@ -175,13 +165,12 @@ where
 ///
 /// Panics if the schedule queue was not empty
 pub unsafe fn create_first_process() {
-    let mut queue = SCHEDULE_QUEUE.lock();
+    let queue = SCHEDULE_QUEUE.lock();
     assert!(queue.is_empty());
     let thread_0 = ThreadStruct::create_first_thread();
     unsafe {
         // provided we only run this function once, it hasn't been initialized yet
-        // todo do we even need to clone the arc here ?
-        set_current_thread(Arc::clone(&thread_0), || ());
+        set_current_thread(thread_0, || ());
     }
 }
 
@@ -189,25 +178,26 @@ pub unsafe fn create_first_process() {
 ///
 /// # Queue politics
 ///
-///          checking if process is locked
-///          and also not the current one
-///          ===============================>
-///     j--------j j--------j j--------j j--------j
-///     | current| |    X   | |        | |        |
-///     j--------j j--------j j--------j j--------j    A
-///        | A       locked,       |                   |
-///        | |       skipped       |                   |
-///        | +---------------------+                   |
-///        +-------------------------------------------+
+///                           checking if thread is unlocked
+///                           and suitable for running
+///   CURRENT_THREAD          ===============================>
+///     j--------j          j--------j j--------j j--------j
+///     | current|          |    X   | |        | |        |
+///     j--------j          j--------j j--------j j--------j    A
+///        | A               locked,       |                    |
+///        | |               skipped       |                    |
+///        | +-----------------------------+                    |
+///        +----------------------------------------------------+
 ///
 /// 1. Tries to lock the next first process. If it fails to acquire its lock,
 ///    it is ignored for now, and we move on to the next one.
-/// 2. When a candidate is found, it is moved to the start of the queue, and
-///    current process is pushed back at the end.
-/// 3. Rotates the current process at the end of the queue.
-/// 4. Performs the process switch
+/// 2. When a candidate is found, it is removed from the queue, and
+///    set as CURRENT_THREAD.
+/// 3. Pushes the previous current thread at the end of the queue.
+/// 4. Disables interrupts
+/// 5. Performs the process switch
 ///  * as new process *
-/// 5. Drops the lock to the schedule queue, re-enabling interrupts
+/// 6. Re-enables interrupts
 pub fn schedule() {
     struct NoopLock;
     impl Lock<'static, ()> for NoopLock {

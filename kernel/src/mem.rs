@@ -31,8 +31,15 @@ pub struct PhysicalAddress(pub usize);
 #[repr(transparent)]
 pub struct VirtualAddress(pub usize);
 
-impl VirtualAddress  { pub fn addr(&self) -> usize { self.0 } }
-impl PhysicalAddress { pub fn addr(&self) -> usize { self.0 } }
+impl VirtualAddress  {
+    /// Gets the address as a `usize`.
+    pub fn addr(&self) -> usize { self.0 }
+}
+
+impl PhysicalAddress {
+    /// Gets the address as a `usize`.
+    pub fn addr(&self) -> usize { self.0 }
+}
 
 impl ::core::ops::Add<usize> for VirtualAddress {
     type Output = VirtualAddress;
@@ -139,6 +146,7 @@ impl LowerHex for VirtualAddress {
 }
 
 impl PhysicalAddress {
+    /// Tries to add an offset to a PhysicalAddress, returning a [KernelError] if this would cause an overflow.
     pub fn checked_add(self, rhs: usize) -> Result<PhysicalAddress, KernelError> {
         match self.0.checked_add(rhs) {
             Some(sum) => Ok(PhysicalAddress(sum)),
@@ -154,6 +162,7 @@ impl PhysicalAddress {
 }
 
 impl VirtualAddress {
+    /// Tries to add an offset to a VirtualAddress, returning a [KernelError] if this would cause an overflow.
     pub fn checked_add(self, rhs: usize) -> Result<VirtualAddress, KernelError> {
         match self.0.checked_add(rhs) {
             Some(sum) => Ok(VirtualAddress(sum)),

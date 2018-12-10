@@ -1,6 +1,7 @@
 //! Types shared by user and kernel
 
 #![no_std]
+#![warn(missing_docs)]
 
 #[macro_use]
 extern crate kfs_libutils;
@@ -8,6 +9,8 @@ extern crate kfs_libutils;
 extern crate bitflags;
 #[macro_use]
 extern crate lazy_static;
+
+pub mod error;
 
 enum_with_val! {
     #[derive(Default, Clone, Copy, PartialEq, Eq)]

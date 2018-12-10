@@ -1,6 +1,8 @@
 #![feature(alloc)]
 #![no_std]
 
+#![warn(missing_docs)]
+
 #[macro_use]
 extern crate kfs_libuser as libuser;
 #[macro_use]
@@ -14,6 +16,8 @@ use alloc::prelude::*;
 use libuser::syscalls;
 use libuser::ipc::server::{WaitableManager, PortHandler, IWaitable};
 use libuser::types::*;
+use libuser::error::Error;
+use libuser::error::SmError;
 use hashmap_core::map::{HashMap, Entry};
 use spin::Mutex;
 
@@ -24,17 +28,6 @@ lazy_static! {
     static ref SERVICES: Mutex<HashMap<u64, ClientPort>> = Mutex::new(HashMap::new());
 }
 // TODO: global event when services are accessed.
-
-enum Error {
-    NotInitialized = 2,
-    AlreadyRegistered = 4,
-    NotRegistered = 7,
-}
-impl Into<usize> for Error {
-    fn into(self) -> usize {
-        ((self as usize) << 9) | 0x21
-    }
-}
 
 impl UserInterface {
     fn new() -> Self {
@@ -63,23 +56,23 @@ fn get_service_str(servicename: &u64) -> &str {
 object! {
     impl UserInterface {
         #[cmdid(0)]
-        fn initialize(&mut self, pid: Pid,) -> Result<(), usize> {
+        fn initialize(&mut self, pid: Pid,) -> Result<(), Error> {
             Ok(())
         }
 
         #[cmdid(1)]
-        fn get_service(&mut self, servicename: u64,) -> Result<(Handle,), usize> {
+        fn get_service(&mut self, servicename: u64,) -> Result<(Handle,), Error> {
             match SERVICES.lock().get(&servicename) {
                 Some(port) => port.connect().map(|v| (v.0,)),
-                None => Err(Error::NotRegistered.into())
+                None => Err(SmError::ServiceNotRegistered.into())
             }
         }
 
         #[cmdid(2)]
-        fn register_service(&mut self, servicename: u64, is_light: u8, max_handles: u32,) -> Result<(Handle,), usize> {
+        fn register_service(&mut self, servicename: u64, is_light: u8, max_handles: u32,) -> Result<(Handle,), Error> {
             let (clientport, serverport) = syscalls::create_port(max_handles, is_light != 0, get_service_str(&servicename))?;
             match SERVICES.lock().entry(servicename) {
-                Entry::Occupied(occupied) => Err(Error::AlreadyRegistered.into()),
+                Entry::Occupied(occupied) => Err(SmError::ServiceAlreadyRegistered.into()),
                 Entry::Vacant(vacant) => {
                     vacant.insert(clientport);
                     Ok((serverport.0,))
@@ -88,10 +81,10 @@ object! {
         }
 
         #[cmdid(3)]
-        fn unregister_service(&mut self, servicename: u64,) -> Result<(), usize> {
+        fn unregister_service(&mut self, servicename: u64,) -> Result<(), Error> {
             match SERVICES.lock().remove(&servicename) {
                 Some(_) => Ok(()),
-                None => Err(Error::NotRegistered.into())
+                None => Err(SmError::ServiceNotRegistered.into())
             }
         }
     }

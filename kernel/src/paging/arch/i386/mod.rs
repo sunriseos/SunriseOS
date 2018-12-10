@@ -1,14 +1,18 @@
 //! Paging implementation on i386
+//!
+//! No PAE, no PSE, just regular 2-level paging, with simple 4kB tables and pages.
 
 pub mod entry;
 pub mod table;
 
-use self::table::{ActiveHierarchy, InactiveHierarchy};
-
 use mem::{VirtualAddress, PhysicalAddress};
 
+/// The page size. Dictated by the MMU.
+/// In simple, elegant, sane i386 paging, a page is 4kB.
 pub const PAGE_SIZE: usize = 4096;
 
+/// The number of entries a page table has.
+/// On i386 a page table/directory is 1024 entries * 4 bytes per entry = 4kB, fits in 1 page.
 pub const ENTRY_COUNT: usize = PAGE_SIZE / ::core::mem::size_of::<entry::I386Entry>();
 
 //pub static mut ACTIVE_PAGE_TABLES: ActiveHierarchy = ActiveHierarchy;

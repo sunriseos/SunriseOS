@@ -1,13 +1,11 @@
 use scheduler;
 use alloc::vec::Vec;
 use alloc::sync::{Arc, Weak};
-use sync::{Once, SpinLock, RwLock};
-use error::{KernelError, UserspaceError};
+use sync::SpinLock;
+use error::UserspaceError;
 use event::{self, Waitable};
 use process::ThreadStruct;
 use core::sync::atomic::{AtomicUsize, Ordering};
-use hashmap_core::HashMap;
-use alloc::prelude::*;
 use ipc::session::{self, ClientSession, ServerSession};
 
 /// An endpoint which can be connected to.
@@ -67,7 +65,12 @@ impl Waitable for ServerPort {
     }
 
     fn register(&self) {
-        self.0.accepters.lock().push(Arc::downgrade(&scheduler::get_current_thread()));
+        let mut accepters = self.0.accepters.lock();
+        let curproc = scheduler::get_current_thread();
+
+        if !accepters.iter().filter_map(|v| v.upgrade()).any(|v| Arc::ptr_eq(&curproc, &v)) {
+            accepters.push(Arc::downgrade(&curproc));
+        }
     }
 }
 
@@ -140,7 +143,7 @@ impl ClientPort {
         });
 
         let mut guard = incoming.session.lock();
-        let lock = self.0.incoming_connections.lock().push(incoming.clone());
+        self.0.incoming_connections.lock().push(incoming.clone());
 
         let session = loop {
             // If no handle to the server exist anymore, give up.

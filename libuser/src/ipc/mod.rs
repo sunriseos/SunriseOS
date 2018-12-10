@@ -5,6 +5,7 @@ use arrayvec::{ArrayVec, Array};
 use utils::{self, align_up, CursorWrite, CursorRead};
 use types::{Handle, HandleRef, Pid};
 use bit_field::BitField;
+use error::{Error, LibuserError};
 
 #[macro_use]
 pub mod macros;
@@ -120,6 +121,7 @@ impl<'a> IPCBuffer<'a> {
     }
 }
 
+#[derive(Debug)]
 pub struct Message<'a, RAW, BUFF = [IPCBuffer<'a>; 0], COPY = [u32; 0], MOVE = [u32; 0]>
 where
     BUFF: Array<Item=IPCBuffer<'a>>,
@@ -178,6 +180,14 @@ where
         self
     }
 
+    pub fn error(&self) -> Result<(), Error> {
+        if self.cmdid_error == 0 {
+            Ok(())
+        } else {
+            Err(Error::from_code(self.cmdid_error))
+        }
+    }
+
     pub fn push_raw(&mut self, raw: RAW) -> &mut Self {
         self.raw = raw;
         self
@@ -204,19 +214,24 @@ where
 
     // TODO: Figure out a better API for buffers. This sucks.
     /*fn pop_in_buffer<T>(&mut self) -> InBuffer<T> {
-    }*/
-    pub fn pop_handle_move(&mut self) -> Handle {
-        // TODO: avoid panic, return an error instead.
-        Handle::new(self.move_handles.remove(0))
+}*/
+
+    pub fn pop_handle_move(&mut self) -> Result<Handle, Error> {
+        self.move_handles.pop_at(0)
+            .map(Handle::new)
+            .ok_or(LibuserError::InvalidMoveHandleCount.into())
     }
 
-    pub fn pop_handle_copy(&mut self) -> Handle {
-        // TODO: avoid panic, return an error instead.
-        Handle::new(self.move_handles.remove(0))
+    pub fn pop_handle_copy(&mut self) -> Result<Handle, Error> {
+        self.copy_handles.pop_at(0)
+            .map(Handle::new)
+            .ok_or(LibuserError::InvalidCopyHandleCount.into())
     }
 
-    pub fn pop_pid(&mut self) -> Pid {
-        Pid(self.pid.take().unwrap())
+    pub fn pop_pid(&mut self) -> Result<Pid, Error> {
+        self.pid.take()
+            .map(Pid)
+            .ok_or(LibuserError::PidMissing.into())
     }
 
 
@@ -441,6 +456,8 @@ where
         }
     }
 
+    // TODO: Don't panic here! Unpacking happens in the server, we should return an
+    // error if the unpacking failed.
     pub fn unpack(data: &[u8]) -> Message<'a, RAW, BUFF, COPY, MOVE> {
 
         let cursor = CursorRead::new(data);

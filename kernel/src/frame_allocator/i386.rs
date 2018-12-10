@@ -1,7 +1,5 @@
 //! i386 implementation of the frame allocator.
 //!
-//! We define a frame as the same size as a page, to make things easy for us.
-//!
 //! It keeps tracks of the allocated frames by mean of a giant bitmap mapping every
 //! physical memory frame in the address space to a bit representing if it is free or not.
 //! This works because the address space in 32 bits is only 4GB, so ~1 million frames only
@@ -14,22 +12,20 @@
 //!
 //! We do not distinguish between reserved and occupied frames.
 
-use super::{PhysicalMemRegion, PhysicalMemRegionIter,
-            FrameAllocatorTrait, FrameAllocatorTraitPrivate};
+use super::{PhysicalMemRegion, FrameAllocatorTrait, FrameAllocatorTraitPrivate};
 
+use paging::PAGE_SIZE;
 use multiboot2::BootInformation;
 use sync::SpinLock;
 use alloc::vec::Vec;
+use utils::{check_aligned, check_nonzero_length};
 use bit_field::BitArray;
-use utils::{bit_array_first_one, BitArrayExt};
+use utils::BitArrayExt;
 use mem::PhysicalAddress;
-use mem::{round_to_page, round_to_page_upper, count_pages};
+use mem::{round_to_page, round_to_page_upper};
 use paging::kernel_memory::get_kernel_memory;
 use error::KernelError;
 use failure::Backtrace;
-
-/// A memory frame is the same size as a page
-pub const MEMORY_FRAME_SIZE: usize = ::paging::PAGE_SIZE;
 
 const FRAME_OFFSET_MASK: usize = 0xFFF;              // The offset part in a frame
 const FRAME_BASE_MASK:   usize = !FRAME_OFFSET_MASK; // The base part in a frame
@@ -37,7 +33,7 @@ const FRAME_BASE_MASK:   usize = !FRAME_OFFSET_MASK; // The base part in a frame
 const FRAME_BASE_LOG: usize = 12; // frame_number = addr >> 12
 
 /// The size of the frames_bitmap (~128ko)
-const FRAMES_BITMAP_SIZE: usize = usize::max_value() / MEMORY_FRAME_SIZE / 8 + 1;
+const FRAMES_BITMAP_SIZE: usize = usize::max_value() / PAGE_SIZE / 8 + 1;
 
 /// Gets the frame number from a physical address
 #[inline]
@@ -80,15 +76,22 @@ impl FrameAllocatori386 {
     }
 }
 
+/// The physical memory manager.
+///
+/// Serves physical memory in atomic blocks of size [PAGE_SIZE](::paging::PAGE_SIZE), called frames.
+///
+/// An allocation request returns a [PhysicalMemRegion], which represents a list of
+/// physically adjacent frames. When this returned `PhysicalMemRegion` is eventually dropped
+/// the frames are automatically freed and can be re-served by the FrameAllocator.
 pub struct FrameAllocator;
 
 impl FrameAllocatorTraitPrivate for FrameAllocator {
-    /// Frees an allocated frame.
+    /// Frees an allocated physical region.
     ///
     /// # Panic
     ///
-    /// Panics if the frame was not allocated
-    /// Panics if FRAME_ALLOCATOR was not initialized
+    /// * Panics if the frame was not allocated.
+    /// * Panics if FRAME_ALLOCATOR was not initialized.
     fn free_region(region: &PhysicalMemRegion) {
         // don't bother taking the lock if there is no frames to free
         if region.frames > 0 {
@@ -104,9 +107,11 @@ impl FrameAllocatorTraitPrivate for FrameAllocator {
         }
     }
 
+    /// Checks that a physical region was allocated.
+    ///
     /// # Panic
     ///
-    /// Panics if FRAME_ALLOCATOR was not initialized
+    /// * Panics if FRAME_ALLOCATOR was not initialized.
     fn check_is_allocated(region: &PhysicalMemRegion) -> bool {
         let allocator = FRAME_ALLOCATOR.lock();
         assert!(allocator.initialized, "The frame allocator was not initialized");
@@ -116,9 +121,13 @@ impl FrameAllocatorTraitPrivate for FrameAllocator {
         })
     }
 
+    /// Checks that a physical region is marked reserved.
+    /// This implementation does not distinguish between allocated and reserved frames,
+    /// so for us it's equivalent to `check_is_allocated`.
+    ///
     /// # Panic
     ///
-    /// Panics if FRAME_ALLOCATOR was not initialized
+    /// * Panics if FRAME_ALLOCATOR was not initialized.
     fn check_is_reserved(region: &PhysicalMemRegion) -> bool {
         // we have no way to distinguish between 'allocated' and 'reserved'
         Self::check_is_allocated(region)
@@ -126,16 +135,22 @@ impl FrameAllocatorTraitPrivate for FrameAllocator {
 }
 
 impl FrameAllocatorTrait for FrameAllocator {
-    /// Allocates a single PhysicalMemRegion.
+    /// Allocates a single [PhysicalMemRegion].
     /// Frames are physically consecutive.
+    ///
+    /// # Error
+    ///
+    /// * Error if `length` == 0.
+    /// * Error if `length` is not a multiple of [PAGE_SIZE].
     ///
     /// # Panic
     ///
-    /// Panics if nr_frames == 0.
-    /// Panics if FRAME_ALLOCATOR was not initialized.
-    fn allocate_region(nr_frames: usize) -> Result<PhysicalMemRegion, KernelError> {
+    /// * Panics if FRAME_ALLOCATOR was not initialized.
+    fn allocate_region(length: usize) -> Result<PhysicalMemRegion, KernelError> {
+        check_nonzero_length(length)?;
+        check_aligned(length, PAGE_SIZE)?;
+        let nr_frames = length / PAGE_SIZE;
         let mut allocator = FRAME_ALLOCATOR.lock();
-        assert!(nr_frames > 0, "The frame allocator cannot allocate zero-size region");
         assert!(allocator.initialized, "The frame allocator was not initialized");
 
         let mut start_index = 0usize;
@@ -146,7 +161,6 @@ impl FrameAllocatorTrait for FrameAllocator {
                     FRAME_OCCUPIED => {
                         // hole wasn't big enough, jump to its end
                         start_index += temp_len + 1;
-                        temp_len = 0;
                         break;
                     }
                     FRAME_FREE => {
@@ -171,15 +185,22 @@ impl FrameAllocatorTrait for FrameAllocator {
         Err(KernelError::PhysicalMemoryExhaustion { backtrace: Backtrace::new() })
     }
 
-    /// Allocates `nr` physical frames, possibly fragmented across several physical regions.
+    /// Allocates physical frames, possibly fragmented across several physical regions.
+    ///
+    /// # Error
+    ///
+    /// * Error if `length` == 0.
+    /// * Error if `length` is not a multiple of [PAGE_SIZE].
     ///
     /// # Panic
     ///
-    /// Panics if nr_frames == 0.
-    /// Panics if FRAME_ALLOCATOR was not initialized
-    fn allocate_frames_fragmented(requested: usize) -> Result<Vec<PhysicalMemRegion>, KernelError> {
+    /// * Panics if FRAME_ALLOCATOR was not initialized.
+    fn allocate_frames_fragmented(length: usize) -> Result<Vec<PhysicalMemRegion>, KernelError> {
+        check_nonzero_length(length)?;
+        check_aligned(length, PAGE_SIZE)?;
+        let requested = length / PAGE_SIZE;
+
         let mut allocator_lock = FRAME_ALLOCATOR.lock();
-        assert!(requested > 0, "The frame allocator cannot allocate zero-size region");
         assert!(allocator_lock.initialized, "The frame allocator was not initialized");
 
         let mut collected_frames = 0;
@@ -200,7 +221,7 @@ impl FrameAllocatorTrait for FrameAllocator {
                 }
             }
             // we reached the end of the hole
-            let next_hole = PhysicalMemRegion { start_addr: current_hole.start_addr + (current_hole.frames + 1) * MEMORY_FRAME_SIZE,
+            let next_hole = PhysicalMemRegion { start_addr: current_hole.start_addr + (current_hole.frames + 1) * PAGE_SIZE,
                                                 frames: 0, should_free_on_drop: true };
             if current_hole.frames > 0 {
                 // add it to our collected regions
@@ -229,7 +250,7 @@ impl FrameAllocatorTrait for FrameAllocator {
     }
 }
 
-/// Initialize the FrameAllocator by parsing the multiboot information
+/// Initialize the [FrameAllocator] by parsing the multiboot information
 /// and marking some memory areas as unusable
 pub fn init(boot_info: &BootInformation) {
     let mut allocator = FRAME_ALLOCATOR.lock();

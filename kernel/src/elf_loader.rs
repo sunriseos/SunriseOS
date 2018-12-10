@@ -14,12 +14,10 @@
 //! does not do any dynamic loading or provide ASLR (though that is up for change)
 
 use multiboot2::ModuleTag;
-use core::fmt::Write;
 use core::slice;
 use xmas_elf::ElfFile;
 use xmas_elf::program::{ProgramHeader, Type::Load, SegmentData};
 use mem::{VirtualAddress, PhysicalAddress};
-use paging::lands::{KernelLand, UserLand};
 use paging::{PAGE_SIZE, MappingFlags, process_memory::ProcessMemory, kernel_memory::get_kernel_memory};
 use frame_allocator::PhysicalMemRegion;
 use utils::{self, align_up};
@@ -28,10 +26,14 @@ use byteorder::{LittleEndian, ByteOrder};
 
 /// Represents a grub module once mapped in kernel memory
 pub struct MappedGrubModule<'a> {
+    /// The address of the mapping, in KernelLand.
     pub mapping_addr: VirtualAddress,
-    pub start: VirtualAddress, // the start of the module in the mapping, if it was not page aligned
+    /// The start of the module in the mapping, if it was not page aligned.
+    pub start: VirtualAddress,
+    /// The length of the module.
     pub len: usize,
-    pub elf: Result<ElfFile<'a>, &'static str> // the module parsed as an elf file,
+    /// The module parsed as an ElfFile.
+    pub elf: Result<ElfFile<'a>, &'static str>
 }
 
 /// Maps a grub module, which already lives in reserved physical memory, into the KernelLand.

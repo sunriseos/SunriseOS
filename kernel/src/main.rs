@@ -9,13 +9,16 @@
 #![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, allocator_api, alloc, box_syntax, no_more_cas, const_vec_new, range_contains)]
 #![cfg_attr(target_os = "none", no_std)]
 #![cfg_attr(target_os = "none", no_main)]
-#![allow(unused)]
+#![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
+#![warn(unused)]
+#![allow(unused_unsafe)]
+#![allow(unreachable_code)]
+#![allow(dead_code)]
 #![recursion_limit = "1024"]
 
 #[cfg(not(target_os = "none"))]
 use std as core;
 
-extern crate arrayvec;
 extern crate bit_field;
 #[macro_use]
 extern crate lazy_static;
@@ -43,31 +46,28 @@ extern crate kfs_libkern;
 use core::fmt::Write;
 use alloc::prelude::*;
 
-mod paging;
-mod event;
-mod error;
-mod logger;
-mod log_impl;
-pub use logger::*;
-pub use devices::rs232::SerialLogger;
+pub mod paging;
+pub mod event;
+pub mod error;
+pub mod log_impl;
 #[macro_use]
-mod i386;
+pub mod i386;
 #[cfg(target_os = "none")]
-mod gdt;
-mod interrupts;
-mod frame_allocator;
+pub mod gdt;
+pub mod interrupts;
+pub mod frame_allocator;
 
-mod heap_allocator;
-mod io;
-mod devices;
-mod sync;
-mod process;
-mod scheduler;
-mod mem;
-mod ipc;
-mod elf_loader;
-mod utils;
-mod checks;
+pub mod heap_allocator;
+pub mod io;
+pub mod devices;
+pub mod sync;
+pub mod process;
+pub mod scheduler;
+pub mod mem;
+pub mod ipc;
+pub mod elf_loader;
+pub mod utils;
+pub mod checks;
 
 // Make rust happy about rust_oom being no_mangle...
 pub use heap_allocator::rust_oom;
@@ -77,10 +77,8 @@ static ALLOCATOR: heap_allocator::Allocator = heap_allocator::Allocator::new();
 
 use i386::stack;
 use paging::{PAGE_SIZE, MappingFlags};
-use mem::{PhysicalAddress, VirtualAddress};
-use paging::lands::{KernelLand, UserLand};
-use process::{ProcessStruct, ThreadStruct, ThreadState};
-use core::sync::atomic::Ordering;
+use mem::VirtualAddress;
+use process::{ProcessStruct, ThreadStruct};
 
 unsafe fn force_double_fault() {
     loop {
@@ -115,10 +113,19 @@ fn main() {
     let lock = sync::SpinLockIRQ::new(());
     loop {
         // TODO: Exit process.
-        scheduler::unschedule(&lock, lock.lock());
+        let _ = scheduler::unschedule(&lock, lock.lock());
     }
 }
 
+/// The entry point of our kernel.
+///
+/// This function is jump'd into from the bootstrap code, which:
+///
+/// * enabled paging,
+/// * gave us a valid KernelStack,
+/// * mapped grub's multiboot information structure in KernelLand (its address in $ebx),
+///
+/// What we do is just bzero the .bss, and call a rust function, passing it the content of $ebx.
 #[cfg(target_os = "none")]
 #[no_mangle]
 pub unsafe extern fn start() -> ! {
@@ -139,22 +146,21 @@ pub unsafe extern fn start() -> ! {
 }
 
 /// CRT0 starts here.
+///
+/// This function takes care of initializing the kernel, before calling the main function.
 #[cfg(target_os = "none")]
 #[no_mangle]
 pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
+    use devices::rs232::{SerialAttributes, SerialColor};
+
     log_impl::early_init();
 
-    // Register some loggers
-    static mut SERIAL: SerialLogger = SerialLogger;
-    Loggers::register_logger("Serial", unsafe { &mut SERIAL });
 
-
-    let loggers = &mut Loggers;
+    let log = &mut devices::rs232::SerialLogger;
     // Say hello to the world
-    write!(Loggers, "\n# Welcome to ");
-    loggers.print_attr("KFS",
-                             LogAttributes::new_fg(LogColor::LightCyan));
-    writeln!(Loggers, "!\n");
+    let _ = writeln!(log, "\n# Welcome to {}KFS{}!\n",
+        SerialAttributes::fg(SerialColor::LightCyan),
+        SerialAttributes::default());
 
     // Parse the multiboot infos
     let boot_info = unsafe { multiboot2::load(multiboot_info_addr) };
@@ -187,7 +193,6 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 
     info!("Calling main()");
 
-    writeln!(SerialLogger, "= Calling main()");
     main();
     // Die !
     // We shouldn't reach this...
@@ -200,7 +205,9 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 #[cfg(target_os = "none")]
 #[lang = "eh_personality"] #[no_mangle] pub extern fn eh_personality() {}
 
-/// The function executed on a panic! Can also be called at any moment.
+/// The kernel panic function.
+///
+/// Executed on a `panic!`, but can also be called directly.
 /// Will print some useful debugging information, and never return.
 ///
 /// This function will print a stack dump, from `stackdump_source`.
@@ -218,15 +225,17 @@ unsafe fn do_panic(msg: core::fmt::Arguments, stackdump_source: Option<stack::St
     // Disable interrupts forever!
     unsafe { sync::permanently_disable_interrupts(); }
     // Don't deadlock in the logger
-    unsafe { Loggers.force_unlock(); }
+    unsafe { SerialLogger.force_unlock(); }
 
     //todo: force unlock the KernelMemory lock
     //      and also the process memory lock for userspace stack dumping (only if panic-on-excetpion ?).
 
-    let _ = writeln!(Loggers, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\
-                               ! Panic! at the disco\n\
-                               ! {}\n\
-                               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+    use devices::rs232::SerialLogger;
+
+    let _ = writeln!(SerialLogger, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\
+                                    ! Panic! at the disco\n\
+                                    ! {}\n\
+                                    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
                      msg);
 
     // Parse the ELF to get the symbol table.
@@ -256,7 +265,7 @@ unsafe fn do_panic(msg: core::fmt::Arguments, stackdump_source: Option<stack::St
     let elf_and_st = get_symbols(&mapped_kernel_elf);
 
     if elf_and_st.is_none() {
-        writeln!(Loggers, "Panic handler: Failed to get kernel elf symbols");
+        let _ = writeln!(SerialLogger, "Panic handler: Failed to get kernel elf symbols");
     }
 
     // Then print the stack
@@ -269,13 +278,16 @@ unsafe fn do_panic(msg: core::fmt::Arguments, stackdump_source: Option<stack::St
         ::stack::KernelStack::dump_current_stack(elf_and_st)
     }
 
-    let _ = writeln!(Loggers, "Thread : {:#x?}", scheduler::try_get_current_thread());
+    let _ = writeln!(SerialLogger, "Thread : {:#x?}", scheduler::try_get_current_thread());
 
-    let _ = writeln!(Loggers, "!!!!!!!!!!!!!!!END PANIC!!!!!!!!!!!!!!\n");
+    let _ = writeln!(SerialLogger, "!!!!!!!!!!!!!!!END PANIC!!!!!!!!!!!!!!");
 
     loop { unsafe { asm!("HLT"); } }
 }
 
+/// Function called on `panic!` invocation.
+///
+/// Kernel panics.
 #[cfg(target_os = "none")]
 #[panic_handler] #[no_mangle]
 pub extern fn panic_fmt(p: &::core::panic::PanicInfo) -> ! {

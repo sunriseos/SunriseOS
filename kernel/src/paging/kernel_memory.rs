@@ -1,5 +1,6 @@
 //! The management of kernel memory
 //!
+//! ```
 //! j-------------------------------j j---------------------j
 //! |        Process Memory         | |    Kernel Memory    |
 //! j-------------------------------j j---------------------j
@@ -12,6 +13,7 @@
 //! |           User Land            |   Kernel Land  | RTL |
 //! j--------------------------------+----------------~-----j
 //!                         Page tables
+//! ```
 //!
 //! We choose to separate UserLand and KernelLand + RecursiveTablesLand memory management.
 //! This way we can allow concurrent access on different lands, and modifying the kernel memory
@@ -169,7 +171,7 @@ impl KernelMemory {
     pub fn map_allocate_to(&mut self, va: VirtualAddress, length: usize, flags: MappingFlags) {
         assert!(KernelLand::contains_region(va, length));
         assert!(length % PAGE_SIZE == 0, "length must be a multiple of PAGE_SIZE");
-        let mut prs = FrameAllocator::allocate_frames_fragmented(length / PAGE_SIZE).unwrap();
+        let mut prs = FrameAllocator::allocate_frames_fragmented(length).unwrap();
         self.tables.map_to_from_iterator(prs.iter().flatten(), va, flags);
 
         // do not drop the frames, they are mapped in the page tables !
@@ -252,7 +254,7 @@ impl KernelMemory {
     pub fn unmap_no_dealloc(&mut self, address: VirtualAddress, length: usize) {
         assert!(KernelLand::contains_region(address, length));
         assert!(length % PAGE_SIZE == 0, "length must be a multiple of PAGE_SIZE");
-        self.tables.unmap(address, length, |paddr| { /* leak the frame */ });
+        self.tables.unmap(address, length, |_paddr| { /* leak the frame */ });
     }
 
     /// Marks all frames mapped in KernelLand as reserve
@@ -266,7 +268,9 @@ impl KernelMemory {
                                     KernelLand::length() + RecursiveTablesLand::length(),
         |entry_state, length| {
             if let PageState::Present(mapped_frame) = entry_state {
-                mark_frame_bootstrap_allocated(mapped_frame)
+                for offset in (0..length).step_by(PAGE_SIZE) {
+                    mark_frame_bootstrap_allocated(mapped_frame + offset)
+                }
             }
         });
     }
@@ -292,11 +296,11 @@ impl KernelMemory {
             fn update(&mut self, newstate: State) {
                 //let old_self = ::core::mem::replace(self, State::Present(VirtualAddress(0), PhysicalAddress(0)));
                 let old_self = *self;
-                let mut real_newstate = match (old_self, newstate) {
+                let real_newstate = match (old_self, newstate) {
                     // fuse guarded states
-                    (State::Guarded(addr), State::Guarded(newaddr)) => State::Guarded(addr),
+                    (State::Guarded(addr), State::Guarded(_)) => State::Guarded(addr),
                     // fuse available states
-                    (State::Available(addr), State::Available(newaddr)) => State::Available(addr),
+                    (State::Available(addr), State::Available(_)) => State::Available(addr),
                     // fuse present states only if physical frames are contiguous
                     (State::Present(addr, phys), State::Present(newaddr, newphys))
                         if newphys.addr().wrapping_sub(phys.addr()) == newaddr - addr

@@ -14,8 +14,8 @@
 use multiboot2::BootInformation;
 use spin::Mutex;
 use bit_field::BitArray;
-use utils::BitArrayExt;
-use utils::{bit_array_first_one, bit_array_first_count_one};
+use kfs_libutils::BitArrayExt;
+use kfs_libutils::{bit_array_first_one, bit_array_first_count_one};
 use paging::PAGE_SIZE;
 use address::PhysicalAddress;
 use bootstrap_logging::Serial;

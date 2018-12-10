@@ -7,6 +7,7 @@
 
 const COM1: u16 = 0x3F8;
 
+/// Init the rs232 COM1. Must be called before logging anything.
 pub unsafe fn init_bootstrap_log() {
     let data_port       = COM1 + 0;
     let interrupt_port  = COM1 + 1;
@@ -27,6 +28,7 @@ pub unsafe fn init_bootstrap_log() {
     //mcr_port     .write(0x0B);                        // IRQs enabled, RTS/DSR set
 }
 
+/// Sends a string to COM1.
 pub fn bootstrap_log(string: &str) {
     let status_port = COM1 + 5;
     for byte in string.bytes() {
@@ -48,9 +50,18 @@ unsafe fn bootstrap_outb(port: u16, value: u8) {
     asm!("out $1, $0" : : "{al}"(value), "{dx}"(port) : "memory" : "intel", "volatile");
 }
 
+/// A logger that sends its output to COM1.
+///
+/// Use it like this:
+/// ```
+/// use ::core::fmt::Write;
+///
+/// write!(Serial, "I got {} problems, but logging ain't one", 99);
+/// ```
 pub struct Serial;
 
 impl ::core::fmt::Write for Serial {
+    /// Writes a string to COM1.
     fn write_str(&mut self, s: &str) -> Result<(), ::core::fmt::Error> {
         bootstrap_log(s);
         Ok(())

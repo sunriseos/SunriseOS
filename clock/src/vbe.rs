@@ -11,6 +11,7 @@ use font_rs::{font, font::{Font, GlyphBitmap}};
 use spin::{Mutex, MutexGuard, Once};
 use hashmap_core::HashMap;
 use syscalls;
+use libuser::error::Error;
 
 /// A rgb color
 #[derive(Copy, Clone, Debug)]
@@ -35,7 +36,7 @@ impl Framebuffer {
     ///
     /// This function should only be called once, to ensure there is only a
     /// single mutable reference to the underlying framebuffer.
-    pub fn new() -> Result<Framebuffer, usize> {
+    pub fn new() -> Result<Framebuffer, Error> {
         let (buf, width, height, bpp) = syscalls::map_framebuffer()?;
 
         //debug!("VBE vaddr: {:#010x}", buf.as_ptr() as usize);

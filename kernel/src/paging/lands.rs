@@ -10,18 +10,21 @@ use failure::Backtrace;
 /// A trait describing the splitting of virtual memory between Kernel and User.
 /// Implemented by UserLand and KernelLand
 pub trait VirtualSpaceLand {
+    /// The first address in this land.
     fn start_addr() -> VirtualAddress;
+
+    /// The last address in this land.
     fn end_addr() -> VirtualAddress;
 
-    /// The length of this land
+    /// The length of this land.
     fn length() -> usize { Self::end_addr().addr() - Self::start_addr().addr() + 1 }
 
-    /// The index in page directory of the first table of this land
+    /// The index in page directory of the first table of this land.
     fn start_table() -> usize {
         Self::start_addr().addr() / (PAGE_SIZE * ENTRY_COUNT) as usize
     }
 
-    /// The index in page directory of the last table of this land
+    /// The index in page directory of the last table of this land.
     fn end_table() -> usize {
         Self::end_addr().addr() / (PAGE_SIZE * ENTRY_COUNT) as usize
     }

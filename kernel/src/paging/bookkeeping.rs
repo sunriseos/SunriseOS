@@ -1,17 +1,13 @@
 //! Bookkeeping of mappings in UserLand
 
 use mem::VirtualAddress;
-use paging::{PAGE_SIZE, MappingFlags};
-use paging::lands::{UserLand, KernelLand, RecursiveTablesLand, VirtualSpaceLand};
-use frame_allocator::PhysicalMemRegion;
-use alloc::vec::Vec;
-use alloc::sync::Arc;
+use paging::lands::{KernelLand, RecursiveTablesLand, VirtualSpaceLand};
 use alloc::collections::BTreeMap;
-use error::{KernelError, UserspaceError};
+use error::KernelError;
 use super::error::MmError;
-use utils::{Splittable, check_aligned, check_nonzero_length};
+use utils::check_nonzero_length;
 use failure::Backtrace;
-use super::mapping::{Mapping, MappingType};
+use super::mapping::Mapping;
 
 /// A bookkeeping is just a list of Mappings
 ///
@@ -28,9 +24,19 @@ pub struct UserspaceBookkeeping {
 /// Because we do not store Available mappings internally, we need this enum to return
 /// a new available mappings, or a reference to the stored mapping.
 #[derive(Debug)]
+#[allow(missing_docs)]
 pub enum QueryMemory<'a> {
     Available(Mapping),
     Used(&'a Mapping)
+}
+
+impl<'a> QueryMemory<'a> {
+    pub fn as_ref(&self) -> &Mapping {
+        match self {
+            QueryMemory::Available(mem) => mem,
+            QueryMemory::Used(mem) => mem,
+        }
+    }
 }
 
 impl UserspaceBookkeeping {
@@ -80,7 +86,7 @@ impl UserspaceBookkeeping {
             // todo this could overflow for 0x00000000-0xffffffff.
         };
         QueryMemory::Available(
-            Mapping::new_available(address, length)
+            Mapping::new_available(start_addr, length)
                 .expect("Failed creating an available mapping")
         )
     }
@@ -166,7 +172,7 @@ impl UserspaceBookkeeping {
     /// Returns a KernelError if address falls in an available mapping.
     /// Returns a KernelError if the range spans multiple mappings.
     /// Returns a KernelError if the range falls in a Shared mapping, as it cannot be splitted.
-    pub fn remove_mapping_split(&mut self, address: VirtualAddress, length: usize) -> Result<Mapping, KernelError> {
+    pub fn remove_mapping_split(&mut self, _address: VirtualAddress, _length: usize) -> Result<Mapping, KernelError> {
         unimplemented!()
     }
 

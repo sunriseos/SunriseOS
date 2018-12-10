@@ -9,7 +9,7 @@ use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
 use event::Waitable;
-use sync::{RwLock, RwLockWriteGuard, SpinLockIRQ, SpinLock, Mutex, MutexGuard};
+use sync::{SpinLockIRQ, SpinLock, Mutex};
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use core::fmt::{self, Debug};
 use scheduler;
@@ -17,6 +17,7 @@ use error::{KernelError, UserspaceError};
 use ipc::{ServerPort, ClientPort, ServerSession, ClientSession};
 use mem::VirtualAddress;
 use failure::Backtrace;
+use frame_allocator::PhysicalMemRegion;
 
 /// The struct representing a process. There's one for every process.
 ///
@@ -121,9 +122,11 @@ pub enum Handle {
     ServerSession(ServerSession),
     ClientSession(ClientSession),
     Thread(Weak<ThreadStruct>),
+    SharedMemory(Arc<Vec<PhysicalMemRegion>>),
 }
 
 impl Handle {
+    /// Gets the handle as a [Waitable], or return a `UserspaceError` if the handle cannot be waited on.
     pub fn as_waitable(&self) -> Result<&Waitable, UserspaceError> {
         match self {
             &Handle::ReadableEvent(ref waitable) => Ok(&**waitable),
@@ -133,6 +136,7 @@ impl Handle {
         }
     }
 
+    /// Casts the handle as a [ClientPort], or returns a `UserspaceError`.
     pub fn as_client_port(&self) -> Result<ClientPort, UserspaceError> {
         if let &Handle::ClientPort(ref s) = self {
             Ok((*s).clone())
@@ -141,6 +145,7 @@ impl Handle {
         }
     }
 
+    /// Casts the handle as a [ServerSession], or returns a `UserspaceError`.
     pub fn as_server_session(&self) -> Result<ServerSession, UserspaceError> {
         if let &Handle::ServerSession(ref s) = self {
             Ok((*s).clone())
@@ -149,6 +154,7 @@ impl Handle {
         }
     }
 
+    /// Casts the handle as a [ClientSession], or returns a `UserspaceError`.
     pub fn as_client_session(&self) -> Result<ClientSession, UserspaceError> {
         if let &Handle::ClientSession(ref s) = self {
             Ok((*s).clone())
@@ -157,8 +163,17 @@ impl Handle {
         }
     }
 
+    /// Casts the handle as a Weak<[ThreadStruct]>, or returns a `UserspaceError`.
     pub fn as_thread_handle(&self) -> Result<Weak<ThreadStruct>, UserspaceError> {
         if let &Handle::Thread(ref s) = self {
+            Ok((*s).clone())
+        } else {
+            Err(UserspaceError::InvalidHandle)
+        }
+    }
+
+    pub fn as_shared_memory(&self) -> Result<Arc<Vec<PhysicalMemRegion>>, UserspaceError> {
+        if let &Handle::SharedMemory(ref s) = self {
             Ok((*s).clone())
         } else {
             Err(UserspaceError::InvalidHandle)
@@ -212,9 +227,13 @@ impl HandleTable {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(usize)]
 pub enum ThreadState {
+    /// Currently on the CPU.
     Running = 0,
+    /// Scheduled to be running.
     Scheduled = 1,
+    /// Not in the scheduled queue, waiting for an event.
     Stopped = 2,
+    /// Dying, will be unscheduled and dropped at syscall boundary.
     Killed = 3,
 }
 
@@ -230,6 +249,7 @@ impl ThreadState {
     }
 }
 
+/// Stores a ThreadState atomically.
 pub struct ThreadStateAtomic(AtomicUsize);
 
 impl Debug for ThreadStateAtomic {
@@ -238,6 +258,7 @@ impl Debug for ThreadStateAtomic {
     }
 }
 
+#[allow(missing_docs)]
 impl ThreadStateAtomic {
     pub fn new(state: ThreadState) -> ThreadStateAtomic {
         ThreadStateAtomic(AtomicUsize::new(state as usize))
@@ -415,7 +436,7 @@ impl ThreadStruct {
         let empty_hwcontext = SpinLockIRQ::new(ThreadHardwareContext::new());
 
         // the state of the process, Stopped
-        let state = ThreadStateAtomic::new((ThreadState::Stopped));
+        let state = ThreadStateAtomic::new(ThreadState::Stopped);
 
         let t = Arc::new(
             ThreadStruct {

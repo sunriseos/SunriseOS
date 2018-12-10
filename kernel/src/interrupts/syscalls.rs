@@ -2,26 +2,21 @@
 
 use i386;
 use mem::{VirtualAddress, PhysicalAddress};
-use mem::{FatPtr, UserSpacePtr, UserSpacePtrMut};
-use paging::{PAGE_SIZE, MappingFlags};
-use paging::lands::{UserLand, KernelLand};
-use frame_allocator::PhysicalMemRegion;
-use process::{Handle, ThreadStruct, ThreadState, ProcessStruct};
+use mem::{UserSpacePtr, UserSpacePtrMut};
+use paging::{MappingFlags, mapping::MappingType};
+use frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
+use process::{Handle, ThreadStruct, ProcessStruct};
 use event::{self, Waitable};
 use scheduler::{self, get_current_thread, get_current_process};
-use utils;
 use devices::pit;
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use core::mem;
-use core::sync::atomic::Ordering;
-use sync::SpinLockIRQ;
 use ipc;
-use error::{KernelError, UserspaceError};
-use kfs_libkern::{nr, SYSCALL_NAMES};
 use super::check_thread_killed;
+use error::UserspaceError;
+use kfs_libkern::{nr, SYSCALL_NAMES, MemoryInfo, MemoryAttributes, MemoryPermissions};
 
 extern fn ignore_syscall(nr: usize) -> Result<(), UserspaceError> {
     // TODO: Trigger "unknown syscall" signal, for userspace signal handling.
@@ -45,7 +40,7 @@ fn map_framebuffer() -> Result<(usize, usize, usize, usize), UserspaceError> {
     //let framebuffer_vaddr = memory.find_virtual_space::<UserLand>(frame_buffer_phys_region.size())?;
     // todo make user provide the address
     let framebuffer_vaddr = VirtualAddress(0x80000000);
-    memory.map_phys_region_to(frame_buffer_phys_region, framebuffer_vaddr, MappingFlags::u_rw());
+    memory.map_phys_region_to(frame_buffer_phys_region, framebuffer_vaddr, MappingFlags::u_rw())?;
 
     let addr = framebuffer_vaddr.0;
     let width = tag.framebuffer_dimensions().0 as usize;
@@ -54,7 +49,7 @@ fn map_framebuffer() -> Result<(usize, usize, usize, usize), UserspaceError> {
     Ok((addr, width, height, bpp))
 }
 
-fn create_interrupt_event(irq_num: usize, flag: u32) -> Result<usize, UserspaceError> {
+fn create_interrupt_event(irq_num: usize, _flag: u32) -> Result<usize, UserspaceError> {
     // TODO: Flags?
     let curproc = scheduler::get_current_process();
     let hnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ReadableEvent(Box::new(event::wait_event(irq_num)))));
@@ -236,6 +231,91 @@ fn create_port(max_sessions: u32, _is_light: bool, _name_ptr: UserSpacePtr<[u8; 
     Ok((clienthnd as _, serverhnd as _))
 }
 
+fn create_shared_memory(size: u32, _myperm: u32, _otherperm: u32) -> Result<usize, UserspaceError> {
+    let frames = FrameAllocator::allocate_frames_fragmented(size as usize)?;
+    let handle = Arc::new(Handle::SharedMemory(Arc::new(frames)));
+    let curproc = get_current_process();
+    let hnd = curproc.phandles.lock().add_handle(handle);
+    Ok(hnd as _)
+}
+
+fn map_shared_memory(handle: u32, addr: usize, size: usize, perm: u32) -> Result<(), UserspaceError> {
+    let perm = MemoryPermissions::from_bits(perm).ok_or(UserspaceError::InvalidMemPerms)?;
+    let curproc = get_current_process();
+    let mem = curproc.phandles.lock().get_handle(handle)?.as_shared_memory()?;
+    // TODO: RE the switch: can we map a subsection of a shared memory?
+    if size != mem.iter().map(|v| v.size()).sum() {
+        return Err(UserspaceError::InvalidSize)
+    }
+    curproc.pmemory.lock().map_shared_mapping(mem, VirtualAddress(addr), perm.into())?;
+    Ok(())
+}
+
+fn unmap_shared_memory(handle: u32, addr: usize, size: usize) -> Result<(), UserspaceError> {
+    let curproc = get_current_process();
+    let hmem = curproc.phandles.lock().get_handle(handle)?.as_shared_memory()?;
+    let addr = VirtualAddress(addr);
+    let mut memlock = curproc.pmemory.lock();
+    {
+        let qmem = memlock.query_memory(addr)?;
+        let mapping = qmem.as_ref();
+
+        // Check that the given addr/size covers the full mapping.
+        // TODO: Can we unmap a subsection of a shared memory?
+        // BODY: I am unsure if it is allowed to unmap a subsection of a shared memory mapping.
+        // This will require some reverse engineering work.
+        if mapping.address() != addr {
+            return Err(UserspaceError::InvalidAddress)
+        }
+        if mapping.length() != size {
+            return Err(UserspaceError::InvalidSize)
+        }
+
+        // Check that we have the correct shared mapping.
+        match mapping.mtype_ref() {
+            MappingType::Shared(ref cmem) if Arc::ptr_eq(&hmem, cmem) => (),
+            _ => return Err(UserspaceError::InvalidAddress)
+        }
+    }
+    // We know that mapping = addr + size, and we know that handle == mapping.
+    // Let's unmap.
+    memlock.unmap(addr, size)?;
+    Ok(())
+}
+
+#[inline(never)]
+fn query_memory(mut meminfo: UserSpacePtrMut<MemoryInfo>, _unk: usize, addr: usize) -> Result<usize, UserspaceError> {
+    let curproc = scheduler::get_current_process();
+    let memlock = curproc.pmemory.lock();
+    let qmem = memlock.query_memory(VirtualAddress(addr))?;
+    let mapping = qmem.as_ref();
+    *meminfo = MemoryInfo {
+        baseaddr: mapping.address().addr(),
+        size: mapping.length(),
+        memtype: mapping.mtype_ref().into(),
+        // TODO: Handle MemoryAttributes and refcounts in query_memory
+        // BODY: QueryMemory gives userspace the ability to query if a memory
+        // area is being used as an IPC buffer or a device address space. We
+        // should implement this.
+        memattr: MemoryAttributes::empty(),
+        perms: mapping.flags().into(),
+        ipc_ref_count: 0,
+        device_ref_count: 0,
+    };
+    // TODO: PageInfo Handling
+    // BODY: Properly return Page Information. The horizon/NX page-info stuff
+    //       is not really documented yet, so this will require some RE work.
+    Ok(0)
+}
+
+fn create_session(_is_light: bool, _unk: usize) -> Result<(usize, usize), UserspaceError> {
+    let (server, client) = ipc::session::new();
+    let curproc = scheduler::get_current_process();
+    let serverhnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ServerSession(server)));
+    let clienthnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ClientSession(client)));
+    Ok((serverhnd as _, clienthnd as _))
+}
+
 impl Registers {
     fn apply0(&mut self, ret: Result<(), UserspaceError>) {
         self.apply3(ret.map(|_| (0, 0, 0)))
@@ -290,8 +370,6 @@ pub struct Registers {
 
 // TODO: Get a 6th argument in by putting the syscall_nr in the interrupt struct.
 pub extern fn syscall_handler_inner(registers: &mut Registers) {
-    use logger::Logger;
-    use devices::rs232::SerialLogger;
 
     let (syscall_nr, x0, x1, x2, x3, x4, x5) = (registers.eax, registers.ebx, registers.ecx, registers.edx, registers.esi, registers.edi, registers.ebp);
 
@@ -300,21 +378,26 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
 
     match syscall_nr {
         // Horizon-inspired syscalls!
+        nr::QueryMemory => registers.apply1(query_memory(UserSpacePtrMut(x0 as _), x1, x2)),
         nr::ExitProcess => registers.apply0(exit_process()),
         nr::CreateThread => registers.apply1(create_thread(x0, x1, x2, x3 as _, x4 as _)),
         nr::StartThread => registers.apply0(start_thread(x0 as _)),
         nr::ExitThread => registers.apply0(exit_thread()),
         nr::SleepThread => registers.apply0(sleep_thread(x0)),
+        nr::MapSharedMemory => registers.apply0(map_shared_memory(x0 as _, x1 as _, x2 as _, x3 as _)),
+        nr::UnmapSharedMemory => registers.apply0(unmap_shared_memory(x0 as _, x1 as _, x2 as _)),
         nr::CloseHandle => registers.apply0(close_handle(x0 as _)),
         nr::WaitSynchronization => registers.apply1(wait_synchronization(UserSpacePtr::from_raw_parts(x0 as _, x1), x2)),
         nr::ConnectToNamedPort => registers.apply1(connect_to_named_port(UserSpacePtr(x0 as _))),
         nr::SendSyncRequestWithUserBuffer => registers.apply0(send_sync_request_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), x2 as _)),
         nr::OutputDebugString => registers.apply0(output_debug_string(UserSpacePtr::from_raw_parts(x0 as _, x1))),
+        nr::CreateSession => registers.apply2(create_session(x0 != 0, x1 as _)),
         nr::AcceptSession => registers.apply1(accept_session(x0 as _)),
         // TODO: We need one more register for the timeout. Sad panda.
         // The ARM64 spec allows x0-x7 as input arguments, so *ideally* we need 2
         // more registers.
         nr::ReplyAndReceiveWithUserBuffer => registers.apply1(reply_and_receive_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), UserSpacePtr::from_raw_parts(x2 as _, x3), x4 as _, x5)),
+        nr::CreateSharedMemory => registers.apply1(create_shared_memory(x0 as _, x1 as _, x2 as _)),
         nr::CreateInterruptEvent => registers.apply1(create_interrupt_event(x0, x1 as u32)),
         nr::CreatePort => registers.apply2(create_port(x0 as _, x1 != 0, UserSpacePtr(x2 as _))),
         nr::ManageNamedPort => registers.apply1(manage_named_port(UserSpacePtr(x0 as _), x1 as _)),

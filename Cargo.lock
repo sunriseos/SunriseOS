@@ -96,6 +96,7 @@ dependencies = [
  "arrayvec 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "bit_field 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "bitflags 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "kfs-libutils 0.1.0",
  "lazy_static 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "multiboot2 0.5.0 (git+https://github.com/roblabla/multiboot2-elf64)",
  "smallvec 0.6.4 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -119,7 +120,6 @@ dependencies = [
 name = "kfs-kernel"
 version = "0.1.0"
 dependencies = [
- "arrayvec 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "bit_field 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "bitfield 0.13.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "bitflags 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -156,6 +156,7 @@ dependencies = [
  "bit_field 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "bitfield 0.13.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "byteorder 1.2.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "failure 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "kfs-libkern 0.1.0",
  "kfs-libutils 0.1.0",
  "linked_list_allocator 0.6.3 (registry+https://github.com/rust-lang/crates.io-index)",

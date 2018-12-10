@@ -2,11 +2,12 @@
 
 use mem::VirtualAddress;
 use paging::{PAGE_SIZE, MappingFlags, error::MmError};
-use error::{KernelError, ArithmeticOperation};
+use error::KernelError;
 use frame_allocator::PhysicalMemRegion;
 use alloc::{vec::Vec, sync::Arc};
 use utils::{check_aligned, check_nonzero_length, Splittable};
 use failure::Backtrace;
+use kfs_libkern;
 
 /// A memory mapping.
 /// Stores the address, the length, and the type it maps.
@@ -33,12 +34,40 @@ pub struct Mapping {
 /// They will be de-allocated when this enum is dropped.
 #[derive(Debug)]
 pub enum MappingType {
+    /// Available, nothing is stored there. Accessing to it will page fault.
+    /// An allocation can use this region.
     Available,
+    /// Guarded, like Available, but nothing can be allocated here.
+    /// Used to implement guard pages.
     Guarded,
+    /// Regular, a region known only by this process.
+    /// Access rights are stored in Mapping.mtype.
     Regular(Vec<PhysicalMemRegion>),
 //    Stack(Vec<PhysicalMemRegion>),
+    /// Shared, a region that can be mapped in multiple processes.
+    /// Access rights are stored in Mapping.mtype.
     Shared(Arc<Vec<PhysicalMemRegion>>),
-    SystemReserved // used for anything that UserSpace isn't authorized to address
+    /// SystemReserved, used to denote the KernelLand and other similar regions that the user
+    /// cannot access, and shouldn't know anything more about.
+    /// Cannot be unmapped, nor modified in any way.
+    SystemReserved
+}
+
+impl<'a> From<&'a MappingType> for kfs_libkern::MemoryType {
+    fn from(ty: &'a MappingType) -> kfs_libkern::MemoryType {
+        match ty {
+            // TODO: Extend MappingType to cover all MemoryTypes
+            // BODY: Currently, MappingType only covers a very limited view of the mappings.
+            // It should have the ability to understand all the various kind of memory allocations,
+            // such as "Heap", "CodeMemory", "SharedMemory", "TransferMemory", etc...
+
+            MappingType::Available => kfs_libkern::MemoryType::Unmapped,
+            MappingType::Guarded => kfs_libkern::MemoryType::Reserved,
+            MappingType::Regular(_) => kfs_libkern::MemoryType::Normal,
+            MappingType::Shared(_) => kfs_libkern::MemoryType::SharedMemory,
+            MappingType::SystemReserved => kfs_libkern::MemoryType::Reserved,
+        }
+    }
 }
 
 impl Mapping {
@@ -159,7 +188,7 @@ impl Splittable for Mapping {
                 MappingType::Guarded => MappingType::Guarded,
                 MappingType::Regular(ref mut frames) => MappingType::Regular(frames.split_at(offset)?.unwrap()),
             //    MappingType::Stack(ref mut frames) => MappingType::Stack(frames.split_at(offset)?.unwrap()),
-                MappingType::Shared(arc) => return Err(KernelError::MmError(
+                MappingType::Shared(_) => return Err(KernelError::MmError(
                                                        MmError::SharedMapping { backtrace: Backtrace::new() })),
                 MappingType::SystemReserved => panic!("shouldn't split a SystemReserved mapping"),
             },

@@ -5,49 +5,10 @@ use paging::error::MmError;
 use mem::VirtualAddress;
 use core::fmt::{self, Display};
 
-#[derive(Debug, Clone, Copy)]
-pub enum UserspaceError {
-    InvalidKernelCaps = 14,
-    NotImplemented = 33,
-    InvalidSize = 101,
-    InvalidAddress = 102,
-    // SlabheapFull = 103,
-    MemoryFull = 104,
-    HandleTableFull = 105,
-    // InvalidMemState = 106,
-    // InvalidMemPerms = 108,
-    // InvalidMemRange = 110,
-    // InvalidThreadPrio = 112,
-    // InvalidProcId = 113,
-    InvalidHandle = 114,
-    CopyFromUserFailed = 115,
-    InvalidCombination = 116,
-    Timeout = 117,
-    Canceled = 118,
-    ExceedingMaximum = 119,
-    // InvalidEnum = 120,
-    NoSuchEntry = 121,
-    // AlreadyRegistered = 122,
-    PortRemoteDead = 123,
-    // UnhandledInterrupt = 124,
-    ProcessAlreadyStarted = 125,
-    // ReservedValue = 126,
-    // InvalidHardwareBreakpoint = 127,
-    // FatalException = 128,
-    // LastThreadNotYours = 129,
-    // PortMaxSessions = 131,
-    // ResourceLimitExceeded = 132,
-    // CommandBufferTooSmall = 260,
-    // ProcessNotBeingDebugged = 520
-}
-
-impl UserspaceError {
-    pub fn make_ret(self) -> usize {
-        ((self as usize) << 9) | 1
-    }
-}
+pub use kfs_libkern::error::KernelError as UserspaceError;
 
 #[derive(Debug, Clone, Copy)]
+#[allow(missing_docs)]
 pub enum ArithmeticOperation { Add, Sub, Mul, Div, Mod, Pow }
 
 impl Display for ArithmeticOperation {
@@ -63,7 +24,15 @@ impl Display for ArithmeticOperation {
     }
 }
 
+/// Kernel Error.
+///
+/// Used pretty much everywhere that an error can occur. Holds the reason of the error,
+/// and a backtrace of its origin, for debug.
+///
+/// When a KernelError must be propagated to userspace, i.e. a syscall failed, it must be
+/// converted to a [UserspaceError].
 #[derive(Debug, Fail)]
+#[allow(missing_docs)]
 pub enum KernelError {
     #[fail(display = "Frame allocation error: physical address space exhausted")]
     PhysicalMemoryExhaustion {
@@ -117,6 +86,15 @@ impl From<KernelError> for UserspaceError {
             KernelError::PhysicalMemoryExhaustion { .. } => UserspaceError::MemoryFull,
             KernelError::VirtualMemoryExhaustion { .. } => UserspaceError::MemoryFull,
             KernelError::ThreadAlreadyStarted { .. } => UserspaceError::ProcessAlreadyStarted,
+            KernelError::InvalidAddress { .. } => UserspaceError::InvalidAddress,
+            KernelError::ZeroLengthError { .. } => UserspaceError::InvalidSize,
+            // TODO: AlignementError should discriminate unaligned size and unaligned address
+            // BODY: We can only convey InvalidSize and InvalidAddress to userspace.
+            // BODY: We should define two check functions, that work on a either size or an address,
+            // BODY: and can propagate the right error to userspace automatically.
+            // BODY:
+            // BODY: We must then remove KernelError::AlignmentError.
+            KernelError::AlignmentError { .. } => UserspaceError::InvalidAddress,
             //KernelError::
             KernelError::ThisWillNeverHappenButPleaseDontMatchExhaustively => unreachable!(),
             // todo

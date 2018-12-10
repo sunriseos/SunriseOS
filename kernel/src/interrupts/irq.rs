@@ -1,19 +1,16 @@
-use i386::pio::Pio;
-use io::Io;
 use i386::structures::idt::ExceptionStackFrame;
-use core::fmt::Write;
 use devices::pic;
-use logger::Loggers;
 
 fn acknowledge_irq(irq: u8) {
     pic::get().acknowledge(irq)
 }
 
-extern "x86-interrupt" fn timer_handler(stack_frame: &mut ExceptionStackFrame) {
+extern "x86-interrupt" fn timer_handler(_stack_frame: &mut ExceptionStackFrame) {
     // TODO: Reroute this into a generic interrupt system?
     acknowledge_irq(0);
 }
 
+#[allow(unused)]
 macro_rules! irq_handler_none {
     ($irq:expr, $name:ident) => {{
         extern "x86-interrupt" fn $name(stack_frame: &mut ExceptionStackFrame) {
@@ -26,7 +23,7 @@ macro_rules! irq_handler_none {
 
 macro_rules! irq_handler {
     ($irq:expr, $name:ident) => {{
-        extern "x86-interrupt" fn $name(stack_frame: &mut ExceptionStackFrame) {
+        extern "x86-interrupt" fn $name(_stack_frame: &mut ExceptionStackFrame) {
             acknowledge_irq($irq);
             ::event::dispatch_event($irq);
         }
