@@ -24,6 +24,25 @@ extern fn ignore_syscall(nr: usize) -> Result<(), UserspaceError> {
     Err(UserspaceError::NotImplemented)
 }
 
+/// Resize the heap of a process, just like a brk.
+/// It can both expand, and shrink the heap.
+///
+/// If `new_size` == 0, the heap space is entirely de-allocated.
+///
+/// # Return
+///
+/// The address of the start of the heap.
+///
+/// # Error
+///
+/// * `new_size` must be [PAGE_SIZE] aligned.
+fn set_heap_size(new_size: usize) -> Result<usize, UserspaceError> {
+    let p = get_current_process();
+    let mut pmemory = p.pmemory.lock();
+    let heap_addr = pmemory.resize_heap(new_size)?;
+    Ok(heap_addr.addr())
+}
+
 /// Maps the vga frame buffer mmio in userspace memory
 fn map_framebuffer() -> Result<(usize, usize, usize, usize), UserspaceError> {
     let tag = i386::multiboot::get_boot_information().framebuffer_info_tag()
@@ -39,7 +58,7 @@ fn map_framebuffer() -> Result<(usize, usize, usize, usize), UserspaceError> {
     let mut memory = process.pmemory.lock();
     //let framebuffer_vaddr = memory.find_virtual_space::<UserLand>(frame_buffer_phys_region.size())?;
     // todo make user provide the address
-    let framebuffer_vaddr = VirtualAddress(0x80000000);
+    let framebuffer_vaddr = VirtualAddress(0x40000000);
     memory.map_phys_region_to(frame_buffer_phys_region, framebuffer_vaddr, MappingFlags::u_rw())?;
 
     let addr = framebuffer_vaddr.0;
@@ -378,6 +397,7 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
 
     match syscall_nr {
         // Horizon-inspired syscalls!
+        nr::SetHeapSize => registers.apply1(set_heap_size(x0)),
         nr::QueryMemory => registers.apply1(query_memory(UserSpacePtrMut(x0 as _), x1, x2)),
         nr::ExitProcess => registers.apply0(exit_process()),
         nr::CreateThread => registers.apply1(create_thread(x0, x1, x2, x3 as _, x4 as _)),
