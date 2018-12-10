@@ -1,28 +1,31 @@
 //! VESA Bios Extensions Framebuffer
-//! and VBE logger
 
 use alloc::prelude::*;
-//use utils;
-//use i386::mem::paging::{self, EntryFlags, PageTablesSet};
-//use frame_alloc::PhysicalAddress;
-//use multiboot2::{BootInformation, FramebufferInfoTag};
-//use logger::{Logger, LogAttributes, LogColor};
-//use font_rs::{font, font::{Font, GlyphBitmap}};
 use spin::{Mutex, MutexGuard, Once};
 use hashmap_core::HashMap;
 use syscalls;
 use libuser::error::Error;
+use core::slice;
 
 /// A rgb color
 #[derive(Copy, Clone, Debug)]
+#[repr(C)]
 pub struct VBEColor {
     b: u8,
     g: u8,
     r: u8,
+    a: u8, // Unused
+}
+
+/// Some colors for the vbe
+impl VBEColor {
+    pub fn rgb(r: u8, g: u8, b: u8) -> VBEColor {
+        VBEColor {r, g, b, a: 0 }
+    }
 }
 
 pub struct Framebuffer {
-    buf: &'static mut [u8],
+    buf: &'static mut [VBEColor],
     width: usize,
     height: usize,
     bpp: usize
@@ -30,7 +33,7 @@ pub struct Framebuffer {
 
 
 impl Framebuffer {
-    /// Creates an instance of the linear framebuffer from a multiboot2 BootInfo.
+    /// Creates an instance of the linear framebuffer.
     ///
     /// # Safety
     ///
@@ -39,9 +42,8 @@ impl Framebuffer {
     pub fn new() -> Result<Framebuffer, Error> {
         let (buf, width, height, bpp) = syscalls::map_framebuffer()?;
 
-        //debug!("VBE vaddr: {:#010x}", buf.as_ptr() as usize);
         let mut fb = Framebuffer {
-            buf,
+            buf: unsafe { slice::from_raw_parts_mut(buf as *mut _ as *mut _ as *mut VBEColor, buf.len() / 4) },
             width,
             height,
             bpp
@@ -71,11 +73,15 @@ impl Framebuffer {
     }
 
     /// Gets the offset in memory of a pixel based on an x and y.
-    /// Does not guaranty that the result is valid, it can fall outside the
-    /// screen if x or y are to big.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `y >= self.height()` or `x >= self.width()`
     #[inline]
     pub fn get_px_offset(&self, x: usize, y: usize) -> usize {
-        (y * self.width() + x) * (self.bpp() / 8)
+        assert!(y < self.height());
+        assert!(x < self.width());
+        (y * self.width() + x)
     }
 
     /// Writes a pixel in the framebuffer respecting the bgr pattern
@@ -85,9 +91,7 @@ impl Framebuffer {
     /// Panics if offset is invalid
     #[inline]
     pub fn write_px(&mut self, offset: usize, color: &VBEColor) {
-        self.buf[offset + 0] = color.b;
-        self.buf[offset + 1] = color.g;
-        self.buf[offset + 2] = color.r;
+        self.buf[offset] = *color;
     }
 
     /// Writes a pixel in the framebuffer respecting the bgr pattern
@@ -99,22 +103,25 @@ impl Framebuffer {
     #[inline]
     pub fn write_px_at(&mut self, x: usize, y: usize, color: &VBEColor) {
         let offset = self.get_px_offset(x, y);
-        if offset == 4096000 {
-            syscalls::output_debug_string(&format!("What the fuck: {} {}", x, y));
-        }
         self.write_px(offset, color);
     }
 
-    pub fn get_fb(&mut self) -> &mut [u8] {
+    /// Gets the underlying framebuffer
+    pub fn get_fb(&mut self) -> &mut [VBEColor] {
         self.buf
     }
 
     /// Clears the whole screen
     pub fn clear(&mut self) {
         let fb = self.get_fb();
-        for i in fb.iter_mut() { *i = 0x00; }
+        for i in fb.iter_mut() { *i = VBEColor::rgb(0, 0, 0); }
     }
 
+    /// Clears a segment of the screen.
+    ///
+    /// # Panics
+    ///
+    /// Panics if x + width or y + height falls outside the framebuffer.
     pub fn clear_at(&mut self, x: usize, y: usize, width: usize, height: usize) {
         for y in y..y + height {
             for x in x..x + width {
@@ -126,11 +133,4 @@ impl Framebuffer {
 
 lazy_static! {
     pub static ref FRAMEBUFFER: Mutex<Framebuffer> = Mutex::new(Framebuffer::new().unwrap());
-}
-
-/// Some colors for the vbe
-impl VBEColor {
-    pub fn rgb(r: u8, g: u8, b: u8) -> VBEColor {
-        VBEColor {r, g, b }
-    }
 }

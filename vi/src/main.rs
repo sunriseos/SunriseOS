@@ -21,7 +21,7 @@ extern crate lazy_static;
 
 mod vbe;
 
-use vbe::{VBEColor, FRAMEBUFFER};
+use vbe::{VBEColor, FRAMEBUFFER, Framebuffer};
 use core::cmp::{min, max};
 use alloc::prelude::*;
 use alloc::sync::{Arc, Weak};
@@ -101,7 +101,7 @@ fn get_intersect((atop, aleft, awidth, aheight): (u32, u32, u32, u32), (btop, bl
 }
 
 /// Draw a portion of a buffer onto the framebuffer.
-fn draw(buf: &Buffer, top: u32, left: u32, width: u32, height: u32) {
+fn draw(buf: &Buffer, framebuffer: &mut Framebuffer, top: u32, left: u32, width: u32, height: u32) {
     unsafe {
         // TODO: Safety of the vi::draw IPC method
         // BODY: When calling vi::draw, vi reads from the shared memory. There is
@@ -110,24 +110,21 @@ fn draw(buf: &Buffer, top: u32, left: u32, width: u32, height: u32) {
         // BODY: have some kind of cross-process mutex? How to implement this
         // BODY: properly?
         let data = buf.mem.get();
-        let (dtop, dleft, dwidth, dheight) = buf.get_real_bounds(width, height);
+        let (dtop, dleft, dwidth, dheight) = buf.get_real_bounds(framebuffer.width() as u32, framebuffer.height() as u32);
         // Calculate first offset in data
-        let mut framebuffer = FRAMEBUFFER.lock();
         if let Some(intersect) = get_intersect((dtop, dleft, dwidth, dheight), (top, left, width, height)) {
             let (top, left, width, height) = intersect;
             let mut curtop = top;
             while curtop < top + height {
                 let mut curleft = left;
                 while curleft < left + width {
-                    let dataidx = ((curtop as i32 - buf.top) as u32 * width + (curleft as i32 - buf.left) as u32) * 4;
-                    let fbidx = framebuffer.get_px_offset(curleft as usize, curtop as usize);
+                    let dataidx = (((curtop as i32 - buf.top) as u32 * width + (curleft as i32 - buf.left) as u32) * 4) as usize;
+                    let fbidx = framebuffer.get_px_offset(curleft as usize, curtop as usize) as usize;
                     // TODO: Vi: Implement alpha blending
                     // BODY: Vi currently does not do alpha blending at all.
                     // BODY: In the interest of pretty transparent window, this
                     // BODY: needs fixing!
-                    framebuffer.get_fb()[fbidx as usize + 0] = data[dataidx as usize + 0];
-                    framebuffer.get_fb()[fbidx as usize + 1] = data[dataidx as usize + 1];
-                    framebuffer.get_fb()[fbidx as usize + 2] = data[dataidx as usize + 2];
+                    framebuffer.get_fb()[fbidx] = VBEColor::rgb(data[dataidx + 2], data[dataidx + 1], data[dataidx + 0]);
                     curleft += 1;
                 }
                 curtop += 1;
@@ -154,8 +151,8 @@ impl Buffer {
     fn get_real_bounds(&self, framebuffer_width: u32, framebuffer_height: u32) -> (u32, u32, u32, u32) {
         let dtop = min(max(self.top, 0) as u32, framebuffer_height);
         let dleft = min(max(self.left, 0) as u32, framebuffer_width);
-        let dwidth = min(framebuffer_height - dtop, self.height);
-        let dheight = min(framebuffer_width - dleft, self.width);
+        let dheight = min(framebuffer_height - dtop, self.height);
+        let dwidth = min(framebuffer_width - dleft, self.width);
         (dtop, dleft, dwidth, dheight)
     }
 }
@@ -169,14 +166,15 @@ impl Drop for IBuffer {
     /// Redraw the zone where the buffer was when dropping it, to make sure it
     /// disappears.
     fn drop(&mut self) {
-        let (dtop, dleft, dwidth, dheight) = self.buffer.get_real_bounds(FRAMEBUFFER.lock().width() as u32, FRAMEBUFFER.lock().height() as u32);
-        FRAMEBUFFER.lock().clear_at(dleft as _, dtop as _, dwidth as _, dheight as _);
+        let mut framebuffer = FRAMEBUFFER.lock();
+        let (dtop, dleft, dwidth, dheight) = self.buffer.get_real_bounds(framebuffer.width() as u32, framebuffer.height() as u32);
+        framebuffer.clear_at(dleft as _, dtop as _, dwidth as _, dheight as _);
         BUFFERS.lock().retain(|buffer| {
             if let Some(buffer) = buffer.upgrade() {
                 if Arc::ptr_eq(&self.buffer, &buffer) {
                     false
                 } else {
-                    draw(&*buffer, dtop, dleft, dwidth, dheight);
+                    draw(&*buffer, &mut *framebuffer, dtop, dleft, dwidth, dheight);
                     true
                 }
             } else {
@@ -197,11 +195,12 @@ object! {
             // BODY: amount of flickering on the screen. We should look into
             // BODY: better compositing algorithms, maybe we don't need to redraw
             // BODY: the whole screen all the time? And also, look into VSYNC.
-            let (dtop, dleft, dwidth, dheight) = self.buffer.get_real_bounds(FRAMEBUFFER.lock().width() as u32, FRAMEBUFFER.lock().height() as u32);
-            FRAMEBUFFER.lock().clear_at(dleft as _, dtop as _, dwidth as _, dheight as _);
+            let mut framebuffer = FRAMEBUFFER.lock();
+            let (dtop, dleft, dwidth, dheight) = self.buffer.get_real_bounds(framebuffer.width() as u32, framebuffer.height() as u32);
+            framebuffer.clear_at(dleft as _, dtop as _, dwidth as _, dheight as _);
             BUFFERS.lock().retain(|buffer| {
                 if let Some(buffer) = buffer.upgrade() {
-                    draw(&*buffer, dtop, dleft, dwidth, dheight);
+                    draw(&*buffer, &mut *framebuffer, dtop, dleft, dwidth, dheight);
                     true
                 } else {
                     false
