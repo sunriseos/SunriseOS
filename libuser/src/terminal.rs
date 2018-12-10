@@ -41,7 +41,18 @@ const FONT_SIZE: u32 = 10;
 
 /// Window creation requested size.
 pub enum WindowSize {
-    Fullscreen, FontLines(i32, bool), Manual(i32, i32, u32, u32)
+    /// Takes the full screen.
+    Fullscreen,
+    /// Takes a given amount of lines.
+    ///
+    /// The boolean controls whether we draw from the top or the bottom.
+    ///
+    /// If the amount of lines is negative, then the window will take the whole
+    /// screen size, minus the given amount of lines.
+    FontLines(i32, bool),
+    /// Manually position the window at the given x/y, with a given width and
+    /// height.
+    Manual(i32, i32, u32, u32)
 }
 
 impl Terminal {
@@ -56,12 +67,19 @@ impl Terminal {
 
         let my_linespace = my_descent + my_ascent;
 
+        // TODO: Terminal - Get window size from vi
+        // BODY: Terminal defines a fullscreen size as 1280 * 800, but should
+        // BODY: really get it from vi instead. 
         let framebuffer = match size {
             WindowSize::Fullscreen => Window::new(0, 0, 1280, 800)?,
             WindowSize::FontLines(lines, is_bottom) => {
                 let height = if lines < 0 {
                     let max_lines = 800 / my_linespace;
                     my_linespace * ((max_lines as i32) + lines) as usize
+                } else if lines == 1 {
+                    // Orycterope's fault. Scrolling expects at least one line
+                    // available above it.
+                    (my_linespace + 1) as usize
                 } else {
                     my_linespace * lines as usize
                 };

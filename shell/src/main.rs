@@ -17,7 +17,7 @@ mod ps2;
 use libuser::syscalls;
 use libuser::io;
 use libuser::sm;
-use libuser::window::Window;
+use libuser::window::{Window, Color};
 use libuser::terminal::{Terminal, WindowSize};
 
 use core::fmt::Write;
@@ -78,10 +78,7 @@ fn show_gif(louis: &[u8]) {
             for x in 0..(reader.width() as usize) {
                 let frame_coord = (y * reader.width() as usize + x) * 4;
                 let vbe_coord = (y * window.width() + x) * 4;
-                window.get_fb()[vbe_coord] = buf[frame_coord + 2];
-                window.get_fb()[vbe_coord + 1] = buf[frame_coord + 1];
-                window.get_fb()[vbe_coord + 2] = buf[frame_coord];
-                window.get_fb()[vbe_coord + 3] = 0xFF;
+                window.get_fb()[vbe_coord] = Color::rgb(buf[frame_coord], buf[frame_coord + 1], buf[frame_coord + 2]);
             }
         }
         window.draw().unwrap();
