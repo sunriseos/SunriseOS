@@ -116,13 +116,13 @@ macro_rules! object {
     // Note: we're taking self as an independant parameter to make sure we don't
     // break hygiene.
     (@rewriteargs ($($meta:meta),*), $funcname:ident, ($($lifetime:lifetime),*), $self:ident, ($($argname:ident : $argty:ty),*), ($($ret:tt)*), $body:block, $name:ident : Handle<copy>, $($rest:tt)*) => {
-        object!(@rewriteargs ($($meta:meta),*), $funcname, ($($lifetime),*), $self, ($($argname: $argty,)* $name: Handle), ($($ret)*), $body, $($rest)*);
+        object!(@rewriteargs ($($meta),*), $funcname, ($($lifetime),*), $self, ($($argname: $argty,)* $name: Handle), ($($ret)*), $body, $($rest)*);
     };
     (@rewriteargs ($($meta:meta),*), $funcname:ident, ($($lifetime:lifetime),*), $self:ident, ($($argname:ident : $argty:ty),*), ($($ret:tt)*), $body:block, $name:ident : Handle<move>, $($rest:tt)*) => {
-        object!(@rewriteargs ($($meta:meta),*), $funcname, ($($lifetime),*), $self, ($($argname: $argty,)* $name: Handle), ($($ret)*), $body, $($rest)*);
+        object!(@rewriteargs ($($meta),*), $funcname, ($($lifetime),*), $self, ($($argname: $argty,)* $name: Handle), ($($ret)*), $body, $($rest)*);
     };
     (@rewriteargs ($($meta:meta),*), $funcname:ident, ($($lifetime:lifetime),*), $self:ident, ($($argname:ident : $argty:ty),*), ($($ret:tt)*), $body:block, $name:ident : $ty:ty, $($rest:tt)*) => {
-        object!(@rewriteargs ($($meta:meta),*), $funcname, ($($lifetime),*), $self, ($($argname: $argty,)* $name: $ty), ($($ret)*), $body, $($rest)*);
+        object!(@rewriteargs ($($meta),*), $funcname, ($($lifetime),*), $self, ($($argname: $argty,)* $name: $ty), ($($ret)*), $body, $($rest)*);
     };
     (@rewriteargs ($($meta:meta),*), $funcname:ident, ($($lifetime:lifetime),*), $self:ident, ($($args:tt)*), ($($ret:tt)*), $body:block, ) => {
         $(#[$meta])*
