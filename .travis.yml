@@ -15,8 +15,7 @@ before_install:
 
 script:
 - cargo make iso
-# TODO: Run tests.
-
-# TODO: Create an ISO artifact on release.
+- cargo make iso-release
+- cargo test
 
 cache: cargo
