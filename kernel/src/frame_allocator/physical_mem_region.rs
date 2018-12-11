@@ -50,13 +50,12 @@ impl PhysicalMemRegion {
     /// * Panics if any of the frames in this span wasn't marked as reserved in
     /// the [FrameAllocator], as it could had mistakenly given it as regular ram.
     pub unsafe fn on_fixed_mmio(start_addr: PhysicalAddress, len: usize) -> Self {
-        let region = PhysicalMemRegion {
+        assert!(FrameAllocator::check_is_reserved(start_addr, len));
+        PhysicalMemRegion {
             start_addr: align_down(start_addr.addr(), PAGE_SIZE),
             frames: div_ceil(len, PAGE_SIZE),
             should_free_on_drop: false
-        };
-        assert!(FrameAllocator::check_is_reserved(&region));
-        region
+        }
     }
 
     /// Constructs a `PhysicalMemRegion` from a physical address, and a len.
@@ -83,13 +82,12 @@ impl PhysicalMemRegion {
                    "PhysicalMemRegion must be constructed from a framesize-aligned pointer");
         assert_eq!(len % PAGE_SIZE, 0,
                    "PhysicalMemRegion must have a framesize-aligned length");
-        let region = PhysicalMemRegion {
+        assert!(FrameAllocator::check_is_allocated(physical_addr, len));
+        PhysicalMemRegion {
             start_addr: physical_addr.addr(),
             frames: len / PAGE_SIZE,
             should_free_on_drop: true
-        };
-        assert!(FrameAllocator::check_is_allocated(&region));
-        region
+        }
     }
 
     /// Constructs a `PhysicalMemRegion` from a physical address, and a len.

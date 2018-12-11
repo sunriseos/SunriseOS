@@ -107,7 +107,7 @@ impl FrameAllocatorTraitPrivate for FrameAllocator {
         // don't bother taking the lock if there is no frames to free
         if region.frames > 0 {
             debug!("Freeing {:?}", region);
-            assert!(Self::check_is_allocated(region), "PhysMemRegion beeing freed was not allocated");
+            assert!(Self::check_is_allocated(region.address(), region.size()), "PhysMemRegion beeing freed was not allocated");
             let mut allocator = FRAME_ALLOCATOR.lock();
             assert!(allocator.initialized, "The frame allocator was not initialized");
             allocator.memory_bitmap.set_bits_area(
@@ -118,15 +118,17 @@ impl FrameAllocatorTraitPrivate for FrameAllocator {
         }
     }
 
-    /// Checks that a physical region was allocated.
+    /// Checks that a physical region is marked allocated.
+    ///
+    /// Rounds address and length.
     ///
     /// # Panic
     ///
     /// * Panics if FRAME_ALLOCATOR was not initialized.
-    fn check_is_allocated(region: &PhysicalMemRegion) -> bool {
+    fn check_is_allocated(address: PhysicalAddress, length: usize) -> bool {
         let allocator = FRAME_ALLOCATOR.lock();
         assert!(allocator.initialized, "The frame allocator was not initialized");
-        region.into_iter().all(|frame: PhysicalAddress| {
+        (address.floor()..(address + length).ceil()).step_by(PAGE_SIZE).all(|frame| {
             let frame_index = addr_to_frame(frame.addr());
             allocator.memory_bitmap.get_bit(frame_index) == FRAME_OCCUPIED
         })
@@ -136,12 +138,14 @@ impl FrameAllocatorTraitPrivate for FrameAllocator {
     /// This implementation does not distinguish between allocated and reserved frames,
     /// so for us it's equivalent to `check_is_allocated`.
     ///
+    /// Rounds address and length.
+    ///
     /// # Panic
     ///
     /// * Panics if FRAME_ALLOCATOR was not initialized.
-    fn check_is_reserved(region: &PhysicalMemRegion) -> bool {
+    fn check_is_reserved(address: PhysicalAddress, length: usize) -> bool {
         // we have no way to distinguish between 'allocated' and 'reserved'
-        Self::check_is_allocated(region)
+        Self::check_is_allocated(address, length)
     }
 }
 
