@@ -8,6 +8,7 @@ use core::mem;
 use core::fmt::{Formatter, Error, Display, Debug, LowerHex};
 use error::{KernelError, ArithmeticOperation};
 use failure::Backtrace;
+use core::iter::Step;
 
 use paging::PAGE_SIZE;
 use utils::{align_down, align_up, div_ceil};
@@ -175,6 +176,24 @@ impl VirtualAddress {
 
     /// Rounds up PAGE_SIZE.
     pub fn ceil(self) -> VirtualAddress { VirtualAddress(round_to_page_upper(self.0)) }
+}
+
+impl core::iter::Step for PhysicalAddress {
+    fn steps_between(start: &Self, end: &Self) -> Option<usize> { Step::steps_between(&start.0, &end.0) }
+    fn replace_one(&mut self) -> Self { PhysicalAddress(Step::replace_one(&mut self.0)) }
+    fn replace_zero(&mut self) -> Self { PhysicalAddress(Step::replace_zero(&mut self.0)) }
+    fn add_one(&self) -> Self { PhysicalAddress(Step::add_one(&self.0)) }
+    fn sub_one(&self) -> Self { PhysicalAddress(Step::sub_one(&self.0)) }
+    fn add_usize(&self, n: usize) -> Option<Self> { self.0.add_usize(n).map(PhysicalAddress) }
+}
+
+impl core::iter::Step for VirtualAddress {
+    fn steps_between(start: &Self, end: &Self) -> Option<usize> { Step::steps_between(&start.0, &end.0) }
+    fn replace_one(&mut self) -> Self { VirtualAddress(Step::replace_one(&mut self.0)) }
+    fn replace_zero(&mut self) -> Self { VirtualAddress(Step::replace_zero(&mut self.0)) }
+    fn add_one(&self) -> Self { VirtualAddress(Step::add_one(&self.0)) }
+    fn sub_one(&self) -> Self { VirtualAddress(Step::sub_one(&self.0)) }
+    fn add_usize(&self, n: usize) -> Option<Self> { self.0.add_usize(n).map(VirtualAddress) }
 }
 
 #[repr(transparent)]
