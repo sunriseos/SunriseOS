@@ -169,7 +169,7 @@ impl FrameAllocatorTrait for FrameAllocator {
         assert!(allocator.initialized, "The frame allocator was not initialized");
 
         let mut start_index = 0usize;
-        while start_index + nr_frames < allocator.memory_bitmap.bit_length() {
+        while start_index + nr_frames <= allocator.memory_bitmap.bit_length() {
             let mut temp_len = 0usize;
             loop {
                 match allocator.memory_bitmap.get_bit(start_index + temp_len) {
@@ -222,7 +222,7 @@ impl FrameAllocatorTrait for FrameAllocator {
         let mut collected_regions = Vec::new();
         let mut current_hole = PhysicalMemRegion { start_addr: 0, frames: 0, should_free_on_drop: true };
         // while requested is still obtainable.
-        while addr_to_frame(current_hole.start_addr) + (requested - collected_frames) < allocator_lock.memory_bitmap.bit_length() {
+        while addr_to_frame(current_hole.start_addr) + (requested - collected_frames) <= allocator_lock.memory_bitmap.bit_length() {
             while current_hole.frames < requested - collected_frames {
                 // compute current hole's size
                 let considered_frame = addr_to_frame(current_hole.start_addr) + current_hole.frames;
