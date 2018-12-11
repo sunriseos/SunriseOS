@@ -195,7 +195,7 @@ impl Splittable for Vec<PhysicalMemRegion> {
                 // ok, split the vec in two parts
                 let mut vec_right = self.split_off(split_pos_in_vec);
                 // and split right vec's first region
-                match self.first_mut().unwrap().right_split(offset - length_acc)? {
+                match vec_right.first_mut().unwrap().right_split(offset - length_acc)? {
                     None => Ok(Some(vec_right)), // did not require splitting a region
                     Some(region_left) => {
                         self.push(region_left);
