@@ -206,3 +206,247 @@ impl Splittable for Vec<PhysicalMemRegion> {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::super::{FrameAllocator, FrameAllocatorTrait};
+    use super::{PhysicalMemRegion, PhysicalMemRegionIter};
+    use utils::Splittable;
+    use mem::PhysicalAddress;
+    use paging::PAGE_SIZE;
+
+    #[test]
+    #[should_panic]
+    fn on_fixed_mmio_checks_reserved() {
+        let _f = ::frame_allocator::init();
+        unsafe { PhysicalMemRegion::on_fixed_mmio(PhysicalAddress(0x00000000), PAGE_SIZE) };
+    }
+
+    #[test]
+    fn on_fixed_mmio_rounds_unaligned() {
+        let _f = ::frame_allocator::init();
+        // reserve them so we don't panic
+        ::frame_allocator::mark_frame_bootstrap_allocated(PhysicalAddress(0));
+        ::frame_allocator::mark_frame_bootstrap_allocated(PhysicalAddress(PAGE_SIZE));
+
+        let region = unsafe { PhysicalMemRegion::on_fixed_mmio(PhysicalAddress(0x00000007), PAGE_SIZE + 1) };
+        assert_eq!(region.start_addr, 0);
+        assert_eq!(region.frames, 2);
+    }
+
+    #[test]
+    #[should_panic]
+    fn reconstruct_checks_was_allocated() {
+        let _f = ::frame_allocator::init();
+        unsafe { PhysicalMemRegion::reconstruct(PhysicalAddress(0), 4 * PAGE_SIZE) };
+    }
+
+    #[test]
+    #[should_panic]
+    fn reconstruct_too_long() {
+        let _f = ::frame_allocator::init();
+        unsafe { PhysicalMemRegion::reconstruct(PhysicalAddress(4 * PAGE_SIZE), 64 * PAGE_SIZE) };
+    }
+
+    #[test]
+    fn reconstruct_no_dealloc_doesnt_dealloc() {
+        let _f = ::frame_allocator::init();
+        let region = FrameAllocator::allocate_region(PAGE_SIZE).unwrap();
+        let addr = region.address();
+        ::core::mem::forget(region);
+        let reconstruct = unsafe { PhysicalMemRegion::reconstruct_no_dealloc(addr, PAGE_SIZE)};
+        // drop shouldn't deallocate it
+        drop(reconstruct);
+        // meaning that we can reconstruct once again:
+        let reconstruct = unsafe { PhysicalMemRegion::reconstruct_no_dealloc(addr, PAGE_SIZE)};
+        drop(reconstruct);
+    }
+
+    #[test]
+    fn iterate_zero() {
+        let region = PhysicalMemRegion { frames: 0, start_addr: 0, should_free_on_drop: false };
+        assert_eq!(region.into_iter().count(), 0);
+    }
+
+    #[test]
+    fn iterate_one() {
+        let region = PhysicalMemRegion { frames: 1, start_addr: 0, should_free_on_drop: false };
+        assert_eq!(region.into_iter().count(), 1);
+    }
+
+    #[test]
+    fn iterate_five() {
+        let region = PhysicalMemRegion { frames: 5, start_addr: 0, should_free_on_drop: false };
+        assert_eq!(region.into_iter().count(), 5);
+    }
+
+    #[test]
+    fn splittable_unaligned() {
+        let mut left = PhysicalMemRegion { frames: 4, start_addr: 0, should_free_on_drop: false };
+        left.split_at(7).unwrap_err();
+    }
+
+    #[test]
+    fn splittable_len_zero_a() {
+        let mut left = PhysicalMemRegion { frames: 0, start_addr: 0, should_free_on_drop: false };
+        let right = left.split_at(PAGE_SIZE).unwrap();
+        assert!(right.is_none())
+    }
+
+    #[test]
+    fn splittable_len_zero_b() {
+        let mut left = PhysicalMemRegion { frames: 0, start_addr: 0, should_free_on_drop: false };
+        let right = left.split_at(0).unwrap();
+        assert!(right.is_none())
+    }
+
+    #[test]
+    fn splittable_split_at_zero() {
+        let mut left = PhysicalMemRegion { frames: 4, start_addr: 0, should_free_on_drop: false };
+        let right = left.split_at(0).unwrap();
+        assert!(right.is_none())
+    }
+
+    #[test]
+    fn splittable_split_at_too_big() {
+        let mut left = PhysicalMemRegion { frames: 4, start_addr: 0, should_free_on_drop: false };
+        let right = left.split_at(4 * PAGE_SIZE).unwrap();
+        assert!(right.is_none())
+    }
+
+    #[test]
+    fn splittable_split_at() {
+        let mut left = PhysicalMemRegion { frames: 4, start_addr: 0, should_free_on_drop: false };
+        let right_opt = left.split_at(3 * PAGE_SIZE).unwrap();
+        let right = right_opt.unwrap();
+        assert_eq!(left.start_addr, 0);
+        assert_eq!(left.frames, 3);
+        assert_eq!(right.start_addr, 3 * PAGE_SIZE);
+        assert_eq!(right.frames, 1);
+    }
+
+    #[test]
+    fn splittable_right_split_at() {
+        let mut right = PhysicalMemRegion { frames: 4, start_addr: 0, should_free_on_drop: false };
+        let left_opt = right.right_split(3 * PAGE_SIZE).unwrap();
+        let left = left_opt.unwrap();
+        assert_eq!(left.start_addr, 0);
+        assert_eq!(left.frames, 3);
+        assert_eq!(right.start_addr, 3 * PAGE_SIZE);
+        assert_eq!(right.frames, 1);
+    }
+
+    #[test]
+    fn right_split_unaligned() {
+        let mut right = PhysicalMemRegion { frames: 4, start_addr: 0, should_free_on_drop: false };
+        right.split_at(7).unwrap_err();
+    }
+
+    #[test]
+    fn right_split_len_zero_a() {
+        let mut right = PhysicalMemRegion { frames: 0, start_addr: 0, should_free_on_drop: false };
+        let left = right.split_at(PAGE_SIZE).unwrap();
+        assert!(left.is_none())
+
+    }
+
+    #[test]
+    fn right_split_len_zero_b() {
+        let mut right = PhysicalMemRegion { frames: 0, start_addr: 0, should_free_on_drop: false };
+        let left = right.split_at(0).unwrap();
+        assert!(left.is_none())
+    }
+
+    #[test]
+    fn right_split_split_at_zero() {
+        let mut right = PhysicalMemRegion { frames: 4, start_addr: 0, should_free_on_drop: false };
+        let left = right.split_at(0).unwrap();
+        assert!(left.is_none())
+    }
+
+    #[test]
+    fn right_split_split_at_too_big() {
+        let mut right = PhysicalMemRegion { frames: 4, start_addr: 0, should_free_on_drop: false };
+        let left = right.split_at(4 * PAGE_SIZE).unwrap();
+        assert!(left.is_none())
+    }
+
+    #[test]
+    fn split_physmemregion_vec() {
+        let region1 = PhysicalMemRegion { frames: 3, start_addr: 0, should_free_on_drop: false };
+        let region2 = PhysicalMemRegion { frames: 2, start_addr: 16 * PAGE_SIZE, should_free_on_drop: false };
+        let mut left = vec![region1, region2];
+        let right_opt = left.split_at(PAGE_SIZE).unwrap();
+        let right = right_opt.unwrap();
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].frames, 1);
+        assert_eq!(right.len(), 2);
+        assert_eq!(right[0].frames, 2);
+        assert_eq!(right[1].frames, 2);
+        assert_eq!(right[0].start_addr, PAGE_SIZE);
+    }
+
+    #[test]
+    fn split_physmemregion_vec_exact_cut() {
+        let region1 = PhysicalMemRegion { frames: 3, start_addr: 0, should_free_on_drop: false };
+        let region2 = PhysicalMemRegion { frames: 2, start_addr: 16 * PAGE_SIZE, should_free_on_drop: false };
+        let region3 = PhysicalMemRegion { frames: 5, start_addr: 32 * PAGE_SIZE, should_free_on_drop: false };
+        let mut left = vec![region1, region2, region3];
+        let right_opt = left.split_at(3 * PAGE_SIZE).unwrap();
+        let right = right_opt.unwrap();
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].frames, 3);
+        assert_eq!(left[0].start_addr, 0);
+        assert_eq!(right.len(), 2);
+        assert_eq!(right[0].frames, 2);
+        assert_eq!(right[0].start_addr, 16 * PAGE_SIZE);
+        assert_eq!(right[1].frames, 5);
+        assert_eq!(right[1].start_addr, 32 * PAGE_SIZE);
+    }
+
+    #[test]
+    fn split_physmemregion_vec_threshold() {
+        let region1 = PhysicalMemRegion { frames: 3, start_addr: 0, should_free_on_drop: false };
+        let region2 = PhysicalMemRegion { frames: 2, start_addr: 16 * PAGE_SIZE, should_free_on_drop: false };
+        let region3 = PhysicalMemRegion { frames: 5, start_addr: 32 * PAGE_SIZE, should_free_on_drop: false };
+        let mut left = vec![region1, region2, region3];
+        let right_opt = left.split_at(9 * PAGE_SIZE).unwrap();
+        let right = right_opt.unwrap();
+        assert_eq!(left.len(), 3);
+        assert_eq!(left[0].frames, 3);
+        assert_eq!(left[0].start_addr, 0);
+        assert_eq!(left[1].frames, 2);
+        assert_eq!(left[1].start_addr, 16 * PAGE_SIZE);
+        assert_eq!(left[2].frames, 4);
+        assert_eq!(left[2].start_addr, 32 * PAGE_SIZE);
+        assert_eq!(right.len(), 1);
+        assert_eq!(right[0].frames, 1);
+        assert_eq!(right[0].start_addr, (32 + 4) * PAGE_SIZE);
+    }
+
+    #[test]
+    fn split_physmemregion_vec_unaligned() {
+        let region1 = PhysicalMemRegion { frames: 3, start_addr: 0, should_free_on_drop: false };
+        let region2 = PhysicalMemRegion { frames: 2, start_addr: 16 * PAGE_SIZE, should_free_on_drop: false };
+        let mut left = vec![region1, region2];
+        left.split_at(7).unwrap_err();
+    }
+
+    #[test]
+    fn split_physmemregion_vec_zero() {
+        let region1 = PhysicalMemRegion { frames: 3, start_addr: 0, should_free_on_drop: false };
+        let region2 = PhysicalMemRegion { frames: 2, start_addr: 16 * PAGE_SIZE, should_free_on_drop: false };
+        let mut left = vec![region1, region2];
+        let right = left.split_at(0).unwrap();
+        assert!(right.is_none());
+    }
+
+    #[test]
+    fn split_physmemregion_vec_too_big() {
+        let region1 = PhysicalMemRegion { frames: 3, start_addr: 0, should_free_on_drop: false };
+        let region2 = PhysicalMemRegion { frames: 2, start_addr: 16 * PAGE_SIZE, should_free_on_drop: false };
+        let mut left = vec![region1, region2];
+        let right = left.split_at(5 * PAGE_SIZE).unwrap();
+        assert!(right.is_none());
+    }
+}
