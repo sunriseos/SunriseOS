@@ -82,6 +82,9 @@ object! {
 /// Used to draw the framebuffer.
 static BUFFERS: Mutex<Vec<Weak<Buffer>>> = Mutex::new(Vec::new());
 
+/// The backbuffer to draw into.
+static BACKBUFFER_ARR: Mutex<[VBEColor; 1280 * 800]> = Mutex::new([VBEColor::rgb(0, 0, 0); 1280 * 800]);
+
 /// Gets the intersection between two rectangles.
 fn get_intersect((atop, aleft, awidth, aheight): (u32, u32, u32, u32), (btop, bleft, bwidth, bheight): (u32, u32, u32, u32)) -> Option<(u32, u32, u32, u32)> {
     if atop > (btop + bheight) || btop > atop + aheight {
@@ -166,7 +169,8 @@ impl Drop for IBuffer {
     /// Redraw the zone where the buffer was when dropping it, to make sure it
     /// disappears.
     fn drop(&mut self) {
-        let mut framebuffer = FRAMEBUFFER.lock();
+        let mut backbuffer_arr = BACKBUFFER_ARR.lock();
+        let mut framebuffer = Framebuffer::new_buffer(&mut *backbuffer_arr, 1280, 800, 32);
         let (dtop, dleft, dwidth, dheight) = self.buffer.get_real_bounds(framebuffer.width() as u32, framebuffer.height() as u32);
         framebuffer.clear_at(dleft as _, dtop as _, dwidth as _, dheight as _);
         BUFFERS.lock().retain(|buffer| {
@@ -174,13 +178,14 @@ impl Drop for IBuffer {
                 if Arc::ptr_eq(&self.buffer, &buffer) {
                     false
                 } else {
-                    draw(&*buffer, &mut *framebuffer, dtop, dleft, dwidth, dheight);
+                    draw(&*buffer, &mut framebuffer, dtop, dleft, dwidth, dheight);
                     true
                 }
             } else {
                 false
             }
         });
+        FRAMEBUFFER.lock().get_fb().copy_from_slice(framebuffer.get_fb());
     }
 }
 
@@ -190,22 +195,19 @@ object! {
         #[cmdid(0)]
         #[inline(never)]
         fn draw(&mut self, ) -> Result<(), Error> {
-            // TODO: Vi: Heavy flickering.
-            // BODY: When drawing the whole screen, we can see some extreme
-            // BODY: amount of flickering on the screen. We should look into
-            // BODY: better compositing algorithms, maybe we don't need to redraw
-            // BODY: the whole screen all the time? And also, look into VSYNC.
-            let mut framebuffer = FRAMEBUFFER.lock();
+            let mut backbuffer_arr = BACKBUFFER_ARR.lock();
+            let mut framebuffer = Framebuffer::new_buffer(&mut *backbuffer_arr, 1280, 800, 32);
             let (dtop, dleft, dwidth, dheight) = self.buffer.get_real_bounds(framebuffer.width() as u32, framebuffer.height() as u32);
             framebuffer.clear_at(dleft as _, dtop as _, dwidth as _, dheight as _);
             BUFFERS.lock().retain(|buffer| {
                 if let Some(buffer) = buffer.upgrade() {
-                    draw(&*buffer, &mut *framebuffer, dtop, dleft, dwidth, dheight);
+                    draw(&*buffer, &mut framebuffer, dtop, dleft, dwidth, dheight);
                     true
                 } else {
                     false
                 }
             });
+            FRAMEBUFFER.lock().get_fb().copy_from_slice(framebuffer.get_fb());
             Ok(())
         }
     }

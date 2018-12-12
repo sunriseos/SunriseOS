@@ -19,27 +19,27 @@ pub struct VBEColor {
 
 /// Some colors for the vbe
 impl VBEColor {
-    pub fn rgb(r: u8, g: u8, b: u8) -> VBEColor {
+    pub const fn rgb(r: u8, g: u8, b: u8) -> VBEColor {
         VBEColor {r, g, b, a: 0 }
     }
 }
 
-pub struct Framebuffer {
-    buf: &'static mut [VBEColor],
+pub struct Framebuffer<'a> {
+    buf: &'a mut [VBEColor],
     width: usize,
     height: usize,
     bpp: usize
 }
 
 
-impl Framebuffer {
+impl<'a> Framebuffer<'a> {
     /// Creates an instance of the linear framebuffer.
     ///
     /// # Safety
     ///
     /// This function should only be called once, to ensure there is only a
     /// single mutable reference to the underlying framebuffer.
-    pub fn new() -> Result<Framebuffer, Error> {
+    pub fn new() -> Result<Framebuffer<'static>, Error> {
         let (buf, width, height, bpp) = syscalls::map_framebuffer()?;
 
         let mut fb = Framebuffer {
@@ -50,6 +50,10 @@ impl Framebuffer {
         };
         fb.clear();
         Ok(fb)
+    }
+
+    pub fn new_buffer(buf: &'a mut [VBEColor], width: usize, height: usize, bpp: usize) -> Framebuffer<'a> {
+        Framebuffer { buf, width, height, bpp }
     }
 
     /// framebuffer width in pixels. Does not account for bpp
@@ -132,5 +136,5 @@ impl Framebuffer {
 }
 
 lazy_static! {
-    pub static ref FRAMEBUFFER: Mutex<Framebuffer> = Mutex::new(Framebuffer::new().unwrap());
+    pub static ref FRAMEBUFFER: Mutex<Framebuffer<'static>> = Mutex::new(Framebuffer::new().unwrap());
 }
