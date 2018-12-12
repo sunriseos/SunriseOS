@@ -44,7 +44,7 @@ const FRAMES_BITMAP_SIZE: usize = usize::max_value() / PAGE_SIZE / 8 + 1;
 
 /// For unit tests we use a much smaller array.
 #[cfg(test)]
-const FRAMES_BITMAP_SIZE: usize = 64;
+const FRAMES_BITMAP_SIZE: usize = 32 / 8;
 
 /// Gets the frame number from a physical address
 #[inline]
@@ -263,6 +263,7 @@ impl FrameAllocatorTrait for FrameAllocator {
 
 /// Initialize the [FrameAllocator] by parsing the multiboot information
 /// and marking some memory areas as unusable
+#[cfg(not(test))]
 pub fn init(boot_info: &BootInformation) {
     let mut allocator = FRAME_ALLOCATOR.lock();
 
@@ -328,6 +329,37 @@ pub fn init(boot_info: &BootInformation) {
         }
     }
     allocator.initialized = true
+}
+
+/// When testing we use a much simpler bitmap.
+#[cfg(test)]
+pub fn init() -> FrameAllocatorInitialized {
+    let mut allocator = FRAME_ALLOCATOR.lock();
+    assert_eq!(allocator.initialized, false, "frame_allocator::init() was called twice");
+
+    // make it all available
+    mark_area_free(&mut allocator.memory_bitmap, 0, FRAMES_BITMAP_SIZE * 8 * PAGE_SIZE);
+
+    // reserve one frame, in the middle, just for fun
+    mark_area_reserved(&mut allocator.memory_bitmap, PAGE_SIZE * 3, PAGE_SIZE * 3 + 1);
+
+    allocator.initialized = true;
+
+    FrameAllocatorInitialized(())
+}
+
+/// Because tests are run in the same binary, a test might forget to re-initialize the frame allocator,
+/// which will cause it to run on the previous test's frame allocator state.
+///
+/// We prevent that by returning a special structure that every test must keep in its scope.
+/// When the test finishes, it is dropped, and it automatically marks the frame allocator uninitialized again.
+#[cfg(test)]
+#[must_use]
+pub struct FrameAllocatorInitialized(());
+
+#[cfg(test)]
+impl ::core::ops::Drop for FrameAllocatorInitialized {
+    fn drop(&mut self) { FRAME_ALLOCATOR.lock().initialized = false; }
 }
 
 /// Marks a physical memory area as reserved and will never give it when requesting a frame.
