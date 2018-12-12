@@ -77,12 +77,13 @@ pub fn div_ceil<T: Num + Copy>(a: T, b: T) -> T {
 #[macro_export]
 macro_rules! enum_with_val {
     ($(#[$meta:meta])* $vis:vis struct $ident:ident($ty:ty) {
-        $($variant:ident = $num:expr),* $(,)*
+        $($(#[$varmeta:meta])* $variant:ident = $num:expr),* $(,)*
     }) => {
         $(#[$meta])*
+        #[repr(transparent)]
         $vis struct $ident($ty);
         impl $ident {
-            $($vis const $variant: $ident = $ident($num);)*
+            $($(#[$varmeta])* $vis const $variant: $ident = $ident($num);)*
         }
 
         impl ::core::fmt::Debug for $ident {
