@@ -1,6 +1,7 @@
 //! A messy crate with various utilities shared between the user and kernel code.
 //! Should probably be further split into several useful libraries.
 
+#![feature(asm)]
 #![no_std]
 #![warn(missing_docs)]
 
@@ -12,6 +13,7 @@ use num_traits::Num;
 use core::ops::{Not, BitAnd};
 use core::fmt::Write;
 
+pub mod io;
 mod cursor;
 pub use cursor::*;
 

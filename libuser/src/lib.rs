@@ -25,7 +25,6 @@ extern crate font_rs;
 extern crate hashmap_core;
 
 pub mod syscalls;
-pub mod io;
 pub mod types;
 pub mod ipc;
 pub mod sm;
@@ -34,6 +33,8 @@ pub mod error;
 pub mod allocator;
 pub mod terminal;
 pub mod window;
+
+pub use kfs_libutils::io;
 
 use kfs_libutils as utils;
 use error::{Error, LibuserError};

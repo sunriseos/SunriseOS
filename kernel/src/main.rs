@@ -48,6 +48,7 @@ extern crate mashup;
 
 use core::fmt::Write;
 use alloc::prelude::*;
+use utils::io;
 
 pub mod paging;
 pub mod event;
@@ -60,7 +61,6 @@ pub mod interrupts;
 pub mod frame_allocator;
 
 pub mod heap_allocator;
-pub mod io;
 pub mod devices;
 pub mod sync;
 pub mod process;
