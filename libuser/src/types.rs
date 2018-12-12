@@ -3,6 +3,8 @@ use syscalls;
 use core::num::NonZeroU32;
 use kfs_libkern::MemoryPermissions;
 use error::{Error, KernelError};
+use ipc::{Message, MessageTy};
+use core::mem;
 
 // Guarantees: A Handle is a u32. An Option<Handle> is *also* a u32, with None
 // represented as 0 - useful for the ReplyTarget argument of ReplyAndReceive.
@@ -47,6 +49,22 @@ impl ClientSession {
     pub fn send_sync_request_with_user_buffer(&self, buf: &mut [u8]) -> Result<(), Error> {
         syscalls::send_sync_request_with_user_buffer(buf, self)
             .map_err(|v| v.into())
+    }
+
+    pub fn into_handle(self) -> Handle {
+        let handle = Handle((self.0).0);
+        mem::forget(self);
+        handle
+    }
+}
+
+impl Drop for ClientSession {
+    fn drop(&mut self) {
+        let mut buf = [0; 0x100];
+		    let mut msg = Message::<(), [_; 0], [_; 0], [_; 0]>::new_request(None, 1);
+        msg.set_ty(MessageTy::Close);
+        msg.pack(&mut buf[..]);
+		    let _ = self.send_sync_request_with_user_buffer(&mut buf[..]);
     }
 }
 
@@ -126,6 +144,7 @@ impl SharedMemory {
     }
 }
 
+#[derive(Debug)]
 pub struct MappedSharedMemory {
     handle: SharedMemory,
     addr: usize,

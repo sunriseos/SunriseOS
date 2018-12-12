@@ -21,14 +21,19 @@ extern crate kfs_libutils;
 extern crate kfs_libkern;
 #[macro_use]
 extern crate failure;
+extern crate font_rs;
+extern crate hashmap_core;
 
 pub mod syscalls;
 pub mod io;
 pub mod types;
 pub mod ipc;
 pub mod sm;
+pub mod vi;
 pub mod error;
 pub mod allocator;
+pub mod terminal;
+pub mod window;
 
 use kfs_libutils as utils;
 use error::{Error, LibuserError};

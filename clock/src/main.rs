@@ -1,22 +1,14 @@
 #![feature(alloc, used)]
 #![no_std]
 
-extern crate kfs_libuser as libuser;
+extern crate kfs_libuser;
 #[macro_use]
 extern crate alloc;
-extern crate font_rs;
-extern crate spin;
-extern crate hashmap_core;
-#[macro_use]
-extern crate lazy_static;
 
-mod vbe;
-mod logger;
-
-use vbe::VBELogger;
-
-use libuser::io::{self, Io};
-use libuser::syscalls;
+use kfs_libuser::terminal::{Terminal, WindowSize};
+use kfs_libuser::vi;
+use kfs_libuser::io::{self, Io};
+use kfs_libuser::syscalls;
 use core::fmt::Write;
 
 struct Rtc {
@@ -99,6 +91,8 @@ fn main() {
 
     rtc.enable_update_ended_int();
 
+    let mut logger = Terminal::new(WindowSize::FontLines(1, true)).unwrap();
+
     loop {
         syscalls::wait_synchronization(&[irq.0.as_ref()], None).unwrap();
         let intkind = rtc.read_interrupt_kind();
@@ -123,7 +117,7 @@ fn main() {
             }
 
             syscalls::output_debug_string(&format!("{:02}:{:02}:{:02} {} {:02} {} {}", hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year));
-            write!(&mut VBELogger, "\n{:02}:{:02}:{:02} {} {:02} {} {}", hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year);
+            write!(&mut logger, "\n{:02}:{:02}:{:02} {} {:02} {} {}", hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year);
         }
     }
 }

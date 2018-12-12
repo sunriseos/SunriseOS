@@ -1,9 +1,10 @@
 use io::{Io, Pio};
 use core::sync::atomic::{AtomicBool, Ordering::SeqCst};
 use alloc::string::String;
-use logger::{Logger, Loggers};
 use libuser::syscalls;
 use libuser::types::ReadableEvent;
+use libuser::terminal::Terminal;
+use core::fmt::Write;
 
 struct PS2 {
     status_port: Pio<u8>,
@@ -339,11 +340,12 @@ pub fn try_read_key() -> Option<char> {
     PRIMARY_PS2.try_read_key()
 }
 
-pub fn get_next_line() -> String {
+pub fn get_next_line(logger: &mut Terminal) -> String {
     let mut ret = String::from("");
     loop {
         let key = read_key();
-        Loggers.print(&format!("{}", key));
+        write!(logger, "{}", key);
+        logger.draw().unwrap();
         if key == '\n' {
             return ret;
         } else if key == '\x08' {

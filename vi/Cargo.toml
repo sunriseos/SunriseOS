@@ -5,6 +5,7 @@ authors = ["roblabla <unfiltered@roblab.la>"]
 
 [dependencies]
 kfs-libuser = { path = "../libuser" }
+kfs-libutils = { path = "../libutils" }
 spin = "0.4"
 hashmap_core = "0.1.9"
 
