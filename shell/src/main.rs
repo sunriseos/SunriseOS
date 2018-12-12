@@ -77,7 +77,7 @@ fn show_gif(louis: &[u8]) {
         for y in 0..(reader.height() as usize) {
             for x in 0..(reader.width() as usize) {
                 let frame_coord = (y * reader.width() as usize + x) * 4;
-                let vbe_coord = (y * window.width() + x) * 4;
+                let vbe_coord = window.get_px_offset(x, y);
                 window.get_fb()[vbe_coord] = Color::rgb(buf[frame_coord], buf[frame_coord + 1], buf[frame_coord + 2]);
             }
         }
