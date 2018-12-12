@@ -90,7 +90,7 @@ impl Terminal {
                 };
                 Window::new(top as i32, 0, 1280, height as u32)?
             }
-            WindowSize::Manual(top, left, width, height) => Window::new(0, 0, width, height)?
+            WindowSize::Manual(top, left, width, height) => Window::new(top, left, width, height)?
         };
 
         Ok(Terminal {
@@ -165,7 +165,7 @@ impl Terminal {
     }
 
     /// Clears the whole screen and reset cursor
-    fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.framebuffer.clear();
         self.cursor_pos = Pos { x: 0, y: self.ascent };
     }

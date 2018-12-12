@@ -74,13 +74,13 @@ pub struct ServerSession(pub Handle);
 
 impl ServerSession {
     pub fn receive(&self, buf: &mut [u8], timeout: Option<usize>) -> Result<(), Error> {
-        syscalls::reply_and_receive_with_user_buffer(buf, &[self.0.as_ref()], None, timeout).map(|v| ())
+        syscalls::reply_and_receive_with_user_buffer(buf, &[self.0.as_ref()], None, timeout).map(|_| ())
             .map_err(|v| v.into())
     }
 
     pub fn reply(&self, buf: &mut [u8]) -> Result<(), Error> {
         syscalls::reply_and_receive_with_user_buffer(buf, &[], Some(self.0.as_ref()), Some(0))
-            .map(|v| ())
+            .map(|_| ())
             .or_else(|v| if KernelError::Timeout == v {
                 Ok(())
             } else {

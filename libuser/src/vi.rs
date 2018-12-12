@@ -53,11 +53,11 @@ impl IBuffer {
         use ipc::Message;
         let mut buf = [0; 0x100];
 
-        let mut msg = Message::<(), [_; 0], [_; 0], [_; 0]>::new_request(None, 0);
+        let msg = Message::<(), [_; 0], [_; 0], [_; 0]>::new_request(None, 0);
         msg.pack(&mut buf[..]);
 
         self.0.send_sync_request_with_user_buffer(&mut buf[..])?;
-        let mut res : Message<(), [_; 0], [_; 0], [_; 1]> = Message::unpack(&buf[..]);
+        let res : Message<(), [_; 0], [_; 0], [_; 1]> = Message::unpack(&buf[..]);
         res.error()?;
         Ok(())
     }
