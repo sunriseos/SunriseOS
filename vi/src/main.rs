@@ -142,8 +142,8 @@ fn draw(buf: &Buffer, framebuffer: &mut Framebuffer, top: u32, left: u32, width:
 fn get_real_bounds((top, left, width, height): (i32, i32, u32, u32), framebuffer_width: u32, framebuffer_height: u32) -> (u32, u32, u32, u32) {
     let dtop = min(max(top, 0) as u32, framebuffer_height);
     let dleft = min(max(left, 0) as u32, framebuffer_width);
-    let dheight = min(framebuffer_height - dtop, min(height, (top + height as i32) as u32));
-    let dwidth = min(framebuffer_width - dleft, min(width, (left + width as i32) as u32));
+    let dwidth = min(max(left + width as i32, 0) as u32, framebuffer_width) - dleft;
+    let dheight = min(max(top + height as i32, 0) as u32, framebuffer_height) - dtop;
     (dtop, dleft, dwidth, dheight)
 }
 
@@ -281,5 +281,11 @@ mod tests {
     #[test]
     fn check_get_real_bounds_topheight() {
         assert_eq!(get_real_bounds((-15, 0, 1280, 1000), 1280, 800), (0, 0, 1280, 800));
+    }
+
+    /// Checks that cropping works if we are faaaaaaaar to the left.
+    #[test]
+    fn check_get_real_bounds_pedantic() {
+        assert_eq!(get_real_bounds((-5000, 0, 1280, 1000), 1280, 800), (0, 0, 1280, 0));
     }
 }
