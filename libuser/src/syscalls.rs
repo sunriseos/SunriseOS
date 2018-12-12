@@ -108,6 +108,12 @@ pub unsafe fn set_heap_size(new_size: usize) -> Result<usize, KernelError> {
     Ok(heap_address_base)
 }
 
+/// Query information about an address. Will always fetch the lowest page-aligned
+/// mapping that contains the provided address.
+///
+/// # Return
+///
+/// Information about the mapping the address fell into, and an unknown usize.
 pub fn query_memory(addr: usize) -> Result<(MemoryInfo, usize), KernelError> {
     let mut meminfo = MemoryInfo::default();
     let (pageinfo, ..) = unsafe {
@@ -116,6 +122,7 @@ pub fn query_memory(addr: usize) -> Result<(MemoryInfo, usize), KernelError> {
     Ok((meminfo, pageinfo))
 }
 
+/// Exits the process, killing all threads.
 pub fn exit_process() -> ! {
     unsafe {
         match syscall(nr::ExitProcess, 0, 0, 0, 0, 0, 0) {
@@ -159,6 +166,16 @@ pub fn sleep_thread(nanos: usize) -> Result<(), KernelError> {
     }
 }
 
+/// Creates a shared memory handle.
+///
+/// Allocates the given size bytes of physical memory to back the SharedMemory.
+/// myperm dictates the memory permissions this handle can be mapped as in the
+/// current process, while otherperm dictates the permissions for other
+/// processes.
+///
+/// # Errors
+///
+/// - Errors if size is not page-aligned.
 pub fn create_shared_memory(size: usize, myperm: MemoryPermissions, otherperm: MemoryPermissions) -> Result<SharedMemory, KernelError> {
     unsafe {
         let (out_handle, ..) = syscall(nr::CreateSharedMemory, size, myperm.bits() as _, otherperm.bits() as _, 0, 0, 0)?;
@@ -166,6 +183,15 @@ pub fn create_shared_memory(size: usize, myperm: MemoryPermissions, otherperm: M
     }
 }
 
+/// Maps a shared memory.
+///
+/// Maps a SharedMemory handle at the given address, with the given permission.
+///
+/// # Errors
+///
+/// - addr must be page-aligned
+/// - size must be equal to the size of the backing shared memory handle.
+/// - perm must be allowed
 pub fn map_shared_memory(handle: &SharedMemory, addr: usize, size: usize, perm: MemoryPermissions) -> Result<(), KernelError> {
     unsafe {
         syscall(nr::MapSharedMemory, (handle.0).0.get() as _, addr, size, perm.bits() as _, 0, 0)?;
@@ -173,6 +199,14 @@ pub fn map_shared_memory(handle: &SharedMemory, addr: usize, size: usize, perm: 
     }
 }
 
+/// Unmaps a shared memory.
+///
+/// Unmaps a shared memory mapping at the given address.
+///
+/// # Errors:
+///
+/// - addr must point to a mapping backed by the given handle
+/// - Size must be equal to the size of the backing shared memory handle.
 pub fn unmap_shared_memory(handle: &SharedMemory, addr: usize, size: usize) -> Result<(), KernelError> {
     unsafe {
         syscall(nr::UnmapSharedMemory, (handle.0).0.get() as _, addr, size, 0, 0, 0)?;
@@ -181,6 +215,7 @@ pub fn unmap_shared_memory(handle: &SharedMemory, addr: usize, size: usize) -> R
 }
 
 // Not totally public because it's not safe to use directly
+/// Close the given handle.
 pub(crate) fn close_handle(handle: u32) -> Result<(), KernelError> {
     unsafe {
         syscall(nr::CloseHandle, handle as _, 0, 0, 0, 0, 0)?;
@@ -188,6 +223,47 @@ pub(crate) fn close_handle(handle: u32) -> Result<(), KernelError> {
     }
 }
 
+/// Wait for an event on the given handles.
+///
+/// When zero handles are passed, this will wait forever until either timeout or
+/// cancellation occurs.
+///
+/// Does not accept 0xFFFF8001 or 0xFFFF8000 meta-handles.
+///
+/// # Object types
+/// 
+/// - KDebug: signals when there is a new DebugEvent (retrievable via
+///   GetDebugEvent).
+/// - KClientPort: signals when the number of sessions is less than the maximum
+///   allowed.
+/// - KProcess: signals when the process undergoes a state change (retrievable
+///   via #svcGetProcessInfo).
+/// - KReadableEvent: signals when the event's corresponding KWritableEvent has
+///   been signaled via svcSignalEvent.
+/// - KServerPort: signals when there is an incoming connection waiting to be
+///   accepted.
+/// - KServerSession: signals when there is an incoming message waiting to be
+///   received or the pipe is closed.
+/// - KThread: signals when the thread has exited.
+///
+/// # Result codes
+/// 
+/// - 0x0000: Success. One of the objects was signaled before the timeout
+///   expired, or one of the objects is a Session with a closed remote. Handle
+///   index is updated to indicate which object signaled.
+/// - 0x7601: Thread termination requested. Handle index is not updated.
+/// - 0xe401: Invalid handle. Returned when one of the handles passed is invalid.
+///   Handle index is not updated.
+/// - 0xe601: Invalid address. Returned when the handles pointer is not a
+///   readable address. Handle index is not updated.
+/// - 0xea01: Timeout. Returned when no objects have been signaled within the
+///   timeout. Handle index is not updated.
+/// - 0xec01: Interrupted. Returned when another thread uses
+///   svcCancelSynchronization to cancel this thread. Handle index is not
+///   updated.
+/// - 0xee01: Too many handles. Returned when the number of handles passed is
+///   >0x40. Note: KFS currently does not return this error. It is perfectly able
+///   to wait on more than 0x40 handles.
 pub fn wait_synchronization(handles: &[HandleRef], timeout_ns: Option<usize>) -> Result<usize, KernelError> {
     unsafe {
         let (handleidx, ..) = syscall(nr::WaitSynchronization, handles.as_ptr() as _, handles.len(), timeout_ns.unwrap_or(usize::max_value()), 0, 0, 0)?;
@@ -195,6 +271,7 @@ pub fn wait_synchronization(handles: &[HandleRef], timeout_ns: Option<usize>) ->
     }
 }
 
+/// Creates a session to the given named port.
 pub fn connect_to_named_port(s: &str) -> Result<ClientSession, KernelError> {
     unsafe {
         let (out_handle, ..) = syscall(nr::ConnectToNamedPort, s.as_ptr() as _, 0, 0, 0, 0, 0)?;
@@ -202,6 +279,9 @@ pub fn connect_to_named_port(s: &str) -> Result<ClientSession, KernelError> {
     }
 }
 
+/// Send an IPC request through the given pipe.
+///
+/// Please see the IPC module for more information on IPC.
 pub fn send_sync_request_with_user_buffer(buf: &mut [u8], handle: &ClientSession) -> Result<(), KernelError> {
     unsafe {
         syscall(nr::SendSyncRequestWithUserBuffer, buf.as_ptr() as _, buf.len(), (handle.0).0.get() as _, 0, 0, 0)?;
@@ -209,6 +289,9 @@ pub fn send_sync_request_with_user_buffer(buf: &mut [u8], handle: &ClientSession
     }
 }
 
+/// Print the given string to the kernel's debug output.
+///
+/// Currently, this prints the string to the serial port.
 pub fn output_debug_string(s: &str) -> Result<(), KernelError> {
     unsafe {
         syscall(nr::OutputDebugString, s.as_ptr() as _, s.len(), 0, 0, 0, 0)?;
@@ -216,6 +299,7 @@ pub fn output_debug_string(s: &str) -> Result<(), KernelError> {
     }
 }
 
+/// Create an anonymous session.
 pub fn create_session(is_light: bool, unk: usize) -> Result<(ServerSession, ClientSession), KernelError> {
     unsafe {
         let (serverhandle, clienthandle, ..) = syscall(nr::CreateSession, is_light as _, unk, 0, 0, 0, 0)?;
@@ -223,6 +307,7 @@ pub fn create_session(is_light: bool, unk: usize) -> Result<(ServerSession, Clie
     }
 }
 
+/// Accept a connection on the given port.
 pub fn accept_session(port: &ServerPort) -> Result<ServerSession, KernelError> {
     unsafe {
         let (out_handle, ..) = syscall(nr::AcceptSession, (port.0).0.get() as _, 0, 0, 0, 0, 0)?;
@@ -230,6 +315,25 @@ pub fn accept_session(port: &ServerPort) -> Result<ServerSession, KernelError> {
     }
 }
 
+/// Reply and Receive IPC requests on the given handles.
+///
+/// If ReplyTarget is not None, a reply from the cmdbuf will be sent to that
+/// session. Then it will wait until either of the passed sessions has an
+/// incoming message, is closed, a passed port has an incoming connection, or
+/// the timeout expires. If there is an incoming message, it is copied to the
+/// cmdbuf.
+///
+/// If ReplyTarget is None, the cmdbuf should contain a blank message. If this
+/// message has a C descriptor, the buffer it points to will be used as the
+/// pointer buffer. See [switchbrew's IPC marshalling page]. Note that a pointer
+/// buffer cannot be specified if ReplyTarget is not zero.
+///
+/// After being validated, passed handles will be enumerated in order; even if a
+/// session has been closed, if one that appears earlier in the list has an
+/// incoming message, it will take priority and a result code of 0x0 will be
+/// returned.
+///
+/// [switchbrew's IPC marshalling page]: https://http://switchbrew.org/index.php?title=IPC_Marshalling
 pub fn reply_and_receive_with_user_buffer(buf: &mut [u8], handles: &[HandleRef], replytarget: Option<HandleRef>, timeout: Option<usize>) -> Result<usize, KernelError> {
     unsafe {
         let (idx, ..) = syscall(nr::ReplyAndReceiveWithUserBuffer, buf.as_ptr() as _, buf.len(), handles.as_ptr() as _, handles.len(), match replytarget {
@@ -240,6 +344,9 @@ pub fn reply_and_receive_with_user_buffer(buf: &mut [u8], handles: &[HandleRef],
     }
 }
 
+/// Create an event for the given IRQ number.
+///
+/// Note that the process needs to be authorized to listen for the given IRQ.
 pub fn create_interrupt_event(irqnum: usize, flag: u32) -> Result<ReadableEvent, KernelError> {
     unsafe {
         let (out_handle, ..) = syscall(nr::CreateInterruptEvent, irqnum, flag as usize, 0, 0, 0, 0)?;
@@ -247,6 +354,7 @@ pub fn create_interrupt_event(irqnum: usize, flag: u32) -> Result<ReadableEvent,
     }
 }
 
+/// Creates an anonymous port.
 pub fn create_port(max_sessions: u32, is_light: bool, name_ptr: &str) -> Result<(ClientPort, ServerPort), KernelError> {
     unsafe {
         let (out_client_handle, out_server_handle, ..) = syscall(nr::CreatePort, max_sessions as _, is_light as _, name_ptr.as_ptr() as _, 0, 0, 0)?;
@@ -254,6 +362,7 @@ pub fn create_port(max_sessions: u32, is_light: bool, name_ptr: &str) -> Result<
     }
 }
 
+/// Creates a named port.
 pub fn manage_named_port(name: &str, max_handles: u32) -> Result<ServerPort, KernelError> {
     unsafe {
         let (out_handle, ..) = syscall(nr::ManageNamedPort, name.as_ptr() as _, max_handles as _, 0, 0, 0, 0)?;
@@ -261,6 +370,7 @@ pub fn manage_named_port(name: &str, max_handles: u32) -> Result<ServerPort, Ker
     }
 }
 
+/// Connects to the given named port.
 pub fn connect_to_port(port: &ClientPort) -> Result<ClientSession, KernelError> {
     unsafe {
         let (out_handle, ..) = syscall(nr::ConnectToPort, (port.0).0.get() as _, 0, 0, 0, 0, 0)?;
@@ -268,6 +378,7 @@ pub fn connect_to_port(port: &ClientPort) -> Result<ClientSession, KernelError> 
     }
 }
 
+/// Maps the framebuffer to a kernel-chosen address.
 pub fn map_framebuffer() -> Result<(&'static mut [u8], usize, usize, usize), KernelError> {
     unsafe {
         let (addr, width, height, bpp) = syscall(nr::MapFramebuffer, 0, 0, 0, 0, 0, 0)?;
