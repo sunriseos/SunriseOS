@@ -103,7 +103,7 @@ impl Window {
     #[inline]
     pub fn write_px(&mut self, offset: usize, color: &Color) {
         unsafe {
-            self.get_fb()[offset] = *color;
+            self.get_buffer()[offset] = *color;
         }
     }
 
@@ -120,7 +120,7 @@ impl Window {
     }
 
     /// Gets the underlying framebuffer
-    pub fn get_fb(&mut self) -> &mut [Color] {
+    pub fn get_buffer(&mut self) -> &mut [Color] {
         unsafe {
             slice::from_raw_parts_mut(self.buf.get_mut().as_ptr() as *mut Color, self.buf.len() / 4)
         }
@@ -128,7 +128,7 @@ impl Window {
 
     /// Clears the whole window, making it black.
     pub fn clear(&mut self) {
-        let fb = self.get_fb();
+        let fb = self.get_buffer();
         for i in fb.iter_mut() { *i = Color::rgb(0, 0, 0); }
     }
 }

@@ -148,19 +148,19 @@ impl Terminal {
         let linespace_size_in_framebuffer = self.framebuffer.get_px_offset(0, self.linespace);
         let lastline_top_left_corner = self.framebuffer.get_px_offset(0, self.cursor_pos.y - self.ascent);
         // Copy up from the line under it
-        assert!(lastline_top_left_corner + linespace_size_in_framebuffer < self.framebuffer.get_fb().len(), "Window is drunk: {} + {} < {}", lastline_top_left_corner, linespace_size_in_framebuffer, self.framebuffer.get_fb().len());
+        assert!(lastline_top_left_corner + linespace_size_in_framebuffer < self.framebuffer.get_buffer().len(), "Window is drunk: {} + {} < {}", lastline_top_left_corner, linespace_size_in_framebuffer, self.framebuffer.get_buffer().len());
         unsafe {
             // memmove in the same slice. Should be safe with the assert above.
-            ::core::ptr::copy(self.framebuffer.get_fb().as_ptr().offset(linespace_size_in_framebuffer as isize),
-                              self.framebuffer.get_fb().as_mut_ptr(),
+            ::core::ptr::copy(self.framebuffer.get_buffer().as_ptr().offset(linespace_size_in_framebuffer as isize),
+                              self.framebuffer.get_buffer().as_mut_ptr(),
                               lastline_top_left_corner);
         }
         // Erase last line
         unsafe {
             // memset to 0x00. Should be safe with the assert above
-            ::core::ptr::write_bytes(self.framebuffer.get_fb().as_mut_ptr().offset(lastline_top_left_corner as isize),
+            ::core::ptr::write_bytes(self.framebuffer.get_buffer().as_mut_ptr().offset(lastline_top_left_corner as isize),
                                     0x00,
-                                    self.framebuffer.get_fb().len() - lastline_top_left_corner);
+                                    self.framebuffer.get_buffer().len() - lastline_top_left_corner);
         }
     }
 
