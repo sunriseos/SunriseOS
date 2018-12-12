@@ -68,6 +68,12 @@ pub fn div_ceil<T: Num + Copy>(a: T, b: T) -> T {
     }
 }
 
+/// Creates a fake C-like enum, where all bit values are accepted.
+///
+/// This is mainly useful for FFI constructs. In C, an enum is allowed to take
+/// any bit value, not just those defined in the enumeration. In Rust,
+/// constructing an enum with a value outside the enumeration is UB. In order
+/// to avoid this, we define our enum as a struct with associated variants.
 #[macro_export]
 macro_rules! enum_with_val {
     ($(#[$meta:meta])* $vis:vis struct $ident:ident($ty:ty) {

@@ -34,6 +34,7 @@ use address::VirtualAddress;
 
 /// The size of a kernel stack, not accounting for the page guard
 pub const STACK_SIZE: usize            = 4;
+/// The size of the kernel stack, with the page guard.
 pub const STACK_SIZE_WITH_GUARD: usize = STACK_SIZE + 1;
 
 /// The alignment of the stack. ceil(log2(STACK_SIZE_WITH_GUARD * PAGE_SIZE))
