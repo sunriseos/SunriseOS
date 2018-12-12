@@ -52,6 +52,11 @@ impl<'a> Framebuffer<'a> {
         Ok(fb)
     }
 
+    /// Creates a backbuffer backed by an in-memory array.
+    ///
+    /// This is useful to avoid flickering and other display artifact.
+    /// Compositing should happen in such a backbuffer, and the final result
+    /// should then be copied into the actual framebuffer.
     pub fn new_buffer(buf: &'a mut [VBEColor], width: usize, height: usize, bpp: usize) -> Framebuffer<'a> {
         Framebuffer { buf, width, height, bpp }
     }
