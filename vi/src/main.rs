@@ -138,6 +138,15 @@ fn draw(buf: &Buffer, framebuffer: &mut Framebuffer, top: u32, left: u32, width:
     }
 }
 
+/// See Buffer::get_real_bounds.
+fn get_real_bounds((top, left, width, height): (i32, i32, u32, u32), framebuffer_width: u32, framebuffer_height: u32) -> (u32, u32, u32, u32) {
+    let dtop = min(max(top, 0) as u32, framebuffer_height);
+    let dleft = min(max(left, 0) as u32, framebuffer_width);
+    let dheight = min(framebuffer_height - dtop, min(height, (top + height as i32) as u32));
+    let dwidth = min(framebuffer_width - dleft, min(width, (left + width as i32) as u32));
+    (dtop, dleft, dwidth, dheight)
+}
+
 /// Internal representation of a window.
 #[derive(Debug)]
 struct Buffer {
@@ -151,12 +160,12 @@ struct Buffer {
 impl Buffer {
     /// Returns the buffer's bounds within the given width/height, cropping as
     /// necessary.
+    ///
+    /// # Panics
+    ///
+    /// Panics on overflow if top + height overflows.
     fn get_real_bounds(&self, framebuffer_width: u32, framebuffer_height: u32) -> (u32, u32, u32, u32) {
-        let dtop = min(max(self.top, 0) as u32, framebuffer_height);
-        let dleft = min(max(self.left, 0) as u32, framebuffer_width);
-        let dheight = min(framebuffer_height - dtop, self.height);
-        let dwidth = min(framebuffer_width - dleft, self.width);
-        (dtop, dleft, dwidth, dheight)
+        get_real_bounds((self.top, self.left, self.width, self.height), framebuffer_width, framebuffer_height)
     }
 }
 
@@ -219,4 +228,58 @@ fn main() {
     man.add_waitable(handler as Box<dyn IWaitable>);
 
     man.run();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Ensure we don't crop when the data fits the framebuffer
+    #[test]
+    fn check_get_real_bounds_normal() {
+        assert_eq!(get_real_bounds((0, 0, 1280, 800), 1280, 800), (0, 0, 1280, 800));
+        assert_eq!(get_real_bounds((500, 700, 20, 150), 1280, 800), (500, 700, 20, 150));
+    }
+
+    /// Ensure we properly crop the width when it is too high.
+    #[test]
+    fn check_get_real_bounds_width() {
+        assert_eq!(get_real_bounds((0, 0, 1500, 800), 1280, 800), (0, 0, 1280, 800));
+    }
+
+    /// Ensure we properly crop the height when it is too high.
+    #[test]
+    fn check_get_real_bounds_height() {
+        assert_eq!(get_real_bounds((0, 0, 1280, 1000), 1280, 800), (0, 0, 1280, 800));
+    }
+
+    /// Ensure we properly crop the top bound when it is negative, reducing the
+    /// height appropriately.
+    #[test]
+    fn check_get_real_bounds_top() {
+        assert_eq!(get_real_bounds((-15, 0, 1280, 50), 1280, 800), (0, 0, 1280, 35));
+        assert_eq!(get_real_bounds((-15, 0, 1280, 800), 1280, 800), (0, 0, 1280, 785));
+    }
+
+    /// Ensure we properly crop the left bound when it is negative, reducing the
+    /// width appropriately.
+    #[test]
+    fn check_get_real_bounds_left() {
+        assert_eq!(get_real_bounds((0, -15, 50, 800), 1280, 800), (0, 0, 35, 800));
+        assert_eq!(get_real_bounds((0, -15, 1280, 800), 1280, 800), (0, 0, 1265, 800));
+    }
+
+    /// Check that cropping on negative left bound does not result in an out of
+    /// bounds width.
+    #[test]
+    fn check_get_real_bounds_leftwidth() {
+        assert_eq!(get_real_bounds((0, -15, 1580, 800), 1280, 800), (0, 0, 1280, 800));
+    }
+
+    /// Check that cropping on negative top bound does not result in an out of
+    /// bounds height.
+    #[test]
+    fn check_get_real_bounds_topheight() {
+        assert_eq!(get_real_bounds((-15, 0, 1280, 1000), 1280, 800), (0, 0, 1280, 800));
+    }
 }
