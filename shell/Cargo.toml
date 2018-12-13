@@ -5,7 +5,7 @@ authors = ["roblabla <unfiltered@roblab.la>", "orycterope <tvermeilh@gmail.com>"
 
 [dependencies]
 gif = { git = "https://github.com/roblabla/image-gif" }
-log = "0.4.2"
+log = "0.4.6"
 kfs-libuser = { path = "../libuser" }
 
 [dependencies.byteorder]

@@ -21,7 +21,7 @@ multiboot2 = { git = "https://github.com/roblabla/multiboot2-elf64" }
 spin = "0.4"
 static_assertions = "*"
 linked_list_allocator = "0.6.2"
-log = "0.4.2"
+log = "0.4.6"
 xmas-elf = "0.6.2"
 hashmap_core = "0.1.9"
 rustc-demangle = "0.1"
