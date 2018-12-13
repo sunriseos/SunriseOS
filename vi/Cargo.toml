@@ -11,4 +11,4 @@ hashmap_core = "0.1.9"
 
 [dependencies.lazy_static]
 features = ["spin_no_std"]
-version = "1.0.0"
+version = "1.2.0"
