@@ -331,8 +331,36 @@ pub fn init(boot_info: &BootInformation) {
     allocator.initialized = true
 }
 
+/// When testing we use a much simpler bitmap.
 #[cfg(test)]
-pub use self::test::init;
+pub fn init() -> FrameAllocatorInitialized {
+    let mut allocator = FRAME_ALLOCATOR.lock();
+    assert_eq!(allocator.initialized, false, "frame_allocator::init() was called twice");
+
+    // make it all available
+    mark_area_free(&mut allocator.memory_bitmap, 0, FRAMES_BITMAP_SIZE * 8 * PAGE_SIZE);
+
+    // reserve one frame, in the middle, just for fun
+    mark_area_reserved(&mut allocator.memory_bitmap, PAGE_SIZE * 3, PAGE_SIZE * 3 + 1);
+
+    allocator.initialized = true;
+
+    FrameAllocatorInitialized(())
+}
+
+/// Because tests are run in the same binary, a test might forget to re-initialize the frame allocator,
+/// which will cause it to run on the previous test's frame allocator state.
+///
+/// We prevent that by returning a special structure that every test must keep in its scope.
+/// When the test finishes, it is dropped, and it automatically marks the frame allocator uninitialized again.
+#[cfg(test)]
+#[must_use]
+pub struct FrameAllocatorInitialized(());
+
+#[cfg(test)]
+impl ::core::ops::Drop for FrameAllocatorInitialized {
+    fn drop(&mut self) { FRAME_ALLOCATOR.lock().initialized = false; }
+}
 
 /// Marks a physical memory area as reserved and will never give it when requesting a frame.
 /// This is used to mark where memory holes are, or where the kernel was mapped
@@ -390,63 +418,6 @@ mod test {
 
     const ALL_MEMORY: usize = FRAMES_BITMAP_SIZE * 8 * PAGE_SIZE;
 
-    /// `cargo test` runs tests in parallel, but each test should have its own view of the
-    /// [`FRAME_ALLOCATOR`].
-    ///
-    /// Ideally `FRAME_ALLOCATOR` should have been a Thread Local Storage variable,
-    /// but the way [`LocalKey`] works, taking a closure and all, is incompatible with the way
-    /// `FRAME_ALLOCATOR` is "normally" (i.e. cfg(not(test)) ) used. Refactoring the normal case
-    /// only for test cases to work would have been tedious, and not straightforward.
-    ///
-    /// What we do instead is synchronize tests at the `FRAME_ALLOCATOR`'s initialization instead.
-    /// The `init` function returns a `FrameAllocatorOwnership`, which ensures exclusive access
-    /// to the `FRAME_ALLOCATOR` to anyone holding it, and dropping it de-initialize it, letting
-    /// other threads use it.
-    ///
-    /// # Note
-    ///
-    /// If a test forgets to call the `init` function, it will access and modify another thread's
-    /// view of the `FRAME_ALLOCATOR`, breaking the promise of `init`.
-    ///
-    /// I hate this, but I don't see any easy solution to this problem.
-    ///
-    /// # Poison
-    ///
-    /// Regular mutex are poisoned when the thread holding it panicked. However some tests are
-    /// expected to panic, so we use antidote::Mutex, which does not poison itself when it happens.
-    /// This is safe because we're a `Mutex<()>`, and `()` cannot be in an intermediate state.
-    ///
-    /// [`LocalKey`]: std::thread::LocalKey
-    lazy_static! {
-        static ref FRAME_ALLOCATOR_SYNCRONIZE_TESTS: ::antidote::Mutex<()> = ::antidote::Mutex::new(());
-    }
-
-    #[must_use]
-    pub struct FrameAllocatorOwnership(::antidote::MutexGuard<'static, ()>);
-
-    pub fn init() -> FrameAllocatorOwnership {
-
-        // synchronize all tests
-        let sync = FRAME_ALLOCATOR_SYNCRONIZE_TESTS.lock();
-
-        let mut allocator = FRAME_ALLOCATOR.lock();
-
-        // make it all available
-        mark_area_free(&mut allocator.memory_bitmap, 0, FRAMES_BITMAP_SIZE * 8 * PAGE_SIZE);
-
-        // reserve one frame, in the middle, just for fun
-        mark_area_reserved(&mut allocator.memory_bitmap, PAGE_SIZE * 3, PAGE_SIZE * 3 + 1);
-
-        allocator.initialized = true;
-
-        FrameAllocatorOwnership(sync)
-    }
-
-    #[cfg(test)]
-    impl ::core::ops::Drop for FrameAllocatorOwnership {
-        fn drop(&mut self) { FRAME_ALLOCATOR.lock().initialized = false; }
-    }
-
     /// The way you usually use it.
     #[test]
     fn ok() {
@@ -469,23 +440,9 @@ mod test {
         FrameAllocator::allocate_frames_fragmented(0).unwrap_err();
     }
 
-    #[test] #[should_panic]
-    fn no_init_frame() {
-        let _sync = FRAME_ALLOCATOR_SYNCRONIZE_TESTS.lock();
-        let _ = FrameAllocator::allocate_frame();
-    }
-
-    #[test] #[should_panic]
-    fn no_init_region() {
-        let _sync = FRAME_ALLOCATOR_SYNCRONIZE_TESTS.lock();
-        let _ = FrameAllocator::allocate_region(PAGE_SIZE);
-    }
-
-    #[test] #[should_panic]
-    fn no_init_fragmented() {
-        let _sync = FRAME_ALLOCATOR_SYNCRONIZE_TESTS.lock();
-        let _ = FrameAllocator::allocate_frames_fragmented(PAGE_SIZE);
-    }
+    #[test] #[should_panic] fn no_init_frame() { let _ = FrameAllocator::allocate_frame(); }
+    #[test] #[should_panic] fn no_init_region() { let _ = FrameAllocator::allocate_region(PAGE_SIZE); }
+    #[test] #[should_panic] fn no_init_fragmented() { let _ = FrameAllocator::allocate_frames_fragmented(PAGE_SIZE); }
 
     /// Allocation fails if Out Of Memory.
     #[test]
