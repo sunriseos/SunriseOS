@@ -45,6 +45,8 @@ extern crate bitfield;
 extern crate kfs_libkern;
 #[macro_use]
 extern crate mashup;
+#[cfg(test)]
+extern crate antidote;
 
 use core::fmt::Write;
 use alloc::prelude::*;

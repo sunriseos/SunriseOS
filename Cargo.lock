@@ -1,4 +1,9 @@
 [[package]]
+name = "antidote"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
 name = "arrayvec"
 version = "0.4.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -120,6 +125,7 @@ dependencies = [
 name = "kfs-kernel"
 version = "0.1.0"
 dependencies = [
+ "antidote 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "bit_field 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "bitfield 0.13.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "bitflags 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -391,6 +397,7 @@ version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [metadata]
+"checksum antidote 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "34fde25430d87a9388dadbe6e34d7f72a462c8b43ac8d309b42b0a8505d7e2a5"
 "checksum arrayvec 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)" = "a1e964f9e24d588183fcb43503abda40d288c8657dfc27311516ce2f05675aef"
 "checksum bit_field 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ed8765909f9009617974ab6b7d332625b320b33c326b1e9321382ef1999b5d56"
 "checksum bitfield 0.13.1 (registry+https://github.com/rust-lang/crates.io-index)" = "a260ed6b9f3ca16a4389390b1b1cd15a3bc0a9d3e63b1ef39f4978cec58a4e83"
