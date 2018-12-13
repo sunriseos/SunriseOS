@@ -20,4 +20,4 @@ version = "1.2.1"
 
 [dependencies.arrayvec]
 default-features = false
-version = "0.4.7"
+version = "0.4.8"
