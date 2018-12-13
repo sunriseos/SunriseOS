@@ -69,6 +69,8 @@ const FRAME_FREE:     bool = true;
 const FRAME_OCCUPIED: bool = false;
 
 /// A physical memory manger to allocate and free memory frames
+// When running tests, each thread has its own view of the `FRAME_ALLOCATOR`.
+#[cfg_attr(test, thread_local)]
 static FRAME_ALLOCATOR : SpinLock<FrameAllocatori386> = SpinLock::new(FrameAllocatori386::new());
 
 impl FrameAllocatori386 {
@@ -331,36 +333,8 @@ pub fn init(boot_info: &BootInformation) {
     allocator.initialized = true
 }
 
-/// When testing we use a much simpler bitmap.
 #[cfg(test)]
-pub fn init() -> FrameAllocatorInitialized {
-    let mut allocator = FRAME_ALLOCATOR.lock();
-    assert_eq!(allocator.initialized, false, "frame_allocator::init() was called twice");
-
-    // make it all available
-    mark_area_free(&mut allocator.memory_bitmap, 0, FRAMES_BITMAP_SIZE * 8 * PAGE_SIZE);
-
-    // reserve one frame, in the middle, just for fun
-    mark_area_reserved(&mut allocator.memory_bitmap, PAGE_SIZE * 3, PAGE_SIZE * 3 + 1);
-
-    allocator.initialized = true;
-
-    FrameAllocatorInitialized(())
-}
-
-/// Because tests are run in the same binary, a test might forget to re-initialize the frame allocator,
-/// which will cause it to run on the previous test's frame allocator state.
-///
-/// We prevent that by returning a special structure that every test must keep in its scope.
-/// When the test finishes, it is dropped, and it automatically marks the frame allocator uninitialized again.
-#[cfg(test)]
-#[must_use]
-pub struct FrameAllocatorInitialized(());
-
-#[cfg(test)]
-impl ::core::ops::Drop for FrameAllocatorInitialized {
-    fn drop(&mut self) { FRAME_ALLOCATOR.lock().initialized = false; }
-}
+pub use self::test::init;
 
 /// Marks a physical memory area as reserved and will never give it when requesting a frame.
 /// This is used to mark where memory holes are, or where the kernel was mapped
@@ -417,6 +391,37 @@ mod test {
     use super::*;
 
     const ALL_MEMORY: usize = FRAMES_BITMAP_SIZE * 8 * PAGE_SIZE;
+
+    /// Initializes the `FrameAllocator` for testing.
+    ///
+    /// Every test that makes use of the `FrameAllocator` must call this function,
+    /// and drop its return value when it is finished.
+    pub fn init() -> FrameAllocatorInitialized {
+        let mut allocator = FRAME_ALLOCATOR.lock();
+        assert_eq!(allocator.initialized, false, "frame_allocator::init() was called twice");
+
+        // make it all available
+        mark_area_free(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
+
+        // reserve one frame, in the middle, just for fun
+        mark_area_reserved(&mut allocator.memory_bitmap, PAGE_SIZE * 3, PAGE_SIZE * 3 + 1);
+
+        allocator.initialized = true;
+
+        FrameAllocatorInitialized(())
+    }
+
+    /// Because tests are run in the same binary, a test might forget to re-initialize the frame allocator,
+    /// which will cause it to run on the previous test's frame allocator state.
+    ///
+    /// We prevent that by returning a special structure that every test must keep in its scope.
+    /// When the test finishes, it is dropped, and it automatically marks the frame allocator uninitialized again.
+    #[must_use]
+    pub struct FrameAllocatorInitialized(());
+
+    impl ::core::ops::Drop for FrameAllocatorInitialized {
+        fn drop(&mut self) { FRAME_ALLOCATOR.lock().initialized = false; }
+    }
 
     /// The way you usually use it.
     #[test]
