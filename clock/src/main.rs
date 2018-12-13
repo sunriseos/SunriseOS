@@ -122,6 +122,6 @@ fn main() {
     }
 }
 
-#[link_section = ".kernel_ioports"]
+#[cfg_attr(not(test), link_section = ".kernel_ioports")]
 #[used]
 pub static IOPORTS_PERMS: [u16; 2] = [0x70, 0x71];

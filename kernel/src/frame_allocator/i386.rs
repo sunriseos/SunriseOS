@@ -35,16 +35,10 @@ const FRAME_BASE_LOG: usize = 12; // frame_number = addr >> 12
 /// The size of the frames_bitmap (~128ko)
 #[cfg(not(test))]
 const FRAMES_BITMAP_SIZE: usize = usize::max_value() / PAGE_SIZE / 8 + 1;
-// TODO: report rustc panic
-// BODY: Having the FRAMES_BITMAP_SIZE set to this value on a 64 bit target
-// BODY: causes rustc to panic in a really random assertion when creating
-// BODY: the array (which would be too big).
-// BODY:
-// BODY: I think we should report that.
 
 /// For unit tests we use a much smaller array.
 #[cfg(test)]
-const FRAMES_BITMAP_SIZE: usize = 64;
+const FRAMES_BITMAP_SIZE: usize = 32 / 8;
 
 /// Gets the frame number from a physical address
 #[inline]
@@ -75,6 +69,8 @@ const FRAME_FREE:     bool = true;
 const FRAME_OCCUPIED: bool = false;
 
 /// A physical memory manger to allocate and free memory frames
+// When running tests, each thread has its own view of the `FRAME_ALLOCATOR`.
+#[cfg_attr(test, thread_local)]
 static FRAME_ALLOCATOR : SpinLock<FrameAllocatori386> = SpinLock::new(FrameAllocatori386::new());
 
 impl FrameAllocatori386 {
@@ -107,7 +103,7 @@ impl FrameAllocatorTraitPrivate for FrameAllocator {
         // don't bother taking the lock if there is no frames to free
         if region.frames > 0 {
             debug!("Freeing {:?}", region);
-            assert!(Self::check_is_allocated(region), "PhysMemRegion beeing freed was not allocated");
+            assert!(Self::check_is_allocated(region.address(), region.size()), "PhysMemRegion beeing freed was not allocated");
             let mut allocator = FRAME_ALLOCATOR.lock();
             assert!(allocator.initialized, "The frame allocator was not initialized");
             allocator.memory_bitmap.set_bits_area(
@@ -118,15 +114,17 @@ impl FrameAllocatorTraitPrivate for FrameAllocator {
         }
     }
 
-    /// Checks that a physical region was allocated.
+    /// Checks that a physical region is marked allocated.
+    ///
+    /// Rounds address and length.
     ///
     /// # Panic
     ///
     /// * Panics if FRAME_ALLOCATOR was not initialized.
-    fn check_is_allocated(region: &PhysicalMemRegion) -> bool {
+    fn check_is_allocated(address: PhysicalAddress, length: usize) -> bool {
         let allocator = FRAME_ALLOCATOR.lock();
         assert!(allocator.initialized, "The frame allocator was not initialized");
-        region.into_iter().all(|frame: PhysicalAddress| {
+        (address.floor()..(address + length).ceil()).step_by(PAGE_SIZE).all(|frame| {
             let frame_index = addr_to_frame(frame.addr());
             allocator.memory_bitmap.get_bit(frame_index) == FRAME_OCCUPIED
         })
@@ -136,12 +134,14 @@ impl FrameAllocatorTraitPrivate for FrameAllocator {
     /// This implementation does not distinguish between allocated and reserved frames,
     /// so for us it's equivalent to `check_is_allocated`.
     ///
+    /// Rounds address and length.
+    ///
     /// # Panic
     ///
     /// * Panics if FRAME_ALLOCATOR was not initialized.
-    fn check_is_reserved(region: &PhysicalMemRegion) -> bool {
+    fn check_is_reserved(address: PhysicalAddress, length: usize) -> bool {
         // we have no way to distinguish between 'allocated' and 'reserved'
-        Self::check_is_allocated(region)
+        Self::check_is_allocated(address, length)
     }
 }
 
@@ -165,7 +165,7 @@ impl FrameAllocatorTrait for FrameAllocator {
         assert!(allocator.initialized, "The frame allocator was not initialized");
 
         let mut start_index = 0usize;
-        while start_index + nr_frames < allocator.memory_bitmap.bit_length() {
+        while start_index + nr_frames <= allocator.memory_bitmap.bit_length() {
             let mut temp_len = 0usize;
             loop {
                 match allocator.memory_bitmap.get_bit(start_index + temp_len) {
@@ -218,7 +218,7 @@ impl FrameAllocatorTrait for FrameAllocator {
         let mut collected_regions = Vec::new();
         let mut current_hole = PhysicalMemRegion { start_addr: 0, frames: 0, should_free_on_drop: true };
         // while requested is still obtainable.
-        while addr_to_frame(current_hole.start_addr) + (requested - collected_frames) < allocator_lock.memory_bitmap.bit_length() {
+        while addr_to_frame(current_hole.start_addr) + (requested - collected_frames) <= allocator_lock.memory_bitmap.bit_length() {
             while current_hole.frames < requested - collected_frames {
                 // compute current hole's size
                 let considered_frame = addr_to_frame(current_hole.start_addr) + current_hole.frames;
@@ -231,6 +231,8 @@ impl FrameAllocatorTrait for FrameAllocator {
                     break;
                 }
             }
+            // TODO: FrameAllocator fix overflow.
+            // BODY: This will overflow on OOM.
             // we reached the end of the hole
             let next_hole = PhysicalMemRegion { start_addr: current_hole.start_addr + (current_hole.frames + 1) * PAGE_SIZE,
                                                 frames: 0, should_free_on_drop: true };
@@ -263,6 +265,7 @@ impl FrameAllocatorTrait for FrameAllocator {
 
 /// Initialize the [FrameAllocator] by parsing the multiboot information
 /// and marking some memory areas as unusable
+#[cfg(not(test))]
 pub fn init(boot_info: &BootInformation) {
     let mut allocator = FRAME_ALLOCATOR.lock();
 
@@ -330,6 +333,9 @@ pub fn init(boot_info: &BootInformation) {
     allocator.initialized = true
 }
 
+#[cfg(test)]
+pub use self::test::init;
+
 /// Marks a physical memory area as reserved and will never give it when requesting a frame.
 /// This is used to mark where memory holes are, or where the kernel was mapped
 ///
@@ -378,4 +384,270 @@ pub fn mark_frame_bootstrap_allocated(addr: PhysicalAddress) {
         panic!("Frame being marked reserved was already allocated");
     }
     allocator.memory_bitmap.set_bit(bit, FRAME_OCCUPIED);
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    const ALL_MEMORY: usize = FRAMES_BITMAP_SIZE * 8 * PAGE_SIZE;
+
+    /// Initializes the `FrameAllocator` for testing.
+    ///
+    /// Every test that makes use of the `FrameAllocator` must call this function,
+    /// and drop its return value when it is finished.
+    pub fn init() -> FrameAllocatorInitialized {
+        let mut allocator = FRAME_ALLOCATOR.lock();
+        assert_eq!(allocator.initialized, false, "frame_allocator::init() was called twice");
+
+        // make it all available
+        mark_area_free(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
+
+        // reserve one frame, in the middle, just for fun
+        mark_area_reserved(&mut allocator.memory_bitmap, PAGE_SIZE * 3, PAGE_SIZE * 3 + 1);
+
+        allocator.initialized = true;
+
+        FrameAllocatorInitialized(())
+    }
+
+    /// Because tests are run in the same binary, a test might forget to re-initialize the frame allocator,
+    /// which will cause it to run on the previous test's frame allocator state.
+    ///
+    /// We prevent that by returning a special structure that every test must keep in its scope.
+    /// When the test finishes, it is dropped, and it automatically marks the frame allocator uninitialized again.
+    #[must_use]
+    pub struct FrameAllocatorInitialized(());
+
+    impl ::core::ops::Drop for FrameAllocatorInitialized {
+        fn drop(&mut self) { FRAME_ALLOCATOR.lock().initialized = false; }
+    }
+
+    /// The way you usually use it.
+    #[test]
+    fn ok() {
+        let _f = ::frame_allocator::init();
+
+        let a = FrameAllocator::allocate_frame().unwrap();
+        let b = FrameAllocator::allocate_region(2 * PAGE_SIZE).unwrap();
+        let c_vec = FrameAllocator::allocate_frames_fragmented(3 * PAGE_SIZE).unwrap();
+
+        drop(a);
+        drop(b);
+        drop(c_vec);
+    }
+
+    /// You can't give it a size of 0.
+    #[test]
+    fn zero() {
+        let _f = ::frame_allocator::init();
+        FrameAllocator::allocate_region(0).unwrap_err();
+        FrameAllocator::allocate_frames_fragmented(0).unwrap_err();
+    }
+
+    #[test] #[should_panic] fn no_init_frame() { let _ = FrameAllocator::allocate_frame(); }
+    #[test] #[should_panic] fn no_init_region() { let _ = FrameAllocator::allocate_region(PAGE_SIZE); }
+    #[test] #[should_panic] fn no_init_fragmented() { let _ = FrameAllocator::allocate_frames_fragmented(PAGE_SIZE); }
+
+    /// Allocation fails if Out Of Memory.
+    #[test]
+    fn physical_oom_frame() {
+        let _f = ::frame_allocator::init();
+        // make it all reserved
+        let mut allocator = FRAME_ALLOCATOR.lock();
+        mark_area_reserved(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
+        drop(allocator);
+
+        match FrameAllocator::allocate_frame() {
+            Err(KernelError::PhysicalMemoryExhaustion { .. }) => (),
+            unexpected_err => panic!("test failed: {:#?}", unexpected_err)
+        }
+    }
+
+    #[test]
+    fn physical_oom_frame_threshold() {
+        let _f = ::frame_allocator::init();
+        // make it all reserved
+        let mut allocator = FRAME_ALLOCATOR.lock();
+        mark_area_reserved(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
+        // leave only the last frame
+        mark_area_free(&mut allocator.memory_bitmap, ALL_MEMORY - PAGE_SIZE, ALL_MEMORY);
+        drop(allocator);
+
+        FrameAllocator::allocate_frame().unwrap();
+    }
+
+    #[test]
+    fn physical_oom_region() {
+        let _f = ::frame_allocator::init();
+        // make it all reserved
+        let mut allocator = FRAME_ALLOCATOR.lock();
+        mark_area_reserved(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
+        // leave only the last 3 frames
+        mark_area_free(&mut allocator.memory_bitmap,
+                       ALL_MEMORY - 3 * PAGE_SIZE,
+                       ALL_MEMORY);
+        drop(allocator);
+
+        match FrameAllocator::allocate_region(4 * PAGE_SIZE) {
+            Err(KernelError::PhysicalMemoryExhaustion { .. }) => (),
+            unexpected_err => panic!("test failed: {:#?}", unexpected_err)
+        }
+    }
+
+    #[test]
+    fn physical_oom_region_threshold() {
+        let _f = ::frame_allocator::init();
+        // make it all reserved
+        let mut allocator = FRAME_ALLOCATOR.lock();
+        mark_area_reserved(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
+        // leave only the last 3 frames
+        mark_area_free(&mut allocator.memory_bitmap,
+                       ALL_MEMORY - 3 * PAGE_SIZE,
+                       ALL_MEMORY);
+        drop(allocator);
+
+        FrameAllocator::allocate_region(3 * PAGE_SIZE).unwrap();
+    }
+
+    #[test]
+    fn physical_oom_fragmented() {
+        let _f = ::frame_allocator::init();
+        // make it all available
+        let mut allocator = FRAME_ALLOCATOR.lock();
+        mark_area_free(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
+        drop(allocator);
+
+        match FrameAllocator::allocate_frames_fragmented(ALL_MEMORY + PAGE_SIZE) {
+            Err(KernelError::PhysicalMemoryExhaustion { .. }) => (),
+            unexpected_err => panic!("test failed: {:#?}", unexpected_err)
+        }
+    }
+
+    #[test]
+    fn physical_oom_threshold_fragmented() {
+        let _f = ::frame_allocator::init();
+        // make it all available
+        let mut allocator = FRAME_ALLOCATOR.lock();
+        mark_area_free(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
+        drop(allocator);
+
+        FrameAllocator::allocate_frames_fragmented(ALL_MEMORY).unwrap();
+    }
+
+    #[test]
+    fn allocate_last_frame() {
+        let _f = ::frame_allocator::init();
+        // make it all available
+        let mut allocator = FRAME_ALLOCATOR.lock();
+        mark_area_free(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
+
+        // reserve all but last frame
+        mark_area_reserved(&mut allocator.memory_bitmap, 0, ALL_MEMORY - PAGE_SIZE);
+        drop(allocator);
+
+        // check with allocate_frame
+        let frame = FrameAllocator::allocate_frame().unwrap();
+        drop(frame);
+
+        // check with allocate_region
+        let frame = FrameAllocator::allocate_region(PAGE_SIZE).unwrap();
+        drop(frame);
+
+        // check with allocate_frames_fragmented
+        let frame = FrameAllocator::allocate_frames_fragmented(PAGE_SIZE).unwrap();
+        drop(frame);
+
+        // check we had really allocated *all* of it
+        let frame = FrameAllocator::allocate_frame().unwrap();
+        match FrameAllocator::allocate_frame() {
+            Err(KernelError::PhysicalMemoryExhaustion {..} ) => (),
+            unexpected_err => panic!("test failed: {:#?}", unexpected_err)
+        };
+        drop(frame);
+    }
+
+    #[test]
+    fn oom_hard() {
+        let _f = ::frame_allocator::init();
+        // make it all reserved
+        let mut allocator = FRAME_ALLOCATOR.lock();
+        mark_area_reserved(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
+
+        // free only 1 frame in the middle
+        mark_area_free(&mut allocator.memory_bitmap, 2 * PAGE_SIZE, 3 * PAGE_SIZE);
+        drop(allocator);
+
+        // check with allocate_region
+        match FrameAllocator::allocate_region(2 * PAGE_SIZE) {
+            Err(KernelError::PhysicalMemoryExhaustion { .. }) => (),
+            unexpected_err => panic!("test failed: {:#?}", unexpected_err)
+        }
+
+        // check with allocate_frame_fragmented
+        match FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE) {
+            Err(KernelError::PhysicalMemoryExhaustion { .. }) => (),
+            unexpected_err => panic!("test failed: {:#?}", unexpected_err)
+        }
+
+        // check we can still take only one frame
+        let frame = FrameAllocator::allocate_frame().unwrap();
+        match FrameAllocator::allocate_frame() {
+            Err(KernelError::PhysicalMemoryExhaustion { .. }) => (),
+            unexpected_err => panic!("test failed: {:#?}", unexpected_err)
+        }
+        drop(frame);
+    }
+
+    /// This test checks the considered frames marked allocated by [allocate_frame_fragmented]
+    /// are marked free again when the function fails.
+    ///
+    /// The function has a an optimisation checking at every point if the requested length is
+    /// still obtainable, otherwise it want even bother marking the frames and fail directly.
+    ///
+    /// But we **do** want to mark the frames allocated, so our check has too be smart and work
+    /// around this optimization.
+    ///
+    /// We do this by allocating the end of the bitmap, so [allocate_frame_fragmented] will
+    /// realize it's going to fail only by the time it's half way through,
+    /// and some frames will have been marked allocated.
+    #[test]
+    fn physical_oom_doesnt_leak() {
+        let _f = ::frame_allocator::init();
+        // make it all available
+        let mut allocator = FRAME_ALLOCATOR.lock();
+        mark_area_free(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
+        drop(allocator);
+
+        // allocate it all
+        let half_left = FrameAllocator::allocate_region(ALL_MEMORY / 2).unwrap();
+        let half_right = FrameAllocator::allocate_region(ALL_MEMORY / 2).unwrap();
+
+        // check we have really allocated *all* of it
+        match FrameAllocator::allocate_frame() {
+            Err(KernelError::PhysicalMemoryExhaustion {..} ) => (),
+            unexpected_err => panic!("test failed: {:#?}", unexpected_err)
+        };
+
+        // free only the left half
+        drop(half_left);
+
+        // attempt to allocate more than the available half
+        match FrameAllocator::allocate_frames_fragmented(ALL_MEMORY / 2 + PAGE_SIZE) {
+            Err(KernelError::PhysicalMemoryExhaustion {..} ) => (),
+            unexpected_err => panic!("test failed: {:#?}", unexpected_err)
+        };
+
+        // we should be able to still allocate after an oom recovery.
+        let half_left = FrameAllocator::allocate_frames_fragmented(  ALL_MEMORY / 2).unwrap();
+
+        // and now memory is fully allocated again
+        match FrameAllocator::allocate_frame() {
+            Err(KernelError::PhysicalMemoryExhaustion {..} ) => (),
+            unexpected_err => panic!("test failed: {:#?}", unexpected_err)
+        };
+
+        drop(half_left);
+        drop(half_right);
+    }
 }

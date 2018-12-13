@@ -32,6 +32,7 @@ use self::private::FrameAllocatorTraitPrivate;
 
 mod private {
     use super::PhysicalMemRegion;
+    use mem::PhysicalAddress;
 
     pub trait FrameAllocatorTraitPrivate {
         /// Marks a region as deallocated.
@@ -42,10 +43,10 @@ mod private {
         /// Panics if the region was not known as allocated
         fn free_region(region: &PhysicalMemRegion);
 
-        /// Checks if a region is marked allocated
-        fn check_is_allocated(region: &PhysicalMemRegion) -> bool;
+        /// Checks if a region is marked allocated.
+        fn check_is_allocated(address: PhysicalAddress, length: usize) -> bool;
 
-        /// Checks if a region is marked reserved
-        fn check_is_reserved(region: &PhysicalMemRegion) -> bool;
+        /// Checks if a region is marked reserved.
+        fn check_is_reserved(region: PhysicalAddress, length: usize) -> bool;
     }
 }

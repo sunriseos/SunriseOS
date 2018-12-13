@@ -19,6 +19,8 @@ pub trait Splittable where Self: Sized {
     ///
     /// The right side is modified in place, and the new left side is returned.
     ///
+    /// Note that offset is still the distance from the **start**.
+    ///
     /// If offset >= self.length, the object is untouched, and the right-hand side is None.
     /// If offset == 0, the object is untouched, and the right-hand side is None.
     fn right_split(&mut self, offset: usize) -> Result<Option<Self>, KernelError> {
