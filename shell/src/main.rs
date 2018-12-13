@@ -157,6 +157,6 @@ fn test_page_fault() {
 static LOUIS3: &'static [u8; 1318100] = include_bytes!("../img/meme3.gif");
 static LOUIS4: &'static [u8; 103803] = include_bytes!("../img/meme4.gif");
 
-#[link_section = ".kernel_ioports"]
+#[cfg_attr(not(test), link_section = ".kernel_ioports")]
 #[used]
 pub static IOPORTS_PERMS: [u16; 2] = [0x60, 0x64];
