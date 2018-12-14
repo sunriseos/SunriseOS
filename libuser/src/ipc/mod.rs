@@ -306,7 +306,7 @@ where
                 self.move_handles.len() > 0 || self.pid.is_some();
             hdr.set_enable_handle_descriptor(enable_handle_descriptor);
 
-            let hdr = cursor.write_u64::<LE>(hdr.0);
+            cursor.write_u64::<LE>(hdr.0);
         }
 
         // First, write the handle descriptor
@@ -423,7 +423,7 @@ where
             cursor.write(b"SFCO");
         }
         // If we have a token, use command version 1. Otherwise, send version 0.
-        cursor.write_u32::<LE>(self.token.map(|v| 1).unwrap_or(0));
+        cursor.write_u32::<LE>(self.token.map(|_| 1).unwrap_or(0));
 
         cursor.write_u32::<LE>(self.cmdid_error);
 

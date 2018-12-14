@@ -37,7 +37,7 @@ pub mod window;
 
 use kfs_libutils as utils;
 use error::{Error, LibuserError};
-
+ 
 // TODO: report #[cfg(not(test))] and #[global_allocator]
 // BODY: `#[cfg(not(test))]` still compiles this item with cargo test,
 // BODY: but `#[cfg(target_os = "none")] does not. I think this is a bug,

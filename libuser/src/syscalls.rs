@@ -2,8 +2,6 @@
 
 use core::slice;
 use types::*;
-use alloc::prelude::*;
-use core::fmt::Write;
 use kfs_libkern::nr;
 pub use kfs_libkern::{MemoryInfo, MemoryPermissions};
 use error::KernelError;
@@ -273,7 +271,6 @@ pub fn connect_to_port(port: &ClientPort) -> Result<ClientSession, KernelError> 
 pub fn map_framebuffer() -> Result<(&'static mut [u8], usize, usize, usize), KernelError> {
     unsafe {
         let (addr, width, height, bpp) = syscall(nr::MapFramebuffer, 0, 0, 0, 0, 0, 0)?;
-        output_debug_string(&format!("{} {} {} {}", addr, width, height, bpp));
         let framebuffer_size = bpp * width * height / 8;
         Ok((slice::from_raw_parts_mut(addr as *mut u8, framebuffer_size), width, height, bpp))
     }
