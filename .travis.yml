@@ -19,5 +19,6 @@ script:
 - cargo make iso
 - cargo make iso-release
 - cargo make test
+- cargo make doc-full
 
 cache: cargo
