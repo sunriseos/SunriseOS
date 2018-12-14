@@ -29,6 +29,14 @@ static GDT: Once<SpinLock<GdtManager>> = Once::new();
 /// The global LDT used by all the processes.
 static GLOBAL_LDT: Once<DescriptorTable> = Once::new();
 
+/// Initializes the GDT.
+///
+/// Creates a GDT with a flat memory segmentation model. It will create 3 kernel
+/// segments (code, data, stack), three user segments (code, data, stack), an
+/// LDT, and a TSS for the main task.
+///
+/// This function should only be called once. Further calls will be silently
+/// ignored.
 pub fn init_gdt() {
     use i386::instructions::tables::{lldt, ltr};
 
@@ -91,15 +99,18 @@ pub fn init_gdt() {
         gdt.push(DescriptorTableEntry::new_tss(main_task, PrivilegeLevel::Ring0, 0x2001));
 
         info!("Loading GDT");
-        SpinLock::new(GdtManager::load(gdt, 0x8, 0x10, 0x18))
-    });
+        let gdt = SpinLock::new(GdtManager::load(gdt, 0x8, 0x10, 0x18));
 
-    unsafe {
-        info!("Loading LDT");
-        lldt(SegmentSelector(7 << 3));
-        info!("Loading Task");
-        ltr(SegmentSelector(8 << 3));
-    }
+
+        unsafe {
+            info!("Loading LDT");
+            lldt(SegmentSelector(7 << 3));
+            info!("Loading Task");
+            ltr(SegmentSelector(8 << 3));
+        }
+
+        gdt
+    });
 }
 
 struct GdtManager {
@@ -147,7 +158,7 @@ impl DerefMut for GdtManager {
     }
 }
 
-// Push a task segment.
+/// Push a task segment.
 pub fn push_task_segment(task: &'static TssStruct) -> u16 {
     info!("Pushing TSS: {:#?}", task);
     let mut gdt = GDT.try().unwrap().lock();
@@ -157,6 +168,8 @@ pub fn push_task_segment(task: &'static TssStruct) -> u16 {
 }
 
 lazy_static! {
+    /// VirtualAddress of the TSS structure of the main task. Has 0x2001 bytes
+    /// available after the TssStruct to encode the IOPB of the current process.
     pub static ref MAIN_TASK: VirtualAddress = {
         // We need TssStruct + 0x2001 bytes of IOPB.
         let pregion = FrameAllocator::allocate_region(align_up(size_of::<TssStruct>() + 0x2001, PAGE_SIZE))
@@ -173,9 +186,19 @@ lazy_static! {
     };
 }
 
-// TODO: There's currently no guarantee that we don't create multiple &mut pointer to the IOPB.
-// In practice, it should only be used by i386::process_switch, and as such, observed only there.
-// TODO: Find a way to restrict usage there.
+// TODO: gdt::get_main_iopb does not prevent creation of multiple mut ref.
+// BODY: There's currently no guarantee that we don't create multiple &mut
+// BODY: pointer to the IOPB region, which would cause undefined behavior. In
+// BODY: practice, it should only be used by `i386::process_switch`, and as such,
+// BODY: there is never actually two main_iopb active at the same time. Still,
+// BODY: it'd be nicer to have safe functions to access the IOPB.
+/// Get the IOPB of the Main Task.
+///
+/// # Safety
+///
+/// This function can be used to create multiple mut references to the same
+/// region, which is very UB. Care should be taken to make sure any old mut slice
+/// acquired through this method is dropped before it is called again.
 pub unsafe fn get_main_iopb() -> &'static mut [u8] {
     slice::from_raw_parts_mut((MAIN_TASK.addr() as *mut TssStruct).offset(1) as *mut u8, 0x2001)
 }
@@ -187,12 +210,15 @@ struct DescriptorTable {
 }
 
 impl DescriptorTable {
+    /// Create an empty GDT. This will **not** include the null entry, so make
+    /// sure you add it!
     pub fn new() -> DescriptorTable {
         DescriptorTable {
             table: Vec::new()
         }
     }
 
+    /// Fill the current DescriptorTable with a copy of the currently loaded entries.
     pub fn set_from_loaded(&mut self) {
         use core::slice;
 
@@ -205,6 +231,7 @@ impl DescriptorTable {
         self.table.extend_from_slice(loaded_table);
     }
 
+    /// Push a new entry to the table, returning a segment selector to it.
     pub fn push(&mut self, entry: DescriptorTableEntry) -> u16 {
         let ret = self.table.len() << 3;
         self.table.push(entry);
@@ -258,8 +285,6 @@ enum SystemDescriptorTypes {
     TrapGate32 = 15
 }
 
-// TODO: make this an enum based on a bit? But then it's not repr(transparent)
-// :(
 #[repr(transparent)]
 #[derive(Clone, Copy)]
 struct DescriptorTableEntry(u64);

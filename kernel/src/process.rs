@@ -48,8 +48,13 @@ pub struct ProcessStruct {
     /// A vector of readable IO ports.
     ///
     /// When task switching, the IOPB will be changed to take this into account.
-    // TODO: This is i386-specific. Sucks, but it should *really* go somewhere else.
-    // Maybe in ProcessMemory?
+    // TODO: IOPorts in ProcessStruct is i386 specific.
+    // BODY: We currently store the ioport a process is allowed to access
+    // BODY: directly in its process struct. This sucks: it's an i386-specific
+    // BODY: construct, but I'm not quite sure where to put it.
+    // BODY:
+    // BODY: Maybe we should have a ArchProcess field containing various
+    // BODY: arch-specific fields?
     pub ioports: Vec<u16>,
 
     /// An array of the created but not yet started threads.
@@ -72,7 +77,9 @@ pub struct ProcessStruct {
     /// and dies before starting them, the process struct will be kept alive indefinitely
     /// by those non-started threads that no one can start, and the process will stay that way
     /// until it is explicitly killed from outside.
-    // todo choose a better lock
+    // TODO: Use a better lock around thread_maternity.
+    // BODY: Thread maternity currently uses a SpinLock. We should ideally use a
+    // BODY: scheduling mutex there.
     thread_maternity: SpinLock<Vec<Arc<ThreadStruct>>>,
 }
 
@@ -114,14 +121,41 @@ pub struct ThreadStruct {
     pub int_disable_counter: AtomicUsize,
 }
 
+/// A handle to a userspace-accessible resource.
+///
+/// # Description
+///
+/// When the userspace manipulates a kernel construct, it does so by operating
+/// on Handles, which are analogious to File Descriptor in a Unix System. A
+/// Handle represents all kinds of kernel structures, from IPC objects to
+/// Threads and IRQ events.
+///
+/// A Handle may be shared across multiple processes, usually by passing it via
+/// IPC. This can be used, for instance, to share a handle to a memory region,
+/// allowing for the mapping of Shared Memory.
+///
+/// Most handles can be waited on via [syscalls::wait_synchronization], which
+/// will have relevant behavior for all the different kind of handles.
 #[derive(Debug)]
 pub enum Handle {
+    /// An event on which we can wait. Could be an IRQ, or a user-generated
+    /// event.
     ReadableEvent(Box<Waitable>),
+    /// The server side of an IPC port. See [ipc::port] for more information.
     ServerPort(ServerPort),
+    /// The client side of an IPC port. See [ipc::port] for more information.
     ClientPort(ClientPort),
+    /// The server side of an IPC session. See [ipc::session] for more
+    /// information.
     ServerSession(ServerSession),
+    /// The client side of an IPC session. See [ipc::session] for more
+    /// information.
     ClientSession(ClientSession),
+    /// A thread.
     Thread(Weak<ThreadStruct>),
+    /// A shared memory region. The handle holds on to the underlying physical
+    /// memory, which means the memory will only get freed once all handles to
+    /// it are dropped.
     SharedMemory(Arc<Vec<PhysicalMemRegion>>),
 }
 
@@ -172,6 +206,8 @@ impl Handle {
         }
     }
 
+    /// Casts the handle as an Arc<Vec<[PhysicalMemRegion]>, or returns a
+    /// `UserspaceError`.
     pub fn as_shared_memory(&self) -> Result<Arc<Vec<PhysicalMemRegion>>, UserspaceError> {
         if let &Handle::SharedMemory(ref s) = self {
             Ok((*s).clone())
@@ -181,6 +217,29 @@ impl Handle {
     }
 }
 
+/// Holds the table associating userspace handle numbers to a kernel [Handle].
+///
+/// Each process holds a table associating a number to a kernel Handle. This
+/// number is unique to that process, handles are not shared between processes.
+///
+/// Handle numbers hold two guarantees.
+///
+/// - It will not be reused ever. If a userspace attempts to use a handle after
+///   closing it, it will be guaranteed to receive an InvalidHandle error.
+/// - It will always be above 0, and under 0xFFFF0000.
+///
+/// Technically, a Horizon/NX handle is composed of two parts: The top 16 bits
+/// are randomized, while the top 16 bits are an auto-incrementing counters.
+/// Because of this, it is impossible to have more than 65535 handles.
+///
+/// In KFS, we do not yet have randomness, so the counter just goes from 1 and
+/// goes up.
+///
+/// There exists two "meta-handles": 0xFFFF8000 and 0xFFFF8001, which always
+/// point to the current process and thread, respectively. Those handles are not
+/// *actually* stored in the handle table to avoid creating a reference cycle.
+/// Instead, they are retrieved dynamically at runtime by the get_handle
+/// function.
 #[derive(Debug)]
 pub struct HandleTable {
     table: BTreeMap<u32, Arc<Handle>>,
@@ -188,6 +247,7 @@ pub struct HandleTable {
 }
 
 impl HandleTable {
+    /// Creates an emp
     pub fn new() -> HandleTable {
         HandleTable {
             table: BTreeMap::new(),
@@ -195,6 +255,15 @@ impl HandleTable {
         }
     }
 
+    // TODO: HandleTable::add_handle should error if the table is full.
+    // BODY: HandleTable::add_handle currently assumes that insertion will always
+    // BODY: succeed. It does not implement any handle count limitations present
+    // BODY: in Horizon/NX. Furthermore, if the handle table is completely filled
+    // BODY: (e.g. there are 2^32 handles), the function will infinite loop.
+    // BODY: And as if that wasn't enough: it doesn't technically guarantee a
+    // BODY: handle will not get reused.
+    /// Add a handle to the handle table, returning the userspace handle number
+    /// associated to the given handle.
     pub fn add_handle(&mut self, handle: Arc<Handle>) -> u32 {
         loop {
             let handlenum = self.counter;
@@ -206,10 +275,14 @@ impl HandleTable {
         }
     }
 
+    /// Gets the Kernel Handle associated with the given userspace handle number.
     pub fn get_handle(&self, handle: u32) -> Result<Arc<Handle>, UserspaceError> {
         self.table.get(&handle).cloned().ok_or(UserspaceError::InvalidHandle)
     }
 
+    /// Deletes the mapping from the given userspace handle number. Returns the
+    /// underlying Kernel Handle, in case it needs to be used (e.g. for sending
+    /// to another process in an IPC move).
     pub fn delete_handle(&mut self, handle: u32) -> Result<Arc<Handle>, UserspaceError> {
         // TODO: Handle 0xFFFF8000 and 0xFFFF8001 ?
         self.table.remove(&handle).ok_or(UserspaceError::InvalidHandle)
@@ -249,6 +322,11 @@ impl ThreadState {
     }
 }
 
+// TODO: Create/use a library to create Atomic Enum.
+// BODY: We have at least one (probably more) atomic enums that we rolled by hand
+// BODY: in the kernel. The one I know about: ThreadStateAtomic. Really, this
+// BODY: should ideally be done automatically by a crate, either a macro or a
+// BODY: custom derive. This would allow us to auto-generate the documentation.
 /// Stores a ThreadState atomically.
 pub struct ThreadStateAtomic(AtomicUsize);
 

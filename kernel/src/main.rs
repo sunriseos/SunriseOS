@@ -206,6 +206,9 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     }
 }
 
+/// The exception handling personality function for use in the bootstrap.
+///
+/// We have no exception handling in the kernel, so make it do nothing.
 #[cfg(target_os = "none")]
 #[lang = "eh_personality"] #[no_mangle] pub extern fn eh_personality() {}
 
