@@ -15,6 +15,7 @@
 #![allow(unreachable_code)]
 #![allow(dead_code)]
 #![cfg_attr(test, allow(unused_imports))]
+#![deny(intra_doc_link_resolution_failure)]
 #![recursion_limit = "1024"]
 
 #[cfg(not(target_os = "none"))]

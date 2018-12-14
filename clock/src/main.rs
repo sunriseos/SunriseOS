@@ -1,6 +1,8 @@
 #![feature(alloc, used)]
 #![no_std]
 
+#![deny(intra_doc_link_resolution_failure)]
+
 extern crate kfs_libuser;
 #[macro_use]
 extern crate alloc;

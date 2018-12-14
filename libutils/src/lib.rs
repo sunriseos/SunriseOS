@@ -4,6 +4,7 @@
 #![feature(asm)]
 #![no_std]
 #![warn(missing_docs)]
+#![deny(intra_doc_link_resolution_failure)]
 
 extern crate byteorder;
 extern crate bit_field;

@@ -4,6 +4,7 @@
 
 #![no_std]
 #![warn(missing_docs)]
+#![deny(intra_doc_link_resolution_failure)]
 #![allow(unused_unsafe)]
 #![feature(global_asm, asm, start, lang_items, core_intrinsics, const_fn, alloc)]
 

@@ -8,6 +8,7 @@
 #![no_std]
 
 #![warn(missing_docs)]
+#![deny(intra_doc_link_resolution_failure)]
 
 #[macro_use]
 extern crate kfs_libuser as libuser;

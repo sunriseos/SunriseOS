@@ -27,6 +27,7 @@
 #![cfg_attr(target_os = "none", no_main)]
 #![allow(unused)]
 #![warn(missing_docs)]
+#![deny(intra_doc_link_resolution_failure)]
 #[cfg(not(target_os = "none"))]
 use std as core;
 
