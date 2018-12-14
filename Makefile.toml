@@ -174,3 +174,9 @@ workspace = false
 description = "Run the tests in 32bit mode"
 command = "cargo"
 args = ["test", "--target=i686-unknown-linux-gnu"]
+
+[tasks.clippy]
+workspace = false
+description = "Run clippy"
+command = "cargo"
+args = ["xclippy", "--target=i386-unknown-none"]
