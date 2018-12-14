@@ -134,21 +134,21 @@ pub struct ThreadStruct {
 /// IPC. This can be used, for instance, to share a handle to a memory region,
 /// allowing for the mapping of Shared Memory.
 ///
-/// Most handles can be waited on via [syscalls::wait_synchronization], which
+/// Most handles can be waited on via [::interrupts::syscalls::wait_synchronization], which
 /// will have relevant behavior for all the different kind of handles.
 #[derive(Debug)]
 pub enum Handle {
     /// An event on which we can wait. Could be an IRQ, or a user-generated
     /// event.
     ReadableEvent(Box<Waitable>),
-    /// The server side of an IPC port. See [ipc::port] for more information.
+    /// The server side of an IPC port. See [::ipc::port] for more information.
     ServerPort(ServerPort),
-    /// The client side of an IPC port. See [ipc::port] for more information.
+    /// The client side of an IPC port. See [::ipc::port] for more information.
     ClientPort(ClientPort),
-    /// The server side of an IPC session. See [ipc::session] for more
+    /// The server side of an IPC session. See [::ipc::session] for more
     /// information.
     ServerSession(ServerSession),
-    /// The client side of an IPC session. See [ipc::session] for more
+    /// The client side of an IPC session. See [::ipc::session] for more
     /// information.
     ClientSession(ClientSession),
     /// A thread.

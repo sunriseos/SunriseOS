@@ -139,6 +139,8 @@ pub fn print_hexdump_as_if_at_addr<T: Write>(f: &mut T, mem: &[u8], display_addr
 }
 
 /// Extension of the [BitField] trait, that adds the `set_bits_area` function.
+///
+/// [BitField]: ::bit_field::BitField
 pub trait BitArrayExt<U: ::bit_field::BitField>: ::bit_field::BitArray<U> {
     /// Sets a range of bits to `value` in the BitField.
     fn set_bits_area(&mut self, range: ::core::ops::Range<usize>, value: bool) {
