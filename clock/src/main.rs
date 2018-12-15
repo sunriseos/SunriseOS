@@ -1,6 +1,18 @@
 #![feature(alloc, used)]
 #![no_std]
 
+// rustc warnings
+#![warn(unused)]
+#![warn(missing_debug_implementations)]
+#![allow(unused_unsafe)]
+#![allow(unreachable_code)]
+#![allow(dead_code)]
+#![cfg_attr(test, allow(unused_imports))]
+
+// rustdoc warnings
+#![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
+#![deny(intra_doc_link_resolution_failure)]
+
 extern crate kfs_libuser;
 #[macro_use]
 extern crate alloc;

@@ -9,13 +9,19 @@
 #![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, allocator_api, alloc, box_syntax, no_more_cas, const_vec_new, range_contains, step_trait, thread_local, nll)]
 #![cfg_attr(target_os = "none", no_std)]
 #![cfg_attr(target_os = "none", no_main)]
-#![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
+#![recursion_limit = "1024"]
+
+// rustc warnings
 #![warn(unused)]
+#![warn(missing_debug_implementations)]
 #![allow(unused_unsafe)]
 #![allow(unreachable_code)]
 #![allow(dead_code)]
 #![cfg_attr(test, allow(unused_imports))]
-#![recursion_limit = "1024"]
+
+// rustdoc warnings
+#![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
+#![deny(intra_doc_link_resolution_failure)]
 
 #[cfg(not(target_os = "none"))]
 use std as core;
@@ -43,6 +49,7 @@ extern crate failure;
 #[macro_use]
 extern crate bitfield;
 extern crate kfs_libkern;
+#[cfg(test)]
 #[macro_use]
 extern crate mashup;
 

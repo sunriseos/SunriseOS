@@ -1,7 +1,17 @@
 #![feature(alloc, asm)]
 #![no_std]
 
-#![warn(missing_docs)]
+// rustc warnings
+#![warn(unused)]
+#![warn(missing_debug_implementations)]
+#![allow(unused_unsafe)]
+#![allow(unreachable_code)]
+#![allow(dead_code)]
+#![cfg_attr(test, allow(unused_imports))]
+
+// rustdoc warnings
+#![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
+#![deny(intra_doc_link_resolution_failure)]
 
 extern crate gif;
 #[macro_use]

@@ -179,4 +179,8 @@ args = ["test", "--target=i686-unknown-linux-gnu"]
 workspace = false
 description = "Run clippy"
 command = "cargo"
-args = ["xclippy", "--target=i386-unknown-none"]
+args = ["xclippy", "--target=i386-unknown-none", "--",
+	"-A", "clippy::redundant_field_names",
+	"-A", "clippy::unreadable_literal",
+	"-A", "clippy::identity_op",
+	]

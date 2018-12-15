@@ -3,9 +3,19 @@
 //! Provides an allocator, various lang items.
 
 #![no_std]
-#![warn(missing_docs)]
-#![allow(unused_unsafe)]
 #![feature(global_asm, asm, start, lang_items, core_intrinsics, const_fn, alloc)]
+
+// rustc warnings
+#![warn(unused)]
+#![warn(missing_debug_implementations)]
+#![allow(unused_unsafe)]
+#![allow(unreachable_code)]
+#![allow(dead_code)]
+#![cfg_attr(test, allow(unused_imports))]
+
+// rustdoc warnings
+#![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
+#![deny(intra_doc_link_resolution_failure)]
 
 extern crate linked_list_allocator;
 #[macro_use]
