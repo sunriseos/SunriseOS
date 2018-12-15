@@ -17,14 +17,16 @@ pub trait Io {
 
     #[inline(always)]
     fn writef(&mut self, flags: Self::Value, value: bool) {
-        let tmp: Self::Value = match value {
-            true => self.read() | flags,
-            false => self.read() & !flags,
+        let tmp: Self::Value = if value {
+            self.read() | flags
+        }else {
+            self.read() & !flags
         };
         self.write(tmp);
     }
 }
 
+#[derive(Debug)]
 pub struct ReadOnly<I: Io> {
     inner: I
 }
@@ -47,6 +49,7 @@ impl<I: Io> ReadOnly<I> {
     }
 }
 
+#[derive(Debug)]
 pub struct WriteOnly<I: Io> {
     inner: I
 }
@@ -72,7 +75,7 @@ impl<I: Io> WriteOnly<I> {
 use core::marker::PhantomData;
 
 /// Generic PIO
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct Pio<T> {
     port: u16,
     value: PhantomData<T>,

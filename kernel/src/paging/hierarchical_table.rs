@@ -312,9 +312,9 @@ pub trait TableHierarchy {
             }
         }
 
-        return rec_map_to(&mut self.get_top_level_table(),
+        rec_map_to(&mut self.get_top_level_table(),
                           &mut frames_iterator.peekable(),
-                          start_address.addr(), flags);
+                          start_address.addr(), flags)
     }
 
     /// Creates a span of guard pages
@@ -371,7 +371,7 @@ pub trait TableHierarchy {
             }
         }
 
-        return rec_guard(&mut self.get_top_level_table(), address.addr(), &mut length);
+        rec_guard(&mut self.get_top_level_table(), address.addr(), &mut length)
     }
 
     /// Unmaps a range of virtual address.
@@ -583,7 +583,7 @@ pub trait TableHierarchy {
                  alignment
         );
 
-        return if hole.len >= length {
+        if hole.len >= length {
             Some(VirtualAddress(hole.start_addr))
         } else {
             None

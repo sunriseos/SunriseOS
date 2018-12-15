@@ -46,6 +46,7 @@ impl ViInterface {
     }
 }
 
+#[derive(Debug)]
 pub struct IBuffer(ClientSession);
 
 impl IBuffer {

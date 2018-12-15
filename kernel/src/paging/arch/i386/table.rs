@@ -243,9 +243,8 @@ impl InactiveHierarchyTrait for InactiveHierarchy {
         let mut dir = self.get_top_level_table();
         let mut memory = get_kernel_memory();
         let mut active_dir = memory.get_hierarchy().get_top_level_table();
-        for entry_index in KernelLand::start_table()..=KernelLand::end_table() {
-            dir.entries()[entry_index] = active_dir.entries()[entry_index];
-        }
+        dir.entries()[KernelLand::start_table()..=KernelLand::end_table()]
+            .clone_from_slice(&active_dir.entries()[KernelLand::start_table()..=KernelLand::end_table()]);
     }
 
     fn is_currently_active(&self) -> bool {

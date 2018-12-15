@@ -549,6 +549,7 @@ macro_rules! impl_set_handler_fn {
             ///
             /// The function returns a mutable reference to the entry's options that allows
             /// further customization.
+            #[allow(clippy::fn_to_numeric_cast)] // it **is** a u32
             pub fn set_handler_fn(&mut self, handler: $h) -> &mut EntryOptions {
                 unsafe {
                     self.set_interrupt_gate_addr(handler as u32)
@@ -562,6 +563,7 @@ macro_rules! impl_set_handler_fn {
             ///
             /// The function returns a mutable reference to the entry's options that allows
             /// further customization.
+            #[allow(clippy::fn_to_numeric_cast)] // it **is** a u32
             pub fn set_task_fn(&mut self, handler: $h) {
                 self.set_handler_task_gate_addr(handler as u32)
             }

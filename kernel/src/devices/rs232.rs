@@ -145,6 +145,7 @@ impl SerialInternal<Pio<u8>> {
 ///
 /// write!(SerialLogger, "I got {} problems, but logging ain't one", 99);
 /// ```
+#[derive(Debug)]
 pub struct SerialLogger;
 
 impl SerialLogger {

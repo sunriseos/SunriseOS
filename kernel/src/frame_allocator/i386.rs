@@ -90,6 +90,7 @@ impl FrameAllocatori386 {
 /// An allocation request returns a [PhysicalMemRegion], which represents a list of
 /// physically adjacent frames. When this returned `PhysicalMemRegion` is eventually dropped
 /// the frames are automatically freed and can be re-served by the FrameAllocator.
+#[derive(Debug)]
 pub struct FrameAllocator;
 
 impl FrameAllocatorTraitPrivate for FrameAllocator {
@@ -157,6 +158,7 @@ impl FrameAllocatorTrait for FrameAllocator {
     /// # Panic
     ///
     /// * Panics if FRAME_ALLOCATOR was not initialized.
+    #[allow(clippy::match_bool)]
     fn allocate_region(length: usize) -> Result<PhysicalMemRegion, KernelError> {
         check_nonzero_length(length)?;
         check_aligned(length, PAGE_SIZE)?;
@@ -272,7 +274,7 @@ pub fn init(boot_info: &BootInformation) {
     let memory_map_tag = boot_info.memory_map_tag()
         .expect("GRUB, you're drunk. Give us our memory_map_tag.");
     for memarea in memory_map_tag.memory_areas() {
-        if memarea.start_address() > u32::max_value() as u64 || memarea.end_address() > u32::max_value() as u64 {
+        if memarea.start_address() > u64::from(u32::max_value()) || memarea.end_address() > u64::from(u32::max_value()) {
             continue;
         }
         mark_area_free(&mut allocator.memory_bitmap,

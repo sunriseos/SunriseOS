@@ -50,12 +50,14 @@ pub fn init() {
 }
 
 /// A single PIC8259 device.
+#[derive(Debug)]
 struct InternalPic {
     port_cmd: Pio<u8>,
     port_data: Pio<u8>
 }
 
 /// A master/slave PIC setup, as commonly found on IBM PCs.
+#[derive(Debug)]
 pub struct Pic {
     master: SpinLockIRQ<InternalPic>,
     slave: SpinLockIRQ<InternalPic>,

@@ -91,10 +91,11 @@ fn wait_synchronization(handles_ptr: UserSpacePtr<[u32]>, timeout_ns: usize) -> 
     }
 
     // Add a waitable for the timeout.
-    let mut timeout_waitable = None;
-    if timeout_ns != usize::max_value() {
-        timeout_waitable = Some(pit::wait_ms(timeout_ns / 1_000_000));
-    }
+    let timeout_waitable = if timeout_ns != usize::max_value() {
+        Some(pit::wait_ms(timeout_ns / 1_000_000))
+    } else {
+        None
+    };
 
     // Turn the handle array and the waitable timeout into an iterator of Waitables...
     let waitables = handle_arr.iter()
@@ -194,8 +195,8 @@ fn manage_named_port(name_ptr: UserSpacePtr<[u8; 12]>, max_sessions: u32) -> Res
 fn accept_session(porthandle: u32) -> Result<usize, UserspaceError> {
     let curproc = scheduler::get_current_process();
     let handle = curproc.phandles.lock().get_handle(porthandle)?;
-    let port = match &*handle {
-        &Handle::ServerPort(ref port) => port,
+    let port = match *handle {
+        Handle::ServerPort(ref port) => port,
         _ => return Err(UserspaceError::InvalidHandle),
     };
 
@@ -276,7 +277,7 @@ fn unmap_shared_memory(handle: u32, addr: usize, size: usize) -> Result<(), User
     let mut memlock = curproc.pmemory.lock();
     {
         let qmem = memlock.query_memory(addr)?;
-        let mapping = qmem.as_ref();
+        let mapping = qmem.mapping();
 
         // Check that the given addr/size covers the full mapping.
         // TODO: Can we unmap a subsection of a shared memory?
@@ -306,7 +307,7 @@ fn query_memory(mut meminfo: UserSpacePtrMut<MemoryInfo>, _unk: usize, addr: usi
     let curproc = scheduler::get_current_process();
     let memlock = curproc.pmemory.lock();
     let qmem = memlock.query_memory(VirtualAddress(addr))?;
-    let mapping = qmem.as_ref();
+    let mapping = qmem.mapping();
     *meminfo = MemoryInfo {
         baseaddr: mapping.address().addr(),
         size: mapping.length(),

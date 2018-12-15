@@ -24,15 +24,17 @@ pub trait Io {
     /// Mask `value` with `flags`, and write it to this Io.
     #[inline(always)]
     fn writef(&mut self, flags: Self::Value, value: bool) {
-        let tmp: Self::Value = match value {
-            true => self.read() | flags,
-            false => self.read() & !flags,
+        let tmp: Self::Value = if value {
+            self.read() | flags
+        } else {
+            self.read() & !flags
         };
         self.write(tmp);
     }
 }
 
 /// An Io that we can only read from.
+#[derive(Debug)]
 pub struct ReadOnly<I: Io> {
     inner: I
 }
@@ -59,6 +61,7 @@ impl<I: Io> ReadOnly<I> {
 }
 
 /// An Io that we can only write to.
+#[derive(Debug)]
 pub struct WriteOnly<I: Io> {
     inner: I
 }

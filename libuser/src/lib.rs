@@ -85,7 +85,7 @@ pub fn find_free_address(size: usize, align: usize) -> Result<usize, Error> {
 #[cfg(target_os = "none")]
 #[panic_handler] #[no_mangle]
 pub extern fn panic_fmt(p: &core::panic::PanicInfo) -> ! {
-    syscalls::output_debug_string(&format!("{}", p));
+    let _ = syscalls::output_debug_string(&format!("{}", p));
     syscalls::exit_process();
 }
 
@@ -137,6 +137,7 @@ impl Termination for () {
 
 #[cfg(target_os = "none")]
 #[lang = "start"]
+#[allow(clippy::unit_arg)]
 fn main<T: Termination>(main: fn(), _argc: isize, _argv: *const *const u8) -> isize {
     main().report() as isize
 }

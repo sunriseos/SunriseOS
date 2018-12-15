@@ -19,6 +19,8 @@ pub trait VirtualSpaceLand {
     /// The length of this land.
     fn length() -> usize { Self::end_addr().addr() - Self::start_addr().addr() + 1 }
 
+    // TODO: VirtalSpaceLand start_table/ end_table is arch specific
+    // BODY: These functions should be moved to `paging::arch::i386::table.rs`
     /// The index in page directory of the first table of this land.
     fn start_table() -> usize {
         Self::start_addr().addr() / (PAGE_SIZE * ENTRY_COUNT) as usize
@@ -65,11 +67,11 @@ pub trait VirtualSpaceLand {
 }
 
 /// The virtual memory belonging to kernel
-pub struct KernelLand;
+#[derive(Debug)] pub struct KernelLand;
 /// The virtual memory belonging to user
-pub struct UserLand;
+#[derive(Debug)] pub struct UserLand;
 /// The virtual memory pointing to active page tables by recursion
-pub struct RecursiveTablesLand;
+#[derive(Debug)] pub struct RecursiveTablesLand;
 
 // if 32 bit, we define UserLand and KernelLand here
 #[cfg(any(target_pointer_width = "32", test))]

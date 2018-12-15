@@ -261,10 +261,10 @@ where
 
         for bufty in self.buffers.iter().map(|b| b.buftype()) {
             match bufty {
-                IPCBufferType::X {counter: _} => descriptor_count_x += 1,
-                IPCBufferType::A {flags: _} => descriptor_count_a += 1,
-                IPCBufferType::B {flags: _} => descriptor_count_b += 1,
-                IPCBufferType::C {has_u16_size: _} => descriptor_count_c += 1,
+                IPCBufferType::X { .. } => descriptor_count_x += 1,
+                IPCBufferType::A { .. } => descriptor_count_a += 1,
+                IPCBufferType::B { .. } => descriptor_count_b += 1,
+                IPCBufferType::C { .. } => descriptor_count_c += 1,
             }
         }
 
@@ -461,7 +461,7 @@ where
 
         for buf in self.buffers.iter() {
             let buf = match buf.buftype() {
-                IPCBufferType::C { has_u16_size: _ } => buf,
+                IPCBufferType::C { .. } => buf,
                 _ => continue
             };
 

@@ -7,7 +7,7 @@ use core::marker::PhantomData;
 use ::io::Io;
 
 /// Generic PIO
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct Pio<T> {
     port: u16,
     value: PhantomData<T>,

@@ -26,6 +26,7 @@ impl Color {
     }
 }
 
+#[derive(Debug)]
 pub struct Window {
     buf: MappedSharedMemory,
     handle: IBuffer,
@@ -101,9 +102,9 @@ impl Window {
     ///
     /// Panics if offset is invalid
     #[inline]
-    pub fn write_px(&mut self, offset: usize, color: &Color) {
+    pub fn write_px(&mut self, offset: usize, color: Color) {
         unsafe {
-            self.get_buffer()[offset] = *color;
+            self.get_buffer()[offset] = color;
         }
     }
 
@@ -114,7 +115,7 @@ impl Window {
     ///
     /// Panics if coords are invalid
     #[inline]
-    pub fn write_px_at(&mut self, x: usize, y: usize, color: &Color) {
+    pub fn write_px_at(&mut self, x: usize, y: usize, color: Color) {
         let offset = self.get_px_offset(x, y);
         self.write_px(offset, color);
     }

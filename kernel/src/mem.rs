@@ -34,12 +34,12 @@ pub struct VirtualAddress(pub usize);
 
 impl VirtualAddress  {
     /// Gets the address as a `usize`.
-    pub fn addr(&self) -> usize { self.0 }
+    pub fn addr(self) -> usize { self.0 }
 }
 
 impl PhysicalAddress {
     /// Gets the address as a `usize`.
-    pub fn addr(&self) -> usize { self.0 }
+    pub fn addr(self) -> usize { self.0 }
 }
 
 impl ::core::ops::Add<usize> for VirtualAddress {
@@ -196,6 +196,7 @@ impl core::iter::Step for VirtualAddress {
     fn add_usize(&self, n: usize) -> Option<Self> { self.0.add_usize(n).map(VirtualAddress) }
 }
 
+#[derive(Debug)]
 #[repr(transparent)]
 pub struct UserSpacePtr<T: ?Sized>(pub *const T);
 
@@ -277,6 +278,7 @@ impl<T> Into<UserSpacePtr<T>> for UserSpacePtrMut<T> {
 }
 
 // TODO: This sucks!
+#[derive(Debug)]
 #[repr(C)]
 pub struct FatPtr {
     pub data: usize,

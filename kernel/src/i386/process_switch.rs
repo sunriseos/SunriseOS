@@ -20,9 +20,9 @@ pub struct ThreadHardwareContext {
     esp: usize, // the top of the stack, where all other registers are saved
 }
 
-impl ThreadHardwareContext {
+impl Default for ThreadHardwareContext {
     /// Creates an empty ThreadHardwareContext.
-    pub fn new() -> Self {
+    fn default() -> Self {
         // the saved esp will be overwritten on schedule-out anyway
         Self { esp: 0x55555555 }
     }
@@ -196,6 +196,7 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
 ///
 /// This function will definitely fuck up your stack, so make sure you're calling it on a
 /// never-scheduled thread's empty-stack.
+#[allow(clippy::fn_to_numeric_cast)]
 pub unsafe fn prepare_for_first_schedule(t: &ThreadStruct, entrypoint: usize, userspace_stack: usize) {
     #[repr(packed)]
     struct RegistersOnStack {

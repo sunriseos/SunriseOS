@@ -155,12 +155,12 @@ fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mu
 
     let bufflags = rest.get_bits(0..2);
 
-    let addr = *(loweraddr as u64)
-        .set_bits(32..36, rest.get_bits(28..32) as u64)
-        .set_bits(36..39, rest.get_bits(2..5) as u64);
+    let addr = *(u64::from(loweraddr))
+        .set_bits(32..36, u64::from(rest.get_bits(28..32)))
+        .set_bits(36..39, u64::from(rest.get_bits(2..5)));
 
-    let size = *(lowersize as u64)
-        .set_bits(32..36, rest.get_bits(24..28) as u64);
+    let size = *(u64::from(loweraddr))
+        .set_bits(32..36, u64::from(rest.get_bits(24..28)));
 
     // 64-bit address on a 32-bit kernel!
     if (usize::max_value() as u64) < addr {

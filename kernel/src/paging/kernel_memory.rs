@@ -237,7 +237,7 @@ impl KernelMemory {
         self.tables.unmap(address, length, |paddr| {
             let pr = unsafe {
                 // safe, they were only tracked by the page tables
-                PhysicalMemRegion::reconstruct(paddr, PAGE_SIZE);
+                PhysicalMemRegion::reconstruct(paddr, PAGE_SIZE)
             };
             drop(pr)
         });
@@ -286,10 +286,10 @@ impl KernelMemory {
         enum State { Present(VirtualAddress, PhysicalAddress), Guarded(VirtualAddress), Available(VirtualAddress) }
         impl State {
             fn get_vaddr(&self) -> VirtualAddress {
-                match self {
-                    &State::Present(addr, _) => addr,
-                    &State::Guarded(addr) => addr,
-                    &State::Available(addr) => addr,
+                match *self {
+                    State::Present(addr, _) => addr,
+                    State::Guarded(addr) => addr,
+                    State::Available(addr) => addr,
                 }
             }
 

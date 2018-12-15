@@ -128,17 +128,17 @@ pub enum Handle {
 impl Handle {
     /// Gets the handle as a [Waitable], or return a `UserspaceError` if the handle cannot be waited on.
     pub fn as_waitable(&self) -> Result<&Waitable, UserspaceError> {
-        match self {
-            &Handle::ReadableEvent(ref waitable) => Ok(&**waitable),
-            &Handle::ServerPort(ref serverport) => Ok(serverport),
-            &Handle::ServerSession(ref serversession) => Ok(serversession),
+        match *self {
+            Handle::ReadableEvent(ref waitable) => Ok(&**waitable),
+            Handle::ServerPort(ref serverport) => Ok(serverport),
+            Handle::ServerSession(ref serversession) => Ok(serversession),
             _ => Err(UserspaceError::InvalidHandle),
         }
     }
 
     /// Casts the handle as a [ClientPort], or returns a `UserspaceError`.
     pub fn as_client_port(&self) -> Result<ClientPort, UserspaceError> {
-        if let &Handle::ClientPort(ref s) = self {
+        if let Handle::ClientPort(ref s) = *self {
             Ok((*s).clone())
         } else {
             Err(UserspaceError::InvalidHandle)
@@ -147,7 +147,7 @@ impl Handle {
 
     /// Casts the handle as a [ServerSession], or returns a `UserspaceError`.
     pub fn as_server_session(&self) -> Result<ServerSession, UserspaceError> {
-        if let &Handle::ServerSession(ref s) = self {
+        if let Handle::ServerSession(ref s) = *self {
             Ok((*s).clone())
         } else {
             Err(UserspaceError::InvalidHandle)
@@ -156,7 +156,7 @@ impl Handle {
 
     /// Casts the handle as a [ClientSession], or returns a `UserspaceError`.
     pub fn as_client_session(&self) -> Result<ClientSession, UserspaceError> {
-        if let &Handle::ClientSession(ref s) = self {
+        if let Handle::ClientSession(ref s) = *self {
             Ok((*s).clone())
         } else {
             Err(UserspaceError::InvalidHandle)
@@ -165,7 +165,7 @@ impl Handle {
 
     /// Casts the handle as a Weak<[ThreadStruct]>, or returns a `UserspaceError`.
     pub fn as_thread_handle(&self) -> Result<Weak<ThreadStruct>, UserspaceError> {
-        if let &Handle::Thread(ref s) = self {
+        if let Handle::Thread(ref s) = *self {
             Ok((*s).clone())
         } else {
             Err(UserspaceError::InvalidHandle)
@@ -173,7 +173,7 @@ impl Handle {
     }
 
     pub fn as_shared_memory(&self) -> Result<Arc<Vec<PhysicalMemRegion>>, UserspaceError> {
-        if let &Handle::SharedMemory(ref s) = self {
+        if let Handle::SharedMemory(ref s) = *self {
             Ok((*s).clone())
         } else {
             Err(UserspaceError::InvalidHandle)
@@ -187,14 +187,16 @@ pub struct HandleTable {
     counter: u32
 }
 
-impl HandleTable {
-    pub fn new() -> HandleTable {
+impl Default for HandleTable {
+    fn default() -> Self {
         HandleTable {
             table: BTreeMap::new(),
             counter: 1
         }
     }
+}
 
+impl HandleTable {
     pub fn add_handle(&mut self, handle: Arc<Handle>) -> u32 {
         loop {
             let handlenum = self.counter;
@@ -319,7 +321,7 @@ impl ProcessStruct {
     pub fn new(name: String, ioports: Vec<u16>) -> Arc<ProcessStruct> {
 
         // allocate its memory space
-        let pmemory = Mutex::new(ProcessMemory::new());
+        let pmemory = Mutex::new(ProcessMemory::default());
 
         // The PID.
         let pid = NEXT_PROCESS_ID.fetch_add(1, Ordering::SeqCst);
@@ -328,20 +330,18 @@ impl ProcessStruct {
             // todo: return an error instead of panicking
         }
 
-        let p = Arc::new(
+        Arc::new(
             ProcessStruct {
                 pid,
                 name,
                 pmemory,
                 threads: SpinLockIRQ::new(Vec::new()),
-                phandles: SpinLockIRQ::new(HandleTable::new()),
+                phandles: SpinLockIRQ::new(HandleTable::default()),
                 killed: AtomicBool::new(false),
                 thread_maternity: SpinLock::new(Vec::new()),
                 ioports,
             }
-        );
-
-        p
+        )
     }
 
     /// Creates the very first process at boot.
@@ -367,20 +367,18 @@ impl ProcessStruct {
             panic!("Max PID reached!");
         }
 
-        let p = Arc::new(
+        Arc::new(
             ProcessStruct {
                 pid,
                 name: String::from("init"),
                 pmemory,
                 threads: SpinLockIRQ::new(Vec::new()),
-                phandles: SpinLockIRQ::new(HandleTable::new()),
+                phandles: SpinLockIRQ::new(HandleTable::default()),
                 killed: AtomicBool::new(false),
                 thread_maternity: SpinLock::new(Vec::new()),
                 ioports: Vec::new(),
             }
-        );
-
-        p
+        )
     }
 
     /// Kills a process by killing all of its threads.
@@ -402,9 +400,11 @@ impl ProcessStruct {
 
         // kill all other regular threads
         for weak_thread in this.threads.lock().iter() {
-            Weak::upgrade(weak_thread)
-                .map(|t| ThreadStruct::kill(t));
+            if let Some(t) = Weak::upgrade(weak_thread) {
+                ThreadStruct::kill(t);
+            }
         }
+        drop(this);
     }
 
 }
@@ -433,7 +433,7 @@ impl ThreadStruct {
         let kstack = KernelStack::allocate_stack()?;
 
         // hardware context will be computed later in this function, write a dummy value for now
-        let empty_hwcontext = SpinLockIRQ::new(ThreadHardwareContext::new());
+        let empty_hwcontext = SpinLockIRQ::new(ThreadHardwareContext::default());
 
         // the state of the process, Stopped
         let state = ThreadStateAtomic::new(ThreadState::Stopped);
@@ -508,7 +508,7 @@ impl ThreadStruct {
         let kstack = KernelStack::get_current_stack();
 
         // the saved esp will be overwritten on schedule-out anyway
-        let hwcontext = SpinLockIRQ::new(ThreadHardwareContext::new());
+        let hwcontext = SpinLockIRQ::new(ThreadHardwareContext::default());
 
         let t = Arc::new(
             ThreadStruct {
@@ -535,6 +535,7 @@ impl ThreadStruct {
     /// * `ThreadAlreadyStarted` if the weak resolution failed (the thread has already been killed).
     /// * `ThreadAlreadyStarted` if the thread was not found in the maternity.
     /// * `ProcessKilled` if the process struct was tagged `killed` before we had time to start it.
+    #[allow(clippy::needless_pass_by_value)] // more readable
     pub fn start(this: Weak<Self>) -> Result<(), KernelError> {
         let thread = this.upgrade().ok_or(
             // the thread was dropped, meaning it has already been killed.
@@ -551,7 +552,7 @@ impl ThreadStruct {
         match cradle {
             None => {
                 // the thread was not found in the maternity, meaning it had already started.
-                return Err(KernelError::ThreadAlreadyStarted { backtrace: Backtrace::new() })
+                Err(KernelError::ThreadAlreadyStarted { backtrace: Backtrace::new() })
             },
             Some(pos) => {
                 // remove it from maternity, and put it in the schedule queue

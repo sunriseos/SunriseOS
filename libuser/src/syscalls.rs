@@ -122,7 +122,8 @@ pub fn exit_process() -> ! {
             Ok(_) => (),
             Err(err) => { let _ = output_debug_string(&format!("Failed to exit: {}", err)); },
         }
-        loop {}
+        #[allow(clippy::empty_loop)]
+        loop {} // unreachable, but we can't panic, as panic! calls exit_process
     }
 }
 
@@ -190,7 +191,7 @@ pub(crate) fn close_handle(handle: u32) -> Result<(), KernelError> {
 
 pub fn wait_synchronization(handles: &[HandleRef], timeout_ns: Option<usize>) -> Result<usize, KernelError> {
     unsafe {
-        let (handleidx, ..) = syscall(nr::WaitSynchronization, handles.as_ptr() as _, handles.len(), timeout_ns.unwrap_or(usize::max_value()), 0, 0, 0)?;
+        let (handleidx, ..) = syscall(nr::WaitSynchronization, handles.as_ptr() as _, handles.len(), timeout_ns.unwrap_or_else(usize::max_value), 0, 0, 0)?;
         Ok(handleidx)
     }
 }
@@ -235,7 +236,7 @@ pub fn reply_and_receive_with_user_buffer(buf: &mut [u8], handles: &[HandleRef],
         let (idx, ..) = syscall(nr::ReplyAndReceiveWithUserBuffer, buf.as_ptr() as _, buf.len(), handles.as_ptr() as _, handles.len(), match replytarget {
             Some(s) => s.inner.get() as _,
             None => 0
-        }, timeout.unwrap_or(usize::max_value()))?;
+        }, timeout.unwrap_or_else(usize::max_value))?;
         Ok(idx)
     }
 }

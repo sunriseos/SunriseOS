@@ -32,7 +32,7 @@ static GLOBAL_LDT: Once<DescriptorTable> = Once::new();
 pub fn init_gdt() {
     use i386::instructions::tables::{lldt, ltr};
 
-    let ldt = GLOBAL_LDT.call_once(|| DescriptorTable::new());
+    let ldt = GLOBAL_LDT.call_once(DescriptorTable::new);
 
     GDT.call_once(|| {
         let mut gdt = DescriptorTable::new();
@@ -352,7 +352,7 @@ impl DescriptorTableEntry {
         Self::new_system(SystemDescriptorTypes::AvailableTss32, base as *const _ as u32, (size_of::<TssStruct>() + iobp_size - 1) as u32, priv_level)
     }
 
-    fn get_limit(&self) -> u32 {
+    fn get_limit(self) -> u32 {
         (self.0.get_bits(0..16) as u32) | ((self.0.get_bits(48..52) << 16) as u32)
     }
 
@@ -362,24 +362,24 @@ impl DescriptorTableEntry {
         }
 
         if newlimit > 65536 {
-            newlimit = newlimit >> 12;
+            newlimit >>= 12;
             self.set_4k_granularity(true);
         }
 
-        self.0.set_bits(0..16, newlimit.get_bits(0..16) as u64);
-        self.0.set_bits(48..52, newlimit.get_bits(16..20) as u64);
+        self.0.set_bits( 0..16, u64::from(newlimit.get_bits( 0..16)));
+        self.0.set_bits(48..52, u64::from(newlimit.get_bits(16..20)));
     }
 
-    fn get_base(&self) -> u32 {
+    fn get_base(self) -> u32 {
         (self.0.get_bits(16..40) as u32) | ((self.0.get_bits(56..64) << 24) as u32)
     }
 
     fn set_base(&mut self, newbase: u32) {
-        self.0.set_bits(16..40, newbase.get_bits(0..24) as u64);
-        self.0.set_bits(56..64, newbase.get_bits(24..32) as u64);
+        self.0.set_bits(16..40, u64::from(newbase.get_bits( 0..24)));
+        self.0.set_bits(56..64, u64::from(newbase.get_bits(24..32)));
     }
 
-    pub fn get_accessed(&self) -> bool {
+    pub fn get_accessed(self) -> bool {
         self.0.get_bit(40)
     }
 
@@ -388,25 +388,25 @@ impl DescriptorTableEntry {
     }
 
     // TODO: also gets direction
-    pub fn is_comformant(&self) -> bool {
+    pub fn is_comformant(self) -> bool {
         self.0.get_bit(42)
     }
 
-    pub fn is_executable(&self) -> bool {
+    pub fn is_executable(self) -> bool {
         self.0.get_bit(43)
     }
 
     // bit 44 is unused
 
-    pub fn get_ring_level(&self) -> PrivilegeLevel {
+    pub fn get_ring_level(self) -> PrivilegeLevel {
         PrivilegeLevel::from_u16(self.0.get_bits(45..47) as u16)
     }
 
-    pub fn get_present(&self) -> bool {
+    pub fn get_present(self) -> bool {
         self.0.get_bit(47)
     }
 
-    pub fn is_4k_granularity(&self) -> bool {
+    pub fn is_4k_granularity(self) -> bool {
         self.0.get_bit(55)
     }
 
@@ -414,7 +414,7 @@ impl DescriptorTableEntry {
         self.0.set_bit(55, is);
     }
 
-    pub fn is_32bit(&self) -> bool {
+    pub fn is_32bit(self) -> bool {
         self.0.get_bit(54)
     }
 }

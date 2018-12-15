@@ -88,7 +88,7 @@ fn show_gif(louis: &[u8]) {
             for x in 0..(reader.width() as usize) {
                 let frame_coord = (y * reader.width() as usize + x) * 4;
                 let vbe_coord = window.get_px_offset(x, y);
-                window.write_px_at(x, y, &Color::rgb(buf[frame_coord], buf[frame_coord + 1], buf[frame_coord + 2]));
+                window.write_px_at(x, y, Color::rgb(buf[frame_coord], buf[frame_coord + 1], buf[frame_coord + 2]));
             }
         }
         window.draw().unwrap();

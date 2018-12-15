@@ -62,6 +62,7 @@ pub fn get_current_process() -> Arc<ProcessStruct> {
 ///
 /// The passed function will be executed after setting the CURRENT_THREAD, but before
 /// setting it back to the RUNNING state.
+#[allow(clippy::needless_pass_by_value)] // more readable
 unsafe fn set_current_thread<R, F: FnOnce() -> R>(t: Arc<ThreadStruct>, f: F) -> R {
     mem::replace(&mut CURRENT_THREAD, Some(t.clone()));
 
@@ -201,7 +202,7 @@ pub unsafe fn create_first_process() {
 pub fn schedule() {
     struct NoopLock;
     impl Lock<'static, ()> for NoopLock {
-        fn lock(&self) -> () { () }
+        fn lock(&self) { /* no-op */ }
     }
 
     let _ : () = internal_schedule(&NoopLock, false);
@@ -209,7 +210,7 @@ pub fn schedule() {
 
 /// Parses the queue to find the first unlocked process.
 /// Returns the index of found process
-fn find_next_thread_to_run(queue: &Vec<Arc<ThreadStruct>>) -> Option<usize> {
+fn find_next_thread_to_run(queue: &[Arc<ThreadStruct>]) -> Option<usize> {
     for (index, thread) in queue.iter().enumerate() {
         if thread.hwcontext.try_lock().is_some() {
             return Some(index)

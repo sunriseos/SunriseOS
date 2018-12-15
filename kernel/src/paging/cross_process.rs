@@ -40,6 +40,7 @@ use failure::Backtrace;
 use error::KernelError;
 
 /// A struct representing a UserLand mapping temporarily mirrored in KernelSpace.
+#[derive(Debug)]
 pub struct CrossProcessMapping<'a> {
     kernel_address: VirtualAddress,
     len: usize,

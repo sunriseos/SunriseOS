@@ -11,6 +11,7 @@ use paging::{PAGE_SIZE, MappingFlags, kernel_memory::get_kernel_memory};
 use frame_allocator::{FrameAllocator, FrameAllocatorTrait};
 use mem::VirtualAddress;
 
+#[allow(missing_debug_implementations)] // Heap does not implement Debug :/
 pub struct Allocator(Once<SpinLock<Heap>>);
 
 // 512MB. Should be a multiple of PAGE_SIZE.
@@ -85,7 +86,7 @@ unsafe impl<'a> GlobalAlloc for Allocator {
                 self.0.call_once(Self::init).lock().allocate_first_fit(layout)
             }
             _ => allocation
-        }.ok().map_or(0 as *mut u8, |allocation| allocation.as_ptr());
+        }.ok().map_or(::core::ptr::null_mut(), |allocation| allocation.as_ptr());
 
         debug!("ALLOC  {:#010x?}, size {:#x}", alloc, layout.size());
         alloc

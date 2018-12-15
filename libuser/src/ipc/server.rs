@@ -43,7 +43,7 @@ impl WaitableManager {
                 Ok(false) => (),
                 Ok(true) => { waitables.remove(idx); },
                 Err(err) => {
-                    syscalls::output_debug_string(&format!("Error: {}", err));
+                    let _ = syscalls::output_debug_string(&format!("Error: {}", err));
                     waitables.remove(idx);
                 }
             }
@@ -152,7 +152,7 @@ fn encode_bytes(s: &str) -> u64 {
     assert!(s.len() < 8);
     let s = s.as_bytes();
     0
-        | (*s.get(0).unwrap_or(&0) as u64) << 00 | (*s.get(1).unwrap_or(&0) as u64) << 08
+        | (*s.get(0).unwrap_or(&0) as u64) << 00 | (*s.get(1).unwrap_or(&0) as u64) <<  8
         | (*s.get(2).unwrap_or(&0) as u64) << 16 | (*s.get(3).unwrap_or(&0) as u64) << 24
         | (*s.get(4).unwrap_or(&0) as u64) << 32 | (*s.get(5).unwrap_or(&0) as u64) << 40
         | (*s.get(6).unwrap_or(&0) as u64) << 48 | (*s.get(7).unwrap_or(&0) as u64) << 56

@@ -147,7 +147,7 @@ impl KernelStack {
             // safe: the constructed slice will be "under" the current stack top,
             //       it is considered temporarily immutable,
             //       and nobody except our thread has access to it.
-            dump_stack(source, elf_symbols);
+            dump_stack(&source, elf_symbols);
         }
     }
 }
@@ -163,6 +163,7 @@ impl Drop for KernelStack {
 /* ********************************************************************************************** */
 
 /// The minimal information needed to perform a stack dump.
+#[derive(Debug)]
 pub struct StackDumpSource {
     /// The initial top of the stack.
     esp: usize,
@@ -202,7 +203,7 @@ impl StackDumpSource {
 /// function is at work. This will often mean checking that the thread whose stack we're dumping
 /// is stopped and will remain unscheduled at least until this function returns.
 #[allow(unused_must_use)]
-pub unsafe fn dump_stack<'a>(source: StackDumpSource, elf_symbols: Option<(&ElfFile<'a>, &'a [Entry32])>) {
+pub unsafe fn dump_stack<'a>(source: &StackDumpSource, elf_symbols: Option<(&ElfFile<'a>, &'a [Entry32])>) {
     use devices::rs232::SerialLogger;
     use core::fmt::Write;
 
@@ -256,7 +257,7 @@ pub unsafe fn dump_stack<'a>(source: StackDumpSource, elf_symbols: Option<(&ElfF
         let stack_slice = unsafe { ::core::slice::from_raw_parts(stack_bottom as *const u8,
                                                                  STACK_SIZE * PAGE_SIZE) };
 
-        return dump_stack_from_slice(stack_slice, stack_bottom, esp, ebp, eip, elf);
+        dump_stack_from_slice(stack_slice, stack_bottom, esp, ebp, eip, elf)
     }
 
     /// Takes the mapping `esp` falls into, consider it a stack and attempts to dump it.

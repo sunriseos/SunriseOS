@@ -288,6 +288,9 @@ impl fmt::Debug for Builder {
 /// Parse a logging specification string (e.g: "crate1,crate2::mod3,crate3::x=error/foo")
 /// and return a vector with log directives.
 #[allow(unused_must_use)]
+#[allow(clippy::option_map_unit_fn)]
+#[allow(clippy::len_zero)]
+#[allow(clippy::option_map_or_none)]
 fn parse_spec(spec: &str) -> (Vec<Directive>, Option<inner::Filter>) {
     let mut dirs = Vec::new();
 
@@ -344,7 +347,7 @@ fn parse_spec(spec: &str) -> (Vec<Directive>, Option<inner::Filter>) {
         }
     });
 
-    return (dirs, filter);
+    (dirs, filter)
 }
 
 

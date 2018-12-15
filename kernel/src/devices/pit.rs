@@ -81,6 +81,7 @@ lazy_static! {
 }
 
 /// Used internally to select which channel to apply operations to
+#[derive(Debug, Clone, Copy)]
 enum ChannelSelector {
     Channel0,
     Channel2

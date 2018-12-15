@@ -93,45 +93,45 @@ impl<'b> TableHierarchy for DynamicHierarchy<'b> {
                                flags: MappingFlags)
     where I: Iterator<Item=PhysicalAddress>
     {
-        match self {
-            &mut DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.map_to_from_iterator(frames_iterator, start_address, flags),
-            &mut DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.map_to_from_iterator(frames_iterator, start_address, flags),
+        match *self {
+            DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.map_to_from_iterator(frames_iterator, start_address, flags),
+            DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.map_to_from_iterator(frames_iterator, start_address, flags),
         }
     }
 
     fn guard(&mut self, address: VirtualAddress, length: usize) {
-        match self {
-            &mut DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.guard(address, length),
-            &mut DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.guard(address, length),
+        match *self {
+            DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.guard(address, length),
+            DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.guard(address, length),
         }
     }
 
     fn unmap<C>(&mut self, address: VirtualAddress, length: usize, callback: C) where C: FnMut(PhysicalAddress) {
-        match self {
-            &mut DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.unmap(address, length, callback),
-            &mut DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.unmap(address, length, callback),
+        match *self {
+            DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.unmap(address, length, callback),
+            DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.unmap(address, length, callback),
         }
     }
 
     fn for_every_entry<C>(&mut self, address: VirtualAddress, length: usize, callback: C) where C: FnMut(PageState<PhysicalAddress>, usize) {
-        match self {
-            &mut DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.for_every_entry(address, length, callback),
-            &mut DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.for_every_entry(address, length, callback),
+        match *self {
+            DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.for_every_entry(address, length, callback),
+            DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.for_every_entry(address, length, callback),
         }
     }
 
     fn find_available_virtual_space_aligned(&mut self, length: usize, start_addr: VirtualAddress, end_addr: VirtualAddress, alignment: usize) -> Option<VirtualAddress> {
-        match self {
-            &mut DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.find_available_virtual_space_aligned(length, start_addr, end_addr, alignment),
-            &mut DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.find_available_virtual_space_aligned(length, start_addr, end_addr, alignment),
+        match *self {
+            DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.find_available_virtual_space_aligned(length, start_addr, end_addr, alignment),
+            DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.find_available_virtual_space_aligned(length, start_addr, end_addr, alignment),
         }
     }
 }
 
-impl ProcessMemory {
+impl Default for ProcessMemory {
     /// Creates a ProcessMemory, allocating the userspace-bookkeeping,
     /// and the top-level table of the table hierarchy.
-    pub fn new() -> Self {
+    fn default() -> Self {
         // we don't have ASRL yet :(
         let heap_base_address = VirtualAddress(0x80000000);
 
@@ -145,7 +145,9 @@ impl ProcessMemory {
             .expect("Cannot guard first page of ProcessMemory");
         ret
     }
+}
 
+impl ProcessMemory {
     /// Creates a ProcessMemory referencing the current page tables.
     /// Used only when becoming the first process for creating the first ProcessMemory.
     ///
@@ -330,7 +332,7 @@ impl ProcessMemory {
         };
         if new_size == 0 {
             // remove the mapping entirely, return everything as spill.
-            return self.unmap(start_addr, old_size).map(|mapping| Some(mapping))
+            return self.unmap(start_addr, old_size).map(Some)
         }
         if new_size == old_size {
             // don't do anything, and produce no spill
@@ -468,7 +470,7 @@ impl ProcessMemory {
         // get the previous heap size
         let previous_heap_state = {
             let query = self.userspace_bookkeping.mapping_at(self.heap_base_address);
-            let heap = query.as_ref();
+            let heap = query.mapping();
             if let MappingType::Available = heap.mtype_ref() {
                 HeapState::NoHeap
             } else {

@@ -109,7 +109,7 @@ fn main() {
                 let ep = elf_loader::load_builtin(&mut pmemlock, &mapped_module);
 
                 let stack = pmemlock.find_available_space(5 * PAGE_SIZE)
-                    .expect(&format!("Cannot create a stack for process {:?}", proc));
+                    .unwrap_or_else(|_| panic!("Cannot create a stack for process {:?}", proc));
                 pmemlock.guard(stack, PAGE_SIZE).unwrap();
                 pmemlock.create_regular_mapping(stack + PAGE_SIZE, 4 * PAGE_SIZE, MappingFlags::u_rw()).unwrap();
 
@@ -283,7 +283,7 @@ unsafe fn do_panic(msg: core::fmt::Arguments, stackdump_source: Option<stack::St
     if let Some(sds) = stackdump_source {
         unsafe {
             // this is unsafe, caller must check safety
-            ::stack::dump_stack(sds, elf_and_st)
+            ::stack::dump_stack(&sds, elf_and_st)
         }
     } else {
         ::stack::KernelStack::dump_current_stack(elf_and_st)

@@ -27,7 +27,7 @@ impl Handle {
 
 impl Drop for Handle {
     fn drop(&mut self) {
-        syscalls::close_handle(self.0.get());
+        let _ = syscalls::close_handle(self.0.get());
     }
 }
 
@@ -151,11 +151,12 @@ pub struct MappedSharedMemory {
     size: usize
 }
 
+#[allow(clippy::len_without_is_empty)] // len cannot be zero.
 impl MappedSharedMemory {
     pub unsafe fn get(&self) -> &[u8] {
         ::core::slice::from_raw_parts(self.addr as *const u8, self.size)
     }
-    pub unsafe fn get_mut(&self) -> &mut [u8] {
+    pub unsafe fn get_mut(&mut self) -> &mut [u8] {
         ::core::slice::from_raw_parts_mut(self.addr as *mut u8, self.size)
     }
 
