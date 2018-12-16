@@ -60,6 +60,9 @@
 //! [`Builder::parse`]: struct.Builder.html#method.parse
 //! [`Filter::matches`]: struct.Filter.html#method.matches
 
+#![allow(clippy::missing_docs_in_private_items)]
+// cause apparently people we steal from can't even have the decency of writing docs.
+
 //use std::env;
 use core::mem;
 use core::fmt::{self, Write};

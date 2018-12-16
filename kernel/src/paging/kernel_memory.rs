@@ -281,6 +281,7 @@ impl KernelMemory {
     }
 
     /// Prints the state of the KernelLand by parsing the page tables. Used for debugging purposes.
+    #[allow(clippy::missing_docs_in_private_items)]
     pub fn dump_kernelland_state(&mut self) {
         #[derive(Debug, Clone, Copy)]
         enum State { Present(VirtualAddress, PhysicalAddress), Guarded(VirtualAddress), Available(VirtualAddress) }

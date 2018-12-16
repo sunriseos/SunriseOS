@@ -36,11 +36,11 @@ impl HierarchicalTable for ActivePageTable {
 
     fn table_level() -> usize { 0 }
 
-    fn get_child_table<'a>(&'a mut self, _index: usize) -> PageState<SmartHierarchicalTable<'a, <Self as HierarchicalTable>::ChildTableType>> {
+    fn get_child_table(&mut self, _index: usize) -> PageState<SmartHierarchicalTable<<Self as HierarchicalTable>::ChildTableType>> {
         panic!("An active page table has no children");
     }
 
-    fn create_child_table<'a>(&'a mut self, _index: usize) -> SmartHierarchicalTable<'a, <Self as HierarchicalTable>::ChildTableType> {
+    fn create_child_table(&mut self, _index: usize) -> SmartHierarchicalTable<<Self as HierarchicalTable>::ChildTableType> {
         panic!("An active page table has no children");
     }
 }
@@ -68,13 +68,13 @@ impl HierarchicalTable for ActivePageDirectory {
 
     fn table_level() -> usize { 1 }
 
-    fn get_child_table<'a>(&'a mut self, index: usize) -> PageState<SmartHierarchicalTable<'a, ActivePageTable>> {
+    fn get_child_table(&mut self, index: usize) -> PageState<SmartHierarchicalTable<ActivePageTable>> {
         // use recurive mapping to get the child table
         self.get_table_address(index)
             .map(|addr| SmartHierarchicalTable::new(unsafe { &mut * (addr as *mut _) }))
     }
 
-    fn create_child_table<'a>(&'a mut self, index: usize) -> SmartHierarchicalTable<'a, ActivePageTable> {
+    fn create_child_table(&mut self, index: usize) -> SmartHierarchicalTable<ActivePageTable> {
         assert!(self.entries()[index].is_unused(), "called create_child_table on a non available entry");
         let table_frame = FrameAllocator::allocate_frame().unwrap();
 
@@ -99,7 +99,7 @@ impl HierarchicalTable for ActivePageDirectory {
 impl TableHierarchy for ActiveHierarchy {
     type TopLevelTableType = ActivePageDirectory;
 
-    fn get_top_level_table<'a>(&'a mut self) -> SmartHierarchicalTable<'a, ActivePageDirectory> {
+    fn get_top_level_table(&mut self) -> SmartHierarchicalTable<ActivePageDirectory> {
         assert!(super::is_paging_on(), "Paging is disabled");
         SmartHierarchicalTable::new(DIRECTORY_RECURSIVE_ADDRESS.addr() as *mut ActivePageDirectory)
     }
@@ -124,11 +124,11 @@ impl HierarchicalTable for InactivePageTable {
 
     fn table_level() -> usize { 0 }
 
-    fn get_child_table<'a>(&'a mut self, _index: usize) -> PageState<SmartHierarchicalTable<'a, <Self as HierarchicalTable>::ChildTableType>> {
+    fn get_child_table(&mut self, _index: usize) -> PageState<SmartHierarchicalTable<<Self as HierarchicalTable>::ChildTableType>> {
         panic!("An inactive page table has no children");
     }
 
-    fn create_child_table<'a>(&'a mut self, _index: usize) -> SmartHierarchicalTable<'a, <Self as HierarchicalTable>::ChildTableType> {
+    fn create_child_table(&mut self, _index: usize) -> SmartHierarchicalTable<<Self as HierarchicalTable>::ChildTableType> {
         panic!("An inactive page table has no children");
     }
 }
@@ -142,7 +142,7 @@ impl HierarchicalTable for InactivePageDirectory {
 
     fn table_level() -> usize { 1 }
 
-    fn get_child_table<'a>(&'a mut self, index: usize) -> PageState<SmartHierarchicalTable<'a, InactivePageTable>> {
+    fn get_child_table(&mut self, index: usize) -> PageState<SmartHierarchicalTable<InactivePageTable>> {
         self.entries()[index].pointed_frame().map(|frame| {
             let mut active_pages = get_kernel_memory();
             let phys_region = unsafe {
@@ -156,7 +156,7 @@ impl HierarchicalTable for InactivePageDirectory {
         })
     }
 
-    fn create_child_table<'a>(&'a mut self, index: usize) -> SmartHierarchicalTable<'a, InactivePageTable> {
+    fn create_child_table(&mut self, index: usize) -> SmartHierarchicalTable<InactivePageTable> {
         assert!(self.entries()[index].is_unused());
         let table_frame = FrameAllocator::allocate_frame().unwrap();
         let mut active_pages = get_kernel_memory();
@@ -203,7 +203,7 @@ impl Drop for InactivePageTable {
 impl TableHierarchy for InactiveHierarchy {
     type TopLevelTableType = InactivePageDirectory;
 
-    fn get_top_level_table<'a>(&'a mut self) -> SmartHierarchicalTable<'a, InactivePageDirectory> {
+    fn get_top_level_table(&mut self) -> SmartHierarchicalTable<InactivePageDirectory> {
         let frame = unsafe {
             // we're reconstructing a non-tracked RecursiveTableLand frame.
             PhysicalMemRegion::reconstruct_no_dealloc(self.directory_physical_address, PAGE_SIZE)

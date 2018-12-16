@@ -161,7 +161,7 @@ pub trait HierarchicalTable {
     /// # Panics
     ///
     /// Should panic if called on a table which isn't a parent table.
-    fn get_child_table<'a>(&'a mut self, index: usize) -> PageState<SmartHierarchicalTable<'a, Self::ChildTableType>>;
+    fn get_child_table(&mut self, index: usize) -> PageState<SmartHierarchicalTable<Self::ChildTableType>>;
 
     /// Allocates a child page table, zero it and add an entry pointing to it.
     ///
@@ -169,14 +169,14 @@ pub trait HierarchicalTable {
     ///
     /// Should panic if called on a table which isn't a parent table.
     /// Should panic if entry was not available.
-    fn create_child_table<'a>(&'a mut self, index: usize) -> SmartHierarchicalTable<'a, Self::ChildTableType>;
+    fn create_child_table(&mut self, index: usize) -> SmartHierarchicalTable<Self::ChildTableType>;
 
     /// Gets the child page table at given index, or creates it if it does not exist
     ///
     /// # Panics
     ///
     /// Should panic if called on a table which isn't a parent table.
-    fn get_child_table_or_create<'a>(&'a mut self, index: usize) -> PageState<SmartHierarchicalTable<'a, Self::ChildTableType>> {
+    fn get_child_table_or_create(&mut self, index: usize) -> PageState<SmartHierarchicalTable<Self::ChildTableType>> {
         assert!(Self::table_level() >= 1, "get_child_table_or_create() called on non-parent table");
         match self.entries()[index].pointed_frame() {
             PageState::Present(_) => self.get_child_table(index),
@@ -256,7 +256,7 @@ pub trait TableHierarchy {
 
     /// Gets a reference to the top level table, either through recursive mapping,
     /// or by temporarily mapping it in the currently active page tables.
-    fn get_top_level_table<'a>(&'a mut self) -> SmartHierarchicalTable<'a, Self::TopLevelTableType>;
+    fn get_top_level_table(&mut self) -> SmartHierarchicalTable<Self::TopLevelTableType>;
 
     /// Creates a mapping in the page tables with the given flags.
     ///
@@ -500,6 +500,7 @@ pub trait TableHierarchy {
     /// Panics if  alignment is not page-aligned.
     /// Panics if start_addr > end_addr.
     /// Panics if length is zero.
+    #[allow(clippy::missing_docs_in_private_items)]
     fn find_available_virtual_space_aligned(&mut self,
                                             length: usize,
                                             start_addr: VirtualAddress,

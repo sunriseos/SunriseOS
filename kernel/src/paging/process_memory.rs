@@ -71,11 +71,11 @@ impl HierarchicalTable for () {
         unimplemented!()
     }
 
-    fn get_child_table<'a>(&'a mut self, _index: usize) -> PageState<SmartHierarchicalTable<'a, <Self as HierarchicalTable>::ChildTableType>> {
+    fn get_child_table(&mut self, _index: usize) -> PageState<SmartHierarchicalTable<<Self as HierarchicalTable>::ChildTableType>> {
         unimplemented!()
     }
 
-    fn create_child_table<'a>(&'a mut self, _index: usize) -> SmartHierarchicalTable<'a, <Self as HierarchicalTable>::ChildTableType> {
+    fn create_child_table(&mut self, _index: usize) -> SmartHierarchicalTable<<Self as HierarchicalTable>::ChildTableType> {
         unimplemented!()
     }
 }
@@ -83,7 +83,7 @@ impl HierarchicalTable for () {
 impl<'b> TableHierarchy for DynamicHierarchy<'b> {
     type TopLevelTableType = (); // Ignored
 
-    fn get_top_level_table<'a>(&'a mut self) -> SmartHierarchicalTable<'a, ()> {
+    fn get_top_level_table(&mut self) -> SmartHierarchicalTable<()> {
         panic!("Dynamic DynamicHierarchy reimplements everything");
     }
 
@@ -465,6 +465,7 @@ impl ProcessMemory {
     /// * InvalidSize if \[`address`..`new_size`\] does not fall in UserLand,
     ///   or overlaps an existing mapping.
     pub fn resize_heap(&mut self, new_size: usize) -> Result<VirtualAddress, KernelError> {
+        #[allow(clippy::missing_docs_in_private_items)]
         enum HeapState { NoHeap, Heap(usize) };
         UserLand::check_contains_region(self.heap_base_address, new_size)?;
         // get the previous heap size

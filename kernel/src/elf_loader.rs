@@ -154,7 +154,7 @@ fn load_segment(process_memory: &mut ProcessMemory, segment: ProgramHeader, elf_
         SegmentData::Undefined(elf_data) =>
         {
             let dest_ptr = kernel_addr.addr() as *mut u8;
-            let mut dest = unsafe { slice::from_raw_parts_mut(dest_ptr, mem_size_total) };
+            let dest = unsafe { slice::from_raw_parts_mut(dest_ptr, mem_size_total) };
             let (dest_data, dest_pad) = dest.split_at_mut(segment.file_size() as usize);
 
             // Copy elf data

@@ -8,7 +8,7 @@ use core::fmt::{self, Display};
 pub use kfs_libkern::error::KernelError as UserspaceError;
 
 #[derive(Debug, Clone, Copy)]
-#[allow(missing_docs)]
+#[allow(missing_docs, clippy::missing_docs_in_private_items)]
 pub enum ArithmeticOperation { Add, Sub, Mul, Div, Mod, Pow }
 
 impl Display for ArithmeticOperation {

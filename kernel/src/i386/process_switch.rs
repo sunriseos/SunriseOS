@@ -94,7 +94,7 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
             .expect("process_switch cannot get destination thread' lock for writing");
         let mut thread_current_lock_phwcontext = thread_current.hwcontext.try_lock()
             .expect("process_switch cannot get current thread' lock for writing");
-        let mut thread_b_lock_phwcontext = thread_b.hwcontext.try_lock()
+        let     thread_b_lock_phwcontext = thread_b.hwcontext.try_lock()
             .expect("process_switch cannot get destination thread' lock for writing");
 
         // Switch the memory pages
@@ -123,7 +123,7 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
     // Set IOPB back to "nothing allowed" state
     // todo do not change iopb if thread_b belongs to the same process.
     let iopb = gdt::get_main_iopb();
-    for ioport in thread_current.process.ioports.iter() {
+    for ioport in &thread_current.process.ioports {
         let ioport = *ioport as usize;
         iopb[ioport / 8] = 0xFF;
     }
@@ -178,7 +178,7 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
     (*tss).esp0 = me.kstack.get_stack_start() as u32;
 
     // Set IOPB
-    for ioport in me.process.ioports.iter() {
+    for ioport in &me.process.ioports {
         let ioport = *ioport as usize;
         iopb[ioport / 8] &= !(1 << (ioport % 8));
     }
@@ -199,6 +199,7 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
 #[allow(clippy::fn_to_numeric_cast)]
 pub unsafe fn prepare_for_first_schedule(t: &ThreadStruct, entrypoint: usize, userspace_stack: usize) {
     #[repr(packed)]
+    #[allow(clippy::missing_docs_in_private_items)]
     struct RegistersOnStack {
         eflags: u32,
         edi: u32,
@@ -282,7 +283,7 @@ fn first_schedule() {
         let iopb = unsafe {
             gdt::get_main_iopb()
         };
-        for ioport in current.process.ioports.iter() {
+        for ioport in &current.process.ioports {
             let ioport = *ioport as usize;
             iopb[ioport / 8] &= !(1 << (ioport % 8));
         }

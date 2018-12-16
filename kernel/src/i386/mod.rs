@@ -242,7 +242,7 @@ impl PrivilegeLevel {
 /// ([see OSDEV](https://wiki.osdev.org/TSS))
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
-#[allow(missing_docs)]
+#[allow(missing_docs, clippy::missing_docs_in_private_items)]
 pub struct TssStruct {
     pub link: u16,
     _reserved1: u16,

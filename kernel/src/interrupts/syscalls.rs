@@ -171,6 +171,7 @@ fn create_thread(ip: usize, _context: usize, sp: usize, _priority: u32, _process
 ///
 /// * `InvalidHandle` if the handle is not a thread_handle,
 /// * `ProcessAlreadyStarted` if the thread has already started,
+#[allow(clippy::unit_arg)]
 fn start_thread(thread_handle: u32) -> Result<(), UserspaceError> {
     let cur_proc = get_current_process();
     let handles_table = cur_proc.phandles.lock();

@@ -23,7 +23,7 @@ const COM4: ComPort = ComPort(0x2E8);
 const COM1: ComPort = ComPort(0x7777);
 
 /// The possible colors for serial
-#[allow(missing_docs)]
+#[allow(missing_docs, clippy::missing_docs_in_private_items)]
 #[repr(u8)]
 #[derive(Debug, Copy, Clone)]
 pub enum SerialColor {
