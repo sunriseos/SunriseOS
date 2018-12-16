@@ -11,10 +11,15 @@ use failure::Backtrace;
 /// Implemented by UserLand and KernelLand
 pub trait VirtualSpaceLand {
     /// The first address in this land.
-    fn start_addr() -> VirtualAddress;
+    const START: VirtualAddress;
+    /// The last address in this land.
+    const END: VirtualAddress;
+
+    /// The first address in this land.
+    fn start_addr() -> VirtualAddress { Self::START }
 
     /// The last address in this land.
-    fn end_addr() -> VirtualAddress;
+    fn end_addr() -> VirtualAddress { Self::END }
 
     /// The length of this land.
     fn length() -> usize { Self::end_addr().addr() - Self::start_addr().addr() + 1 }
@@ -73,51 +78,44 @@ pub trait VirtualSpaceLand {
 /// The virtual memory pointing to active page tables by recursion
 #[derive(Debug)] pub struct RecursiveTablesLand;
 
+// TODO: move KernelLand Userland RTL to arch-specific paging
+// BODY: They are arch dependant, we should stop trying defining them in an agnostic way,
+// BODY: even if they are expected to be the same for 32 bits architectures.
+// BODY:
+// BODY: Especially for the Recursive Tables Land. Even if it's a agnostic concept, its size in
+// BODY: virtual memory is mmu-dependant, and defined by the number of levels the mmu uses.
+
 // if 32 bit, we define UserLand and KernelLand here
 #[cfg(any(target_pointer_width = "32", test))]
-impl UserLand {
-    const fn start_addr() -> VirtualAddress { VirtualAddress(0x00000000) }
-    const fn end_addr()   -> VirtualAddress { VirtualAddress(0xbfffffff) }
+impl VirtualSpaceLand for UserLand {
+    const START: VirtualAddress = VirtualAddress(0x00000000);
+    const END:   VirtualAddress = VirtualAddress(0xbfffffff);
 }
 
 #[cfg(any(target_pointer_width = "32", test))]
-impl KernelLand {
-    const fn start_addr() -> VirtualAddress { VirtualAddress(0xc0000000) }
-    const fn end_addr()   -> VirtualAddress { VirtualAddress(0xffbfffff) }
+impl VirtualSpaceLand for KernelLand {
+    const START: VirtualAddress = VirtualAddress(0xc0000000);
+    const   END: VirtualAddress = VirtualAddress(0xffbfffff);
 }
 
 #[cfg(any(target_pointer_width = "32", test))]
-impl RecursiveTablesLand {
-    const fn start_addr() -> VirtualAddress { VirtualAddress(0xffc00000) }
-    const fn end_addr()   -> VirtualAddress { VirtualAddress(0xffffffff) }
+impl VirtualSpaceLand for RecursiveTablesLand {
+    const START: VirtualAddress = VirtualAddress(0xffc00000);
+    const   END: VirtualAddress = VirtualAddress(0xffffffff);
 }
 // else we do it in arch-specific implementations
-
-impl VirtualSpaceLand for KernelLand {
-    fn start_addr() -> VirtualAddress { Self::start_addr() }
-    fn end_addr()   -> VirtualAddress { Self::end_addr() }
-}
-
-impl VirtualSpaceLand for UserLand {
-    fn start_addr() -> VirtualAddress { Self::start_addr() }
-    fn end_addr()   -> VirtualAddress { Self::end_addr() }
-}
-
-impl VirtualSpaceLand for RecursiveTablesLand {
-    fn start_addr() -> VirtualAddress { Self::start_addr() }
-    fn end_addr()   -> VirtualAddress { Self::end_addr() }
-}
 
 // Assertions to check that Kernel/User pages falls on distinct page tables
 // and also that they do not overlap
 fn __land_assertions() {
-    const_assert!(KernelLand::start_addr().0 < KernelLand::end_addr().0);
-    const_assert!(UserLand::start_addr().0 < UserLand::end_addr().0);
+    const_assert!(KernelLand::START.0 < KernelLand::END.0);
+    const_assert!(UserLand::START.0 < UserLand::END.0);
+    const_assert!(RecursiveTablesLand::START.0 < RecursiveTablesLand::END.0);
     // TODO: Const FN sucks! Check that the kernelland and userland don't overlap.
     //const_assert!(::core::cmp::max(KernelLand::start_addr(), UserLand::start_addr()) >=
     //              ::core::cmp::min(KernelLand::end_addr(),   UserLand::end_addr()));
 
-    const_assert!(KernelLand::start_addr().0 % (ENTRY_COUNT * PAGE_SIZE) == 0);
-    const_assert!(UserLand::start_addr().0   % (ENTRY_COUNT * PAGE_SIZE) == 0);
+    const_assert!(KernelLand::START.0 % (ENTRY_COUNT * PAGE_SIZE) == 0);
+    const_assert!(UserLand::START.0   % (ENTRY_COUNT * PAGE_SIZE) == 0);
 }
 
