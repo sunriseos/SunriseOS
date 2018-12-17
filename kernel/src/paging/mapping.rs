@@ -21,6 +21,7 @@ use kfs_libkern;
 /// Getting the last address of this mapping (length - 1 + address) is guaranteed to not overflow.
 /// However we do not make any assumption on address + length, which falls outside of the mapping.
 #[derive(Debug)]
+#[allow(clippy::len_without_is_empty)] // length **cannot** be zero.
 pub struct Mapping {
     /// The first address of this mapping.
     address: VirtualAddress,

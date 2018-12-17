@@ -309,7 +309,7 @@ fn first_schedule() {
 ///
 /// This way, just after the `iret`, cpu will be in ring 3, witl all of its registers cleared,
 /// `$eip` pointing to `ep`, and `$esp` pointing to `userspace_stack_ptr`.
-fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize) {
+fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize) -> ! {
     unsafe {
         asm!("
         mov ax,0x2B // Set data segment selector to Userland Data, Ring 3
@@ -338,4 +338,6 @@ fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize) {
         " :: "r"(ep), "r"(userspace_stack_ptr) :
              /* Prevent using eax as input, it's used early. */ "eax" : "intel", "volatile");
     }
+
+    unreachable!()
 }

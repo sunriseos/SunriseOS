@@ -54,6 +54,7 @@ pub struct CrossProcessMapping<'a> {
     mapping: &'a Mapping,
 }
 
+#[allow(clippy::len_without_is_empty)] // len *cannot* be zero
 impl<'a> CrossProcessMapping<'a> {
     /// Creates a `CrossProcessMapping`.
     ///

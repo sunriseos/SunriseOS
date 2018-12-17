@@ -26,7 +26,7 @@ static GLOBAL_LDT: Once<DescriptorTable> = Once::new();
 pub fn init_gdt() {
     use self::i386::instructions::tables::{lldt, ltr};
 
-    let ldt = GLOBAL_LDT.call_once(|| DescriptorTable::new());
+    let ldt = GLOBAL_LDT.call_once(DescriptorTable::new);
 
     let gdt = GDT.call_once(|| {
         let mut gdt = DescriptorTable::new();
@@ -83,12 +83,12 @@ pub fn init_gdt() {
         gdt
     });
 
-    writeln!(super::Serial, "Loading GDT");
+    let _ = writeln!(super::Serial, "Loading GDT");
     gdt.load_global(0x8, 0x10, 0x18);
     unsafe { 
-        writeln!(super::Serial, "Loading LDT");
+        let _ = writeln!(super::Serial, "Loading LDT");
         lldt(SegmentSelector(7 << 3));
-        writeln!(super::Serial, "Loading Task");
+        let _ = writeln!(super::Serial, "Loading Task");
         ltr(SegmentSelector(8 << 3));
     }
 }
@@ -118,7 +118,7 @@ struct DescriptorTable {
 
 impl DescriptorTable {
     pub fn new() -> DescriptorTable {
-        let mut vec = ArrayVec::new();
+        let vec = ArrayVec::new();
         DescriptorTable {
             table: vec
         }

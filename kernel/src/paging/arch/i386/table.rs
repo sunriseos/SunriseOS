@@ -11,6 +11,7 @@ use super::super::super::kernel_memory::get_kernel_memory;
 use super::super::super::MappingAccessRights;
 use mem::{VirtualAddress, PhysicalAddress};
 use frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
+use core::fmt::{Debug, Formatter, Error};
 
 /// When paging is on, accessing this address loops back to the directory itself thanks to
 /// recursive mapping on directory's last entry.
@@ -23,6 +24,13 @@ struct Table {
     /// The array of entries making up this table.
     entries: [I386Entry; ENTRY_COUNT]
 }
+
+impl Debug for Table {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        Debug::fmt(&&self.entries[..], f)
+    }
+}
+
 
 /* ********************************************************************************************** */
 

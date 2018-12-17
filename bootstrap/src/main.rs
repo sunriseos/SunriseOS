@@ -28,15 +28,18 @@
 
 // rustc warnings
 #![warn(unused)]
-#![warn(missing_debug_implementations)]
+#![allow(missing_debug_implementations)]
 #![allow(unused_unsafe)]
 #![allow(unreachable_code)]
 #![allow(dead_code)]
 #![cfg_attr(test, allow(unused_imports))]
 
 // rustdoc warnings
-#![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
+#![allow(missing_docs, clippy::missing_docs_in_private_items)]
 #![deny(intra_doc_link_resolution_failure)]
+
+// clippy override
+#![allow(clippy::cast_lossless)]
 
 #[cfg(not(target_os = "none"))]
 use std as core;
@@ -58,7 +61,6 @@ extern crate xmas_elf;
 extern crate kfs_libutils;
 
 use core::fmt::Write;
-use spin::Once;
 
 pub mod bootstrap_logging;
 pub mod gdt;
@@ -70,9 +72,8 @@ pub mod bootstrap_stack;
 
 use bootstrap_logging::Serial;
 use frame_alloc::FrameAllocator;
-use paging::{PageTablesSet, KernelLand, EntryFlags, ACTIVE_PAGE_TABLES};
+use paging::{PageTablesSet, KernelLand};
 use bootstrap_stack::BootstrapStack;
-use address::VirtualAddress;
 
 /// 4 pages, PAGE_SIZE aligned.
 #[repr(align(4096))]
@@ -130,27 +131,27 @@ pub unsafe extern fn bootstrap_start() -> ! {
 #[no_mangle]
 pub extern "C" fn do_bootstrap(multiboot_info_addr: usize) -> ! {
     unsafe { bootstrap_logging::init_bootstrap_log() };
-    writeln!(Serial, "Bootstrap starts...");
+    let _ = writeln!(Serial, "Bootstrap starts...");
 
     // Set up (read: inhibit) the GDT.
     gdt::init_gdt();
-    writeln!(Serial, "= Gdt initialized");
+    let _ = writeln!(Serial, "= Gdt initialized");
 
     // Parse the multiboot infos
     let boot_info = unsafe { multiboot2::load(multiboot_info_addr) };
     write!(Serial, "{:?}", boot_info);
-    writeln!(Serial, "= Parsed multiboot informations");
+    let _ = writeln!(Serial, "= Parsed multiboot informations");
 
     // Setup frame allocator
     FrameAllocator::init(&boot_info);
-    writeln!(Serial, "= Initialized frame allocator");
+    let _ = writeln!(Serial, "= Initialized frame allocator");
 
     // Create a set of page tables
     let mut page_tables = unsafe { paging::map_bootstrap(&boot_info) };
-    writeln!(Serial, "= Created page tables");
+    let _ = writeln!(Serial, "= Created page tables");
 
     let kernel_entry_point = elf_loader::load_kernel(&mut page_tables, &boot_info);
-    writeln!(Serial, "= Loaded kernel");
+    let _ = writeln!(Serial, "= Loaded kernel");
 
     // Move the multiboot_header to a single page in kernel space. This simplifies some
     // things in the kernel.
@@ -164,20 +165,20 @@ pub extern "C" fn do_bootstrap(multiboot_info_addr: usize) -> ! {
                         multiboot_phys_page.addr() as *mut u8,
                         total_size);
     }
-    writeln!(Serial, "= Copied multiboot info to page {:#010x}", multiboot_info_page.addr());
+    let _ = writeln!(Serial, "= Copied multiboot info to page {:#010x}", multiboot_info_page.addr());
 
     // Start using these page tables
     unsafe { page_tables.enable_paging() }
-    writeln!(Serial, "= Paging on");
+    let _ = writeln!(Serial, "= Paging on");
 
     // Allocate a stack for the kernel
-    let mut new_stack = BootstrapStack::allocate_stack()
+    let new_stack = BootstrapStack::allocate_stack()
         .expect("Cannot allocate bootstrap stack");
-    writeln!(Serial, "= Created kernel stack");
+    let _ = writeln!(Serial, "= Created kernel stack");
 
     let new_ebp_esp = new_stack.get_stack_start();
 
-    writeln!(Serial, "= Jumping to kernel");
+    let _ = writeln!(Serial, "= Jumping to kernel");
 
     #[cfg(not(test))]
     unsafe {

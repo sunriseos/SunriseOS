@@ -4,8 +4,6 @@
 #![cfg(any(target_arch = "x86", test))]
 #![allow(dead_code)]
 
-use core::fmt;
-
 pub mod instructions {
     //! Low level functions for special i386 instructions.
     pub mod tables {
@@ -214,7 +212,7 @@ impl TssStruct {
             ss2: (sp2.0).0,
             cr3: cr3 as u32,
             ldt_selector: ldt.0,
-            ..Default::default()
+            ..TssStruct::default()
         }
     }
 }

@@ -53,7 +53,7 @@ pub fn align_down<T: Num + Not<Output = T> + BitAnd<Output = T> + Copy>(addr: T,
 
 /// align_up, but checks if addr overflows
 pub fn align_up_checked(addr: usize, align: usize) -> Option<usize> {
-    match addr & align - 1 {
+    match addr & (align - 1) {
         0 => Some(addr),
         _ => addr.checked_add(align - (addr % align))
     }
@@ -120,7 +120,7 @@ pub fn print_hexdump_as_if_at_addr<T: Write>(f: &mut T, mem: &[u8], display_addr
         for pair in arr.chunks(2) {
             let _ = write!(f, " ");
             for elem in pair {
-                if let &Some(i) = elem {
+                if let Some(i) = *elem {
                     let _ = write!(f, "{:02x}", i);
                 } else {
                     let _ = write!(f, "  ");
@@ -135,7 +135,7 @@ pub fn print_hexdump_as_if_at_addr<T: Write>(f: &mut T, mem: &[u8], display_addr
                 let _ = write!(f, ".");
             }
         }
-        let _ = writeln!(f, "");
+        let _ = writeln!(f);
     }
 }
 

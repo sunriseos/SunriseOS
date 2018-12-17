@@ -1,3 +1,6 @@
+
+#![allow(clippy::match_bool)] // more readable
+
 use io::{Io, Pio};
 use core::sync::atomic::{AtomicBool, Ordering::SeqCst};
 use alloc::string::String;
@@ -62,7 +65,8 @@ struct KeyEvent {
 impl KeyEvent {
 
     /// Reads one or more bytes from the port until it matches a known scancode sequence
-    fn read_key_event(port: &Pio<u8>) -> KeyEvent {
+    #[allow(clippy::cyclomatic_complexity)] // sorry clippy, but you don't how terrible ps2 scancodes are.
+    fn read_key_event(port: Pio<u8>) -> KeyEvent {
         let scancode = port.read();
         let mut state = Pressed;
 
@@ -287,15 +291,15 @@ impl PS2 {
             unsafe {
                 let status = self.status_port.read();
                 if status & 0x01 != 0 {
-                    let key = KeyEvent::read_key_event(&self.data_port);
+                    let key = KeyEvent::read_key_event(self.data_port);
                     match key {
                         KeyEvent {key: Key::Control(k), state: s               } => { self.handle_control_key(k, s); },
                         KeyEvent {key: Key::Letter(l),  state: State::Pressed  } => { return self.key_to_letter(l) },
-                        KeyEvent {key: Key::Letter(l),  state: State::Released } => { /* ignore released letters */ },
+                        KeyEvent {key: Key::Letter(_),  state: State::Released } => { /* ignore released letters */ },
                         KeyEvent {key: Key::Empty,      state: _               } => { /* ignore unknown keys */ },
                     }
                 } else {
-                    syscalls::wait_synchronization(&[self.event.0.as_ref()], None);
+                    let _ = syscalls::wait_synchronization(&[self.event.0.as_ref()], None);
                 }
             }
         }
@@ -305,7 +309,7 @@ impl PS2 {
         loop {
             let status = self.status_port.read();
             if status & 0x01 != 0 {
-                let key = KeyEvent::read_key_event(&self.data_port);
+                let key = KeyEvent::read_key_event(self.data_port);
                 match key {
                     KeyEvent {key: Key::Control(k), state: s               } => self.handle_control_key(k, s),
                     KeyEvent {key: Key::Letter(l),  state: State::Pressed  } => return Some(self.key_to_letter(l)),
@@ -344,7 +348,7 @@ pub fn get_next_line(logger: &mut Terminal) -> String {
     let mut ret = String::from("");
     loop {
         let key = read_key();
-        write!(logger, "{}", key);
+        let _ = write!(logger, "{}", key);
         logger.draw().unwrap();
         if key == '\n' {
             return ret;

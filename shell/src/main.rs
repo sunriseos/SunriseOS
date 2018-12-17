@@ -47,20 +47,20 @@ pub fn main() {
             "test_page_fault" => test_page_fault(),
             "connect" => {
                 let handle = sm::IUserInterface::raw_new().unwrap().get_service(LE::read_u64(b"vi:\0\0\0\0\0"));
-                writeln!(&mut terminal, "Got handle {:?}", handle);
+                let _ = writeln!(&mut terminal, "Got handle {:?}", handle);
             },
             "exit" => return,
             //"stackdump" => unsafe { stack::KernelStack::dump_current_stack() },
             "help" => {
-                writeln!(&mut terminal, "COMMANDS:");
-                writeln!(&mut terminal, "exit: Exit this process");
-                writeln!(&mut terminal, "gif3: Print the KFS-3 meme");
-                writeln!(&mut terminal, "gif4: Print the KFS-4 meme");
-                writeln!(&mut terminal, "test_threads: Run threads that concurrently print As and Bs");
-                writeln!(&mut terminal, "test_divide_by_zero: Check exception handling by throwing a divide by zero");
-                writeln!(&mut terminal, "test_page_fault: Check exception handling by throwing a page_fault");
+                let _ = writeln!(&mut terminal, "COMMANDS:");
+                let _ = writeln!(&mut terminal, "exit: Exit this process");
+                let _ = writeln!(&mut terminal, "gif3: Print the KFS-3 meme");
+                let _ = writeln!(&mut terminal, "gif4: Print the KFS-4 meme");
+                let _ = writeln!(&mut terminal, "test_threads: Run threads that concurrently print As and Bs");
+                let _ = writeln!(&mut terminal, "test_divide_by_zero: Check exception handling by throwing a divide by zero");
+                let _ = writeln!(&mut terminal, "test_page_fault: Check exception handling by throwing a page_fault");
             }
-            _ => { writeln!(&mut terminal, "Unknown command"); }
+            _ => { let _ = writeln!(&mut terminal, "Unknown command"); }
         }
     }
 }

@@ -5,17 +5,14 @@ mod table;
 
 use multiboot2::{BootInformation, ElfSectionFlags};
 use ::address::{PhysicalAddress, VirtualAddress};
-use ::frame_alloc::{Frame, round_to_page, round_to_page_upper};
+use ::frame_alloc::{round_to_page, round_to_page_upper};
 
 pub use self::table::{ActivePageTables, InactivePageTables, PagingOffPageSet, MappingType, EntryFlags};
 pub use self::table::PageTablesSet;
 
-use self::table::*;
 use self::table::entry::Entry;
 use spin::Mutex;
 use ::core::fmt::Write;
-use ::core::ops::Deref;
-use core;
 use bootstrap_logging::Serial;
 
 pub const PAGE_SIZE: usize = 4096;

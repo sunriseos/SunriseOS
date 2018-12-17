@@ -308,6 +308,7 @@ pub unsafe fn dump_stack<'a>(source: &StackDumpSource, elf_symbols: Option<(&Elf
 ///
 /// The data of every stack frame will be hexdumped.
 #[allow(unused_must_use)]
+#[allow(clippy::cast_ptr_alignment)] // we're x86_32 only
 fn dump_stack_from_slice<'a>(stack: &[u8], orig_address: usize, mut esp: usize, mut ebp: usize, mut eip: usize, elf: Option<(&ElfFile<'a>, &'a [Entry32])>) {
     use devices::rs232::SerialLogger;
     use core::fmt::Write;

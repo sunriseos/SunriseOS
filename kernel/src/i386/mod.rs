@@ -368,7 +368,7 @@ impl TssStruct {
             ds: ds,
             fs: ds,
             gs: ds,
-            ..Default::default()
+            ..TssStruct::default()
         }
     }
 

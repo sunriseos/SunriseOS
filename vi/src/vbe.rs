@@ -1,8 +1,7 @@
 //! VESA Bios Extensions Framebuffer
 
 use alloc::prelude::*;
-use spin::{Mutex, MutexGuard, Once};
-use hashmap_core::HashMap;
+use spin::Mutex;
 use syscalls;
 use libuser::error::Error;
 use core::slice;
@@ -99,8 +98,8 @@ impl<'a> Framebuffer<'a> {
     ///
     /// Panics if offset is invalid
     #[inline]
-    pub fn write_px(&mut self, offset: usize, color: &VBEColor) {
-        self.buf[offset] = *color;
+    pub fn write_px(&mut self, offset: usize, color: VBEColor) {
+        self.buf[offset] = color;
     }
 
     /// Writes a pixel in the framebuffer respecting the bgr pattern
@@ -110,7 +109,7 @@ impl<'a> Framebuffer<'a> {
     ///
     /// Panics if coords are invalid
     #[inline]
-    pub fn write_px_at(&mut self, x: usize, y: usize, color: &VBEColor) {
+    pub fn write_px_at(&mut self, x: usize, y: usize, color: VBEColor) {
         let offset = self.get_px_offset(x, y);
         self.write_px(offset, color);
     }
@@ -134,7 +133,7 @@ impl<'a> Framebuffer<'a> {
     pub fn clear_at(&mut self, x: usize, y: usize, width: usize, height: usize) {
         for y in y..y + height {
             for x in x..x + width {
-                self.write_px_at(x, y, &VBEColor::rgb(0, 0, 0));
+                self.write_px_at(x, y, VBEColor::rgb(0, 0, 0));
             }
         }
     }

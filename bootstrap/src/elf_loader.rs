@@ -6,9 +6,9 @@ use core::fmt::Write;
 use core::slice;
 use xmas_elf::ElfFile;
 use xmas_elf::program::{ProgramHeader, Type::Load, SegmentData};
-use paging::{PagingOffPageSet, PAGE_SIZE, UserLand, MappingType, PageTablesSet, EntryFlags};
-use address::{PhysicalAddress, VirtualAddress};
-use kfs_libutils::{self, align_up};
+use paging::{PagingOffPageSet, PAGE_SIZE, PageTablesSet, EntryFlags};
+use address::VirtualAddress;
+use kfs_libutils::align_up;
 use frame_alloc::FrameAllocator;
 
 /// Loads the kernel in high memory
@@ -27,19 +27,20 @@ pub fn load_kernel(page_table: &mut PagingOffPageSet, multiboot_info: &BootInfor
     for ph in kernel_elf.program_iter().filter(|ph|
         ph.get_type().expect("Failed to get type of elf program header") == Load)
     {
-        load_segment(page_table, &ph, &kernel_elf);
+        load_segment(page_table, ph, &kernel_elf);
     }
 
     // return the entry point
     let entry_point = kernel_elf.header.pt2.entry_point();
-    writeln!(Serial, "Entry point : {:#x?}", entry_point);
+    let _ = writeln!(Serial, "Entry point : {:#x?}", entry_point);
     entry_point as usize
 }
 
 /// Loads an elf segment by coping file_size bytes to the right address,
 /// and filling remaining with 0s.
 /// This is used by NOBITS sections (.bss), this way we initialize them to 0.
-fn load_segment(page_table: &mut PagingOffPageSet, segment: &ProgramHeader, elf_file: &ElfFile) {
+#[allow(clippy::match_bool)] // more readable
+fn load_segment(page_table: &mut PagingOffPageSet, segment: ProgramHeader, elf_file: &ElfFile) {
     // Map the segment memory
     let mem_size_total = align_up(segment.mem_size() as usize, PAGE_SIZE);
     let vaddr = segment.virtual_addr() as usize;
@@ -78,7 +79,7 @@ fn load_segment(page_table: &mut PagingOffPageSet, segment: &ProgramHeader, elf_
         x => { panic ! ("Unexpected Segment data {:?}", x) }
     }
 
-    writeln!(Serial, "Loaded segment - VirtAddr {:#010x}, FileSize {:#010x}, MemSize {:#010x} {}{}{}",
+    let _ = writeln!(Serial, "Loaded segment - VirtAddr {:#010x}, FileSize {:#010x}, MemSize {:#010x} {}{}{}",
         segment.virtual_addr(), segment.file_size(), segment.mem_size(),
         match segment.flags().is_read()    { true => 'R', false => ' '},
         match segment.flags().is_write()   { true => 'W', false => ' '},

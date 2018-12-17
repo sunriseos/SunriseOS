@@ -341,6 +341,7 @@ lazy_static! {
 /// # Safety
 ///
 /// Should only be called once!
+#[allow(clippy::cast_ptr_alignment)] // this function is x86_32 only
 pub unsafe fn init() {
     pic::init();
 
