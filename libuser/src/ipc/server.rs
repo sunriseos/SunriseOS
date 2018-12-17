@@ -1,5 +1,5 @@
 use syscalls;
-use types::{Handle, HandleRef, ServerPort, ServerSession};
+use types::{HandleRef, ServerPort, ServerSession};
 use core::marker::PhantomData;
 use alloc::prelude::*;
 use spin::Mutex;
@@ -8,7 +8,6 @@ use error::Error;
 
 pub trait IWaitable {
     fn get_handle<'a>(&'a self) -> HandleRef<'a>;
-    fn into_handle(self) -> Handle;
     fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<bool, Error>;
 }
 
@@ -43,7 +42,7 @@ impl WaitableManager {
                 Ok(false) => (),
                 Ok(true) => { waitables.remove(idx); },
                 Err(err) => {
-                    syscalls::output_debug_string(&format!("Error: {}", err));
+                    let _ = syscalls::output_debug_string(&format!("Error: {}", err));
                     waitables.remove(idx);
                 }
             }
@@ -103,10 +102,6 @@ impl<T: Object> IWaitable for SessionWrapper<T> {
         self.handle.0.as_ref()
     }
 
-    fn into_handle(self) -> Handle {
-        self.handle.0
-    }
-
     fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<bool, Error> {
         self.handle.receive(&mut self.buf[..], Some(0))?;
         let (ty, cmdid) = super::find_ty_cmdid(&self.buf[..]);
@@ -131,10 +126,6 @@ pub struct PortHandler<T: Object + Default> {
 impl<T: Object + Default + 'static> IWaitable for PortHandler<T> {
     fn get_handle<'a>(&'a self) -> HandleRef<'a> {
         self.handle.0.as_ref()
-    }
-
-    fn into_handle(self) -> Handle {
-        self.handle.0
     }
 
     fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<bool, Error> {

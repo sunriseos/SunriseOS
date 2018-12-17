@@ -27,7 +27,7 @@ impl Handle {
 
 impl Drop for Handle {
     fn drop(&mut self) {
-        syscalls::close_handle(self.0.get());
+        let _ = syscalls::close_handle(self.0.get());
     }
 }
 
