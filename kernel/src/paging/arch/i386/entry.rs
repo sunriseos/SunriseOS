@@ -3,7 +3,7 @@
 use mem::PhysicalAddress;
 use core::fmt::{Debug, Formatter, Error};
 use super::super::super::hierarchical_table::{HierarchicalEntry, PageState};
-use super::super::super::MappingFlags;
+use super::super::super::MappingAccessRights;
 
 bitflags! {
     /// The flags of a table entry
@@ -23,23 +23,23 @@ bitflags! {
     }
 }
 
-impl From<MappingFlags> for I386EntryFlags {
-    fn from(flags: MappingFlags) -> I386EntryFlags {
+impl From<MappingAccessRights> for I386EntryFlags {
+    fn from(flags: MappingAccessRights) -> I386EntryFlags {
         let mut newflags = I386EntryFlags::empty();
 
         // i386 does not support write-only or execute-only page.
         // this means that if a mappping is either read, write, or execute,
         // we mark it PRESENT in the page tables, and it will be readable.
-        if flags.intersects(MappingFlags::READABLE | MappingFlags::WRITABLE | MappingFlags::EXECUTABLE) {
+        if flags.intersects(MappingAccessRights::READABLE | MappingAccessRights::WRITABLE | MappingAccessRights::EXECUTABLE) {
             newflags |= I386EntryFlags::PRESENT
         } else {
             // if it is not present, then we're basically a guard page.
             return I386EntryFlags::GUARD_PAGE;
         }
-        if flags.contains(MappingFlags::WRITABLE) {
+        if flags.contains(MappingAccessRights::WRITABLE) {
             newflags |= I386EntryFlags::WRITABLE
         };
-        if flags.contains(MappingFlags::USER_ACCESSIBLE) {
+        if flags.contains(MappingAccessRights::USER_ACCESSIBLE) {
             newflags |= I386EntryFlags::USER_ACCESSIBLE
         };
         newflags

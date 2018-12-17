@@ -1,7 +1,7 @@
 //! Mapping
 
 use mem::VirtualAddress;
-use paging::{PAGE_SIZE, MappingFlags, error::MmError};
+use paging::{PAGE_SIZE, MappingAccessRights, error::MmError};
 use error::KernelError;
 use frame_allocator::PhysicalMemRegion;
 use alloc::{vec::Vec, sync::Arc};
@@ -25,7 +25,7 @@ pub struct Mapping {
     address: VirtualAddress,
     length: usize,
     mtype: MappingType,
-    flags: MappingFlags,
+    flags: MappingAccessRights,
 }
 
 /// The types that a UserSpace mapping can be in.
@@ -78,7 +78,7 @@ impl Mapping {
     /// Returns an Error if `address` + `frames`'s length would overflow.
     /// Returns an Error if `address` is not page aligned.
     /// Returns an Error if `length` is 0.
-    pub fn new_regular(address: VirtualAddress, frames: Vec<PhysicalMemRegion>, flags: MappingFlags) -> Result<Mapping, KernelError> {
+    pub fn new_regular(address: VirtualAddress, frames: Vec<PhysicalMemRegion>, flags: MappingAccessRights) -> Result<Mapping, KernelError> {
         check_aligned(address.addr(), PAGE_SIZE)?;
         let length = frames.iter().flatten().count() * PAGE_SIZE;
         check_nonzero_length(length)?;
@@ -93,7 +93,7 @@ impl Mapping {
     /// Returns an Error if `address` + `frames`'s length would overflow.
     /// Returns an Error if `address` is not page aligned.
     /// Returns an Error if `length` is 0.
-    pub fn new_shared(address: VirtualAddress, frames: Arc<Vec<PhysicalMemRegion>>, flags: MappingFlags) -> Result<Mapping, KernelError> {
+    pub fn new_shared(address: VirtualAddress, frames: Arc<Vec<PhysicalMemRegion>>, flags: MappingAccessRights) -> Result<Mapping, KernelError> {
         check_aligned(address.addr(), PAGE_SIZE)?;
         let length = frames.iter().flatten().count() * PAGE_SIZE;
         check_nonzero_length(length)?;
@@ -113,7 +113,7 @@ impl Mapping {
         check_aligned(length, PAGE_SIZE)?;
         check_nonzero_length(length)?;
         address.checked_add(length - 1)?;
-        Ok(Mapping { address, length, mtype: MappingType::Guarded, flags: MappingFlags::empty() })
+        Ok(Mapping { address, length, mtype: MappingType::Guarded, flags: MappingAccessRights::empty() })
     }
 
     /// Tries to construct an available mapping.
@@ -128,7 +128,7 @@ impl Mapping {
         check_aligned(length, PAGE_SIZE)?;
         check_nonzero_length(length)?;
         address.checked_add(length - 1)?;
-        Ok(Mapping { address, length, mtype: MappingType::Available, flags: MappingFlags::empty() })
+        Ok(Mapping { address, length, mtype: MappingType::Available, flags: MappingAccessRights::empty() })
     }
 
     /// Tries to construct a system reserved mapping.
@@ -143,7 +143,7 @@ impl Mapping {
         check_aligned(length, PAGE_SIZE)?;
         check_nonzero_length(length)?;
         address.checked_add(length - 1)?;
-        Ok(Mapping { address, length, mtype: MappingType::SystemReserved, flags: MappingFlags::empty() })
+        Ok(Mapping { address, length, mtype: MappingType::SystemReserved, flags: MappingAccessRights::empty() })
     }
 
     /// Returns the address of this mapping.
@@ -169,7 +169,7 @@ impl Mapping {
     /// Returns the type of this mapping.
     ///
     /// Because we make guarantees about a mapping being always valid, this field cannot be public.
-    pub fn flags(&self) -> MappingFlags { self.flags }
+    pub fn flags(&self) -> MappingAccessRights { self.flags }
 }
 
 impl Splittable for Mapping {
@@ -209,7 +209,7 @@ impl Splittable for Mapping {
 #[cfg(test)]
 mod test {
     use super::Mapping;
-    use super::MappingFlags;
+    use super::MappingAccessRights;
     use mem::{VirtualAddress, PhysicalAddress};
     use paging::PAGE_SIZE;
     use frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
@@ -271,7 +271,7 @@ mod test {
     fn mapping_regular_ok() {
         let _f = ::frame_allocator::init();
         let frames = FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap();
-        let flags = MappingFlags::u_rw();
+        let flags = MappingAccessRights::u_rw();
         let _mapping = Mapping::new_regular(VirtualAddress(0x40000000), frames, flags).unwrap();
     }
 
@@ -279,7 +279,7 @@ mod test {
     fn mapping_shared_ok() {
         let _f = ::frame_allocator::init();
         let frames = Arc::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap());
-        let flags = MappingFlags::u_rw();
+        let flags = MappingAccessRights::u_rw();
         let _mapping = Mapping::new_shared(VirtualAddress(0x40000000), frames, flags).unwrap();
     }
 
@@ -287,7 +287,7 @@ mod test {
     fn mapping_regular_empty_vec() {
         let _f = ::frame_allocator::init();
         let frames = Vec::new();
-        let flags = MappingFlags::u_rw();
+        let flags = MappingAccessRights::u_rw();
         let _mapping_err = Mapping::new_regular(VirtualAddress(0x40000000), frames, flags).unwrap_err();
     }
 
@@ -295,7 +295,7 @@ mod test {
     fn mapping_shared_empty_vec() {
         let _f = ::frame_allocator::init();
         let frames = Arc::new(Vec::new());
-        let flags = MappingFlags::u_rw();
+        let flags = MappingAccessRights::u_rw();
         let _mapping_err = Mapping::new_shared(VirtualAddress(0x40000000), frames, flags).unwrap_err();
     }
 
@@ -304,7 +304,7 @@ mod test {
         let _f = ::frame_allocator::init();
         let region = unsafe { PhysicalMemRegion::reconstruct_no_dealloc(PhysicalAddress(PAGE_SIZE), 0) };
         let frames = vec![region];
-        let flags = MappingFlags::u_rw();
+        let flags = MappingAccessRights::u_rw();
         let _mapping_err = Mapping::new_regular(VirtualAddress(0x40000000), frames, flags).unwrap_err();
     }
 
@@ -314,7 +314,7 @@ mod test {
         let region1 = unsafe { PhysicalMemRegion::reconstruct_no_dealloc(PhysicalAddress(PAGE_SIZE), 0) };
         let region2 = unsafe { PhysicalMemRegion::reconstruct_no_dealloc(PhysicalAddress(PAGE_SIZE), 0) };
         let frames = vec![region1, region2];
-        let flags = MappingFlags::u_rw();
+        let flags = MappingAccessRights::u_rw();
         let _mapping_err = Mapping::new_regular(VirtualAddress(0x40000000), frames, flags).unwrap_err();
     }
 
@@ -322,7 +322,7 @@ mod test {
     fn mapping_regular_unaligned_addr() {
         let _f = ::frame_allocator::init();
         let frames = FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap();
-        let flags = MappingFlags::u_rw();
+        let flags = MappingAccessRights::u_rw();
         let _mapping_err = Mapping::new_regular(VirtualAddress(0x40000007), frames, flags).unwrap_err();
     }
 
@@ -330,7 +330,7 @@ mod test {
     fn mapping_shared_unaligned_addr() {
         let _f = ::frame_allocator::init();
         let frames = Arc::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap());
-        let flags = MappingFlags::u_rw();
+        let flags = MappingAccessRights::u_rw();
         let _mapping_err = Mapping::new_shared(VirtualAddress(0x40000007), frames, flags).unwrap_err();
     }
 
@@ -340,7 +340,7 @@ mod test {
     fn mapping_regular_unaligned_len() {
         let _f = ::frame_allocator::init();
         let frames = FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE + 7).unwrap();
-        let flags = MappingFlags::u_rw();
+        let flags = MappingAccessRights::u_rw();
         let _mapping = Mapping::new_regular(VirtualAddress(0x40000000), frames, flags).unwrap();
     }
 
@@ -349,7 +349,7 @@ mod test {
     fn mapping_shared_unaligned_len() {
         let _f = ::frame_allocator::init();
         let frames = Arc::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE + 7).unwrap());
-        let flags = MappingFlags::u_rw();
+        let flags = MappingAccessRights::u_rw();
         let _mapping = Mapping::new_shared(VirtualAddress(0x40000000), frames, flags).unwrap();
     }
 
@@ -357,7 +357,7 @@ mod test {
     fn mapping_regular_threshold() {
         let _f = ::frame_allocator::init();
         let frames = FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap();
-        let flags = MappingFlags::u_rw();
+        let flags = MappingAccessRights::u_rw();
         let _mapping = Mapping::new_regular(VirtualAddress(usize::max_value() - 2 * PAGE_SIZE + 1), frames, flags).unwrap();
     }
 
@@ -365,7 +365,7 @@ mod test {
     fn mapping_shared_threshold() {
         let _f = ::frame_allocator::init();
         let frames = Arc::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap());
-        let flags = MappingFlags::u_rw();
+        let flags = MappingAccessRights::u_rw();
         let _mapping = Mapping::new_shared(VirtualAddress(usize::max_value() - 2 * PAGE_SIZE + 1), frames, flags).unwrap();
     }
 
@@ -373,7 +373,7 @@ mod test {
     fn mapping_regular_overflow() {
         let _f = ::frame_allocator::init();
         let frames = FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap();
-        let flags = MappingFlags::u_rw();
+        let flags = MappingAccessRights::u_rw();
         let _mapping_err = Mapping::new_regular(VirtualAddress(usize::max_value() - 2 * PAGE_SIZE), frames, flags).unwrap_err();
     }
 
@@ -381,7 +381,7 @@ mod test {
     fn mapping_shared_overflow() {
         let _f = ::frame_allocator::init();
         let frames = Arc::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap());
-        let flags = MappingFlags::u_rw();
+        let flags = MappingAccessRights::u_rw();
         let _mapping_err = Mapping::new_shared(VirtualAddress(usize::max_value() - 2 * PAGE_SIZE), frames, flags).unwrap_err();
     }
 

@@ -24,7 +24,7 @@ use super::bookkeeping::UserspaceBookkeeping;
 use super::mapping::{Mapping, MappingType};
 use super::cross_process::CrossProcessMapping;
 use super::error::MmError;
-use super::MappingFlags;
+use super::MappingAccessRights;
 use mem::{VirtualAddress, PhysicalAddress};
 use frame_allocator::{FrameAllocator, FrameAllocatorTrait, PhysicalMemRegion};
 use paging::arch::Entry;
@@ -90,7 +90,7 @@ impl<'b> TableHierarchy for DynamicHierarchy<'b> {
     fn map_to_from_iterator<I>(&mut self,
                                frames_iterator: I,
                                start_address: VirtualAddress,
-                               flags: MappingFlags)
+                               flags: MappingAccessRights)
     where I: Iterator<Item=PhysicalAddress>
     {
         match *self {
@@ -186,7 +186,7 @@ impl ProcessMemory {
     pub fn map_phys_region_to(&mut self,
                               phys: PhysicalMemRegion,
                               address: VirtualAddress,
-                              flags: MappingFlags)
+                              flags: MappingAccessRights)
                               -> Result<(), KernelError> {
         let length = phys.size();
         check_aligned(address.addr(), PAGE_SIZE)?;
@@ -211,7 +211,7 @@ impl ProcessMemory {
     /// Returns a KernelError if there was already a mapping in the range.
     /// Returns a KernelError if address does not fall in UserLand.
     /// Returns a KernelError if address or length is not PAGE_SIZE aligned.
-    pub fn create_regular_mapping(&mut self, address: VirtualAddress, length: usize, flags: MappingFlags) -> Result<(), KernelError> {
+    pub fn create_regular_mapping(&mut self, address: VirtualAddress, length: usize, flags: MappingAccessRights) -> Result<(), KernelError> {
         check_aligned(address.addr(), PAGE_SIZE)?;
         check_aligned(length, PAGE_SIZE)?;
         check_nonzero_length(length)?;
@@ -238,7 +238,7 @@ impl ProcessMemory {
     pub fn map_shared_mapping(&mut self,
                               shared_mapping: Arc<Vec<PhysicalMemRegion>>,
                               address: VirtualAddress,
-                              flags: MappingFlags)
+                              flags: MappingAccessRights)
                               -> Result<(), KernelError> {
         check_aligned(address.addr(), PAGE_SIZE)?;
         // compute the length
@@ -481,7 +481,7 @@ impl ProcessMemory {
         let heap_base_address = self.heap_base_address;
         match previous_heap_state {
             HeapState::NoHeap if new_size == 0 => (), // don't do anything
-            HeapState::NoHeap => self.create_regular_mapping(heap_base_address, new_size, MappingFlags::u_rw())?,
+            HeapState::NoHeap => self.create_regular_mapping(heap_base_address, new_size, MappingAccessRights::u_rw())?,
             HeapState::Heap(old_size) if new_size < old_size => { self.shrink_mapping(heap_base_address, new_size)?; },
             HeapState::Heap(_) => self.expand_mapping(heap_base_address, new_size)?
         }

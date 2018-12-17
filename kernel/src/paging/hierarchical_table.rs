@@ -3,7 +3,7 @@
 // what the architecture code still has define
 use super::arch::{PAGE_SIZE, ENTRY_COUNT};
 use super::lands::{RecursiveTablesLand, VirtualSpaceLand};
-use super::MappingFlags;
+use super::MappingAccessRights;
 
 use mem::{VirtualAddress, PhysicalAddress};
 use frame_allocator::{PhysicalMemRegion};
@@ -72,7 +72,7 @@ impl<T> PageState<T> {
 pub trait HierarchicalEntry {
 
     /// An entry comports some flags. They are often represented by a structure.
-    type EntryFlagsType: From<MappingFlags>;
+    type EntryFlagsType: From<MappingAccessRights>;
 
     /// Is the entry unused ?
     fn is_unused(&self) -> bool;
@@ -272,7 +272,7 @@ pub trait TableHierarchy {
     fn map_to_from_iterator<I>(&mut self,
                                frames_iterator: I,
                                start_address: VirtualAddress,
-                               flags: MappingFlags)
+                               flags: MappingAccessRights)
     where I: Iterator<Item=PhysicalAddress>
     {
         assert_eq!(start_address.addr() % PAGE_SIZE, 0, "Address is not page aligned");
@@ -282,7 +282,7 @@ pub trait TableHierarchy {
         fn rec_map_to<T, I>(table: &mut SmartHierarchicalTable<T>,
                             frames_iterator: &mut Peekable<I>,
                             start_address: usize,
-                            flags: MappingFlags)
+                            flags: MappingAccessRights)
         where T: HierarchicalTable,
               I: Iterator<Item=PhysicalAddress>
         {

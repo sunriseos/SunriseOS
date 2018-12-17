@@ -7,7 +7,7 @@ use sync::{SpinLock, Once};
 use core::ops::Deref;
 use core::ptr::NonNull;
 use linked_list_allocator::{Heap, align_up};
-use paging::{PAGE_SIZE, MappingFlags, kernel_memory::get_kernel_memory};
+use paging::{PAGE_SIZE, MappingAccessRights, kernel_memory::get_kernel_memory};
 use frame_allocator::{FrameAllocator, FrameAllocatorTrait};
 use mem::VirtualAddress;
 
@@ -34,7 +34,7 @@ impl Allocator {
                 .expect("Cannot allocate physical memory for heap expansion");
             let mut active_pages = get_kernel_memory();
             active_pages.unmap(VirtualAddress(new_page), PAGE_SIZE);
-            active_pages.map_phys_region_to(frame, VirtualAddress(new_page), MappingFlags::k_rw());
+            active_pages.map_phys_region_to(frame, VirtualAddress(new_page), MappingAccessRights::k_rw());
         }
         unsafe {
             // Safety: We just allocated the area.
@@ -50,7 +50,7 @@ impl Allocator {
         // map only the first page
         let frame = FrameAllocator::allocate_frame()
             .expect("Cannot allocate first frame of heap");
-        active_pages.map_phys_region_to(frame, heap_space, MappingFlags::k_rw());
+        active_pages.map_phys_region_to(frame, heap_space, MappingAccessRights::k_rw());
         // guard the rest
         active_pages.guard(heap_space + PAGE_SIZE, RESERVED_HEAP_SIZE - PAGE_SIZE);
         info!("Reserving {} pages at {:#010x}", RESERVED_HEAP_SIZE / PAGE_SIZE - 1, heap_space.addr() + PAGE_SIZE);

@@ -18,7 +18,7 @@ use core::slice;
 use xmas_elf::ElfFile;
 use xmas_elf::program::{ProgramHeader, Type::Load, SegmentData};
 use mem::{VirtualAddress, PhysicalAddress};
-use paging::{PAGE_SIZE, MappingFlags, process_memory::ProcessMemory, kernel_memory::get_kernel_memory};
+use paging::{PAGE_SIZE, MappingAccessRights, process_memory::ProcessMemory, kernel_memory::get_kernel_memory};
 use frame_allocator::PhysicalMemRegion;
 use utils::{self, align_up};
 use alloc::vec::Vec;
@@ -55,7 +55,7 @@ pub fn map_grub_module(module: &ModuleTag) -> MappedGrubModule {
             // safe, they were not tracked before
             PhysicalMemRegion::reconstruct(start_address_aligned, module_len_aligned)
         };
-        page_table.map_phys_region_to(module_phys_location, vaddr, MappingFlags::k_r());
+        page_table.map_phys_region_to(module_phys_location, vaddr, MappingAccessRights::k_r());
 
         vaddr
     };
@@ -127,15 +127,15 @@ fn load_segment(process_memory: &mut ProcessMemory, segment: ProgramHeader, elf_
     let mem_size_total = align_up(segment.mem_size() as usize, PAGE_SIZE);
 
     // Map as readonly if specified
-    let mut flags = MappingFlags::USER_ACCESSIBLE;
+    let mut flags = MappingAccessRights::USER_ACCESSIBLE;
     if segment.flags().is_read() {
-        flags |= MappingFlags::READABLE
+        flags |= MappingAccessRights::READABLE
     };
     if segment.flags().is_write() {
-        flags |= MappingFlags::WRITABLE
+        flags |= MappingAccessRights::WRITABLE
     };
     if segment.flags().is_execute() {
-        flags |= MappingFlags::EXECUTABLE
+        flags |= MappingAccessRights::EXECUTABLE
     }
 
     // Create the mapping in UserLand

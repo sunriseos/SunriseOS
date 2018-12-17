@@ -28,7 +28,7 @@
 
 use ::core::mem::size_of;
 use paging::lands::{VirtualSpaceLand, UserLand, KernelLand};
-use paging::{PAGE_SIZE, process_memory::QueryMemory, MappingFlags, PageState, kernel_memory::get_kernel_memory};
+use paging::{PAGE_SIZE, process_memory::QueryMemory, MappingAccessRights, PageState, kernel_memory::get_kernel_memory};
 use frame_allocator::{FrameAllocator, FrameAllocatorTrait};
 use mem::VirtualAddress;
 use error::KernelError;
@@ -59,7 +59,7 @@ impl KernelStack {
                                                    2usize.pow(STACK_ALIGNEMENT as u32))?;
         let region = FrameAllocator::allocate_region(STACK_SIZE * PAGE_SIZE)?;
 
-        memory.map_phys_region_to(region, va + PAGE_SIZE, MappingFlags::k_rw());
+        memory.map_phys_region_to(region, va + PAGE_SIZE, MappingAccessRights::k_rw());
         memory.guard(va, PAGE_SIZE);
 
         let mut me = KernelStack { stack_address: va };
@@ -268,7 +268,7 @@ pub unsafe fn dump_stack<'a>(source: &StackDumpSource, elf_symbols: Option<(&Elf
         // does esp point to a mapping ?
         if let Ok(QueryMemory::Used(mapping)) = pmemory.query_memory(VirtualAddress(esp)) {
             // a stack would at least be readable and writable
-            if mapping.flags().contains(MappingFlags::u_rw()) {
+            if mapping.flags().contains(MappingAccessRights::u_rw()) {
                 let stack_slice = unsafe { ::core::slice::from_raw_parts(mapping.address().addr() as *const u8,
                                                                          mapping.length()) };
                 return dump_stack_from_slice(stack_slice, mapping.address().addr(), esp, ebp, eip, elf);

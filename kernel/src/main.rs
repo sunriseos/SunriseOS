@@ -87,7 +87,7 @@ pub use heap_allocator::rust_oom;
 static ALLOCATOR: heap_allocator::Allocator = heap_allocator::Allocator::new();
 
 use i386::stack;
-use paging::{PAGE_SIZE, MappingFlags};
+use paging::{PAGE_SIZE, MappingAccessRights};
 use mem::VirtualAddress;
 use process::{ProcessStruct, ThreadStruct};
 
@@ -111,7 +111,7 @@ fn main() {
                 let stack = pmemlock.find_available_space(5 * PAGE_SIZE)
                     .unwrap_or_else(|_| panic!("Cannot create a stack for process {:?}", proc));
                 pmemlock.guard(stack, PAGE_SIZE).unwrap();
-                pmemlock.create_regular_mapping(stack + PAGE_SIZE, 4 * PAGE_SIZE, MappingFlags::u_rw()).unwrap();
+                pmemlock.create_regular_mapping(stack + PAGE_SIZE, 4 * PAGE_SIZE, MappingAccessRights::u_rw()).unwrap();
 
                 (VirtualAddress(ep), stack + 5 * PAGE_SIZE)
         };

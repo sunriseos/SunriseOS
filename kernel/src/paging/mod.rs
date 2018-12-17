@@ -32,7 +32,7 @@ use kfs_libkern;
 
 bitflags! {
     /// The flags of a mapping.
-    pub struct MappingFlags : u32 {
+    pub struct MappingAccessRights : u32 {
         /// Mapping is readable.
         const READABLE =        1 << 0;
         /// Mapping is writable.
@@ -45,67 +45,67 @@ bitflags! {
     }
 }
 
-impl From<MappingFlags> for kfs_libkern::MemoryPermissions {
-    fn from(perms: MappingFlags) -> Self {
+impl From<MappingAccessRights> for kfs_libkern::MemoryPermissions {
+    fn from(perms: MappingAccessRights) -> Self {
         let mut newperms = kfs_libkern::MemoryPermissions::empty();
-        if !perms.contains(MappingFlags::USER_ACCESSIBLE) {
+        if !perms.contains(MappingAccessRights::USER_ACCESSIBLE) {
             return newperms;
         }
-        newperms.set(kfs_libkern::MemoryPermissions::READABLE, perms.contains(MappingFlags::READABLE));
-        newperms.set(kfs_libkern::MemoryPermissions::WRITABLE, perms.contains(MappingFlags::WRITABLE));
-        newperms.set(kfs_libkern::MemoryPermissions::EXECUTABLE, perms.contains(MappingFlags::EXECUTABLE));
+        newperms.set(kfs_libkern::MemoryPermissions::READABLE, perms.contains(MappingAccessRights::READABLE));
+        newperms.set(kfs_libkern::MemoryPermissions::WRITABLE, perms.contains(MappingAccessRights::WRITABLE));
+        newperms.set(kfs_libkern::MemoryPermissions::EXECUTABLE, perms.contains(MappingAccessRights::EXECUTABLE));
         newperms
     }
 }
 
-impl From<kfs_libkern::MemoryPermissions> for MappingFlags {
+impl From<kfs_libkern::MemoryPermissions> for MappingAccessRights {
     fn from(perms: kfs_libkern::MemoryPermissions) -> Self {
-        let mut newperms = MappingFlags::USER_ACCESSIBLE;
-        newperms.set(MappingFlags::READABLE, perms.contains(kfs_libkern::MemoryPermissions::READABLE));
-        newperms.set(MappingFlags::WRITABLE, perms.contains(kfs_libkern::MemoryPermissions::WRITABLE));
-        newperms.set(MappingFlags::EXECUTABLE, perms.contains(kfs_libkern::MemoryPermissions::EXECUTABLE));
+        let mut newperms = MappingAccessRights::USER_ACCESSIBLE;
+        newperms.set(MappingAccessRights::READABLE, perms.contains(kfs_libkern::MemoryPermissions::READABLE));
+        newperms.set(MappingAccessRights::WRITABLE, perms.contains(kfs_libkern::MemoryPermissions::WRITABLE));
+        newperms.set(MappingAccessRights::EXECUTABLE, perms.contains(kfs_libkern::MemoryPermissions::EXECUTABLE));
         newperms
     }
 }
 
-impl MappingFlags {
+impl MappingAccessRights {
     /// Shorthand for READABLE
-    pub fn k_r() -> MappingFlags {
-        MappingFlags::READABLE
+    pub fn k_r() -> MappingAccessRights {
+        MappingAccessRights::READABLE
     }
 
     /// Shorthand for WRITABLE
-    pub fn k_w() -> MappingFlags {
-        MappingFlags::WRITABLE
+    pub fn k_w() -> MappingAccessRights {
+        MappingAccessRights::WRITABLE
     }
 
     /// Shorthand for READABLE | WRITABLE
-    pub fn k_rw() -> MappingFlags {
-        MappingFlags::READABLE | MappingFlags::WRITABLE
+    pub fn k_rw() -> MappingAccessRights {
+        MappingAccessRights::READABLE | MappingAccessRights::WRITABLE
     }
 
     /// Shorthand for READABLE | EXECUTABLE
-    pub fn k_rx() -> MappingFlags {
-        MappingFlags::READABLE | MappingFlags::EXECUTABLE
+    pub fn k_rx() -> MappingAccessRights {
+        MappingAccessRights::READABLE | MappingAccessRights::EXECUTABLE
     }
 
     /// Shorthand for USER_ACCESSIBLE | READABLE
-    pub fn u_r() -> MappingFlags {
-        MappingFlags::USER_ACCESSIBLE | MappingFlags::READABLE
+    pub fn u_r() -> MappingAccessRights {
+        MappingAccessRights::USER_ACCESSIBLE | MappingAccessRights::READABLE
     }
 
     /// Shorthand for USER_ACCESSIBLE | WRITABLE
-    pub fn u_w() -> MappingFlags {
-        MappingFlags::USER_ACCESSIBLE | MappingFlags::WRITABLE
+    pub fn u_w() -> MappingAccessRights {
+        MappingAccessRights::USER_ACCESSIBLE | MappingAccessRights::WRITABLE
     }
 
     /// Shorthand for USER_ACCESSIBLE | WRITABLE
-    pub fn u_rw() -> MappingFlags {
-        MappingFlags::USER_ACCESSIBLE | MappingFlags::READABLE | MappingFlags::WRITABLE
+    pub fn u_rw() -> MappingAccessRights {
+        MappingAccessRights::USER_ACCESSIBLE | MappingAccessRights::READABLE | MappingAccessRights::WRITABLE
     }
 
     /// Shorthand for USER_ACCESSIBLE | WRITABLE
-    pub fn u_rx() -> MappingFlags {
-        MappingFlags::USER_ACCESSIBLE | MappingFlags::READABLE | MappingFlags::EXECUTABLE
+    pub fn u_rx() -> MappingAccessRights {
+        MappingAccessRights::USER_ACCESSIBLE | MappingAccessRights::READABLE | MappingAccessRights::EXECUTABLE
     }
 }

@@ -8,7 +8,7 @@ use super::super::super::hierarchical_table::{HierarchicalTable, SmartHierarchic
                                               HierarchicalEntry};
 use super::super::super::lands::{KernelLand, UserLand, VirtualSpaceLand};
 use super::super::super::kernel_memory::get_kernel_memory;
-use super::super::super::MappingFlags;
+use super::super::super::MappingAccessRights;
 use mem::{VirtualAddress, PhysicalAddress};
 use frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
 
@@ -151,7 +151,7 @@ impl HierarchicalTable for InactivePageDirectory {
                 PhysicalMemRegion::reconstruct_no_dealloc(frame, PAGE_SIZE)
             };
             let va = active_pages.find_virtual_space(PAGE_SIZE).unwrap();
-            active_pages.map_phys_region_to(phys_region, va, MappingFlags::k_w());
+            active_pages.map_phys_region_to(phys_region, va, MappingAccessRights::k_w());
             SmartHierarchicalTable::new(unsafe {va.addr() as *mut InactivePageTable})
         })
     }
@@ -167,7 +167,7 @@ impl HierarchicalTable for InactivePageDirectory {
         };
         // 1: Map it in our page tables
         let va = active_pages.find_virtual_space(PAGE_SIZE).unwrap();
-        active_pages.map_phys_region_to(table_frame, va, MappingFlags::k_w());
+        active_pages.map_phys_region_to(table_frame, va, MappingAccessRights::k_w());
         let mut mapped_table = SmartHierarchicalTable::new(unsafe {va.addr() as *mut InactivePageTable});
         mapped_table.zero();
 
@@ -210,7 +210,7 @@ impl TableHierarchy for InactiveHierarchy {
         };
         let mut active_pages = get_kernel_memory();
         let va = active_pages.find_virtual_space(PAGE_SIZE).unwrap();
-        active_pages.map_phys_region_to(frame, va, MappingFlags::READABLE | MappingFlags::WRITABLE);
+        active_pages.map_phys_region_to(frame, va, MappingAccessRights::READABLE | MappingAccessRights::WRITABLE);
         SmartHierarchicalTable::new(va.addr() as *mut InactivePageDirectory)
     }
 }

@@ -8,7 +8,7 @@ use process::ThreadStruct;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::slice;
 use byteorder::{LE, ByteOrder};
-use paging::{MappingFlags, mapping::MappingType, process_memory::ProcessMemory};
+use paging::{MappingAccessRights, mapping::MappingType, process_memory::ProcessMemory};
 use mem::{UserSpacePtr, UserSpacePtrMut, VirtualAddress};
 use bit_field::BitField;
 
@@ -148,7 +148,7 @@ struct Request {
 }
 // TODO finish buf_map
 #[allow(unused)]
-fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mut ProcessMemory, to_mem: &mut ProcessMemory, flags: MappingFlags) -> Result<(), UserspaceError> {
+fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mut ProcessMemory, to_mem: &mut ProcessMemory, flags: MappingAccessRights) -> Result<(), UserspaceError> {
     let lowersize = LE::read_u32(&from_buf[*curoff..*curoff + 4]);
     let loweraddr = LE::read_u32(&from_buf[*curoff + 4..*curoff + 8]);
     let rest = LE::read_u32(&from_buf[*curoff + 8..*curoff + 12]);
@@ -356,15 +356,15 @@ fn pass_message(from_buf: &[u8], from_proc: Arc<ThreadStruct>, to_buf: &mut [u8]
         let mut to_mem = to_proc.process.pmemory.lock();
 
         for i in 0..hdr.num_a_descriptors() {
-            buf_map(from_buf, to_buf, &mut curoff, &mut *from_mem, &mut *to_mem, MappingFlags::empty())?;
+            buf_map(from_buf, to_buf, &mut curoff, &mut *from_mem, &mut *to_mem, MappingAccessRights::empty())?;
         }
 
         for i in 0..hdr.num_b_descriptors() {
-            buf_map(from_buf, to_buf, &mut curoff, &mut *from_mem, &mut *to_mem, MappingFlags::WRITABLE)?;
+            buf_map(from_buf, to_buf, &mut curoff, &mut *from_mem, &mut *to_mem, MappingAccessRights::WRITABLE)?;
         }
 
         for i in 0..hdr.num_w_descriptors() {
-            buf_map(from_buf, to_buf, &mut curoff, &mut *from_mem, &mut *to_mem, MappingFlags::WRITABLE)?;
+            buf_map(from_buf, to_buf, &mut curoff, &mut *from_mem, &mut *to_mem, MappingAccessRights::WRITABLE)?;
         }
     }
 

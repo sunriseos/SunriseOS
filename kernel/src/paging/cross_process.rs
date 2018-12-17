@@ -31,7 +31,7 @@
 //!
 
 use mem::VirtualAddress;
-use super::{PAGE_SIZE, MappingFlags};
+use super::{PAGE_SIZE, MappingAccessRights};
 use super::mapping::{Mapping, MappingType};
 use super::kernel_memory::get_kernel_memory;
 use super::error::MmError;
@@ -80,7 +80,7 @@ impl<'a> CrossProcessMapping<'a> {
             .take((map_end - map_start) / PAGE_SIZE);
         let kernel_map_start = unsafe {
             // safe, the frames won't be dropped, they still are tracked by the userspace mapping.
-            get_kernel_memory().map_frame_iterator(frames_iterator, MappingFlags::k_rw())
+            get_kernel_memory().map_frame_iterator(frames_iterator, MappingAccessRights::k_rw())
         };
         Ok(CrossProcessMapping {
             kernel_address: kernel_map_start + (offset % PAGE_SIZE),

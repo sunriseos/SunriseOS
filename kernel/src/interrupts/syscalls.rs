@@ -3,7 +3,7 @@
 use i386;
 use mem::{VirtualAddress, PhysicalAddress};
 use mem::{UserSpacePtr, UserSpacePtrMut};
-use paging::{MappingFlags, mapping::MappingType};
+use paging::{MappingAccessRights, mapping::MappingType};
 use frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
 use process::{Handle, ThreadStruct, ProcessStruct};
 use event::{self, Waitable};
@@ -59,7 +59,7 @@ fn map_framebuffer() -> Result<(usize, usize, usize, usize), UserspaceError> {
     //let framebuffer_vaddr = memory.find_virtual_space::<UserLand>(frame_buffer_phys_region.size())?;
     // todo make user provide the address
     let framebuffer_vaddr = VirtualAddress(0x40000000);
-    memory.map_phys_region_to(frame_buffer_phys_region, framebuffer_vaddr, MappingFlags::u_rw())?;
+    memory.map_phys_region_to(frame_buffer_phys_region, framebuffer_vaddr, MappingAccessRights::u_rw())?;
 
     let addr = framebuffer_vaddr.0;
     let width = tag.framebuffer_dimensions().0 as usize;
