@@ -16,8 +16,9 @@
 //! ```
 //!
 //! The requests are encoded in a byte buffer under a specific format. For
-//! documentation on the format, [switchbrew](https://switchbrew.org/w/index.php?title=IPC_Marshalling)
-//! is your friend.
+//! documentation on the format, [switchbrew] is your friend.
+//!
+//! [switchbrew]: https://switchbrew.org/w/index.php?title=IPC_Marshalling
 
 use scheduler;
 use alloc::vec::Vec;

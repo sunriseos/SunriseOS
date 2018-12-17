@@ -108,7 +108,7 @@ impl WaitableManager {
 /// An IPC object.
 ///
 /// Deriving this function manually is not recommended. Instead, users should use
-/// the [object](::ipc::macros::object) macro to derive the Object implementation
+/// the [object] macro to derive the Object implementation
 /// from its external interface.
 pub trait Object {
     /// Handle a request with the given cmdid.

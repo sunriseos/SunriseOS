@@ -226,9 +226,11 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 /// # Safety
 ///
 /// When a `stackdump_source` is passed, this function cannot check the requirements of
-/// [dump_stack](::stack::dump_stack), it is the caller's job to do it.
+/// [dump_stack], it is the caller's job to do it.
 ///
 /// Note that if `None` is passed, this function is safe.
+///
+/// [dump_stack]: ::stack::dump_stack
 unsafe fn do_panic(msg: core::fmt::Arguments, stackdump_source: Option<stack::StackDumpSource>) -> ! {
 
     // Disable interrupts forever!

@@ -42,9 +42,11 @@ impl IUserInterface {
 		    Ok(ClientSession(res.pop_handle_move()?))
     }
 
-    /// Registers a service registered in the service manager. Look at the
-    /// [create_port](::syscalls::create_port) syscall for more information on
-    /// the parameters.
+    /// Registers a service registered in the service manager.
+    ///
+    /// Look at the [create_port] syscall for more information on the parameters.
+    ///
+    /// [create_port]: ::syscalls::create_port
     pub fn register_service(&self, name: u64, is_light: bool, max_handles: u32) -> Result<ServerPort, Error> {
 		    use ipc::Message;
         let mut buf = [0; 0x100];

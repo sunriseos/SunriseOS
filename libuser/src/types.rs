@@ -16,8 +16,9 @@ use core::mem;
 /// guaranteed to be represented on a u32, with None represented as 0. This
 /// allows handle to be used directly in the syscall functions.
 ///
-/// Handles are closed automatically when Dropped via
-/// [close_handle](::syscalls::close_handle).
+/// Handles are closed automatically when Dropped via [close_handle].
+///
+/// [close_handle]: ::syscalls::close_handle.
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct Handle(pub(crate) NonZeroU32);
@@ -31,7 +32,7 @@ impl Handle {
     }
 
     /// Creates a new reference to this handle. See the documentation of
-    /// [HandleRef](HandleRef) for more information.
+    /// [HandleRef] for more information.
     pub fn as_ref(&self) -> HandleRef {
         HandleRef {
             inner: self.0,
@@ -67,8 +68,10 @@ pub struct ReadableEvent(pub Handle);
 ///
 /// Usually obtained by connecting to a service through the sm: service manager.
 /// However, an anonymous session pair might be created through the
-/// [create_session](::syscalls::create_session) syscall, or by calling
-/// [connect_to_named_port](::syscalls::connect_to_named_port).
+/// [create_session] syscall, or by calling [connect_to_named_port].
+///
+/// [create_session]: ::syscalls::create_session
+/// [connect_to_named_port]: ::syscalls::connect_to_named_port
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct ClientSession(pub Handle);
@@ -79,8 +82,10 @@ impl ClientSession {
     /// on output.
     ///
     /// This is a low-level primitives that is usually wrapped by a higher-level
-    /// library. Look at the [ipc module](::ipc) for more information on the IPC
+    /// library. Look at the [ipc module] for more information on the IPC
     /// message format.
+    ///
+    /// [ipc module]: ::ipc
     pub fn send_sync_request_with_user_buffer(&self, buf: &mut [u8]) -> Result<(), Error> {
         syscalls::send_sync_request_with_user_buffer(buf, self)
             .map_err(|v| v.into())
@@ -109,9 +114,11 @@ impl Drop for ClientSession {
 
 /// The server side of an IPC session.
 ///
-/// Usually obtained by calling [accept_session](ServerPort::accept_session), but
-/// may also be obtained by calling the [create_session](::syscalls::create_session)
-/// syscall, providing a server/client session pair.
+/// Usually obtained by calling [accept], but may also be obtained by calling 
+/// the [create_session] syscall, providing a server/client session pair.
+///
+/// [accept]: ServerPort::accept
+/// [create_session]: ::syscalls::create_session
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct ServerSession(pub Handle);
@@ -125,8 +132,10 @@ impl ServerSession {
     /// request's X descriptor into.
     ///
     /// This is a low-level primitives that is usually wrapped by a higher-level
-    /// library. Look at the [ipc module](::ipc) for more information on the IPC
+    /// library. Look at the [ipc module] for more information on the IPC
     /// message format.
+    ///
+    /// [ipc module]: ::ipc
     pub fn receive(&self, buf: &mut [u8], timeout: Option<usize>) -> Result<(), Error> {
         syscalls::reply_and_receive_with_user_buffer(buf, &[self.0.as_ref()], None, timeout).map(|_| ())
             .map_err(|v| v.into())
@@ -136,8 +145,10 @@ impl ServerSession {
     /// not have a pending request, this function will error out.
     /// 
     /// This is a low-level primitives that is usually wrapped by a higher-level
-    /// library. Look at the [ipc module](::ipc) for more information on the IPC
+    /// library. Look at the [ipc module] for more information on the IPC
     /// message format.
+    ///
+    /// [ipc module]: ::ipc
     pub fn reply(&self, buf: &mut [u8]) -> Result<(), Error> {
         syscalls::reply_and_receive_with_user_buffer(buf, &[], Some(self.0.as_ref()), Some(0))
             .map(|_| ())
@@ -153,8 +164,9 @@ impl ServerSession {
 /// The client side of an IPC Port. Allows connecting to an IPC server, providing
 /// a session to call remote procedures on.
 ///
-/// Obtained by creating an anonymous port pair with the
-/// [create_port](::syscalls::create_port) syscall.
+/// Obtained by creating an anonymous port pair with the [create_port] syscall.
+///
+/// [create_port]: ::syscalls::create_port
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct ClientPort(pub Handle);
@@ -171,8 +183,9 @@ impl ClientPort {
 /// a session on which to answer remote procedures from.
 ///
 /// Usually obtained by registering a service through the sm: service manager, or
-/// by calling [manage_named_port](::syscalls::manage_named_port) to obtained a
-/// kernel-managed port.
+/// by calling [manage_named_port] to obtained a kernel-managed port.
+///
+/// [manage_named_port]: ::syscalls::manage_named_port
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct ServerPort(pub Handle);
@@ -186,8 +199,9 @@ impl ServerPort {
     }
 }
 
-/// A Thread. Created with the [create_thread
-/// syscall](::syscalls::create_thread).
+/// A Thread. Created with the [create_thread syscall].
+///
+/// [create_thread syscall]: ::syscalls::create_thread.
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct Thread(pub Handle);
@@ -252,9 +266,10 @@ impl MappedSharedMemory {
     ///
     /// No attempt is made at synchronizing access. This (apparently) read-only
     /// slice might be modified by another process. It is recommended to use
-    /// [`as_ptr`](MappedSharedMemory::as_ptr) and volatile reads to avoid
-    /// Undefined Behavior, unless the application has a way to synchronize
-    /// access.
+    /// [`as_ptr`] and volatile reads to avoid Undefined Behavior,
+    /// unless the application has a way to synchronize access.
+    ///
+    /// [`as_ptr`]: MappedSharedMemory::as_ptr
     pub unsafe fn get(&self) -> &[u8] {
         ::core::slice::from_raw_parts(self.addr as *const u8, self.size)
     }
@@ -265,9 +280,10 @@ impl MappedSharedMemory {
     ///
     /// No attempt is made at synchronizing access. This (apparently) read-only
     /// slice might be modified by another process. It is recommended to use
-    /// [`as_mut_ptr`](MappedSharedMemory::as_mut_ptr) and volatile writes to
-    /// avoid Undefined Behavior, unless the application has a way to
-    /// synchronize access.
+    /// [`as_mut_ptr`] and volatile writes to avoid Undefined Behavior,
+    /// unless the application has a way to synchronize access.
+    ///
+    /// [`as_mut_ptr`]: MappedSharedMemory::as_mut_ptr
     pub unsafe fn get_mut(&self) -> &mut [u8] {
         ::core::slice::from_raw_parts_mut(self.addr as *mut u8, self.size)
     }
