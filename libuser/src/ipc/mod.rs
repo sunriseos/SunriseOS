@@ -1,3 +1,19 @@
+//! Core IPC Routines
+//!
+//! Horizon/OS is a microkernel. And what would be a microkernel without an
+//! appropriately overengineered IPC layer? The IPC layer of Horizon/NX is split
+//! in two parts: Cmif and Hipc. Cmif is the low-level IPC layer implemented by
+//! the kernel. Its job is to move handles from the sender to the receiver, move
+//! buffers using the appropriate method, and copy the data section over.
+//!
+//! The Hipc layer is responsible for the format of the Raw data section. It
+//! expects the SFCI/SFCO header, the cmdid at a certain location, and handles
+//! domains.
+//!
+//! In libuser, we don't make a proper distinction between Cmif and Hipc. Both
+//! are implemented in the same layer, which is backed by the Message structure.
+
+
 use core::marker::PhantomData;
 use core::mem;
 use byteorder::{ByteOrder, LE};
@@ -29,6 +45,8 @@ bitfield! {
 }
 
 bitfield! {
+    /// Part of an HIPC command. Sent only when
+    /// `MsgPackedHdr::enable_handle_descriptor` is true.
     #[repr(transparent)]
     pub struct HandleDescriptorHeader(u32);
     impl Debug;
@@ -37,31 +55,87 @@ bitfield! {
     u8, num_move_handles, set_num_move_handles: 8, 5;
 }
 
+/// Type of an IPC Buffer. Depending on the type, the kernel will either map it
+/// in the remote process, or memcpy its content.
 #[derive(Debug, Clone, Copy)]
 pub enum IPCBufferType {
-    A { flags: u8 },
-    B { flags: u8 },
-    X { counter: u8 },
-    C { has_u16_size: bool },
+    /// Send Buffer.
+    A {
+        // TODO: Type-safe IPCBufferType flags.
+        // BODY: Currently, IPCBufferType flags are encoded on an u8. However, it
+        // BODY: can only have one of three values: 0, 1 and 3. We should
+        // BODY: represent it as an enum or enum_with_val instead.
+        /// Determines what MemoryState to use with the mapped memory in the
+        /// sysmodule. Used to enforce whether or not device mapping is allowed
+        /// for src and dst buffers respectively.
+        ///
+        /// - 0: Device mapping *not* allowed for src or dst.
+        /// - 1: Device mapping allowed for src and dst.
+        /// - 3: Device mapping allowed for src but not for dst.
+        flags: u8
+    },
+    /// Receive Buffer.
+    B {
+        /// Determines what MemoryState to use with the mapped memory in the
+        /// sysmodule. Used to enforce whether or not device mapping is allowed
+        /// for src and dst buffers respectively.
+        ///
+        /// - 0: Device mapping *not* allowed for src or dst.
+        /// - 1: Device mapping allowed for src and dst.
+        /// - 3: Device mapping allowed for src but not for dst.
+        flags: u8
+    },
+    /// Pointer
+    X {
+        /// The index of the C buffer to copy this pointer into.
+        counter: u8
+    },
+    /// Receive List.
+    C {
+        /// If true, the size of the receive list should be written in the
+        /// request raw data.
+        has_u16_size: bool
+    },
 }
 
+/// An IPC Buffer represents a section of memory to send to the other side of the
+/// pipe. It is usually used for sending big chunks of data that would not send
+/// in the comparatively small argument area (which is usually around 200 bytes).
+///
+/// There exists 5 types of IPC Buffers: Send(A), Receive(B), SendReceive(W),
+/// Pointer(X) and ReceiveList(C).
+///
+/// Send/Receive/SendReceive buffers work by remapping the memory from the
+/// sender's process into the receiver's process. This means that they need to
+/// have a page-aligned address and size.
+///
+/// In contrast, Pointer/ReceiveList buffers work by memcpying the sender's
+/// Pointer buffer into the receiver's ReceiveList buffer. This allows greater
+/// flexibility on the address and size. In general, those are prefered.
 #[derive(Debug, Clone)]
 pub struct IPCBuffer<'a> {
-    // Address to the value
+    /// Address to the value
     addr: usize,
-    // Size of the value
+    /// Size of the value
     size: usize,
-    // Buffer type
+    /// Buffer type
     ty: IPCBufferType,
-    // Tie the buffer's lifetime to the value's !
-    // This is very very very important, for the safety of this interface. It ensures that, as long as
-    // this IPCBuffer exist, the value it references cannot be dropped.
+    /// Tie the buffer's lifetime to the value's !
+    /// This is very very very important, for the safety of this interface. It ensures that, as long as
+    /// this IPCBuffer exist, the value it references cannot be dropped.
     phantom: PhantomData<&'a ()>
 }
 
+// TODO: libuser IPCBuffer: Verify that passed type matches the mutability guarantees
+// BODY: In the libuser, IPCBuffer::from_* take an IPCBufferType and a reference.
+// BDOY: Based on the passed type, the remote process will be able to modify the
+// BODY: passed reference. Obviously, we don't want a remote process to modify
+// BODY: our read-only slice. We should either have assertions guaranteeing that,
+// BODY: or more fine-grained functions.
 impl<'a> IPCBuffer<'a> {
+    /// Creates an IPC buffer from a mutable reference and a type. The type
+    /// should be of type B, W or C.
     pub fn from_mut_ref<T>(val: &'a mut T, ty: IPCBufferType) -> IPCBuffer {
-        // TODO: Verify type and val mutability
         IPCBuffer {
             addr: val as *mut T as usize,
             size: mem::size_of::<T>(),
@@ -69,8 +143,9 @@ impl<'a> IPCBuffer<'a> {
             phantom: PhantomData
         }
     }
+    /// Creates an IPC buffer from a reference and a type. The type should be of
+    /// type A or X.
     pub fn from_ref<T>(val: &'a T, ty: IPCBufferType) -> IPCBuffer {
-        // TODO: Verify type and val mutability
         IPCBuffer {
             addr: val as *const T as usize,
             size: mem::size_of::<T>(),
@@ -78,8 +153,9 @@ impl<'a> IPCBuffer<'a> {
             phantom: PhantomData
         }
     }
+    /// Creates an IPC buffer from a mutable slice and a type. The type should be
+    /// of type B, W or C.
     pub fn from_slice<T>(val: &'a [T], ty: IPCBufferType) -> IPCBuffer {
-        // TODO: Verify type and val mutability
         IPCBuffer {
             addr: if val.len() == 0 { 0 } else { val.as_ptr() as usize },
             size: mem::size_of::<T>() * val.len(),
@@ -87,8 +163,9 @@ impl<'a> IPCBuffer<'a> {
             phantom: PhantomData
         }
     }
+    /// Creates an IPC buffer from a slice and a type. The type should be of
+    /// type A or X.
     pub fn from_mut_slice<T>(val: &'a mut [T], ty: IPCBufferType) -> IPCBuffer {
-        // TODO: Verify type and val mutability
         IPCBuffer {
             addr: if val.len() == 0 { 0 } else { val.as_ptr() as usize },
             size: mem::size_of::<T>() * val.len(),
@@ -97,6 +174,13 @@ impl<'a> IPCBuffer<'a> {
         }
     }
 
+    /// Creates an IPC buffer from a raw pointer, a len and a type. The length is
+    /// a number of T elements, **not** a byte length. The type should be of type
+    /// B, W or C.
+    ///
+    /// # Safety
+    ///
+    /// The pointer should point to memory pointing to len valid T.
     pub unsafe fn from_ptr_len<T>(val: *const T, len: usize, ty: IPCBufferType) -> IPCBuffer<'static> {
         IPCBuffer {
             addr: val as usize,
@@ -106,6 +190,13 @@ impl<'a> IPCBuffer<'a> {
         }
     }
 
+    /// Creates an IPC buffer from a raw mut pointer, a len and a type. The
+    /// length is a number of T elements, **not** a byte length. The type should
+    /// be of type A or X.
+    ///
+    /// # Safety
+    ///
+    /// The pointer should point to memory pointing to len valid T.
     pub unsafe fn from_mut_ptr_len<T>(val: *mut T, len: usize, ty: IPCBufferType) -> IPCBuffer<'static> {
         IPCBuffer {
             addr: val as usize,
@@ -121,12 +212,38 @@ impl<'a> IPCBuffer<'a> {
     }
 }
 
+/// Type of an IPC message.
 pub enum MessageTy {
+    /// Requests the other end to close the handle and any resource associated
+    /// with it. Normally called when dropping the ClientSession.
     Close,
+    /// A normal request.
     Request,
+    /// A request handled by the server handler. See [switchbrew] for information
+    /// on which functions can be called.
+    ///
+    /// [switchbrew]: https://switchbrew.org/w/index.php?title=IPC_Marshalling#Control
     Control,
 }
 
+/// A generic IPC message, representing either an IPC Request or an IPC Response.
+///
+/// In order to ensure performance, the request lives entirely on the stack, no
+/// heap allocation is done. However, if we allowed the maximum sizes for
+/// everything, this structure would be over-sized, spanning a page. In order to
+/// avoid this, we allow the user to set the size of the various parameters they
+/// need.
+///
+/// When sending a request that needs to send a COPY handle, the user is expected
+/// to create a message specifying the COPY count through the type argument,
+/// e.g.
+///
+/// ```
+/// let msg = Message::<_, _, [_; 1], _>::new_request(None, 1);
+/// ```
+///
+/// The ugly syntax, while unfortunate, is a necessary evil until const generics
+/// happen.
 #[derive(Debug)]
 pub struct Message<'a, RAW, BUFF = [IPCBuffer<'a>; 0], COPY = [u32; 0], MOVE = [u32; 0]>
 where
@@ -153,6 +270,10 @@ where
     MOVE: Array<Item=u32>,
     RAW: Copy + Default
 {
+    /// Create a new request for the given cmdid. If a token is passed, the new
+    /// IPC version will be used. The tokens allow for tracking an IPC request
+    /// chain. The raw data will contain the default value, and all arrays will
+    /// be empty.
     pub fn new_request(token: Option<u32>, cmdid: u32) -> Message<'a, RAW, BUFF, COPY, MOVE> {
         Message {
             ty: token.map(|_| 6).unwrap_or(4),
@@ -167,6 +288,9 @@ where
         }
     }
 
+    /// Create a new empty reply. If the request this reply is created for had a
+    /// token, it should be passed here. The raw data will contain the default
+    /// value, and all arrays will be empty.
     pub fn new_response(token: Option<u32>) -> Message<'a, RAW, BUFF, COPY, MOVE> {
         Message {
             ty: token.map(|_| 6).unwrap_or(4),
@@ -181,6 +305,7 @@ where
         }
     }
 
+    /// Sets the message type.
     pub fn set_ty(&mut self, ty: MessageTy) -> &mut Self {
         match (ty, self.token) {
             (MessageTy::Close, _) => self.ty = 2,
@@ -192,12 +317,24 @@ where
         self
     }
 
+    /// Set the error code from a reply.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the message is a request.
     pub fn set_error(&mut self, err: u32) -> &mut Self {
+        assert!(!self.is_request, "Attempted to set the error of a request. This operation is only valid for replies.");
         self.cmdid_error = err;
         self
     }
 
+    /// Get the error code from a reply.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the message is a request.
     pub fn error(&self) -> Result<(), Error> {
+        assert!(!self.is_request, "Attempted to get the error of a request. This operation is only valid for replies.");
         if self.cmdid_error == 0 {
             Ok(())
         } else {
@@ -205,25 +342,56 @@ where
         }
     }
 
+    /// Sets the raw data of the message.
     pub fn push_raw(&mut self, raw: RAW) -> &mut Self {
         self.raw = raw;
         self
     }
 
+    /// Gets the raw data of the message.
     pub fn raw(&self) -> RAW {
         self.raw
     }
 
+    /// Gets the token of a message. This token is used to track IPC call chains.
+    /// Only present on newer IPC request types.
     pub fn token(&self) -> Option<u32> {
         self.token
     }
 
+    // TODO: IPC Message::push_move_handle might cause handle leak
+    // BODY: The push_move_handle function immediately downcasts the handle to
+    // BODY: a mere int, and forgets the (droppable) handle. This might cause a
+    // BODY: leak if the underlying IPC message is not sent. It'd be better to
+    // BODY: keep the handle around as long as possible. In fact, closing the
+    // BODY: handle after it's been moved might not be such a bad idea. After
+    // BODY: all, handles are guaranteed not to get reused.
+    /// Move a handle over IPC. Once the message is sent, the handle will not
+    /// exist in the current process anymore.
+    ///
+    /// # Note
+    ///
+    /// The handle is forgotten as soon as this function is called. If the
+    /// message is never sent, then the handle will never be closed, causing a
+    /// handle leak! Furthermore, IPC errors might cause similar problems.
+    ///
+    /// # Panics
+    ///
+    /// Panics if attempting to push more handles than there is space for in this
+    /// message.
     pub fn push_handle_move(&mut self, handle: Handle) -> &mut Self {
         self.move_handles.push(handle.0.get());
         mem::forget(handle);
         self
     }
 
+    /// Copy a handle over IPC. The remote process will have a handle that points
+    /// to the same object.
+    ///
+    /// # Panics
+    ///
+    /// Panics if attempting to push more handles than there is space for in this
+    /// message.
     pub fn push_handle_copy(&mut self, handle: HandleRef) -> &mut Self {
         self.copy_handles.push(handle.inner.get());
         self
@@ -233,25 +401,46 @@ where
     /*fn pop_in_buffer<T>(&mut self) -> InBuffer<T> {
 }*/
 
+    /// Retrieve a moved handle from this IPC message. Those are popped in the
+    /// order they were inserted.
+    ///
+    /// # Errors
+    ///
+    /// Returns an InvalidMoveHandleCount if attempting to pop more handles than
+    /// this message has.
     pub fn pop_handle_move(&mut self) -> Result<Handle, Error> {
         self.move_handles.pop_at(0)
             .map(Handle::new)
             .ok_or(LibuserError::InvalidMoveHandleCount.into())
     }
 
+    /// Retrieve a copied handle from this IPC message. Those are popped in the
+    /// order they were inserted.
+    ///
+    /// # Errors
+    ///
+    /// Returns an InvalidCopyHandleCount if attempting to pop more handles than
+    /// this message has.
     pub fn pop_handle_copy(&mut self) -> Result<Handle, Error> {
         self.copy_handles.pop_at(0)
             .map(Handle::new)
             .ok_or(LibuserError::InvalidCopyHandleCount.into())
     }
 
+    /// Retrieve the PID of the remote process (if sent at all). This message
+    /// should only be called once.
+    ///
+    /// # Errors
+    ///
+    /// Returns a PidMissing if attempting to pop a Pid from a message that has
+    /// none, or if attempting to pop a Pid twice.
     pub fn pop_pid(&mut self) -> Result<Pid, Error> {
         self.pid.take()
             .map(Pid)
             .ok_or(LibuserError::PidMissing.into())
     }
 
-
+    /// Packs this IPC Message to an IPC buffer.
     pub fn pack(self, data: &mut [u8]) {
         let (
             mut descriptor_count_x,
@@ -268,7 +457,6 @@ where
             }
         }
 
-        // TODO: Memset data first
         let mut cursor = CursorWrite::new(data);
 
         // Get the header.
@@ -293,9 +481,12 @@ where
                 //domain_id.map(|v| 0x10).unwrap_or(0) +
                 (self.buffers.iter().filter(|v| if let IPCBufferType::C { has_u16_size: true } = v.ty { true } else { false }).count() * 2);
 
+            // TODO: IPC Domain Support
+            // BODY: IPC Domains would be nice to include back. MegatonHammer has
+            // BODY: the IPC request side of things, but I'm not too sure how to
+            // BODY: implement the server side.
             /*if domain_id.is_some() {
                 // Domain Header.
-                // TODO: Input ObjectIDs
                 raw_section_size += 0x10;
         }*/
 
@@ -396,13 +587,15 @@ where
             cursor.write_u32::<LE>(num as u32);
         }
 
-        // TODO: W descriptors would go there.
+        // TODO: Implement W Descriptors
+        // BODY: W Descriptors are read-write descriptors. Technically speaking,
+        // BODY: a B descriptor is supposed to be write-only. But Nintendo sucks.
 
         // Align to 16-byte boundary
         let before_pad = align_up(cursor.pos(), 16) - cursor.pos();
         cursor.skip_write(before_pad);
 
-        // TODO: Domains
+        // Domains
         /*if let Some(obj) = domain_id {
             {
                 let hdr = cursor.skip_write(mem::size_of::<DomainMessageHeader>());
@@ -475,6 +668,7 @@ where
 
     // TODO: Don't panic here! Unpacking happens in the server, we should return an
     // error if the unpacking failed.
+    /// Parse the passed buffer into an IPC Message.
     pub fn unpack(data: &[u8]) -> Message<'a, RAW, BUFF, COPY, MOVE> {
 
         let cursor = CursorRead::new(data);
@@ -602,6 +796,12 @@ where
     }
 }
 
+// TODO: find_ty_cmdid panics if the buffer is too small.
+// BODY: We should return an error if the buf size is too small instead of
+// BODY: panicking
+/// Quickly find the type and cmdid of an IPC message for the server dispatcher.
+///
+/// Doesn't do any validation that the message is valid.
 fn find_ty_cmdid(buf: &[u8]) -> (u16, u32) {
     let hdr = LE::read_u64(&buf[0..8]);
     let ty = hdr.get_bits(0..16) as u16;

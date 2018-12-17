@@ -1,9 +1,14 @@
+//! Service Manager
+
 use types::*;
 use error::{KernelError, Error};
 
+/// Main interface of the service manager. Allows registering and retrieving
+/// handles to all the services.
 pub struct IUserInterface(ClientSession);
 
 impl IUserInterface {
+    /// Connects to the Service Manager.
 	  pub fn raw_new() -> Result<IUserInterface, Error> {
 		    use syscalls;
 
@@ -16,6 +21,7 @@ impl IUserInterface {
         }
 	  }
 
+    /// Retrieves a service registered in the service manager.
     pub fn get_service(&self, name: u64) -> Result<ClientSession, Error> {
 		    use ipc::Message;
         let mut buf = [0; 0x100];
@@ -36,6 +42,9 @@ impl IUserInterface {
 		    Ok(ClientSession(res.pop_handle_move()?))
     }
 
+    /// Registers a service registered in the service manager. Look at the
+    /// [create_port](::syscalls::create_port) syscall for more information on
+    /// the parameters.
     pub fn register_service(&self, name: u64, is_light: bool, max_handles: u32) -> Result<ServerPort, Error> {
 		    use ipc::Message;
         let mut buf = [0; 0x100];
