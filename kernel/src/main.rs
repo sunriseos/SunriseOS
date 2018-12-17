@@ -44,6 +44,7 @@ extern crate failure;
 #[macro_use]
 extern crate bitfield;
 extern crate kfs_libkern;
+#[cfg(test)]
 #[macro_use]
 extern crate mashup;
 
