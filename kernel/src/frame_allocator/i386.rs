@@ -27,10 +27,30 @@ use paging::kernel_memory::get_kernel_memory;
 use error::KernelError;
 use failure::Backtrace;
 
-const FRAME_OFFSET_MASK: usize = 0xFFF;              // The offset part in a frame
-const FRAME_BASE_MASK:   usize = !FRAME_OFFSET_MASK; // The base part in a frame
-
-const FRAME_BASE_LOG: usize = 12; // frame_number = addr >> 12
+/// The offset part in a [PhysicalAddress].
+/// ```
+/// let phys_address = PhysicalAddress(0xccccc567);
+///
+/// let offset_in_frame = phys_address & FRAME_OFFSET_MASK;
+/// assert_eq!(offset_in_frame, 0x567);
+/// ```
+const FRAME_OFFSET_MASK: usize = 0xFFF;
+/// The frame part in [PhysicalAddress].
+/// ```
+/// let phys_address = PhysicalAddress(0xccccc567);
+///
+/// let frame_addr = phys_address & FRAME_BASE_MASK;
+/// assert_eq!(offset_in_frame, 0xccccc000);
+/// ```
+const FRAME_BASE_MASK:   usize = !FRAME_OFFSET_MASK;
+/// The right shift to perform to a Physical address to get its frame id.
+/// ```
+/// let phys_address = PhysicalAddress(0xabcde567);
+///
+/// let frame_id = phys_address >> FRAME_BASE_LOG;
+/// assert_eq!(frame_id, 0xabcde);
+/// ```
+const FRAME_BASE_LOG: usize = 12;
 
 /// The size of the frames_bitmap (~128ko)
 #[cfg(not(test))]

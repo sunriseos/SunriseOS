@@ -53,8 +53,21 @@ pub struct ProcessMemory {
     heap_base_address: VirtualAddress,
 }
 
+/// Page tables selector.
+///
+/// A process always stores its table_hierarchy as an inactive hierarchy. When it wants to modify
+/// its page tables, it will first call [`get_hierarchy`], which will detect if the hierarchy
+/// is already the currently active one, and return a `DynamicHierarchy`.
+///
+/// This returned `DynamicHierarchy` is just a wrapper which will dispatch all its calls to the right
+/// hierarchy, either the already active one, shortcutting the method calls by not having to map
+/// temporary directories and page tables, or going the long way and actually use the inactive one.
+///
+/// [`get_hierarchy`]: self::ProcessMemory::get_hierarchy
 enum DynamicHierarchy<'a> {
+    /// The process's hierarchy is already the currently active one.
     Active(ActiveHierarchy),
+    /// The process's hierarchy an inactive one.
     Inactive(&'a mut InactiveHierarchy)
 }
 

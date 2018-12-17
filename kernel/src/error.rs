@@ -32,7 +32,7 @@ impl Display for ArithmeticOperation {
 /// When a KernelError must be propagated to userspace, i.e. a syscall failed, it must be
 /// converted to a [UserspaceError].
 #[derive(Debug, Fail)]
-#[allow(missing_docs)]
+#[allow(missing_docs, clippy::missing_docs_in_private_items)]
 pub enum KernelError {
     #[fail(display = "Frame allocation error: physical address space exhausted")]
     PhysicalMemoryExhaustion {

@@ -41,7 +41,9 @@ use failure::Backtrace;
 ///
 /// Because of this mechanism we do not permit modifying KernelLand in other tables
 /// than the currently active ones.
+#[derive(Debug)]
 pub struct KernelMemory {
+    /// The currently active page tables.
     tables: ActiveHierarchy
 }
 

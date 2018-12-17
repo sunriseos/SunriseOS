@@ -210,6 +210,7 @@ impl PagingCacheFlusher for NoFlush { fn flush_whole_cache() { /* do nothing */ 
 pub struct SmartHierarchicalTable<'a, T: HierarchicalTable + 'a>(*mut T, PhantomData<&'a T>);
 
 impl<'a, T: HierarchicalTable> SmartHierarchicalTable<'a, T> {
+    /// Wraps the given pointer in a `SmartHierarchicalTable`.
     pub fn new(inner: *mut T) -> SmartHierarchicalTable<'a, T> {
         SmartHierarchicalTable(inner, PhantomData)
     }
@@ -252,6 +253,7 @@ impl<'a, T: HierarchicalTable> Drop for SmartHierarchicalTable<'a, T> {
 /// * an InactiveHierarchy will want to temporarily map the top level page
 /// * a  PagingOffHierarchy will point to physical memory
 pub trait TableHierarchy {
+    /// The type of the top level table.
     type TopLevelTableType : HierarchicalTable;
 
     /// Gets a reference to the top level table, either through recursive mapping,

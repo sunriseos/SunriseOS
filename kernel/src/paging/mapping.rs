@@ -22,9 +22,13 @@ use kfs_libkern;
 /// However we do not make any assumption on address + length, which falls outside of the mapping.
 #[derive(Debug)]
 pub struct Mapping {
+    /// The first address of this mapping.
     address: VirtualAddress,
+    /// The length of this mapping.
     length: usize,
+    /// The type of this mapping, and frames it maps.
     mtype: MappingType,
+    /// The access rights of this mapping.
     flags: MappingAccessRights,
 }
 

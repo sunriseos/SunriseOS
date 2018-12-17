@@ -1,8 +1,23 @@
 //! Multiboot Information
+//!
+//! Gives access to the [multiboot information structure] created by our bootloader (GRUB).
+//!
+//! Bootloader (GRUB) passed its address in `$ebx` when we started.
+//!
+//! Our bootstrap had the job of copy-ing it to a PAGE_SIZE aligned address, map it,
+//! and passed it to us in `$ebx`.
+//!
+//! When kernel initializes we store this address in [`BOOT_INFO`], and we can then access
+//! it at any moment by calling [`get_boot_information`].
+//!
+//! [multiboot information structure]: https://www.gnu.org/software/grub/manual/multiboot2/multiboot.html#Boot-information-format
+//! [`BOOT_INFO`]: self::multiboot::BOOT_INFO
+//! [`get_boot_information`]: self::multiboot::get_boot_information
 
 use sync::Once;
 use multiboot2::BootInformation;
 
+/// Stores the address of the multiboot.
 static BOOT_INFO: Once<BootInformation> = Once::new();
 
 /// Get a pointer to the multiboot information structure.

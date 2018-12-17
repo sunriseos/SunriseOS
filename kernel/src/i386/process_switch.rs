@@ -17,7 +17,8 @@ use i386::TssStruct;
 /// Stored in the ThreadStruct of every thread.
 #[derive(Debug)]
 pub struct ThreadHardwareContext {
-    esp: usize, // the top of the stack, where all other registers are saved
+    /// The top of the stack, where all other registers are saved.
+    esp: usize,
 }
 
 impl Default for ThreadHardwareContext {
@@ -267,6 +268,7 @@ fn first_schedule() {
         " : : "i"(first_schedule_inner as *const u8) : : "volatile", "intel");
     }
 
+    /// Stack is set-up, now we can run rust code.
     extern "C" fn first_schedule_inner(whoami: *const ThreadStruct, entrypoint: usize, userspace_stack: usize) -> ! {
         // reconstruct an Arc to our ProcessStruct from the leaked pointer
         let current = unsafe { Arc::from_raw(whoami) };
@@ -295,6 +297,18 @@ fn first_schedule() {
     }
 }
 
+/// Jumps to Userspace, and run a userspace program.
+///
+/// This function is called on the first schedule of a process or thread,
+/// after all the process_switch mechanics is over, and the thread is good to go.
+///
+/// It jumps to ring 3 by pushing the given `ep` and `userspace_stack_ptr` on the KernelStack,
+/// and executing an `iret`.
+///
+/// Just before doing the `iret`, it clears all general-purpose registers.
+///
+/// This way, just after the `iret`, cpu will be in ring 3, witl all of its registers cleared,
+/// `$eip` pointing to `ep`, and `$esp` pointing to `userspace_stack_ptr`.
 fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize) {
     unsafe {
         asm!("

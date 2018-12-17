@@ -46,9 +46,12 @@ impl From<MappingAccessRights> for I386EntryFlags {
     }
 }
 
+/// The part of an entry that encodes the physical address.
+///
+/// You can retrieve the frame by just `and`ing an entry with this mask.
 const ENTRY_PHYS_ADDRESS_MASK: usize = 0xffff_f000;
 
-/// An entry in a page table or page directory. An unused entry is 0
+/// An entry in a page table or page directory. An unused entry is 0.
 #[repr(transparent)]
 #[derive(Clone, Copy)]
 pub struct I386Entry(u32);

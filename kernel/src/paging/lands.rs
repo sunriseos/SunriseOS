@@ -46,6 +46,9 @@ pub trait VirtualSpaceLand {
     /// # Panics
     ///
     /// Panics if size is 0.
+    // TODO: Land::contains_region() should not panic on 0 length
+    // BODY: This function should return an error, as it really is likely someone (I)
+    // BODY: will call it at some point not expecting it can panic.
     fn contains_region(start_address: VirtualAddress, size: usize) -> bool {
         assert!(size != 0, "contains_region : size == 0");
         let sum = start_address.addr().checked_add(size - 1);
@@ -105,8 +108,8 @@ impl VirtualSpaceLand for RecursiveTablesLand {
 }
 // else we do it in arch-specific implementations
 
-// Assertions to check that Kernel/User pages falls on distinct page tables
-// and also that they do not overlap
+/// Assertions to check that Kernel/User pages falls on distinct page tables
+/// and also that they do not overlap.
 fn __land_assertions() {
     const_assert!(KernelLand::START.0 < KernelLand::END.0);
     const_assert!(UserLand::START.0 < UserLand::END.0);

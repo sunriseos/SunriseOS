@@ -9,7 +9,9 @@ use ::io::Io;
 /// Generic PIO
 #[derive(Copy, Clone, Debug)]
 pub struct Pio<T> {
+    /// The io port address.
     port: u16,
+    /// The width of the port.
     value: PhantomData<T>,
 }
 
