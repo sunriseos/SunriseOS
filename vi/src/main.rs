@@ -29,9 +29,8 @@ use alloc::sync::{Arc, Weak};
 use libuser::syscalls;
 use libuser::ipc::server::{WaitableManager, PortHandler, IWaitable, SessionWrapper};
 use libuser::types::*;
-use hashmap_core::map::{HashMap, Entry};
 use spin::Mutex;
-use libuser::error::{KernelError, Error};
+use libuser::error::Error;
 use libuser::syscalls::MemoryPermissions;
 use kfs_libutils::align_up;
 

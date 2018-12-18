@@ -1,4 +1,8 @@
-#![feature(alloc, used)]
+//! Clock applet
+//!
+//! Show the current time in the bottom left corner of the screen.
+
+#![feature(alloc)]
 #![no_std]
 
 #![warn(missing_docs)]
@@ -9,7 +13,6 @@ extern crate kfs_libuser;
 extern crate alloc;
 
 use kfs_libuser::terminal::{Terminal, WindowSize};
-use kfs_libuser::vi;
 use kfs_libuser::io::{self, Io};
 use kfs_libuser::syscalls;
 use core::fmt::Write;
@@ -109,6 +112,7 @@ fn main() {
             let mut month = rtc.read_reg(8);
             let mut year = rtc.read_reg(9);
 
+            // IBM sometimes uses BCD. Why? God knows.
             if !rtc.is_12hr_clock() {
                 seconds = (seconds & 0x0F) + ((seconds / 16) * 10);
                 minutes = (minutes & 0x0F) + ((minutes / 16) * 10);
@@ -119,12 +123,13 @@ fn main() {
                 year = (year & 0x0F) + ((year / 16) * 10);
             }
 
-            syscalls::output_debug_string(&format!("{:02}:{:02}:{:02} {} {:02} {} {}", hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year));
-            write!(&mut logger, "\n{:02}:{:02}:{:02} {} {:02} {} {}", hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year);
+            let _ = syscalls::output_debug_string(&format!("{:02}:{:02}:{:02} {} {:02} {} {}", hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year));
+            let _ = write!(&mut logger, "\n{:02}:{:02}:{:02} {} {:02} {} {}", hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year);
         }
     }
 }
 
+/// Array of IO port this process is allowed to access.
 #[cfg_attr(not(test), link_section = ".kernel_ioports")]
 #[used]
 pub static IOPORTS_PERMS: [u16; 2] = [0x70, 0x71];

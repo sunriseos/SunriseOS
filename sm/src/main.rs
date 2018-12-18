@@ -1,3 +1,18 @@
+//! Service Manager
+//!
+//! Services are system processes running in the background which wait for
+//! incoming requests. When a process wants to communicate with a service, it
+//! first needs to get a handle to the named service, and then it can communicate
+//! with the service via inter-process communication (each service has a name up
+//! to 8 characters).
+//!
+//! Handles for services are retrieved from the service manager port, "sm:", and
+//! are released via svcCloseHandle or when a process is terminated or crashes.
+//! Manager service "sm:m" also exists. Services are an abstraction of ports,
+//! they operate the same way except regular ports can have their handles
+//! retrieved directly from a SVC. Services are also able to limit the number of
+//! handles given to other processes.
+
 #![feature(alloc)]
 #![no_std]
 
@@ -30,12 +45,6 @@ lazy_static! {
 }
 // TODO: global event when services are accessed.
 
-impl UserInterface {
-    fn new() -> Self {
-        UserInterface
-    }
-}
-
 fn get_service_length(servicename: u64) -> usize{
     for i in 0..8 {
         if (servicename >> (8*i)) & 0xFF == 0 {
@@ -57,7 +66,7 @@ fn get_service_str(servicename: &u64) -> &str {
 object! {
     impl UserInterface {
         #[cmdid(0)]
-        fn initialize(&mut self, pid: Pid,) -> Result<(), Error> {
+        fn initialize(&mut self, _pid: Pid,) -> Result<(), Error> {
             Ok(())
         }
 
@@ -73,7 +82,7 @@ object! {
         fn register_service(&mut self, servicename: u64, is_light: u8, max_handles: u32,) -> Result<(Handle,), Error> {
             let (clientport, serverport) = syscalls::create_port(max_handles, is_light != 0, get_service_str(&servicename))?;
             match SERVICES.lock().entry(servicename) {
-                Entry::Occupied(occupied) => Err(SmError::ServiceAlreadyRegistered.into()),
+                Entry::Occupied(_) => Err(SmError::ServiceAlreadyRegistered.into()),
                 Entry::Vacant(vacant) => {
                     vacant.insert(clientport);
                     Ok((serverport.0,))
