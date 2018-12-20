@@ -189,9 +189,9 @@ pub fn create_shared_memory(size: usize, myperm: MemoryPermissions, otherperm: M
 ///
 /// # Errors
 ///
-/// - addr must be page-aligned
+/// - addr must be page-aligned.
 /// - size must be equal to the size of the backing shared memory handle.
-/// - perm must be allowed
+/// - perm must be allowed.
 pub fn map_shared_memory(handle: &SharedMemory, addr: usize, size: usize, perm: MemoryPermissions) -> Result<(), KernelError> {
     unsafe {
         syscall(nr::MapSharedMemory, (handle.0).0.get() as _, addr, size, perm.bits() as _, 0, 0)?;

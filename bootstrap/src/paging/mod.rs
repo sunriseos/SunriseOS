@@ -145,9 +145,9 @@ pub trait VirtualSpaceLand {
     }
 }
 
-/// The virtual memory belonging to kernel
+/// The virtual memory belonging to kernel.
 pub struct  KernelLand;
-/// The virtual memory belonging to user
+/// The virtual memory belonging to user.
 pub struct UserLand;
 
 impl KernelLand {

@@ -85,7 +85,7 @@ pub enum IPCBufferType {
         /// - 3: Device mapping allowed for src but not for dst.
         flags: u8
     },
-    /// Pointer
+    /// Pointer.
     X {
         /// The index of the C buffer to copy this pointer into.
         counter: u8

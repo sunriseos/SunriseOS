@@ -15,10 +15,10 @@ pub trait Io {
     /// Reads from this Io.
     fn read(&self) -> Self::Value;
 
-    /// Writes `value` to this Io
+    /// Writes `value` to this Io.
     fn write(&mut self, value: Self::Value);
 
-    /// Read from this Io, and mask the value with `flags`
+    /// Read from this Io, and mask the value with `flags`.
     #[inline(always)]
     fn readf(&self, flags: Self::Value) -> bool  {
         (self.read() & flags) as Self::Value == flags
@@ -57,7 +57,7 @@ impl<I: Io> ReadOnly<I> {
         self.inner.read()
     }
 
-    /// Read from this Io, and mask the value with `flags`
+    /// Read from this Io, and mask the value with `flags`.
     #[inline(always)]
     pub fn readf(&self, flags: I::Value) -> bool {
         self.inner.readf(flags)
@@ -79,7 +79,7 @@ impl<I> WriteOnly<I> {
 }
 
 impl<I: Io> WriteOnly<I> {
-    /// Writes `value` to this Io
+    /// Writes `value` to this Io.
     #[inline(always)]
     pub fn write(&mut self, value: I::Value) {
         self.inner.write(value)

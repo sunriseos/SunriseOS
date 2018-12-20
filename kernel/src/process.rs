@@ -247,7 +247,8 @@ pub struct HandleTable {
 }
 
 impl HandleTable {
-    /// Creates an emp
+    /// Creates an empty handle table. Note that an empty handle table still
+    /// implicitly contains the meta-handles 0xFFFF8000 and 0xFFFF8001.
     pub fn new() -> HandleTable {
         HandleTable {
             table: BTreeMap::new(),
