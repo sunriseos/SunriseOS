@@ -51,7 +51,7 @@ impl Drop for Handle {
 /// but is bound to the real handle's lifetime.
 ///
 /// This pattern allows for passing handle arrays without giving up ownership of
-/// the handle, and without an expensive conversion from an arrray of pointers to
+/// the handle, and without an expensive conversion from an array of pointers to
 /// an array of handles.
 #[repr(transparent)]
 pub struct HandleRef<'a> {

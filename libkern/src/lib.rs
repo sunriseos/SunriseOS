@@ -12,7 +12,7 @@ extern crate bitflags;
 extern crate lazy_static;
 
 pub mod error;
- 
+
 enum_with_val! {
     /// The type of this memory area.
     ///
@@ -104,7 +104,7 @@ bitflags! {
     }
 }
 
-/// The structure returned by the `query_memory` structure.
+/// The structure returned by the `query_memory` syscall.
 #[repr(C)]
 #[derive(Debug, Default)]
 pub struct MemoryInfo {

@@ -108,7 +108,7 @@ pub unsafe fn set_heap_size(new_size: usize) -> Result<usize, KernelError> {
     Ok(heap_address_base)
 }
 
-/// Query information about an address. Will always fetch the lowest page-aligned
+/// Query information about an address. Will fetch the page-aligned mapping `addr` falls in.
 /// mapping that contains the provided address.
 ///
 /// # Return
@@ -344,7 +344,7 @@ pub fn reply_and_receive_with_user_buffer(buf: &mut [u8], handles: &[HandleRef],
     }
 }
 
-/// Create an event for the given IRQ number.
+/// Create a waitable object for the given IRQ number.
 ///
 /// Note that the process needs to be authorized to listen for the given IRQ.
 pub fn create_interrupt_event(irqnum: usize, flag: u32) -> Result<ReadableEvent, KernelError> {

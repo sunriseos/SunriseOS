@@ -26,7 +26,7 @@ impl ViInterface {
     }
 
     /// Create a new window of the given size at the given position. The handle
-    /// should contain a framebuffer of size width * height * 4 (aligned up). Its
+    /// should contain a framebuffer of size width * height * 4 (aligned up to page_size). Its
     /// content will be copied to the screen on each call to draw(), or when
     /// another buffer calls draw whose position intersects with this buffer.
     pub fn create_buffer(&mut self, handle: &SharedMemory, top: i32, left: i32, width: u32, height: u32,) -> Result<IBuffer, Error> {

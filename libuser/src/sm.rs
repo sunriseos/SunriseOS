@@ -8,10 +8,17 @@
 //!
 //! Handles for services are retrieved from the service manager port, "sm:", and
 //! are released via svcCloseHandle or when a process is terminated or crashes.
-//! Manager service "sm:m" also exists. Services are an abstraction of ports,
-//! they operate the same way except regular ports can have their handles
-//! retrieved directly from a SVC. Services are also able to limit the number of
-//! handles given to other processes.
+//!
+//! Manager service "sm:m" allows the Process Manager to tell sm: about the
+//! permissions of each process. By default, SM assumes a process has no
+//! permissions, and as such cannot access any service. "sm:m" RegisterProcess
+//! calls allows PM to tell the Service Manager about which services a certain
+//! process is allowed to access or host.
+//!
+//! A Service is very similar to a kernel-managed Named Port: You can connect to
+//! it, and it returns a ClientSession. The difference is that a Service handled
+//! by "sm:" has an additional permission check done to ensure it isn't accessed
+//! by an unprivileged process.
 
 use types::*;
 use error::{KernelError, Error};
