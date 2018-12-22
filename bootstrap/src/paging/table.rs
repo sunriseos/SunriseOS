@@ -239,13 +239,13 @@ pub trait PageDirectoryTrait : HierarchicalTable {
         let mut hole_start_table: usize = 0;
         let mut hole_start_page:  usize = 0;
         let mut counter_curr_table:  usize = Land::start_table();
-        let mut counter_curr_page:   usize = 0;
+        let mut counter_curr_page:   usize;
         while counter_curr_table < Land::end_table() && (!considering_hole || hole_size < page_nb) {
             counter_curr_page = 0;
             match self.get_table(counter_curr_table) {
                 PageState::Available => { // The whole page table is free, so add it to our hole_size
                     if !considering_hole
-                        && satisfies_alignement(counter_curr_page, 0, alignement) {
+                        && satisfies_alignement(counter_curr_table, 0, alignement) {
                         // This is the start of a hole
                         considering_hole = true;
                         hole_start_table = counter_curr_table;

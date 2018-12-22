@@ -140,7 +140,7 @@ pub extern "C" fn do_bootstrap(multiboot_info_addr: usize) -> ! {
 
     // Parse the multiboot infos
     let boot_info = unsafe { multiboot2::load(multiboot_info_addr) };
-    write!(Serial, "{:?}", boot_info);
+    let _ = write!(Serial, "{:?}", boot_info);
     let _ = writeln!(Serial, "= Parsed multiboot informations");
 
     // Setup frame allocator
