@@ -1,11 +1,15 @@
+//! Vi Compositor service
+
 use types::*;
 use sm;
 use core::mem;
 use error::{Error, SmError};
 
+/// Main compositor interface.
 pub struct ViInterface(ClientSession);
 
 impl ViInterface {
+    /// Connects to the vi service.
     pub fn raw_new() -> Result<ViInterface, Error> {
         use syscalls;
 
@@ -21,6 +25,10 @@ impl ViInterface {
         }
     }
 
+    /// Create a new window of the given size at the given position. The handle
+    /// should contain a framebuffer of size width * height * 4 (aligned up to page_size). Its
+    /// content will be copied to the screen on each call to draw(), or when
+    /// another buffer calls draw whose position intersects with this buffer.
     pub fn create_buffer(&mut self, handle: &SharedMemory, top: i32, left: i32, width: u32, height: u32,) -> Result<IBuffer, Error> {
         use ipc::Message;
         let mut buf = [0; 0x100];
@@ -46,10 +54,14 @@ impl ViInterface {
     }
 }
 
+/// A handle to a window. Created through the create_buffer function on
+/// ViInterface. If dropped, the window will be closed.
 #[derive(Debug)]
 pub struct IBuffer(ClientSession);
 
 impl IBuffer {
+    /// Ask the compositor to redraw the window. This will cause the compositor
+    /// to redraw every window intersecting with this one as well.
     pub fn draw(&mut self) -> Result<(), Error> {
         use ipc::Message;
         let mut buf = [0; 0x100];

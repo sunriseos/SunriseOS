@@ -13,19 +13,25 @@ use core::slice;
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Color {
+    /// Blue component
     pub b: u8,
+    /// Green component
     pub g: u8,
+    /// Red component
     pub r: u8,
+    /// Alpha component
     pub a: u8,
 }
 
 /// Some colors for the vbe
 impl Color {
+    /// Creates a color from the r/g/b components. Alpha will be set to 0xFF.
     pub fn rgb(r: u8, g: u8, b: u8) -> Color {
         Color {r, g, b, a: 0xFF }
     }
 }
 
+/// A managed window.
 #[derive(Debug)]
 pub struct Window {
     buf: MappedSharedMemory,
@@ -60,6 +66,7 @@ impl Window {
         Ok(fb)
     }
 
+    /// Ask the compositor to redraw the window.
     pub fn draw(&mut self) -> Result<(), Error> {
         self.handle.draw()
     }

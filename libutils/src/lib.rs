@@ -1,6 +1,7 @@
 //! A messy crate with various utilities shared between the user and kernel code.
 //! Should probably be further split into several useful libraries.
 
+#![feature(asm)]
 #![no_std]
 
 // rustc warnings
@@ -23,6 +24,7 @@ use num_traits::Num;
 use core::ops::{Not, BitAnd};
 use core::fmt::Write;
 
+pub mod io;
 mod cursor;
 pub use cursor::*;
 
@@ -77,15 +79,22 @@ pub fn div_ceil<T: Num + Copy>(a: T, b: T) -> T {
     }
 }
 
+/// Creates a fake C-like enum, where all bit values are accepted.
+///
+/// This is mainly useful for FFI constructs. In C, an enum is allowed to take
+/// any bit value, not just those defined in the enumeration. In Rust,
+/// constructing an enum with a value outside the enumeration is UB. In order
+/// to avoid this, we define our enum as a struct with associated variants.
 #[macro_export]
 macro_rules! enum_with_val {
     ($(#[$meta:meta])* $vis:vis struct $ident:ident($ty:ty) {
-        $($variant:ident = $num:expr),* $(,)*
+        $($(#[$varmeta:meta])* $variant:ident = $num:expr),* $(,)*
     }) => {
         $(#[$meta])*
+        #[repr(transparent)]
         $vis struct $ident($ty);
         impl $ident {
-            $($vis const $variant: $ident = $ident($num);)*
+            $($(#[$varmeta])* $vis const $variant: $ident = $ident($num);)*
         }
 
         impl ::core::fmt::Debug for $ident {
@@ -140,6 +149,8 @@ pub fn print_hexdump_as_if_at_addr<T: Write>(f: &mut T, mem: &[u8], display_addr
 }
 
 /// Extension of the [BitField] trait, that adds the `set_bits_area` function.
+///
+/// [BitField]: ::bit_field::BitField
 pub trait BitArrayExt<U: ::bit_field::BitField>: ::bit_field::BitArray<U> {
     /// Sets a range of bits to `value` in the BitField.
     fn set_bits_area(&mut self, range: ::core::ops::Range<usize>, value: bool) {

@@ -288,19 +288,17 @@ impl PS2 {
 
     fn read_key(&self) -> char {
         loop {
-            unsafe {
-                let status = self.status_port.read();
-                if status & 0x01 != 0 {
-                    let key = KeyEvent::read_key_event(self.data_port);
-                    match key {
-                        KeyEvent {key: Key::Control(k), state: s               } => { self.handle_control_key(k, s); },
-                        KeyEvent {key: Key::Letter(l),  state: State::Pressed  } => { return self.key_to_letter(l) },
-                        KeyEvent {key: Key::Letter(_),  state: State::Released } => { /* ignore released letters */ },
-                        KeyEvent {key: Key::Empty,      state: _               } => { /* ignore unknown keys */ },
-                    }
-                } else {
-                    let _ = syscalls::wait_synchronization(&[self.event.0.as_ref()], None);
+            let status = self.status_port.read();
+            if status & 0x01 != 0 {
+                let key = KeyEvent::read_key_event(self.data_port);
+                match key {
+                    KeyEvent {key: Key::Control(k), state: s               } => { self.handle_control_key(k, s); },
+                    KeyEvent {key: Key::Letter(l),  state: State::Pressed  } => { return self.key_to_letter(l) },
+                    KeyEvent {key: Key::Letter(_),  state: State::Released } => { /* ignore released letters */ },
+                    KeyEvent {key: Key::Empty,      state: _               } => { /* ignore unknown keys */ },
                 }
+            } else {
+                let _ = syscalls::wait_synchronization(&[self.event.0.as_ref()], None);
             }
         }
     }
@@ -360,6 +358,7 @@ pub fn get_next_line(logger: &mut Terminal) -> String {
     }
 }
 
+#[allow(dead_code)]
 pub fn get_waitable() -> &'static ReadableEvent {
     PRIMARY_PS2.event_irq()
 }

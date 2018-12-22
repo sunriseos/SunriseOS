@@ -518,6 +518,10 @@ impl<F> IdtEntry<F> {
         &mut self.options
     }
 
+    /// Set a task gate for the IDT entry and sets the present bit.
+    ///
+    /// For the code selector field, this function uses the code segment selector currently
+    /// active in the CPU.
     pub fn set_handler_task_gate_addr(&mut self, addr: u32) {
 
         self.pointer_low = 0;

@@ -38,6 +38,10 @@ pub fn try_get_boot_information() -> Option<&'static BootInformation> {
     BOOT_INFO.try()
 }
 
+/// Initializes the boot information module, allowing the `get_boot_information`
+/// functions to operate properly.
+///
+/// Should only be called once. Further calls will be ignored silently.
 pub fn init(boot_information: BootInformation) {
     BOOT_INFO.call_once(|| {
         boot_information

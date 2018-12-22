@@ -15,10 +15,12 @@ use spin::Mutex;
 use ::core::fmt::Write;
 use bootstrap_logging::Serial;
 
+/// The size of a single page.
 pub const PAGE_SIZE: usize = 4096;
 
 const ENTRY_COUNT: usize = PAGE_SIZE / ::core::mem::size_of::<Entry>();
 
+/// Currently active page tables.
 pub static ACTIVE_PAGE_TABLES: Mutex<ActivePageTables> = Mutex::new(ActivePageTables());
 
 /// Check if the paging is currently active.
@@ -123,7 +125,10 @@ pub unsafe fn map_bootstrap(boot_info : &BootInformation) -> PagingOffPageSet {
 /// A trait describing the splitting of virtual memory between Kernel and User.
 /// Implemented by UserLand and KernelLand
 pub trait VirtualSpaceLand {
+    /// The first address in this land.
     fn start_addr() -> VirtualAddress;
+
+    /// The last address in this land.
     fn end_addr() -> VirtualAddress;
 
     /// The index in page directory of the first table of this land
@@ -137,7 +142,9 @@ pub trait VirtualSpaceLand {
     }
 }
 
+/// The virtual memory belonging to kernel.
 pub struct  KernelLand;
+/// The virtual memory belonging to user.
 pub struct UserLand;
 
 impl KernelLand {

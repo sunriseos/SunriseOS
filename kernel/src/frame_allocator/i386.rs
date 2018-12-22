@@ -253,15 +253,15 @@ impl FrameAllocatorTrait for FrameAllocator {
                     break;
                 }
             }
-            // TODO: FrameAllocator fix overflow.
-            // BODY: This will overflow on OOM.
-            // we reached the end of the hole
-            let next_hole = PhysicalMemRegion { start_addr: current_hole.start_addr + (current_hole.frames + 1) * PAGE_SIZE,
-                                                frames: 0, should_free_on_drop: true };
+
+            // make a copy, we're about to move the PhysMemRegion to the vec.
+            let cur_hole_addr   = current_hole.start_addr;
+            let cur_hole_frames = current_hole.frames;
+
             if current_hole.frames > 0 {
                 // add it to our collected regions
 
-                // droping the lock here, in case pushing this region in the collected regions
+                // dropping the lock here, in case pushing this region in the collected regions
                 // causes a heap expansion. This is ok, since we marked considered frames as allocated,
                 // we're in a stable state. This ensures heap expansion won't take one of those.
                 drop(allocator_lock);
@@ -276,7 +276,18 @@ impl FrameAllocatorTrait for FrameAllocator {
                 // happened frames were marked allocated, and won't be given by this allocation
                 allocator_lock = FRAME_ALLOCATOR.lock();
             }
-            current_hole = next_hole;
+            // advance the cursor
+            current_hole = PhysicalMemRegion {
+                start_addr: match cur_hole_addr.checked_add(cur_hole_frames + 1 * PAGE_SIZE) {
+                    Some(sum_addr) => sum_addr,
+                    None => break
+                    // if it was the last frame, and the last to be considered:
+                    // - it was free, and we already returned Ok.
+                    // - it was occupied, we arrived here, and the add would overflow. We break and return PhysicalMemoryExhaustion.
+                },
+                frames: 0,
+                should_free_on_drop: true
+            };
         }
         drop(allocator_lock);
         info!("Failed physical allocation for {} non consecutive frames", requested);

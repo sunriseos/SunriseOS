@@ -1,3 +1,26 @@
+//! Service Manager
+//!
+//! Services are system processes running in the background which wait for
+//! incoming requests. When a process wants to communicate with a service, it
+//! first needs to get a handle to the named service, and then it can communicate
+//! with the service via inter-process communication (each service has a name up
+//! to 7 characters followed by a \0).
+//!
+//! Handles for services are retrieved from the service manager port, "sm:", and
+//! are released via svcCloseHandle or when a process is terminated or crashes.
+//!
+//! Manager service "sm:m" allows the Process Manager to tell sm: about the
+//! permissions of each process. By default, SM assumes a process has no
+//! permissions, and as such cannot access any service. "sm:m" RegisterProcess
+//! calls allows PM to tell the Service Manager about which services a certain
+//! process is allowed to access or host.
+//!
+//! A Service is very similar to a kernel-managed Named Port: You can connect to
+//! it, and it returns a ClientSession. The difference is that a Service handled
+//! by "sm:" has an additional permission check done to ensure it isn't accessed
+//! by an unprivileged process.
+//! Service Manager
+
 #![feature(alloc)]
 #![no_std]
 
@@ -39,12 +62,6 @@ lazy_static! {
 }
 // TODO: global event when services are accessed.
 
-impl UserInterface {
-    fn new() -> Self {
-        UserInterface
-    }
-}
-
 fn get_service_length(servicename: u64) -> usize{
     for i in 0..8 {
         if (servicename >> (8*i)) & 0xFF == 0 {
@@ -66,7 +83,7 @@ fn get_service_str(servicename: &u64) -> &str {
 object! {
     impl UserInterface {
         #[cmdid(0)]
-        fn initialize(&mut self, pid: Pid,) -> Result<(), Error> {
+        fn initialize(&mut self, _pid: Pid,) -> Result<(), Error> {
             Ok(())
         }
 
@@ -82,7 +99,7 @@ object! {
         fn register_service(&mut self, servicename: u64, is_light: u8, max_handles: u32,) -> Result<(Handle,), Error> {
             let (clientport, serverport) = syscalls::create_port(max_handles, is_light != 0, get_service_str(&servicename))?;
             match SERVICES.lock().entry(servicename) {
-                Entry::Occupied(occupied) => Err(SmError::ServiceAlreadyRegistered.into()),
+                Entry::Occupied(_) => Err(SmError::ServiceAlreadyRegistered.into()),
                 Entry::Vacant(vacant) => {
                     vacant.insert(clientport);
                     Ok((serverport.0,))

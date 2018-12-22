@@ -35,7 +35,6 @@ extern crate font_rs;
 extern crate hashmap_core;
 
 pub mod syscalls;
-pub mod io;
 pub mod types;
 pub mod ipc;
 pub mod sm;
@@ -44,6 +43,8 @@ pub mod error;
 pub mod allocator;
 pub mod terminal;
 pub mod window;
+
+pub use kfs_libutils::io;
 
 use kfs_libutils as utils;
 use error::{Error, LibuserError};
@@ -56,12 +57,17 @@ use error::{Error, LibuserError};
 #[global_allocator]
 static ALLOCATOR: allocator::Allocator = allocator::Allocator::new();
 
+/// Finds a free memory zone of the given size and alignment in the current
+/// process's virtual address space. Note that the address space is not reserved,
+/// a call to map_memory to that address space might fail if another thread
+/// maps to it first. It is recommended to use this function and the map syscall
+/// in a loop.
+///
 /// # Panics
 ///
 /// Panics on underflow when size = 0.
 ///
 /// Panics on underflow when align = 0.
-///
 pub fn find_free_address(size: usize, align: usize) -> Result<usize, Error> {
     let mut addr = 0;
     // Go over the address space.
@@ -79,9 +85,14 @@ pub fn find_free_address(size: usize, align: usize) -> Result<usize, Error> {
     }
 }
 
+/// The exception handling personality function for use in the bootstrap.
+///
+/// We currently have no userspace exception handling, so make it do nothing.
 #[cfg(target_os = "none")]
 #[lang = "eh_personality"] #[no_mangle] pub extern fn eh_personality() {}
 
+/// Function called on `panic!` invocation. Prints the panic information to the
+/// kernel debug logger, and exits the process.
 #[cfg(target_os = "none")]
 #[panic_handler] #[no_mangle]
 pub extern fn panic_fmt(p: &core::panic::PanicInfo) -> ! {
@@ -91,8 +102,10 @@ pub extern fn panic_fmt(p: &core::panic::PanicInfo) -> ! {
 
 use core::alloc::Layout;
 
-// required: define how Out Of Memory (OOM) conditions should be handled
-// *if* no other crate has already defined `oom`
+// TODO: Don't panic in the oom handler, exit instead.
+// BODY: Panicking may allocate, so calling panic in the OOM handler is a
+// BODY: terrible idea.
+/// OOM handler. Causes a panic.
 #[cfg(target_os = "none")]
 #[lang = "oom"]
 #[no_mangle]
@@ -100,6 +113,8 @@ pub fn rust_oom(_: Layout) -> ! {
     panic!("OOM")
 }
 
+/// Executable entrypoint. Zeroes out the BSS, calls main, and finally exits the
+/// process.
 #[cfg(target_os = "none")]
 #[no_mangle]
 pub unsafe extern fn start() -> ! {

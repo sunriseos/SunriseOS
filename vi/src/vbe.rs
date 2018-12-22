@@ -1,6 +1,5 @@
 //! VESA Bios Extensions Framebuffer
 
-use alloc::prelude::*;
 use spin::Mutex;
 use syscalls;
 use libuser::error::Error;
@@ -76,6 +75,7 @@ impl<'a> Framebuffer<'a> {
     /// Used to compute offsets in framebuffer memory to corresponding pixel
     /// px_offset = px_nbr * bpp
     #[inline]
+    #[allow(dead_code)]
     pub fn bpp(&self) -> usize {
         self.bpp
     }

@@ -34,6 +34,7 @@ pub enum QueryMemory<'a> {
 }
 
 impl<'a> QueryMemory<'a> {
+    /// Returns a reference to the underlying mapping.
     pub fn mapping(&self) -> &Mapping {
         match self {
             QueryMemory::Available(mem) => mem,

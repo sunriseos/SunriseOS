@@ -50,6 +50,8 @@ pub struct ProcessMemory {
     /// by the [set_heap_size] syscall.
     ///
     /// The location of each process's heap should be random, to implement ASLR.
+    ///
+    /// [set_heap_size]: ::interrupts::syscalls::set_heap_size
     heap_base_address: VirtualAddress,
 }
 

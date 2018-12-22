@@ -107,6 +107,7 @@ impl Terminal {
         })
     }
 
+    /// Ask the compositor to redraw the window.
     pub fn draw(&mut self) -> Result<(), Error> {
         self.framebuffer.draw()
     }

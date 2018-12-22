@@ -1,3 +1,8 @@
+//! Shell
+//!
+//! Creates an interactive terminal window, providing a few functions useful to
+//! test KFS. Type help followed by enter to get a list of allowed commands.
+
 #![feature(alloc, asm)]
 #![no_std]
 
@@ -14,7 +19,6 @@
 #![deny(intra_doc_link_resolution_failure)]
 
 extern crate gif;
-#[macro_use]
 extern crate alloc;
 #[macro_use]
 extern crate log;
@@ -24,7 +28,6 @@ extern crate kfs_libuser as libuser;
 extern crate byteorder;
 
 mod ps2;
-use libuser::syscalls;
 use libuser::io;
 use libuser::sm;
 use libuser::window::{Window, Color};
@@ -33,16 +36,14 @@ use libuser::terminal::{Terminal, WindowSize};
 use core::fmt::Write;
 use alloc::vec::Vec;
 use byteorder::{ByteOrder, LE};
-use alloc::prelude::*;
-use syscalls::{create_thread, sleep_thread, exit_thread};
 
-pub fn main() {
+fn main() {
     let mut terminal = Terminal::new(WindowSize::FontLines(-1, false)).unwrap();
     loop {
         match &*ps2::get_next_line(&mut terminal) {
             "gif3" => show_gif(&LOUIS3[..]),
             "gif4" => show_gif(&LOUIS4[..]),
-            //"test_threads" => test_threads(),
+            //"test_threads" => test_threads(&mut terminal),
             "test_divide_by_zero" => test_divide_by_zero(),
             "test_page_fault" => test_page_fault(),
             "connect" => {
@@ -69,9 +70,6 @@ fn show_gif(louis: &[u8]) {
     let mut window = Window::new(0, 0, 1280, 800).unwrap();
     let mut reader = gif::Decoder::new(&louis[..]).read_info().unwrap();
     let mut buf = Vec::new();
-    let keyboard_event = ps2::get_waitable();
-
-    let events = [keyboard_event.0.as_ref()];
 
     loop {
         {
@@ -83,7 +81,7 @@ fn show_gif(louis: &[u8]) {
         }
         buf.resize(reader.buffer_size(), 0);
         // simulate read into buffer
-        reader.read_into_buffer(&mut buf[..]);
+        reader.read_into_buffer(&mut buf[..]).unwrap();
         for y in 0..(reader.height() as usize) {
             for x in 0..(reader.width() as usize) {
                 let frame_coord = (y * reader.width() as usize + x) * 4;
@@ -95,13 +93,6 @@ fn show_gif(louis: &[u8]) {
         if ps2::try_read_key().is_some() {
             return
         }
-        /*match syscalls::wait_synchronization(&events, Some(100 * 1_000_000)) {
-            Ok(idx) if ps2::try_read_key().is_some() => return,
-            Ok(idx) => (),
-            Err(err) => {
-                // timeout
-            }
-        }*/
     }
 }
 
@@ -152,12 +143,13 @@ fn test_divide_by_zero() {
 
 fn test_page_fault() {
     let ptr = 0x00000000 as *const u8;
-    let res = unsafe { *ptr };
+    let _res = unsafe { *ptr };
 }
 
 static LOUIS3: &'static [u8; 1318100] = include_bytes!("../img/meme3.gif");
 static LOUIS4: &'static [u8; 103803] = include_bytes!("../img/meme4.gif");
 
+/// Array of IO port this process is allowed to access.
 #[cfg_attr(not(test), link_section = ".kernel_ioports")]
 #[used]
 pub static IOPORTS_PERMS: [u16; 2] = [0x60, 0x64];

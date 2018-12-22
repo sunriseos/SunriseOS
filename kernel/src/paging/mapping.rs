@@ -184,24 +184,24 @@ impl Splittable for Mapping {
     ///
     /// # Error
     ///
-    /// * SharedMapping if it's a shared mapping.
-    /// * InvalidMapping if it's a system reserved mapping.
+    /// * InvalidMapping if it's a shared or system reserved mapping.
     fn split_at(&mut self, offset: usize) -> Result<Option<Self>, KernelError> {
         check_aligned(offset, PAGE_SIZE)?;
+        match self.mtype_ref() {
+            MappingType::Shared(_) | MappingType::SystemReserved => return Err(KernelError::MmError(MmError::InvalidMapping { backtrace: Backtrace::new() })),
+            _ => ()
+        }
+
         if offset == 0 || offset >= self.length { return Ok(None) };
         let right = Mapping {
             address: self.address + offset,
             length: self.length - offset,
             flags: self.flags,
             mtype: match &mut self.mtype {
+                MappingType::Shared(_) | MappingType::SystemReserved => unreachable!(),
                 MappingType::Available => MappingType::Available,
                 MappingType::Guarded => MappingType::Guarded,
                 MappingType::Regular(ref mut frames) => MappingType::Regular(frames.split_at(offset)?.unwrap()),
-            //    MappingType::Stack(ref mut frames) => MappingType::Stack(frames.split_at(offset)?.unwrap()),
-                MappingType::Shared(_) => return Err(KernelError::MmError(
-                                                       MmError::SharedMapping { backtrace: Backtrace::new() })),
-                MappingType::SystemReserved => return Err(KernelError::MmError(
-                                                       MmError::InvalidMapping { backtrace: Backtrace::new() })),
             },
         };
         // split succeeded, now modify left part
@@ -215,10 +215,14 @@ impl Splittable for Mapping {
 mod test {
     use super::Mapping;
     use super::MappingAccessRights;
+    use super::MappingType;
     use mem::{VirtualAddress, PhysicalAddress};
     use paging::PAGE_SIZE;
     use frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
     use std::sync::Arc;
+    use utils::Splittable;
+    use error::KernelError;
+    use paging::error::MmError;
 
     /// Applies the same tests to guard, available and system_reserved.
     macro_rules! test_empty_mapping {
@@ -390,7 +394,120 @@ mod test {
         let _mapping_err = Mapping::new_shared(VirtualAddress(usize::max_value() - 2 * PAGE_SIZE), frames, flags).unwrap_err();
     }
 
-    // TODO: Test Splittable<Mapping>
-    // BODY: Write some tests for splitting a Mapping,
-    // BODY: as I am really not confident it works as expected.
+    /// Splitting a mapping should only be valid for a PAGE_SIZE aligned offset.
+    #[test]
+    fn splittable_unaligned() {
+        let _f = ::frame_allocator::init();
+        let frames = vec![FrameAllocator::allocate_region(3 * PAGE_SIZE).unwrap()];
+        let mut mapping = Mapping::new_regular(VirtualAddress(2 * PAGE_SIZE), frames, MappingAccessRights::k_r()).unwrap();
+        match mapping.split_at(PAGE_SIZE + 1).unwrap_err() {
+            KernelError::AlignmentError { .. } => (),
+            unexpected_err => panic!("test failed, error {:?}", unexpected_err)
+        }
+        // check mapping was untouched
+        assert_eq!(mapping.address(), VirtualAddress(2 * PAGE_SIZE));
+        assert_eq!(mapping.length(), 3 * PAGE_SIZE);
+        if let MappingType::Regular(held_frames) = mapping.mtype_ref() {
+            assert_eq!(held_frames.iter().flatten().count(), 3)
+        } else {
+            panic!("test failed, splitting changed type")
+        }
+    }
+
+    /// Splitting a shared mapping should unconditionally fail.
+    #[test]
+    fn splittable_shared() {
+        let _f = ::frame_allocator::init();
+        let frames = Arc::new(vec![FrameAllocator::allocate_region(3 * PAGE_SIZE).unwrap()]);
+        let mut mapping = Mapping::new_shared(VirtualAddress(2 * PAGE_SIZE), frames, MappingAccessRights::k_r()).unwrap();
+        match mapping.split_at(0).unwrap_err() {
+            KernelError::MmError(MmError::InvalidMapping { .. }) => (),
+            unexpected_err => panic!("test failed, error {:?}", unexpected_err)
+        }
+        // check mapping was untouched
+        assert_eq!(mapping.address(), VirtualAddress(2 * PAGE_SIZE));
+        assert_eq!(mapping.length(), 3 * PAGE_SIZE);
+        if let MappingType::Shared(held_frames) = mapping.mtype_ref() {
+            assert_eq!(held_frames.iter().flatten().count(), 3)
+        } else {
+            panic!("test failed, splitting changed type")
+        }
+    }
+
+    /// Splitting a system reserved mapping should unconditionally fail.
+    #[test]
+    fn splittable_system_reserved() {
+        let mut mapping = Mapping::new_system_reserved(VirtualAddress(2 * PAGE_SIZE), 3 * PAGE_SIZE).unwrap();
+        match mapping.split_at(0).unwrap_err() {
+            KernelError::MmError(MmError::InvalidMapping { .. }) => (),
+            unexpected_err => panic!("test failed, error {:?}", unexpected_err)
+        }
+        // check mapping was untouched
+        assert_eq!(mapping.address(), VirtualAddress(2 * PAGE_SIZE));
+        assert_eq!(mapping.length(), 3 * PAGE_SIZE);
+        if let MappingType::SystemReserved = mapping.mtype_ref() {
+            // ok
+        } else {
+            panic!("test failed, splitting changed type")
+        }
+    }
+
+    #[test]
+    fn splittable_split_at_zero() {
+        let _f = ::frame_allocator::init();
+        let frames = vec![FrameAllocator::allocate_region(3 * PAGE_SIZE).unwrap()];
+        let mut mapping = Mapping::new_regular(VirtualAddress(2 * PAGE_SIZE), frames, MappingAccessRights::k_r()).unwrap();
+        let right = mapping.split_at(0).unwrap();
+        assert!(right.is_none());
+        // check mapping was untouched
+        assert_eq!(mapping.address(), VirtualAddress(2 * PAGE_SIZE));
+        assert_eq!(mapping.length(), 3 * PAGE_SIZE);
+        if let MappingType::Regular(held_frames) = mapping.mtype_ref() {
+            assert_eq!(held_frames.iter().flatten().count(), 3)
+        } else {
+            panic!("test failed, splitting changed type")
+        }
+    }
+
+    #[test]
+    fn splittable_split_at_too_big() {
+        let _f = ::frame_allocator::init();
+        let frames = vec![FrameAllocator::allocate_region(3 * PAGE_SIZE).unwrap()];
+        let mut mapping = Mapping::new_regular(VirtualAddress(2 * PAGE_SIZE), frames, MappingAccessRights::k_r()).unwrap();
+        let right = mapping.split_at(3 * PAGE_SIZE).unwrap();
+        assert!(right.is_none());
+        // check mapping was untouched
+        assert_eq!(mapping.address(), VirtualAddress(2 * PAGE_SIZE));
+        assert_eq!(mapping.length(), 3 * PAGE_SIZE);
+        if let MappingType::Regular(held_frames) = mapping.mtype_ref() {
+            assert_eq!(held_frames.iter().flatten().count(), 3)
+        } else {
+            panic!("test failed, splitting changed type")
+        }
+    }
+
+    #[test]
+    fn splittable_split_at() {
+        let _f = ::frame_allocator::init();
+        let frames = vec![FrameAllocator::allocate_region(3 * PAGE_SIZE).unwrap()];
+        let mut left = Mapping::new_regular(VirtualAddress(5 * PAGE_SIZE), frames, MappingAccessRights::k_r()).unwrap();
+        // 3 -> 2 + 1
+        let right = left.split_at(2 * PAGE_SIZE).unwrap().unwrap();
+
+        assert_eq!(left.address(), VirtualAddress(5 * PAGE_SIZE));
+        assert_eq!(left.length(), 2 * PAGE_SIZE);
+        if let MappingType::Regular(held_frames) = left.mtype_ref() {
+            assert_eq!(held_frames.iter().flatten().count(), 2)
+        } else {
+            panic!("test failed, splitting changed type")
+        }
+
+        assert_eq!(right.address(), VirtualAddress((5 + 2) * PAGE_SIZE));
+        assert_eq!(right.length(), 1 * PAGE_SIZE);
+        if let MappingType::Regular(held_frames) = right.mtype_ref() {
+            assert_eq!(held_frames.iter().flatten().count(), 1)
+        } else {
+            panic!("test failed, splitting changed type")
+        }
+    }
 }

@@ -4,6 +4,7 @@
 //! our case though, we don't really care about that.
 
 #![allow(dead_code)]
+#![allow(missing_docs)]
 
 pub mod segment_selector;
 pub mod i386;

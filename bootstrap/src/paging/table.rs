@@ -1,5 +1,7 @@
 //! i386 page table / directory
 
+#![allow(missing_docs)]
+
 use core::ops::{Index, IndexMut};
 
 // Yeah, I'm ugly. Screw you.

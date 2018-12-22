@@ -36,6 +36,8 @@ fn ignore_syscall(nr: usize) -> Result<(), UserspaceError> {
 /// # Error
 ///
 /// * `new_size` must be [PAGE_SIZE] aligned.
+///
+/// [PAGE_SIZE]: ::paging::PAGE_SIZE
 fn set_heap_size(new_size: usize) -> Result<usize, UserspaceError> {
     let p = get_current_process();
     let mut pmemory = p.pmemory.lock();
