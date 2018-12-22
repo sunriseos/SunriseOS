@@ -1,3 +1,27 @@
+//! IPC Port
+//!
+//! A Port represents an endpoint which can be connected to, in order to
+//! establish a Session. It is split in two different part: ServerPort and
+//! ClientPort. The ClientPort has a `connect` operation, while a ServerPort has
+//! an `accept` operation.
+//!
+//! Those work as a rendez-vous, meaning both operations wait for each-other:
+//! The `connect` operation blocks until a ServerPort calls `accept`. Similarly,
+//! the `accept` operation waits until a ClientPort `connect`s. Once the two
+//! operation meet, a `Session` is created. The `accept` operation will return a
+//! `ServerSession`, while the `connect` operation returns a `ClientSession`.
+//!
+//! Additionally, a ServerPort implements the Waitable trait, allowing it to be
+//! used with the `event::wait` function. This will wait until the associated
+//! ClientPort had its connect operation called.
+//!
+//! ```rust
+//! let (server, client) = Port::new();
+//! let client_sess = client.connect();
+//! // In a separate thread
+//! let server_sess = server.accept();
+//! ```
+
 use scheduler;
 use alloc::vec::Vec;
 use alloc::sync::{Arc, Weak};
@@ -54,6 +78,8 @@ impl Port {
     }
 }
 
+/// Create a new Port pair. Those ports are linked to each-other: The server will
+/// receive connections from the client.
 pub fn new(_max_sessions: u32) -> (ServerPort, ClientPort) {
     Port::new(_max_sessions)
 }
@@ -98,7 +124,7 @@ impl Drop for ServerPort {
 }
 
 #[derive(Debug)]
-pub struct IncomingConnection {
+struct IncomingConnection {
     session: SpinLock<Option<ClientSession>>,
     creator: Arc<ThreadStruct>
 }

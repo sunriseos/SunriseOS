@@ -11,6 +11,8 @@ use paging::{PAGE_SIZE, MappingFlags, kernel_memory::get_kernel_memory};
 use frame_allocator::{FrameAllocator, FrameAllocatorTrait};
 use mem::VirtualAddress;
 
+/// Simple wrapper around linked_list_allocator, growing heap by allocating pages
+/// with the frame allocator as necessary.
 pub struct Allocator(Once<SpinLock<Heap>>);
 
 // 512MB. Should be a multiple of PAGE_SIZE.
@@ -103,8 +105,18 @@ unsafe impl<'a> GlobalAlloc for Allocator {
     }
 }
 
-// required: define how Out Of Memory (OOM) conditions should be handled
-// *if* no other crate has already defined `oom`
+// TODO: Kernel heap memory management
+// BODY: Currently, if the kernel ever OOMs, this will lead to a panic. This is
+// BODY: really not ideal. Unfortunately, we depend on a lot of Rust structures
+// BODY: that make use of allocation (Arc, Vec, String...). Some of those have
+// BODY: methods to customize OOM behavior (Vec and String have try_reserve), but
+// BODY: some structures (like Arc) seem to be devoid of any function to avoid
+// BODY: OOM.
+// BODY:
+// BODY: Maybe we should approach the rust developers, see if they would accept
+// BODY: a try_new function on Arc/Rc that would return an AllocErr if it fails.
+// BODY:
+// BODY: Alternatively, we could start using our own Arc/Rc forks.
 /// Called when the kernel heap allocator detects Out Of Memory (OOM) condition.
 ///
 /// It simply panics.

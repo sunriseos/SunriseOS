@@ -94,7 +94,7 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
             .expect("process_switch cannot get destination thread' lock for writing");
         let mut thread_current_lock_phwcontext = thread_current.hwcontext.try_lock()
             .expect("process_switch cannot get current thread' lock for writing");
-        let mut thread_b_lock_phwcontext = thread_b.hwcontext.try_lock()
+        let thread_b_lock_phwcontext = thread_b.hwcontext.try_lock()
             .expect("process_switch cannot get destination thread' lock for writing");
 
         // Switch the memory pages

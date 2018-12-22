@@ -1,3 +1,25 @@
+//! IPC Sessions
+//!
+//! A Session represents an established connection. It implements a rendez-vous
+//! style Remote Procedure Call interface. The ClientSession has a `send_request`
+//! operation, which will wait for the counterpart ServerSession's `reply`. A
+//! ServerSession can also `receive` the pending requests.
+//!
+//! Note that a single Session can only process a single request at a time - it
+//! is an inherently sequential construct. If multiple threads attempt receiving
+//! on the same handle, they will have to wait for the current request to be
+//! replied to before being able to receive the next request in line.
+//!
+//! ```rust
+//! use kernel::ipc::session;
+//! let (server, client) = session::new();
+//! ```
+//!
+//! The requests are encoded in a byte buffer under a specific format. For
+//! documentation on the format, [switchbrew] is your friend.
+//!
+//! [switchbrew]: https://switchbrew.org/w/index.php?title=IPC_Marshalling
+
 use scheduler;
 use alloc::vec::Vec;
 use alloc::sync::{Arc, Weak};
@@ -25,9 +47,11 @@ struct Session {
     servercount: AtomicUsize,
 }
 
+/// The client side of a Session.
 #[derive(Debug, Clone)]
 pub struct ClientSession(Arc<Session>);
 
+/// The server side of a Session.
 #[derive(Debug)]
 pub struct ServerSession(Arc<Session>);
 
@@ -77,6 +101,8 @@ bitfield! {
 }
 
 bitfield! {
+    /// Part of an HIPC command. Sent only when
+    /// `MsgPackedHdr::enable_handle_descriptor` is true.
     pub struct HandleDescriptorHeader(u32);
     impl Debug;
     send_pid, set_send_pid: 0;
@@ -110,6 +136,8 @@ impl Session {
     }
 }
 
+/// Create a new Session pair. Those sessions are linked to each-other: The
+/// server will receive requests sent through the client.
 pub fn new() -> (ServerSession, ClientSession) {
     Session::new()
 }
@@ -146,6 +174,7 @@ struct Request {
     sender: Arc<ThreadStruct>,
     answered: Arc<SpinLock<Option<Result<(), UserspaceError>>>>,
 }
+
 // TODO finish buf_map
 #[allow(unused)]
 fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mut ProcessMemory, to_mem: &mut ProcessMemory, flags: MappingFlags) -> Result<(), UserspaceError> {
@@ -213,6 +242,16 @@ fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mu
 }
 
 impl ClientSession {
+    /// Send an IPC request through the client pipe. Takes a userspace buffer
+    /// containing the packed IPC request. When returning, the buffer will
+    /// contain the IPC answer (unless an error occured).
+    ///
+    /// This function is blocking - it will wait until the server receives and
+    /// replies to the request before returning.
+    ///
+    /// Note that the buffer needs to live until send_request returns, which may
+    /// take an arbitrary long time. We do not eagerly read the buffer - it will
+    /// be read from when the server asks to receive a request.
     pub fn send_request(&self, buf: UserSpacePtrMut<[u8]>) -> Result<(), UserspaceError> {
         // TODO: Unmapping is out of the question. Ideally, I should just affect the bookkeeping
         // in order to remap it in the kernel.
@@ -254,6 +293,13 @@ impl ClientSession {
 }
 
 impl ServerSession {
+    /// Receive an IPC request through the server pipe. Takes a userspace buffer
+    /// containing an empty IPC message. The request may optionally contain a
+    /// C descriptor in order to receive X descriptors. The buffer will be filled
+    /// with an IPC request.
+    ///
+    /// This function does **not** wait. It assumes an active_request has already
+    /// been set by a prior call to wait.
     pub fn receive(&self, mut buf: UserSpacePtrMut<[u8]>) -> Result<(), UserspaceError> {
         // Read active session
         let internal = self.0.internal.lock();
@@ -275,6 +321,19 @@ impl ServerSession {
         Ok(())
     }
 
+    /// Replies to the currently active IPC request on the server pipe. Takes a
+    /// userspace buffer containing the IPC reply. The kernel will copy the reply
+    /// to the sender's IPC buffer, before waking the sender so it may return to
+    /// userspace.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there is no currently active request on the pipe.
+    // TODO: Don't panic in Session::reply if active_request is not set.
+    // BODY: Session::reply currently asserts that an active session is set. This
+    // BODY: assertion can be trivially triggered by userspace, by calling
+    // BODY: the reply_and_receive syscall with reply_target set to a Session
+    // BODY: that hasn't received any request.
     pub fn reply(&self, buf: UserSpacePtr<[u8]>) -> Result<(), UserspaceError> {
         // TODO: This probably has an errcode.
         assert!(self.0.internal.lock().active_request.is_some(), "Called reply without an active session");
@@ -300,11 +359,15 @@ impl ServerSession {
     }
 }
 
-// TODO finish pass_message
+// TODO: Kernel IPC: Implement X and C descriptor support in pass_message.
+// BODY: X and C descriptors are complicated and support for them is put off for
+// BODY: the time being. We'll likely want them when implementing FS though.
 #[allow(unused)]
 fn pass_message(from_buf: &[u8], from_proc: Arc<ThreadStruct>, to_buf: &mut [u8], to_proc: Arc<ThreadStruct>) -> Result<(), UserspaceError> {
-    // TODO: Handle case where from == to. Might want to add some logic in those mutex lockings.
-    // TODO: also handle case where from and to are both active.
+    // TODO: pass_message deadlocks when sending message to the same process.
+    // BODY: If from_proc and to_proc are the same process, pass_message will
+    // BODY: deadlock trying to acquire the locks to the handle table or the
+    // BODY: page tables.
 
     let mut curoff = 0;
     let hdr = MsgPackedHdr(LE::read_u64(&from_buf[curoff..curoff + 8]));

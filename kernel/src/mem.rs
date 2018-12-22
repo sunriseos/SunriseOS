@@ -196,7 +196,22 @@ impl core::iter::Step for VirtualAddress {
     fn add_usize(&self, n: usize) -> Option<Self> { self.0.add_usize(n).map(VirtualAddress) }
 }
 
+// TODO: Properly implement UserSpacePtr
+// BODY: UserSpacePtr right now is just a glorified, horribly unsafe reference.
+// BODY: We should change its interface to provide a lot more safety. It should
+// BODY: have a get function returning a Result<T, UserspaceError> that copies
+// BODY: the underlying type, returning an error if the underlying pointer is
+// BODY: invalid (at least if it points to kernel memory. Maybe also if it is
+// BODY: not mapped?).
+// BODY:
+// BODY: We also have to handle unsized types. Maybe have a get_ref() which
+// BODY: returns a &T? Maybe don't allow unsized types? I should check how 
+// BODY: Horizon/NX deals with it in sendsyncrequest (that's the only place that
+// BODY: allows huge data afaik)
+/// A pointer to read-only userspace memory. Prevents userspace from trying to
+/// use a syscall on kernel memory.
 #[repr(transparent)]
+#[derive(Debug)]
 pub struct UserSpacePtr<T: ?Sized>(pub *const T);
 
 impl<T: ?Sized> Clone for UserSpacePtr<T> {
@@ -207,6 +222,8 @@ impl<T: ?Sized> Clone for UserSpacePtr<T> {
 impl<T: ?Sized> Copy for UserSpacePtr<T> {}
 
 impl<I> UserSpacePtr<[I]> {
+    /// Forms a UserSpacePtr slice from a pointer and a length. The `len`
+    /// argument is the number of **elements**, not the number of bytes.
     pub fn from_raw_parts(data: *const I, len: usize) -> UserSpacePtr<[I]> {
         unsafe {
             UserSpacePtr(mem::transmute(FatPtr {
@@ -222,17 +239,20 @@ impl<T: ?Sized> Deref for UserSpacePtr<T> {
 
     fn deref(&self) -> &T {
         unsafe {
-            // TODO: Verify that we are allowed to read, panic otherwise.
             &*self.0
         }
     }
 }
 
+/// A pointer to read-write userspace memory. Prevents userspace from trying to
+/// use a syscall on kernel memory.
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct UserSpacePtrMut<T: ?Sized>(pub *mut T);
 
 impl<I> UserSpacePtrMut<[I]> {
+    /// Forms a UserSpacePtrMut slice from a pointer and a length. The `len`
+    /// argument is the number of **elements**, not the number of bytes.
     pub fn from_raw_parts_mut(data: *mut I, len: usize) -> UserSpacePtrMut<[I]> {
         unsafe {
             UserSpacePtrMut(mem::transmute(FatPtr {
@@ -255,7 +275,6 @@ impl<T: ?Sized> Deref for UserSpacePtrMut<T> {
 
     fn deref(&self) -> &T {
         unsafe {
-            // TODO: Verify that we are allowed to read, panic otherwise.
             &*self.0
         }
     }
@@ -264,7 +283,6 @@ impl<T: ?Sized> Deref for UserSpacePtrMut<T> {
 impl<T: ?Sized> DerefMut for UserSpacePtrMut<T> {
     fn deref_mut(&mut self) -> &mut T {
         unsafe {
-            // TODO: Verify that we are allowed to read, panic otherwise.
             &mut *self.0
         }
     }
@@ -276,9 +294,23 @@ impl<T> Into<UserSpacePtr<T>> for UserSpacePtrMut<T> {
     }
 }
 
-// TODO: This sucks!
+// TODO: Replace FatPtr with a libcore type when one lands.
+// BODY: Currently, libcore (well, the rust standard library in general) has no
+// BODY: type to represent a DST, or a fat pointer, or whatever. So we have to
+// BODY: define it ourselves. Now, having talked to the rust compiler devs, the
+// BODY: FatPtr definition we're using is fine and is very very unlikely to
+// BODY: change. However, we should still switch to a standard type when one is
+// BODY: defined.
+// BODY:
+// BODY: Blocking on https://github.com/rust-lang/rfcs/pull/2580
+/// Internal rust representation of a DST pointer.
+///
+/// Note that this is necessary due to the lack of a real DST type in the rust
+/// standard library. See https://github.com/rust-lang/rfcs/pull/2580
 #[repr(C)]
 pub struct FatPtr {
+    /// A pointer to the underlying slice.
     pub data: usize,
+    /// The length of the slice, in number of elements.
     pub len: usize,
 }

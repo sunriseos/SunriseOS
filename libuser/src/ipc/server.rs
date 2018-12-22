@@ -1,28 +1,82 @@
+//! IPC Server primitives
+//!
+//! The creation of an IPC server requires a WaitableManager and a PortHandler.
+//! The WaitableManager will manage the event loop: it will wait for a request
+//! to arrive on one of the waiters (or for any other event to happen), and call
+//! that waiter's `handle_signal` function.
+//!
+//! A PortHandler is a type of Waiter which listens for incoming connections on
+//! a port, creates a new Object from it, wrap it in a SessionWrapper (a kind of
+//! waiter), and adds it to the WaitableManager's wait list.
+//!
+//! When a request comes to the Session, the SessionWrapper's handle_signaled
+//! will call the dispatch function of its underlying object.
+//!
+//! Here's a very simple example server:
+//!
+//! ```
+//! struct IExample;
+//! object! {
+//!     impl IExample {
+//!         #[cmdid(0)]
+//!         fn hello(&mut self, ) -> Result<([u8; 5]), Error> {
+//!              Ok(b"hello")
+//!         }
+//!     }
+//! }
+//!
+//! fn main() {
+//!      let man = WaitableManager::new();
+//!      let handler = Box::new(PortHandler::<IExample>::new("hello\0").unwrap());
+//!      man.add_waitable(handler as Box<dyn IWaitable>);
+//!      man.run()
+//! }
+//! ```
+
 use syscalls;
-use types::{Handle, HandleRef, ServerPort, ServerSession};
+use types::{HandleRef, ServerPort, ServerSession};
 use core::marker::PhantomData;
 use alloc::prelude::*;
 use spin::Mutex;
 use core::ops::{Deref, DerefMut, Index};
 use error::Error;
 
+/// A handle to a waitable object.
 pub trait IWaitable {
+    /// Gets the handleref for use in the `wait_synchronization` call.
     fn get_handle<'a>(&'a self) -> HandleRef<'a>;
-    fn into_handle(self) -> Handle;
+    /// Function the manager calls when this object gets signaled.
+    ///
+    /// Takes the manager as a parameter, allowing the handler to add new handles
+    /// to the wait queue.
+    ///
+    /// If the function returns false, remove it from the WaitableManager. If it
+    /// returns an error, log the error somewhere, and remove the handle from the
+    /// waitable manager.
     fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<bool, Error>;
 }
 
+/// The event loop manager. Waits on the waitable objects added to it.
 pub struct WaitableManager {
     to_add_waitables: Mutex<Vec<Box<IWaitable>>>
 }
 
 impl WaitableManager {
+    /// Creates an empty waitable manager.
     pub fn new() -> WaitableManager {
         WaitableManager {
             to_add_waitables: Mutex::new(Vec::new())
         }
     }
 
+    /// Add a new handle for the waitable manager to wait on.
+    pub fn add_waitable(&self, waitable: Box<IWaitable>) {
+        self.to_add_waitables.lock().push(waitable);
+    }
+
+    /// Run the event loop. This will call wait_synchronization on all the
+    /// pending handles, and call handle_signaled on the handle that gets
+    /// signaled.
     pub fn run(&self) -> ! {
         let mut waitables = Vec::new();
         loop {
@@ -43,19 +97,21 @@ impl WaitableManager {
                 Ok(false) => (),
                 Ok(true) => { waitables.remove(idx); },
                 Err(err) => {
-                    syscalls::output_debug_string(&format!("Error: {}", err));
+                    let _ = syscalls::output_debug_string(&format!("Error: {}", err));
                     waitables.remove(idx);
                 }
             }
         }
     }
-
-    pub fn add_waitable(&self, waitable: Box<IWaitable>) {
-        self.to_add_waitables.lock().push(waitable);
-    }
 }
 
+/// An IPC object.
+///
+/// Deriving this function manually is not recommended. Instead, users should use
+/// the [object] macro to derive the Object implementation
+/// from its external interface.
 pub trait Object {
+    /// Handle a request with the given cmdid.
     fn dispatch(&mut self, manager: &WaitableManager, cmdid: u32, buf: &mut [u8]) -> Result<(), Error>;
 }
 
@@ -80,6 +136,8 @@ impl<T, Idx> Index<Idx> for Align16<T> where T: Index<Idx> {
     }
 }
 
+/// A wrapper around an Object backed by an IPC Session that implements the
+/// IWaitable trait.
 pub struct SessionWrapper<T: Object> {
     handle: ServerSession,
     object: T,
@@ -89,6 +147,8 @@ pub struct SessionWrapper<T: Object> {
 }
 
 impl<T: Object> SessionWrapper<T> {
+    /// Create a new SessionWrapper from an open ServerSession and a backing
+    /// Object.
     pub fn new(handle: ServerSession, object: T) -> SessionWrapper<T> {
         SessionWrapper {
             handle,
@@ -101,10 +161,6 @@ impl<T: Object> SessionWrapper<T> {
 impl<T: Object> IWaitable for SessionWrapper<T> {
     fn get_handle<'a>(&'a self) -> HandleRef<'a> {
         self.handle.0.as_ref()
-    }
-
-    fn into_handle(self) -> Handle {
-        self.handle.0
     }
 
     fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<bool, Error> {
@@ -123,6 +179,9 @@ impl<T: Object> IWaitable for SessionWrapper<T> {
     }
 }
 
+/// A wrapper around a Server Port that implements the IWaitable trait. Waits for
+/// connection requests, and creates a new SessionWrapper around the incoming
+/// connections, which gets registered on the WaitableManager.
 pub struct PortHandler<T: Object + Default> {
     handle: ServerPort,
     phantom: PhantomData<T>
@@ -131,10 +190,6 @@ pub struct PortHandler<T: Object + Default> {
 impl<T: Object + Default + 'static> IWaitable for PortHandler<T> {
     fn get_handle<'a>(&'a self) -> HandleRef<'a> {
         self.handle.0.as_ref()
-    }
-
-    fn into_handle(self) -> Handle {
-        self.handle.0
     }
 
     fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<bool, Error> {
@@ -159,6 +214,7 @@ fn encode_bytes(s: &str) -> u64 {
 }
 
 impl<T: Object + Default> PortHandler<T> {
+    /// Registers a new PortHandler of the given name to the sm: service.
     pub fn new(server_name: &str) -> Result<PortHandler<T>, Error> {
         use sm::IUserInterface;
         let port = IUserInterface::raw_new()?.register_service(encode_bytes(server_name), false, 0)?;
@@ -168,6 +224,10 @@ impl<T: Object + Default> PortHandler<T> {
         })
     }
 
+    /// Registers a new PortHandler of the given name to the kernel. Note that
+    /// this interface should not be used by most services. Only the service
+    /// manager should register itself through this interface, as kernel managed
+    /// services do not implement any access controls.
     pub fn new_managed(server_name: &str) -> Result<PortHandler<T>, Error> {
         let port = syscalls::manage_named_port(server_name, 0)?;
         Ok(PortHandler {

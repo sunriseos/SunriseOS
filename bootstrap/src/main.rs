@@ -27,6 +27,7 @@
 #![cfg_attr(target_os = "none", no_main)]
 #![allow(unused)]
 #![warn(missing_docs)]
+#![deny(intra_doc_link_resolution_failure)]
 #[cfg(not(target_os = "none"))]
 use std as core;
 
@@ -189,6 +190,9 @@ pub extern "C" fn do_bootstrap(multiboot_info_addr: usize) -> ! {
     unreachable!()
 }
 
+/// The exception handling personality function for use in the bootstrap.
+///
+/// We have no exception handling in bootstrap, so make it do nothing.
 #[cfg(target_os = "none")]
 #[lang = "eh_personality"] #[no_mangle] pub extern fn eh_personality() {}
 
@@ -212,6 +216,7 @@ pub extern fn panic_fmt(p: &::core::panic::PanicInfo) -> ! {
 macro_rules! multiboot_header {
     //($($expr:tt)*) => {
     ($($name:ident: $tagty:ident :: $method:ident($($args:expr),*)),*) => {
+        /// The multiboot header structure of our binary.
         #[repr(C)]
         #[allow(dead_code)]
         pub struct MultiBootHeader {
@@ -222,6 +227,7 @@ macro_rules! multiboot_header {
             $($name: $tagty),*
         }
 
+        /// The multiboot header of our binary.
         #[used]
         #[cfg_attr(target_os = "none", link_section = ".multiboot_header")]
         pub static MULTIBOOT_HEADER: MultiBootHeader = MultiBootHeader {

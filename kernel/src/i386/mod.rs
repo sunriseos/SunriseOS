@@ -10,11 +10,18 @@ use core::ops::{Deref, DerefMut};
 #[macro_use]
 pub mod registers;
 pub mod stack;
-pub mod pio;
 pub mod multiboot;
 pub mod structures;
 pub mod process_switch;
 pub mod gdt;
+
+pub mod pio {
+    //! Port IO
+    //!
+    //! Look at libutils::io for more documentation.
+
+    pub use utils::io::Pio;
+}
 
 pub mod instructions {
     //! Low level functions for special i386 instructions.
@@ -371,10 +378,19 @@ impl TssStruct {
         }
     }
 
+    /// Set the stack pointer used to handle interrupts occuring while running
+    /// in Ring3.
+    ///
+    /// If an interrupt occurs while running in Ring3, it would be a security
+    /// problem to use the user-controlled stack to handle the interrupt. To
+    /// avoid this, we can tell the CPU to instead run the interrupt handler in
+    /// a separate stack.
     pub fn set_esp0_stack(&mut self, esp: u32) {
         self.esp0 = esp;
     }
 
+    /// Set the IP of the current task struct. When we hardware task switch to
+    /// this TSS, we will resume running at the given instruction.
     pub fn set_ip(&mut self, eip: u32) {
         self.eip = eip;
     }

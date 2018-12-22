@@ -15,6 +15,7 @@
 #![allow(unreachable_code)]
 #![allow(dead_code)]
 #![cfg_attr(test, allow(unused_imports))]
+#![deny(intra_doc_link_resolution_failure)]
 #![recursion_limit = "1024"]
 
 #[cfg(not(target_os = "none"))]
@@ -43,11 +44,13 @@ extern crate failure;
 #[macro_use]
 extern crate bitfield;
 extern crate kfs_libkern;
+#[cfg(test)]
 #[macro_use]
 extern crate mashup;
 
 use core::fmt::Write;
 use alloc::prelude::*;
+use utils::io;
 
 pub mod paging;
 pub mod event;
@@ -60,7 +63,6 @@ pub mod interrupts;
 pub mod frame_allocator;
 
 pub mod heap_allocator;
-pub mod io;
 pub mod devices;
 pub mod sync;
 pub mod process;
@@ -206,6 +208,9 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     }
 }
 
+/// The exception handling personality function for use in the bootstrap.
+///
+/// We have no exception handling in the kernel, so make it do nothing.
 #[cfg(target_os = "none")]
 #[lang = "eh_personality"] #[no_mangle] pub extern fn eh_personality() {}
 
@@ -221,9 +226,11 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 /// # Safety
 ///
 /// When a `stackdump_source` is passed, this function cannot check the requirements of
-/// [dump_stack](::stack::dump_stack), it is the caller's job to do it.
+/// [dump_stack], it is the caller's job to do it.
 ///
 /// Note that if `None` is passed, this function is safe.
+///
+/// [dump_stack]: ::stack::dump_stack
 unsafe fn do_panic(msg: core::fmt::Arguments, stackdump_source: Option<stack::StackDumpSource>) -> ! {
 
     // Disable interrupts forever!

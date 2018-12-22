@@ -1,3 +1,7 @@
+//! IPC Macros
+//!
+//! Various macros used to simplify the operation of IPCs.
+
 /// Auto derive Object.
 ///
 /// Takes a service implementation as a parameter, and auto-derives Object,

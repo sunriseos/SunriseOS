@@ -80,6 +80,7 @@ pub struct SpinLockIRQ<T: ?Sized> {
 }
 
 impl<T> SpinLockIRQ<T> {
+    /// Creates a new spinlockirq wrapping the supplied data.
     pub const fn new(internal: T) -> SpinLockIRQ<T> {
         SpinLockIRQ {
             internal: SpinLock::new(internal)
@@ -175,7 +176,16 @@ impl<'a, T: ?Sized + 'a> DerefMut for SpinLockIRQGuard<'a, T> {
     }
 }
 
+/// Abstraction around various kind of locks.
+///
+/// Some functions need to take a Lock and/or a LockGuard as argument, but don't
+/// really care about the kind of lock (schedule comes to mind). This trait is
+/// a simple abstraction around this concept.
 pub trait Lock<'a, GUARD: 'a> {
+    /// Locks the lock until the returned guard is dropped. The actual semantics
+    /// is up to the underlying lock. This trait does not make **any** guarantee
+    /// about anything like memory ordering or whatnot. Please read the
+    /// documentation of the underlying lock type.
     fn lock(&'a self) -> GUARD;
 }
 
