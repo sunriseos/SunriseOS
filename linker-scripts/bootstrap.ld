@@ -1,5 +1,5 @@
 ENTRY(bootstrap_start)
-OUTPUT_FORMAT(elf-i386)
+OUTPUT_FORMAT(elf32-i386)
 
 PHDRS
 {
