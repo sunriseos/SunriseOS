@@ -17,6 +17,7 @@ use ipc;
 use super::check_thread_killed;
 use error::UserspaceError;
 use kfs_libkern::{nr, SYSCALL_NAMES, MemoryInfo, MemoryAttributes, MemoryPermissions};
+use bit_field::BitArray;
 
 /// Resize the heap of a process, just like a brk.
 /// It can both expand, and shrink the heap.
@@ -65,8 +66,19 @@ fn map_framebuffer() -> Result<(usize, usize, usize, usize), UserspaceError> {
 }
 
 fn create_interrupt_event(irq_num: usize, _flag: u32) -> Result<usize, UserspaceError> {
-    // TODO: Flags?
+    // TODO: Properly handle flags in create_interrupt_event.
+    // BODY: The flags in create_interrupt_event configure the triggering of the
+    // BODY: event. If it is false, the IRQ is active HIGH level sensitive. If it
+    // BODY: is true, it is rising-edge sensitive.
+    // TODO: Fully correct error handling in create_interrupt_event.
+    // BODY: https://switchbrew.org/w/index.php?title=SVC#svcCreateInterruptEvent
+    // BODY: contains complete error code information. Notably, we're missing the
+    // BODY: IRQ already registered error, since our implementation allows
+    // BODY: multiple InterruptEvent on the same IRQ.
     let curproc = scheduler::get_current_process();
+    if !curproc.capabilities.irq_access_mask.get_bit(irq_num) {
+        return Err(UserspaceError::NoSuchEntry);
+    }
     let hnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ReadableEvent(Box::new(event::wait_event(irq_num)))));
     Ok(hnd as _)
 }
