@@ -11,8 +11,9 @@ addons:
 
 # Install cargo-make and rust-src rustup component
 before_install:
+- cargo install cargo-update || echo "cargo-update already installed"
 - cargo install cargo-make || echo "cargo-make already installed"
-- rustup component add rust-src || echo "rust-src already installed"
+- cargo install-update cargo-update cargo-make cargo-xbuild
 - rustup target install i686-unknown-linux-gnu || echo "target i686-unknown-linux-gnu already installed"
 
 script:
