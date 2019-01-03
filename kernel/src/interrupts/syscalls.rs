@@ -18,12 +18,6 @@ use super::check_thread_killed;
 use error::UserspaceError;
 use kfs_libkern::{nr, SYSCALL_NAMES, MemoryInfo, MemoryAttributes, MemoryPermissions};
 
-fn ignore_syscall(nr: usize) -> Result<(), UserspaceError> {
-    // TODO: Trigger "unknown syscall" signal, for userspace signal handling.
-    warn!("Unknown syscall {}", nr);
-    Err(UserspaceError::NotImplemented)
-}
-
 /// Resize the heap of a process, just like a brk.
 /// It can both expand, and shrink the heap.
 ///
@@ -392,42 +386,61 @@ pub struct Registers {
 pub extern fn syscall_handler_inner(registers: &mut Registers) {
 
     let (syscall_nr, x0, x1, x2, x3, x4, x5) = (registers.eax, registers.ebx, registers.ecx, registers.edx, registers.esi, registers.edi, registers.ebp);
+    let syscall_name = SYSCALL_NAMES.get(syscall_nr).unwrap_or(&"Unknown");
 
     debug!("Handling syscall {} - x0: {}, x1: {}, x2: {}, x3: {}, x4: {}, x5: {}",
-          SYSCALL_NAMES[syscall_nr], x0, x1, x2, x3, x4, x5);
+          syscall_name, x0, x1, x2, x3, x4, x5);
 
-    match syscall_nr {
+    let allowed = get_current_process().capabilities.syscall_mask.get_bit(syscall_nr);
+
+
+    match (allowed, syscall_nr) {
         // Horizon-inspired syscalls!
-        nr::SetHeapSize => registers.apply1(set_heap_size(x0)),
-        nr::QueryMemory => registers.apply1(query_memory(UserSpacePtrMut(x0 as _), x1, x2)),
-        nr::ExitProcess => registers.apply0(exit_process()),
-        nr::CreateThread => registers.apply1(create_thread(x0, x1, x2, x3 as _, x4 as _)),
-        nr::StartThread => registers.apply0(start_thread(x0 as _)),
-        nr::ExitThread => registers.apply0(exit_thread()),
-        nr::SleepThread => registers.apply0(sleep_thread(x0)),
-        nr::MapSharedMemory => registers.apply0(map_shared_memory(x0 as _, x1 as _, x2 as _, x3 as _)),
-        nr::UnmapSharedMemory => registers.apply0(unmap_shared_memory(x0 as _, x1 as _, x2 as _)),
-        nr::CloseHandle => registers.apply0(close_handle(x0 as _)),
-        nr::WaitSynchronization => registers.apply1(wait_synchronization(UserSpacePtr::from_raw_parts(x0 as _, x1), x2)),
-        nr::ConnectToNamedPort => registers.apply1(connect_to_named_port(UserSpacePtr(x0 as _))),
-        nr::SendSyncRequestWithUserBuffer => registers.apply0(send_sync_request_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), x2 as _)),
-        nr::OutputDebugString => registers.apply0(output_debug_string(UserSpacePtr::from_raw_parts(x0 as _, x1))),
-        nr::CreateSession => registers.apply2(create_session(x0 != 0, x1 as _)),
-        nr::AcceptSession => registers.apply1(accept_session(x0 as _)),
+        (true, nr::SetHeapSize) => registers.apply1(set_heap_size(x0)),
+        (true, nr::QueryMemory) => registers.apply1(query_memory(UserSpacePtrMut(x0 as _), x1, x2)),
+        (true, nr::ExitProcess) => registers.apply0(exit_process()),
+        (true, nr::CreateThread) => registers.apply1(create_thread(x0, x1, x2, x3 as _, x4 as _)),
+        (true, nr::StartThread) => registers.apply0(start_thread(x0 as _)),
+        (true, nr::ExitThread) => registers.apply0(exit_thread()),
+        (true, nr::SleepThread) => registers.apply0(sleep_thread(x0)),
+        (true, nr::MapSharedMemory) => registers.apply0(map_shared_memory(x0 as _, x1 as _, x2 as _, x3 as _)),
+        (true, nr::UnmapSharedMemory) => registers.apply0(unmap_shared_memory(x0 as _, x1 as _, x2 as _)),
+        (true, nr::CloseHandle) => registers.apply0(close_handle(x0 as _)),
+        (true, nr::WaitSynchronization) => registers.apply1(wait_synchronization(UserSpacePtr::from_raw_parts(x0 as _, x1), x2)),
+        (true, nr::ConnectToNamedPort) => registers.apply1(connect_to_named_port(UserSpacePtr(x0 as _))),
+        (true, nr::SendSyncRequestWithUserBuffer) => registers.apply0(send_sync_request_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), x2 as _)),
+        (true, nr::OutputDebugString) => registers.apply0(output_debug_string(UserSpacePtr::from_raw_parts(x0 as _, x1))),
+        (true, nr::CreateSession) => registers.apply2(create_session(x0 != 0, x1 as _)),
+        (true, nr::AcceptSession) => registers.apply1(accept_session(x0 as _)),
         // TODO: We need one more register for the timeout. Sad panda.
         // The ARM64 spec allows x0-x7 as input arguments, so *ideally* we need 2
         // more registers.
-        nr::ReplyAndReceiveWithUserBuffer => registers.apply1(reply_and_receive_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), UserSpacePtr::from_raw_parts(x2 as _, x3), x4 as _, x5)),
-        nr::CreateSharedMemory => registers.apply1(create_shared_memory(x0 as _, x1 as _, x2 as _)),
-        nr::CreateInterruptEvent => registers.apply1(create_interrupt_event(x0, x1 as u32)),
-        nr::CreatePort => registers.apply2(create_port(x0 as _, x1 != 0, UserSpacePtr(x2 as _))),
-        nr::ManageNamedPort => registers.apply1(manage_named_port(UserSpacePtr(x0 as _), x1 as _)),
-        nr::ConnectToPort => registers.apply1(connect_to_port(x0 as _)),
+        (true, nr::ReplyAndReceiveWithUserBuffer) => registers.apply1(reply_and_receive_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), UserSpacePtr::from_raw_parts(x2 as _, x3), x4 as _, x5)),
+        (true, nr::CreateSharedMemory) => registers.apply1(create_shared_memory(x0 as _, x1 as _, x2 as _)),
+        (true, nr::CreateInterruptEvent) => registers.apply1(create_interrupt_event(x0, x1 as u32)),
+        (true, nr::CreatePort) => registers.apply2(create_port(x0 as _, x1 != 0, UserSpacePtr(x2 as _))),
+        (true, nr::ManageNamedPort) => registers.apply1(manage_named_port(UserSpacePtr(x0 as _), x1 as _)),
+        (true, nr::ConnectToPort) => registers.apply1(connect_to_port(x0 as _)),
 
         // KFS extensions
-        nr::MapFramebuffer => registers.apply4(map_framebuffer()),
-        // Unknown syscall. Should probably crash.
-        u => registers.apply0(ignore_syscall(u))
+        (true, nr::MapFramebuffer) => registers.apply4(map_framebuffer()),
+
+        // Unknown/unauthorized syscall.
+        (false, _) => {
+            // Attempted to call unauthorized SVC. Horizon invokes usermode
+            // exception handling in some cases. Let's just kill the process for
+            // now.
+            let curproc = get_current_process();
+            error!("Process {} attempted to use unauthorized syscall {} ({:#04x}), killing",
+                   curproc.name, syscall_name, syscall_nr);
+            ProcessStruct::kill_process(curproc);
+        },
+        _ => {
+            let curproc = get_current_process();
+            error!("Process {} attempted to use unknown syscall {} ({:#04x}), killing",
+                   curproc.name, syscall_name, syscall_nr);
+            ProcessStruct::kill_process(curproc);
+        }
     }
 
     // Effectively kill the thread at syscall boundary
