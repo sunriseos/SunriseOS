@@ -15,87 +15,90 @@ script = ["cp linker-scripts/kernel.ld    link.T"]
 workspace = false
 script = ["cp linker-scripts/userspace.ld    link.T"]
 
+[tasks.install-rust-src]
+install_crate = { rustup_component_name = "rust-src" }
+
 [tasks.bootstrap]
 workspace = false
 description = "Compiles the i386 bootstrap for debug"
-dependencies = ["bootstrap-linker"]
+dependencies = ["bootstrap-linker", "install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-bootstrap" ]
 
 [tasks.bootstrap-release]
 workspace = false
 description = "Compiles the i386 bootstrap for release"
-dependencies = ["bootstrap-linker"]
+dependencies = ["bootstrap-linker", "install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-bootstrap", "--release" ]
 
 [tasks.kernel]
 workspace = false
 description = "Compiles the kernel for debug"
-dependencies = ["kernel-linker"]
+dependencies = ["kernel-linker", "install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-kernel", "-Z", "package-features", "--features=panic-on-exception"]
 
 [tasks.kernel-release]
 workspace = false
 description = "Compiles the kernel for release"
-dependencies = ["kernel-linker"]
+dependencies = ["kernel-linker", "install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-kernel", "--release" ]
 
 [tasks.vi]
 workspace = false
 description = "Compiles kfs-vi"
-dependencies = ["userspace-linker"]
+dependencies = ["userspace-linker", "install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-vi"]
 
 [tasks.vi-release]
 workspace = false
 description = "Compiles kfs-vi"
-dependencies = ["userspace-linker"]
+dependencies = ["userspace-linker", "install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-vi", "--release"]
 
 [tasks.sm]
 workspace = false
 description = "Compiles kfs-sm"
-dependencies = ["userspace-linker"]
+dependencies = ["userspace-linker", "install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-sm"]
 
 [tasks.sm-release]
 workspace = false
 description = "Compiles kfs-sm"
-dependencies = ["userspace-linker"]
+dependencies = ["userspace-linker", "install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-sm", "--release"]
 
 [tasks.shell]
 workspace = false
 description = "Compiles kfs-shell"
-dependencies = ["userspace-linker"]
+dependencies = ["userspace-linker", "install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-shell"]
 
 [tasks.shell-release]
 workspace = false
 description = "Compiles kfs-shell"
-dependencies = ["userspace-linker"]
+dependencies = ["userspace-linker", "install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-shell", "--release"]
 
 [tasks.clock]
 workspace = false
 description = "Compiles kfs-clock"
-dependencies = ["userspace-linker"]
+dependencies = ["userspace-linker", "install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-clock"]
 
 [tasks.clock-release]
 workspace = false
 description = "Compiles kfs-clock"
-dependencies = ["userspace-linker"]
+dependencies = ["userspace-linker", "install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-clock", "--release"]
 
