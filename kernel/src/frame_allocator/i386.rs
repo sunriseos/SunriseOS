@@ -278,7 +278,7 @@ impl FrameAllocatorTrait for FrameAllocator {
             }
             // advance the cursor
             current_hole = PhysicalMemRegion {
-                start_addr: match cur_hole_addr.checked_add(cur_hole_frames + 1 * PAGE_SIZE) {
+                start_addr: match cur_hole_addr.checked_add((cur_hole_frames + 1) * PAGE_SIZE) {
                     Some(sum_addr) => sum_addr,
                     None => break
                     // if it was the last frame, and the last to be considered:
@@ -468,6 +468,28 @@ mod test {
         drop(a);
         drop(b);
         drop(c_vec);
+    }
+
+
+    #[test]
+    fn fragmented() {
+        let _f = ::frame_allocator::init();
+        // make it all available
+        let mut allocator = FRAME_ALLOCATOR.lock();
+        mark_area_free(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
+
+        // reserve some frames in the middle
+        mark_area_reserved(&mut allocator.memory_bitmap, 2 * PAGE_SIZE, 7 * PAGE_SIZE);
+        drop(allocator);
+
+        // force a fragmented allocation
+        let frames = FrameAllocator::allocate_frames_fragmented(5 * PAGE_SIZE).unwrap();
+
+        assert_eq!(frames.len(), 2);
+        assert_eq!(frames[0].address(), PhysicalAddress(0x00000000));
+        assert_eq!(frames[0].size(), 2 * PAGE_SIZE);
+        assert_eq!(frames[1].address(), PhysicalAddress(7 * PAGE_SIZE));
+        assert_eq!(frames[1].size(), 3 * PAGE_SIZE);
     }
 
     /// You can't give it a size of 0.
