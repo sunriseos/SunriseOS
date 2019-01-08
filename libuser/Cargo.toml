@@ -7,7 +7,7 @@ authors = ["roblabla <unfiltered@roblab.la>", "orycterope <tvermeilh@gmail.com>"
 linked_list_allocator = "0.6.2"
 bitfield = "0.13"
 bit_field = "0.9"
-spin = "0.4"
+spin = "0.5"
 kfs-libutils = { path = "../libutils" }
 kfs-libkern = { path = "../libkern" }
 failure = { version = "0.1", default-features = false, features = ["derive"] }
