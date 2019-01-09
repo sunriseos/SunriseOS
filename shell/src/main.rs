@@ -4,6 +4,7 @@
 //! test KFS. Type help followed by enter to get a list of allowed commands.
 
 #![feature(alloc, asm)]
+#![feature(const_let)]
 #![no_std]
 
 #![warn(missing_docs)]
@@ -15,6 +16,7 @@ extern crate alloc;
 extern crate log;
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
 extern crate kfs_libuser as libuser;
 extern crate byteorder;
 
@@ -139,7 +141,22 @@ fn test_page_fault() {
 static LOUIS3: &'static [u8; 1318100] = include_bytes!("../img/meme3.gif");
 static LOUIS4: &'static [u8; 103803] = include_bytes!("../img/meme4.gif");
 
-/// Array of IO port this process is allowed to access.
-#[cfg_attr(not(test), link_section = ".kernel_ioports")]
-#[used]
-pub static IOPORTS_PERMS: [u16; 2] = [0x60, 0x64];
+capabilities!(CAPABILITIES = [
+    libuser::syscalls::nr::SleepThread,
+    libuser::syscalls::nr::ExitProcess,
+    libuser::syscalls::nr::CloseHandle,
+    libuser::syscalls::nr::WaitSynchronization,
+    libuser::syscalls::nr::OutputDebugString,
+
+    libuser::syscalls::nr::SetHeapSize,
+    libuser::syscalls::nr::QueryMemory,
+    libuser::syscalls::nr::CreateThread,
+    libuser::syscalls::nr::StartThread,
+    libuser::syscalls::nr::ExitThread,
+    libuser::syscalls::nr::MapSharedMemory,
+    libuser::syscalls::nr::UnmapSharedMemory,
+    libuser::syscalls::nr::ConnectToNamedPort,
+    libuser::syscalls::nr::SendSyncRequestWithUserBuffer,
+    libuser::syscalls::nr::CreateSharedMemory,
+    libuser::syscalls::nr::CreateInterruptEvent,
+], [libuser::caps::ioport(0x60), libuser::caps::ioport(0x64), libuser::caps::irq_pair(1, 0x3FF)]);

@@ -4,7 +4,7 @@
 //! In the future, it will also be capable of talking to the GPU to provide an
 //! OpenGL abstraction layer.
 
-#![feature(alloc, const_vec_new)]
+#![feature(alloc, const_vec_new, const_let)]
 #![no_std]
 
 #![warn(missing_docs)]
@@ -229,6 +229,28 @@ fn main() {
 
     man.run();
 }
+capabilities!(CAPABILITIES = [
+    kfs_libuser::syscalls::nr::SleepThread,
+    kfs_libuser::syscalls::nr::ExitProcess,
+    kfs_libuser::syscalls::nr::CloseHandle,
+    kfs_libuser::syscalls::nr::WaitSynchronization,
+    kfs_libuser::syscalls::nr::OutputDebugString,
+
+    kfs_libuser::syscalls::nr::ReplyAndReceiveWithUserBuffer,
+    kfs_libuser::syscalls::nr::AcceptSession,
+    kfs_libuser::syscalls::nr::CreateSession,
+
+    kfs_libuser::syscalls::nr::ConnectToNamedPort,
+    kfs_libuser::syscalls::nr::SendSyncRequestWithUserBuffer,
+
+    kfs_libuser::syscalls::nr::SetHeapSize,
+
+    kfs_libuser::syscalls::nr::QueryMemory,
+
+    kfs_libuser::syscalls::nr::MapSharedMemory,
+
+    kfs_libuser::syscalls::nr::MapFramebuffer,
+], []);
 
 #[cfg(test)]
 mod tests {
