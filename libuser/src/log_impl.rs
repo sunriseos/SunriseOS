@@ -1,3 +1,8 @@
+//! Implementation for the log crate
+//!
+//! Redirects all logs to the kernel logger (output_debug_string syscall). No
+//! filtering is done, so everything will be sent.
+
 use spin::Mutex;
 use arrayvec::ArrayString;
 use log::{self, Log, LevelFilter, Metadata, Record};
@@ -5,9 +10,16 @@ use syscalls::output_debug_string;
 use core::fmt::{self, Write};
 
 lazy_static! {
-    static ref SVC_LOG_SPACE: Mutex<ArrayString<[u8; 256]>> = Mutex::new(ArrayString::new());
+    /// Buffer where pending writes are stored. The buffer is only flushed when
+    /// a \n is written, or when it's full.
+    ///
+    /// In practice, every log will cause a single line (at least) to be written.
+    static ref SVC_LOG_BUFFER: Mutex<ArrayString<[u8; 256]>> = Mutex::new(ArrayString::new());
 }
 
+/// Log implementation structure.
+///
+/// See module documentation for more information.
 struct Logger;
 
 impl Log for Logger {
@@ -24,19 +36,17 @@ impl Log for Logger {
 
 impl fmt::Write for Logger {
     fn write_str(&mut self, data: &str) -> fmt::Result {
-        let mut svc_log_space = SVC_LOG_SPACE.lock();
-        let available_capacity = svc_log_space.capacity() - svc_log_space.len();
+        let mut svc_log_buffer = SVC_LOG_BUFFER.lock();
+        let available_capacity = svc_log_buffer.capacity() - svc_log_buffer.len();
         if data.len() > available_capacity {
             // Worse-case. Just print it all out and start fresh.
-            let _ = output_debug_string(svc_log_space.as_str());
-            let _ = output_debug_string(data);
-            let _ = svc_log_space.clear();
-        } else {
-            svc_log_space.push_str(data);
-            if let Some(pos) = svc_log_space.find('\n') {
-                let _ = output_debug_string(&svc_log_space.as_str()[..pos]);
-                *svc_log_space = ArrayString::from(&svc_log_space[pos + 1..]).unwrap();
-            }
+            let _ = output_debug_string(svc_log_buffer.as_str());
+            let _ = svc_log_buffer.clear();
+        }
+        svc_log_buffer.push_str(data);
+        if let Some(pos) = svc_log_buffer.rfind('\n') {
+            let _ = output_debug_string(&svc_log_buffer.as_str()[..pos]);
+            *svc_log_buffer = ArrayString::from(&svc_log_buffer[pos + 1..]).unwrap();
         }
         Ok(())
     }
