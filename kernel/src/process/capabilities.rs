@@ -195,10 +195,12 @@ impl ProcessCapabilities {
                     }
                     duplicate_svc.set_bit(index as _, true);
                     let index = index as usize * 24;
-                    let highest_svc_in_mask = 24 - mask.leading_zeros() as usize;
+                    // This cannot overflow: The first 8 bit are guaranteed to be 0.
+                    let highest_svc_in_mask = 24 - (mask.leading_zeros() as usize - 8);
                     if index + highest_svc_in_mask > MAX_SVC {
                         return Err(KernelError::ExceedingMaximum {
                             maximum: MAX_SVC as u64,
+                            value: (index + highest_svc_in_mask) as u64,
                             backtrace: Backtrace::new()
                         });
                     }
@@ -228,6 +230,7 @@ impl ProcessCapabilities {
                         if irq0 > 0xFF {
                             return Err(KernelError::ExceedingMaximum {
                                 maximum: 0xFF,
+                                value: irq0 as u64,
                                 backtrace: Backtrace::new(),
                             })
                         }
@@ -237,6 +240,7 @@ impl ProcessCapabilities {
                         if irq0 > 0xFF {
                             return Err(KernelError::ExceedingMaximum {
                                 maximum: 0xFF,
+                                value: irq1 as u64,
                                 backtrace: Backtrace::new(),
                             })
                         }

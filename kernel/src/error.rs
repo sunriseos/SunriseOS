@@ -84,8 +84,9 @@ pub enum KernelError {
     InvalidCombination {
         backtrace: Backtrace,
     },
-    #[fail(display = "The passed value would overflow the maximum (max is {}).", _0)]
+    #[fail(display = "The passed value ({}) would overflow the maximum ({}).", value, maximum)]
     ExceedingMaximum {
+        value: u64,
         maximum: u64,
         backtrace: Backtrace,
     },
