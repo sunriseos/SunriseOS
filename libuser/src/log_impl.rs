@@ -5,7 +5,7 @@ use syscalls::output_debug_string;
 use core::fmt::{self, Write};
 
 lazy_static! {
-    static ref SVC_LOG_SPACE: Mutex<ArrayString<[u8; 4096]>> = Mutex::new(ArrayString::new());
+    static ref SVC_LOG_SPACE: Mutex<ArrayString<[u8; 256]>> = Mutex::new(ArrayString::new());
 }
 
 struct Logger;
