@@ -37,16 +37,18 @@ impl Log for Logger {
 impl fmt::Write for Logger {
     fn write_str(&mut self, data: &str) -> fmt::Result {
         let mut svc_log_buffer = SVC_LOG_BUFFER.lock();
-        let available_capacity = svc_log_buffer.capacity() - svc_log_buffer.len();
-        if data.len() > available_capacity {
+        if let Ok(()) = svc_log_buffer.try_push_str(data) {
+            if let Some(pos) = svc_log_buffer.rfind('\n') {
+                let _ = output_debug_string(&svc_log_buffer.as_str()[..pos]);
+                *svc_log_buffer = ArrayString::from(&svc_log_buffer[pos + 1..]).unwrap();
+            }
+        } else {
             // Worse-case. Just print it all out and start fresh.
-            let _ = output_debug_string(svc_log_buffer.as_str());
+            if !svc_log_buffer.is_empty() {
+                let _ = output_debug_string(svc_log_buffer.as_str());
+            }
+            let _ = output_debug_string(data);
             let _ = svc_log_buffer.clear();
-        }
-        svc_log_buffer.push_str(data);
-        if let Some(pos) = svc_log_buffer.rfind('\n') {
-            let _ = output_debug_string(&svc_log_buffer.as_str()[..pos]);
-            *svc_log_buffer = ArrayString::from(&svc_log_buffer[pos + 1..]).unwrap();
         }
         Ok(())
     }
