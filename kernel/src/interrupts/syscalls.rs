@@ -77,7 +77,11 @@ fn create_interrupt_event(irq_num: usize, _flag: u32) -> Result<usize, Userspace
     // BODY: multiple InterruptEvent on the same IRQ.
     let curproc = scheduler::get_current_process();
     if !curproc.capabilities.irq_access_mask.get_bit(irq_num) {
-        return Err(UserspaceError::NoSuchEntry);
+        if cfg!(feature = "no-security-check") {
+            error!("Process {} attempted to create unauthorized IRQEvent for irq {}", curproc.name, irq_num);
+        } else {
+            return Err(UserspaceError::NoSuchEntry);
+        }
     }
     let hnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ReadableEvent(Box::new(event::wait_event(irq_num)))));
     Ok(hnd as _)
@@ -405,6 +409,13 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
 
     let allowed = get_current_process().capabilities.syscall_mask.get_bit(syscall_nr);
 
+    if cfg!(feature = "no-security-check") && !allowed {
+        let curproc = get_current_process();
+        error!("Process {} attempted to use unauthorized syscall {} ({:#04x})",
+               curproc.name, syscall_name, syscall_nr);
+    }
+
+    let allowed = cfg!(feature = "no-security-check") || allowed;
 
     match (allowed, syscall_nr) {
         // Horizon-inspired syscalls!

@@ -11,6 +11,9 @@ sysroot_path = "target/sysroot"
 [features]
 #Will make the kernel panic if an exception is encountered. Useful for debugging.
 panic-on-exception = []
+#Make the kernel allow all syscalls and IRQ, but log unauthorized accesses.
+#IOPorts are unaffected.
+no-security-check = []
 
 [dependencies]
 kfs-libutils = { path = "../libutils" }
