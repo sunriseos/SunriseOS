@@ -141,22 +141,25 @@ fn test_page_fault() {
 static LOUIS3: &'static [u8; 1318100] = include_bytes!("../img/meme3.gif");
 static LOUIS4: &'static [u8; 103803] = include_bytes!("../img/meme4.gif");
 
-capabilities!(CAPABILITIES = [
-    libuser::syscalls::nr::SleepThread,
-    libuser::syscalls::nr::ExitProcess,
-    libuser::syscalls::nr::CloseHandle,
-    libuser::syscalls::nr::WaitSynchronization,
-    libuser::syscalls::nr::OutputDebugString,
+capabilities!(CAPABILITIES = Capabilities {
+    svcs: [
+        libuser::syscalls::nr::SleepThread,
+        libuser::syscalls::nr::ExitProcess,
+        libuser::syscalls::nr::CloseHandle,
+        libuser::syscalls::nr::WaitSynchronization,
+        libuser::syscalls::nr::OutputDebugString,
 
-    libuser::syscalls::nr::SetHeapSize,
-    libuser::syscalls::nr::QueryMemory,
-    libuser::syscalls::nr::CreateThread,
-    libuser::syscalls::nr::StartThread,
-    libuser::syscalls::nr::ExitThread,
-    libuser::syscalls::nr::MapSharedMemory,
-    libuser::syscalls::nr::UnmapSharedMemory,
-    libuser::syscalls::nr::ConnectToNamedPort,
-    libuser::syscalls::nr::SendSyncRequestWithUserBuffer,
-    libuser::syscalls::nr::CreateSharedMemory,
-    libuser::syscalls::nr::CreateInterruptEvent,
-], [libuser::caps::ioport(0x60), libuser::caps::ioport(0x64), libuser::caps::irq_pair(1, 0x3FF)]);
+        libuser::syscalls::nr::SetHeapSize,
+        libuser::syscalls::nr::QueryMemory,
+        libuser::syscalls::nr::CreateThread,
+        libuser::syscalls::nr::StartThread,
+        libuser::syscalls::nr::ExitThread,
+        libuser::syscalls::nr::MapSharedMemory,
+        libuser::syscalls::nr::UnmapSharedMemory,
+        libuser::syscalls::nr::ConnectToNamedPort,
+        libuser::syscalls::nr::SendSyncRequestWithUserBuffer,
+        libuser::syscalls::nr::CreateSharedMemory,
+        libuser::syscalls::nr::CreateInterruptEvent,
+    ],
+    raw_caps: [libuser::caps::ioport(0x60), libuser::caps::ioport(0x64), libuser::caps::irq_pair(1, 0x3FF)]
+});

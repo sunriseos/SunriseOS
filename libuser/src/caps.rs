@@ -24,24 +24,27 @@
 //! ```
 //! extern crate kfs_libuser;
 //! use kfs_libuser::{syscalls, caps};
-//! capabilities!(CAPABILITIES = [
-//!     syscalls::nr::SetHeapSize,
-//!     syscalls::nr::QueryMemory,
-//!     syscalls::nr::ExitProcess,
-//!     syscalls::nr::CreateThread,
-//!     syscalls::nr::StartThread,
-//!     syscalls::nr::ExitThread,
-//!     syscalls::nr::MapSharedMemory,
-//!     syscalls::nr::UnmapSharedMemory,
-//!     syscalls::nr::CloseHandle,
-//!     syscalls::nr::WaitSynchronization,
-//!     syscalls::nr::ConnectToNamedPort,
-//!     syscalls::nr::SendSyncRequestWithUserBuffer,
-//!     syscalls::nr::OutputDebugString,
-//!     syscalls::nr::CreateSharedMemory,
-//!     syscalls::nr::CreateInterruptEvent,
-//!     syscalls::nr::SleepThread
-//! ], [caps::ioport(0x60), caps::ioport(0x64), caps::irq_pair(1, 0x3FF)]);
+//! capabilities!(CAPABILITIES = Capabilities {
+//!     svcs: [
+//!         syscalls::nr::SetHeapSize,
+//!         syscalls::nr::QueryMemory,
+//!         syscalls::nr::ExitProcess,
+//!         syscalls::nr::CreateThread,
+//!         syscalls::nr::StartThread,
+//!         syscalls::nr::ExitThread,
+//!         syscalls::nr::MapSharedMemory,
+//!         syscalls::nr::UnmapSharedMemory,
+//!         syscalls::nr::CloseHandle,
+//!         syscalls::nr::WaitSynchronization,
+//!         syscalls::nr::ConnectToNamedPort,
+//!         syscalls::nr::SendSyncRequestWithUserBuffer,
+//!         syscalls::nr::OutputDebugString,
+//!         syscalls::nr::CreateSharedMemory,
+//!         syscalls::nr::CreateInterruptEvent,
+//!         syscalls::nr::SleepThread
+//!     ],
+//!     raw_caps: [caps::ioport(0x60), caps::ioport(0x64), caps::irq_pair(1, 0x3FF)],
+//! },
 //! ```
 
 /// Define the capabilities array in the .kernel_caps section. Has the following
@@ -50,17 +53,20 @@
 /// ```no_run
 /// extern crate kfs_libuser;
 /// use kfs_libuser::{syscalls, caps};
-/// capabilities!(CAPABILITIES = [
-///      // Array of syscall numbers.
-///      syscalls::nr::SetHeapSize,
-///      syscalls::nr::ExitProcess,
-/// ], [
-///      // Array of raw kernel capabilities.
-///      caps::ioport(0x60), caps::irq_pair(1, 0x3FF)
-/// ])
+/// capabilities!(CAPABILITIES = Capabilities {
+///     svcs: [
+///         // Array of syscall numbers.
+///         syscalls::nr::SetHeapSize,
+///         syscalls::nr::ExitProcess,
+///     ],
+///     raw_caps: [
+///          // Array of raw kernel capabilities.
+///          caps::ioport(0x60), caps::irq_pair(1, 0x3FF)
+///     ]
+/// });
 /// ```
 ///
-/// Both arrays accept an optional terminating coma.
+/// The order of the capabilities member is not important, and trailing comas are allowed.
 ///
 /// This macro requires the const_let feature. Please add the following to the
 /// start of your crate before using it:
@@ -70,10 +76,26 @@
 /// ```
 #[macro_export]
 macro_rules! capabilities {
-    ($ident:ident = [$($svcs:expr),* $(,)*], [$($raw_caps:expr),* $(,)*]) => {
+    ($ident:ident = Capabilities {
+        $($item:tt : [$($itemval:expr),* $(,)*]),* $(,)*
+    }) => {
+        capabilities!(@handle_item $ident, curcount=6, svcs=[], rawcaps=[], $($item: [$($itemval),*],)*);
+    };
+    (@handle_item $ident:ident, curcount=$count:expr, svcs=[], rawcaps=[$($rawcaps:expr),*],
+      svcs: [$($svcs:expr),*], $($next:tt : [$($nextval:expr),*],)*) =>
+    {
+        capabilities!(@handle_item $ident, curcount=$count, svcs=[$($svcs),*], rawcaps=[$($rawcaps),*], $($next: [$($nextval),*],)*);
+    };
+    (@handle_item $ident:ident, curcount=$count:expr, svcs=[$($svcs:expr),*], rawcaps=[],
+      raw_caps: [$($raw_caps:expr),*], $($next:tt : [$($nextval:expr),*],)*) =>
+    {
+        capabilities!(@handle_item $ident, curcount=$count + capabilities!(@count_elems $($raw_caps,)*),
+                      svcs=[$($svcs),*], rawcaps=[$($raw_caps),*], $(next: [$($nextval),*],)*);
+    };
+    (@handle_item $ident:ident, curcount=$count:expr, svcs=[$($svcs:expr),*], rawcaps=[$($raw_caps:expr),*],) => {
         #[cfg_attr(not(test), link_section = ".kernel_caps")]
         #[used]
-        static $ident: [u32; 6 + capabilities!(@count_elems $($raw_caps,)*)] = {
+        static $ident: [u32; $count] = {
             let mut kacs = [
                 // first 6 are SVCs
                 0 << 29 | 0b1111,

@@ -116,17 +116,19 @@ fn main() {
     man.run();
 }
 
-capabilities!(CAPABILITIES = [
-    kfs_libuser::syscalls::nr::SleepThread,
-    kfs_libuser::syscalls::nr::ExitProcess,
-    kfs_libuser::syscalls::nr::CloseHandle,
-    kfs_libuser::syscalls::nr::WaitSynchronization,
-    kfs_libuser::syscalls::nr::OutputDebugString,
+capabilities!(CAPABILITIES = Capabilities {
+    svcs: [
+        kfs_libuser::syscalls::nr::SleepThread,
+        kfs_libuser::syscalls::nr::ExitProcess,
+        kfs_libuser::syscalls::nr::CloseHandle,
+        kfs_libuser::syscalls::nr::WaitSynchronization,
+        kfs_libuser::syscalls::nr::OutputDebugString,
 
-    kfs_libuser::syscalls::nr::SetHeapSize,
-    kfs_libuser::syscalls::nr::ManageNamedPort,
-    kfs_libuser::syscalls::nr::AcceptSession,
-    kfs_libuser::syscalls::nr::ReplyAndReceiveWithUserBuffer,
-    kfs_libuser::syscalls::nr::CreatePort,
-    kfs_libuser::syscalls::nr::ConnectToPort,
-], []);
+        kfs_libuser::syscalls::nr::SetHeapSize,
+        kfs_libuser::syscalls::nr::ManageNamedPort,
+        kfs_libuser::syscalls::nr::AcceptSession,
+        kfs_libuser::syscalls::nr::ReplyAndReceiveWithUserBuffer,
+        kfs_libuser::syscalls::nr::CreatePort,
+        kfs_libuser::syscalls::nr::ConnectToPort,
+    ]
+});
