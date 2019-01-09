@@ -25,6 +25,7 @@ extern crate failure;
 extern crate font_rs;
 extern crate hashmap_core;
 
+pub mod caps;
 pub mod syscalls;
 pub mod types;
 pub mod ipc;
@@ -35,6 +36,8 @@ pub mod allocator;
 pub mod terminal;
 pub mod window;
 
+// TODO: Find a better place to reexport kfs_libkern::nr.
+pub use kfs_libkern::nr;
 pub use kfs_libutils::io;
 
 use kfs_libutils as utils;
