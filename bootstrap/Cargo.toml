@@ -2,6 +2,7 @@
 authors = ["roblabla <unfiltered@roblab.la>", "orycterope <tvermeilh@gmail.com>"]
 name = "kfs-bootstrap"
 version = "0.1.0"
+license = "Apache-2.0 OR MIT"
 
 [package.metadata.cargo-xbuild]
 memcpy = true
