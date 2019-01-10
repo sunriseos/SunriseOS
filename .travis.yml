@@ -10,11 +10,7 @@ addons:
     - gcc-multilib
 
 # Install cargo-make and rust-src rustup component
-# Decrypt and setup the deploy key.
 before_install:
-- openssl aes-256-cbc -K $encrypted_a3c22127997a_key -iv $encrypted_a3c22127997a_iv
-  -in .travis/github_deploy_key.enc -out .travis/github_deploy_key -d
-- ssh-add .travis/github_deploy_key
 - cargo install cargo-make || echo "cargo-make already installed"
 - rustup component add rust-src || echo "rust-src already installed"
 - rustup target install i686-unknown-linux-gnu || echo "target i686-unknown-linux-gnu already installed"
@@ -24,6 +20,11 @@ script:
 - cargo make iso-release
 - cargo make test
 - cargo make doc-full
-- cargo make deploy-doc
+
+deploy:
+- provider: script
+  script: bash .travis/deploy.sh
+  on:
+    branch: master
 
 cache: cargo
