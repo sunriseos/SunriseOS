@@ -1,6 +1,6 @@
 language: rust
 rust:
-- nightly
+- stable
 
 # Install grub-mkrescue
 addons:
@@ -20,5 +20,11 @@ script:
 - cargo make iso-release
 - cargo make test
 - cargo make doc-full
+
+deploy:
+- provider: script
+  script: bash .travis/deploy.sh
+  on:
+    branch: master
 
 cache: cargo
