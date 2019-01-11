@@ -13,6 +13,8 @@ kfs-libkern = { path = "../libkern" }
 failure = { version = "0.1", default-features = false, features = ["derive"] }
 font-rs = { git = "https://github.com/orycterope/font-rs" }
 hashmap_core = "0.1.9"
+log = "0.4"
+lazy_static = "1.2"
 
 [dependencies.byteorder]
 default-features = false
