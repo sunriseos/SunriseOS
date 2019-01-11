@@ -11,6 +11,7 @@ addons:
 
 # Install cargo-make and rust-src rustup component
 before_install:
+- cargo install cargo-travis --git "https://github.com/roblabla/cargo-travis" --rev "doc-upload-target" || echo "cargo-travis already installed"
 - cargo install cargo-make || echo "cargo-make already installed"
 - rustup component add rust-src || echo "rust-src already installed"
 - rustup target install i686-unknown-linux-gnu || echo "target i686-unknown-linux-gnu already installed"
