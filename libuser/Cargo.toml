@@ -2,6 +2,7 @@
 name = "kfs-libuser"
 version = "0.1.0"
 authors = ["roblabla <unfiltered@roblab.la>", "orycterope <tvermeilh@gmail.com>"]
+license = "Apache-2.0 OR MIT"
 
 [dependencies]
 linked_list_allocator = "0.6.2"
