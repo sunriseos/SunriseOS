@@ -21,8 +21,6 @@ use mem::{VirtualAddress, PhysicalAddress};
 use paging::{PAGE_SIZE, MappingFlags, process_memory::ProcessMemory, kernel_memory::get_kernel_memory};
 use frame_allocator::PhysicalMemRegion;
 use utils::{self, align_up};
-use alloc::vec::Vec;
-use byteorder::{LittleEndian, ByteOrder};
 
 /// Represents a grub module once mapped in kernel memory
 pub struct MappedGrubModule<'a> {
@@ -82,16 +80,20 @@ impl<'a> Drop for MappedGrubModule<'a> {
     }
 }
 
-/// Gets the desired iopb for a process based on the .kernel_ioports section in its elf
-pub fn get_iopb(module: &MappedGrubModule) -> Vec<u16> {
+/// Gets the desired kernel access controls for a process based on the
+/// .kernel_caps section in its elf
+pub fn get_kacs<'a>(module: &'a MappedGrubModule) -> Option<&'a [u32]> {
     let elf = module.elf.as_ref().expect("Failed parsing multiboot module as elf");
 
-    if let Some(section) = elf.find_section_by_name(".kernel_ioports") {
-        let mut iopb = vec![0u16; section.raw_data(&elf).len() / 2];
-        LittleEndian::read_u16_into(section.raw_data(&elf), &mut *iopb);
-        iopb
+    if let Some(section) = elf.find_section_by_name(".kernel_caps") {
+        unsafe {
+            // Safety: FOR FUCK'S SAKE. When will rust get a function to safely
+            // cast between array of integers of different sizes >_>.
+            let section_data = section.raw_data(&elf);
+            Some(core::slice::from_raw_parts(section_data.as_ptr() as *const u32, section_data.len() / 4))
+        }
     } else {
-        Vec::new()
+        None
     }
 }
 

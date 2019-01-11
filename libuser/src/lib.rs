@@ -29,6 +29,7 @@ extern crate log;
 #[macro_use]
 extern crate lazy_static;
 
+pub mod caps;
 pub mod syscalls;
 pub mod types;
 pub mod ipc;

@@ -2,12 +2,13 @@
 //!
 //! Show the current time in the bottom left corner of the screen.
 
-#![feature(alloc)]
+#![feature(alloc, const_let)]
 #![no_std]
 
 #![warn(missing_docs)]
 #![deny(intra_doc_link_resolution_failure)]
 
+#[macro_use]
 extern crate kfs_libuser;
 #[macro_use]
 extern crate alloc;
@@ -129,7 +130,26 @@ fn main() {
     }
 }
 
-/// Array of IO port this process is allowed to access.
-#[cfg_attr(not(test), link_section = ".kernel_ioports")]
-#[used]
-pub static IOPORTS_PERMS: [u16; 2] = [0x70, 0x71];
+capabilities!(CAPABILITIES = Capabilities {
+    svcs: [
+        kfs_libuser::syscalls::nr::SleepThread,
+        kfs_libuser::syscalls::nr::ExitProcess,
+        kfs_libuser::syscalls::nr::CloseHandle,
+        kfs_libuser::syscalls::nr::WaitSynchronization,
+        kfs_libuser::syscalls::nr::OutputDebugString,
+
+        kfs_libuser::syscalls::nr::ConnectToNamedPort,
+        kfs_libuser::syscalls::nr::CreateInterruptEvent,
+        kfs_libuser::syscalls::nr::SetHeapSize,
+        kfs_libuser::syscalls::nr::SendSyncRequestWithUserBuffer,
+        kfs_libuser::syscalls::nr::QueryMemory,
+        kfs_libuser::syscalls::nr::CreateSharedMemory,
+        kfs_libuser::syscalls::nr::MapSharedMemory,
+        kfs_libuser::syscalls::nr::UnmapSharedMemory,
+    ],
+    raw_caps: [
+        kfs_libuser::caps::irq_pair(0x08, 0x3FF),
+        kfs_libuser::caps::ioport(0x70),
+        kfs_libuser::caps::ioport(0x71),
+    ]
+});

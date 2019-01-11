@@ -283,6 +283,10 @@ syscalls! {
     SetResourceLimitLimitValue = 0x7E,
     CallSecureMonitor = 0x7F,
 
+    // KFS Extensions
     MapFramebuffer = 0x80,
     StartProcessEntrypoint = 0x81,
+
+    // Add SVCs before this line.
+    MaxSvc = 0x81
 }

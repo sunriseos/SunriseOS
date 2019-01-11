@@ -123,7 +123,7 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
     // Set IOPB back to "nothing allowed" state
     // todo do not change iopb if thread_b belongs to the same process.
     let iopb = gdt::get_main_iopb();
-    for ioport in thread_current.process.ioports.iter() {
+    for ioport in thread_current.process.capabilities.ioports.iter() {
         let ioport = *ioport as usize;
         iopb[ioport / 8] = 0xFF;
     }
@@ -178,7 +178,7 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
     (*tss).esp0 = me.kstack.get_stack_start() as u32;
 
     // Set IOPB
-    for ioport in me.process.ioports.iter() {
+    for ioport in me.process.capabilities.ioports.iter() {
         let ioport = *ioport as usize;
         iopb[ioport / 8] &= !(1 << (ioport % 8));
     }
@@ -281,7 +281,7 @@ fn first_schedule() {
         let iopb = unsafe {
             gdt::get_main_iopb()
         };
-        for ioport in current.process.ioports.iter() {
+        for ioport in current.process.capabilities.ioports.iter() {
             let ioport = *ioport as usize;
             iopb[ioport / 8] &= !(1 << (ioport % 8));
         }

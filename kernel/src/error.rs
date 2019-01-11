@@ -80,6 +80,25 @@ pub enum KernelError {
     ThreadAlreadyStarted {
         backtrace: Backtrace,
     },
+    #[fail(display = "Invalid combination of values passed.")]
+    InvalidCombination {
+        backtrace: Backtrace,
+    },
+    #[fail(display = "The passed value ({}) would overflow the maximum ({}).", value, maximum)]
+    ExceedingMaximum {
+        value: u64,
+        maximum: u64,
+        backtrace: Backtrace,
+    },
+    #[fail(display = "Invalid kernel capability u32: {}", _0)]
+    InvalidKernelCaps {
+        kcap: u32,
+        backtrace: Backtrace,
+    },
+    #[fail(display = "Value is reserved for future use.")]
+    ReservedValue {
+        backtrace: Backtrace,
+    },
     #[doc(hidden)]
     #[fail(display = "Should never ever ***EVER*** be returned")]
     ThisWillNeverHappenButPleaseDontMatchExhaustively,
@@ -101,6 +120,10 @@ impl From<KernelError> for UserspaceError {
             // BODY:
             // BODY: We must then remove KernelError::AlignmentError.
             KernelError::AlignmentError { .. } => UserspaceError::InvalidAddress,
+            KernelError::InvalidCombination { .. } => UserspaceError::InvalidCombination,
+            KernelError::ExceedingMaximum { .. } => UserspaceError::ExceedingMaximum,
+            KernelError::InvalidKernelCaps { .. } => UserspaceError::InvalidKernelCaps,
+            KernelError::ReservedValue { .. } => UserspaceError::ReservedValue,
             //KernelError::
             KernelError::ThisWillNeverHappenButPleaseDontMatchExhaustively => unreachable!(),
             // todo

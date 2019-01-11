@@ -97,7 +97,7 @@ fn main() {
     for module in i386::multiboot::get_boot_information().module_tags().skip(1) {
         info!("Loading {}", module.name());
         let mapped_module = elf_loader::map_grub_module(module);
-        let proc = ProcessStruct::new(String::from(module.name()), elf_loader::get_iopb(&mapped_module));
+        let proc = ProcessStruct::new(String::from(module.name()), elf_loader::get_kacs(&mapped_module)).unwrap();
         let (ep, sp) = {
                 let mut pmemlock = proc.pmemory.lock();
 
