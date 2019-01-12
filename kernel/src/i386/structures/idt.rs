@@ -19,6 +19,7 @@ use mem::VirtualAddress;
 use paging::{PAGE_SIZE, kernel_memory::get_kernel_memory};
 use alloc::boxed::Box;
 use i386::gdt;
+use i386::structures::gdt::SegmentSelector;
 
 /// An Interrupt Descriptor Table with 256 entries.
 ///
@@ -499,7 +500,7 @@ impl IndexMut<usize> for Idt {
 #[repr(C)]
 pub struct IdtEntry<F> {
     pointer_low: u16,
-    gdt_selector: u16,
+    gdt_selector: SegmentSelector,
     zero: u8,
     options: EntryOptions,
     pointer_high: u16,
@@ -542,7 +543,7 @@ impl<F> IdtEntry<F> {
     /// Creates a non-present IDT entry (but sets the must-be-one bits).
     fn missing() -> Self {
         IdtEntry {
-            gdt_selector: 0,
+            gdt_selector: SegmentSelector(0),
             pointer_low: 0,
             pointer_high: 0,
             zero: 0,
@@ -564,7 +565,7 @@ impl<F> IdtEntry<F> {
         self.pointer_low = addr as u16;
         self.pointer_high = (addr >> 16) as u16;
 
-        self.gdt_selector = segmentation::cs().0;
+        self.gdt_selector = segmentation::cs();
 
         self.options.set_present_interrupt(true);
         &mut self.options

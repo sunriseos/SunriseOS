@@ -159,7 +159,7 @@ impl DerefMut for GdtManager {
 }
 
 /// Push a task segment.
-pub fn push_task_segment(task: &'static TssStruct) -> u16 {
+pub fn push_task_segment(task: &'static TssStruct) -> SegmentSelector {
     info!("Pushing TSS: {:#?}", task);
     let mut gdt = GDT.try().unwrap().lock();
     let idx = gdt.push(DescriptorTableEntry::new_tss(task, PrivilegeLevel::Ring0, 0));
@@ -232,10 +232,10 @@ impl DescriptorTable {
     }
 
     /// Push a new entry to the table, returning a segment selector to it.
-    pub fn push(&mut self, entry: DescriptorTableEntry) -> u16 {
+    pub fn push(&mut self, entry: DescriptorTableEntry) -> SegmentSelector {
         let ret = self.table.len() << 3;
         self.table.push(entry);
-        ret as u16
+        SegmentSelector(ret as u16)
     }
 
     fn load_global(mut self, new_cs: u16, new_ds: u16, new_ss: u16) -> DescriptorTablePointer {
