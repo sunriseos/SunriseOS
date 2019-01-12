@@ -359,6 +359,38 @@ pub struct Idt {
     pub interrupts: [IdtEntry<HandlerFunc>; 256 - 32],
 }
 
+impl fmt::Debug for Idt {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Idt")
+            .field("divide_by_zero", &self.divide_by_zero)
+            .field("debug", &self.debug)
+            .field("non_maskable_interrupt", &self.non_maskable_interrupt)
+            .field("breakpoint", &self.breakpoint)
+            .field("overflow", &self.overflow)
+            .field("bound_range_exceeded", &self.bound_range_exceeded)
+            .field("invalid_opcode", &self.invalid_opcode)
+            .field("device_not_available", &self.device_not_available)
+            .field("double_fault", &self.double_fault)
+            .field("coprocessor_segment_overrun", &self.coprocessor_segment_overrun)
+            .field("invalid_tss", &self.invalid_tss)
+            .field("segment_not_present", &self.segment_not_present)
+            .field("stack_segment_fault", &self.stack_segment_fault)
+            .field("general_protection_fault", &self.general_protection_fault)
+            .field("page_fault", &self.page_fault)
+            .field("reserved_1", &self.reserved_1)
+            .field("x87_floating_point", &self.x87_floating_point)
+            .field("alignment_check", &self.alignment_check)
+            .field("machine_check", &self.machine_check)
+            .field("simd_floating_point", &self.simd_floating_point)
+            .field("virtualization", &self.virtualization)
+            .field("reserved_2", &self.reserved_2)
+            .field("security_exception", &self.security_exception)
+            .field("reserved_3", &self.reserved_3)
+            .field("interrupts", &&self.interrupts[..])
+            .finish()
+    }
+}
+
 const_assert_eq!(const_assert_idt; mem::size_of::<Idt>(), 256 * 8);
 
 
@@ -463,7 +495,7 @@ impl IndexMut<usize> for Idt {
 ///
 /// The generic parameter can either be `HandlerFunc` or `HandlerFuncWithErrCode`, depending
 /// on the interrupt vector.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 #[repr(C)]
 pub struct IdtEntry<F> {
     pointer_low: u16,
@@ -474,6 +506,26 @@ pub struct IdtEntry<F> {
     phantom: PhantomData<F>,
 }
 
+impl<F> fmt::Debug for IdtEntry<F> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if !self.options.is_present() {
+            write!(f, "IdtEntry::NotPresent")
+        } else {
+            let name = match self.options.gate_type() {
+                GateType::TaskGate32 => "IdtEntry::TaskGate32",
+                GateType::InterruptGate16 => "IdtEntry::InterruptGate16",
+                GateType::TrapGate16 => "IdtEntry::TrapGate16",
+                GateType::InterruptGate32 => "IdtEntry::InterruptGate32",
+                GateType::TrapGate32 => "IdtEntry::TrapGate32",
+            };
+            f.debug_struct(name)
+                .field("pointer", &(((self.pointer_high as u32) << 16) | self.pointer_low as u32))
+                .field("gdt_selector", &self.gdt_selector)
+                .field("privilege_level", &self.options.privilege_level())
+                .finish()
+        }
+    }
+}
 
 const_assert_eq!(const_assert_idtentry; mem::size_of::<IdtEntry<()>>(), 8);
 
@@ -579,16 +631,62 @@ impl_set_handler_fn!(HandlerFunc);
 impl_set_handler_fn!(HandlerFuncWithErrCode);
 impl_set_handler_fn!(PageFaultHandlerFunc);
 
-/// Represents the options field of an IDT entry.
-#[derive(Debug, Clone, Copy)]
-pub struct EntryOptions(u8);
+/// Represents the type of an IDT descriptor (called a gate).
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[repr(u8)]
+enum GateType {
+    TaskGate32 = 0b0101,
+    InterruptGate16 = 0b0110,
+    TrapGate16 = 0b0111,
+    InterruptGate32 = 0b1110,
+    TrapGate32 = 0b1111,
+}
+
+impl From<u8> for GateType {
+    fn from(ty: u8) -> GateType {
+        match ty {
+            0b0101 => GateType::TaskGate32,
+            0b0110 => GateType::InterruptGate16,
+            0b0111 => GateType::TrapGate16,
+            0b1110 => GateType::InterruptGate32,
+            0b1111 => GateType::TrapGate32,
+            _ => panic!("Invalid gate type {}", ty),
+        }
+    }
+}
+
+bitfield! {
+    #[derive(Clone, Copy)]
+    /// Represents the options field of an IDT entry.
+    pub struct EntryOptions(u8);
+    impl Debug;
+    /// Type of the interrupt handler. Its value determines the mechanism used
+    /// to trigger the handler.
+    into GateType, gate_type, _: 3, 0;
+    // Bit 4 is unused (0). OSDev lists it as "Storage Segment", but that name
+    // comes up nowhere in the Intel documentation.
+    into PrivilegeLevel, privilege_level, _: 6, 5;
+    is_present, set_is_present: 7;
+}
 
 impl EntryOptions {
     /// Creates a minimal options field with all the must-be-one bits set.
     fn minimal() -> Self {
-        let mut options = 0;
-        options.set_bits(1..4, 0b111); // 'must-be-one' bits
-        EntryOptions(options)
+        let mut options = EntryOptions(0);
+        options.set_gate_type(GateType::InterruptGate32);
+        options
+    }
+
+    fn set_gate_type(&mut self, gate_type: GateType) -> &mut Self {
+        self.0.set_bits(0..4, gate_type as u8);
+        self
+    }
+
+    /// Set the required privilege level (DPL) for invoking the handler.
+    /// If CPL < DPL, a general protection fault occurs.
+    pub fn set_privilege_level(&mut self, privlvl: PrivilegeLevel) -> &mut Self {
+        self.0.set_bits(5..7, privlvl as u8);
+        self
     }
 
     /// Set or reset the preset bit.
@@ -609,15 +707,6 @@ impl EntryOptions {
     /// interrupts are disabled on handler invocation.
     pub fn disable_interrupts(&mut self, disable: bool) -> &mut Self {
         self.0.set_bit(0, !disable);
-        self
-    }
-
-    /// Set the required privilege level (DPL) for invoking the handler. The DPL can be 0, 1, 2,
-    /// or 3, the default is 0. If CPL < DPL, a general protection fault occurs.
-    ///
-    /// This function panics for a DPL > 3.
-    pub fn set_privilege_level(&mut self, dpl: PrivilegeLevel) -> &mut Self {
-        self.0.set_bits(5..7, dpl as u8);
         self
     }
 }
