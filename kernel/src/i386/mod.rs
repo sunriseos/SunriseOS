@@ -228,6 +228,12 @@ pub enum PrivilegeLevel {
     Ring3 = 3,
 }
 
+impl From<u8> for PrivilegeLevel {
+    fn from(ring: u8) -> PrivilegeLevel {
+        PrivilegeLevel::from_u16(ring as u16)
+    }
+}
+
 impl PrivilegeLevel {
     /// Creates a `PrivilegeLevel` from a numeric value. The value must be in the range 0..4.
     ///
