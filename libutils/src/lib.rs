@@ -100,7 +100,7 @@ macro_rules! enum_with_val {
         impl ::core::fmt::Debug for $ident {
             fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
                 match self {
-                    $(&$ident::$variant => f.write_str(stringify!($ident)),)*
+                    $(&$ident::$variant => write!(f, "{}::{}", stringify!($ident), stringify!($variant)),)*
                     &$ident(v) => write!(f, "UNKNOWN({})", v),
                 }
             }

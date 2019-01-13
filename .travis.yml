@@ -1,6 +1,6 @@
 language: rust
 rust:
-- nightly
+- stable
 
 # Install grub-mkrescue
 addons:
@@ -11,8 +11,10 @@ addons:
 
 # Install cargo-make and rust-src rustup component
 before_install:
+- cargo install cargo-update || echo "cargo-update already installed"
+- cargo install cargo-travis --git "https://github.com/roblabla/cargo-travis" --rev "doc-upload-target" || echo "cargo-travis already installed"
 - cargo install cargo-make || echo "cargo-make already installed"
-- rustup component add rust-src || echo "rust-src already installed"
+- cargo install-update cargo-update cargo-make cargo-xbuild
 - rustup target install i686-unknown-linux-gnu || echo "target i686-unknown-linux-gnu already installed"
 
 script:
@@ -20,5 +22,12 @@ script:
 - cargo make iso-release
 - cargo make test
 - cargo make doc-full
+
+deploy:
+- provider: script
+  script: bash .travis/deploy.sh
+  skip_cleanup: true
+  on:
+    branch: master
 
 cache: cargo

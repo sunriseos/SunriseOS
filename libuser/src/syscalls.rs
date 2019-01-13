@@ -2,7 +2,7 @@
 
 use core::slice;
 use types::*;
-use kfs_libkern::nr;
+pub use kfs_libkern::nr;
 pub use kfs_libkern::{MemoryInfo, MemoryPermissions};
 use error::KernelError;
 

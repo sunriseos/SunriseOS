@@ -6,3 +6,14 @@ A microkernel based on Horizon/NX. Go to [switchbrew](https://switchbrew.org/) f
 
 - Syscalls: https://switchbrew.org/wiki/SVC
 - IPC: https://switchbrew.org/wiki/IPC_Marshalling
+
+## License
+
+KFS is distributed under the terms of either the MIT license or the Apache
+License (Version 2.0), at the user's choice.
+
+See [LICENSE-APACHE](LICENSE-APACHE) and [LICENSE-MIT](LICENSE-MIT).
+
+## Documentation
+
+[here](https://roblabla42.github.io/KFS/master/)

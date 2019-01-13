@@ -2,11 +2,12 @@
 name = "kfs-vi"
 version = "0.1.0"
 authors = ["roblabla <unfiltered@roblab.la>"]
+license = "Apache-2.0 OR MIT"
 
 [dependencies]
 kfs-libuser = { path = "../libuser" }
 kfs-libutils = { path = "../libutils" }
-spin = "0.4"
+spin = "0.5"
 hashmap_core = "0.1.9"
 
 [dependencies.lazy_static]

@@ -2,6 +2,7 @@
 authors = ["roblabla <unfiltered@roblab.la>", "orycterope <tvermeilh@gmail.com>"]
 name = "kfs-kernel"
 version = "0.1.0"
+license = "Apache-2.0 OR MIT"
 
 [package.metadata.cargo-xbuild]
 memcpy = true
@@ -11,6 +12,9 @@ sysroot_path = "target/sysroot"
 [features]
 #Will make the kernel panic if an exception is encountered. Useful for debugging.
 panic-on-exception = []
+#Make the kernel allow all syscalls and IRQ, but log unauthorized accesses.
+#IOPorts are unaffected.
+no-security-check = []
 
 [dependencies]
 kfs-libutils = { path = "../libutils" }
@@ -18,7 +22,7 @@ kfs-libkern = { path = "../libkern" }
 bit_field = "0.9.0"
 bitflags = "1.0"
 multiboot2 = { git = "https://github.com/roblabla/multiboot2-elf64" }
-spin = "0.4"
+spin = "0.5"
 static_assertions = "0.3.1"
 linked_list_allocator = "0.6.2"
 log = "0.4.6"

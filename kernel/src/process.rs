@@ -19,6 +19,9 @@ use mem::VirtualAddress;
 use failure::Backtrace;
 use frame_allocator::PhysicalMemRegion;
 
+mod capabilities;
+pub use self::capabilities::ProcessCapabilities;
+
 /// The struct representing a process. There's one for every process.
 ///
 /// It contains many information about the process :
@@ -45,17 +48,8 @@ pub struct ProcessStruct {
     /// Marks when the process is dying.
     pub killed:               AtomicBool,
 
-    /// A vector of readable IO ports.
-    ///
-    /// When task switching, the IOPB will be changed to take this into account.
-    // TODO: IOPorts in ProcessStruct is i386 specific.
-    // BODY: We currently store the ioport a process is allowed to access
-    // BODY: directly in its process struct. This sucks: it's an i386-specific
-    // BODY: construct, but I'm not quite sure where to put it.
-    // BODY:
-    // BODY: Maybe we should have a ArchProcess field containing various
-    // BODY: arch-specific fields?
-    pub ioports: Vec<u16>,
+    /// Permissions of this process.
+    pub capabilities:             ProcessCapabilities,
 
     /// An array of the created but not yet started threads.
     ///
@@ -397,8 +391,7 @@ impl ProcessStruct {
     ///
     /// Panics if max PID has been reached, which it shouldn't have since we're the first process.
     // todo: return an error instead of panicking
-    pub fn new(name: String, ioports: Vec<u16>) -> Arc<ProcessStruct> {
-
+    pub fn new(name: String, kacs: Option<&[u32]>) -> Result<Arc<ProcessStruct>, KernelError> {
         // allocate its memory space
         let pmemory = Mutex::new(ProcessMemory::default());
 
@@ -409,7 +402,13 @@ impl ProcessStruct {
             // todo: return an error instead of panicking
         }
 
-        Arc::new(
+        let capabilities = if let Some(kacs) = kacs {
+            ProcessCapabilities::parse_kcaps(kacs)?
+        } else {
+            ProcessCapabilities::default()
+        };
+
+        let p = Arc::new(
             ProcessStruct {
                 pid,
                 name,
@@ -418,9 +417,11 @@ impl ProcessStruct {
                 phandles: SpinLockIRQ::new(HandleTable::default()),
                 killed: AtomicBool::new(false),
                 thread_maternity: SpinLock::new(Vec::new()),
-                ioports,
+                capabilities
             }
-        )
+        );
+
+        Ok(p)
     }
 
     /// Creates the very first process at boot.
@@ -455,7 +456,7 @@ impl ProcessStruct {
                 phandles: SpinLockIRQ::new(HandleTable::default()),
                 killed: AtomicBool::new(false),
                 thread_maternity: SpinLock::new(Vec::new()),
-                ioports: Vec::new(),
+                capabilities: ProcessCapabilities::default(),
             }
         )
     }

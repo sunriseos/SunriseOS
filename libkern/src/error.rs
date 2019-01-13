@@ -45,7 +45,7 @@ enum_with_val! {
         Timeout = 117,
         /// The syscall was cancelled through cancel_synchronization.
         Canceled = 118,
-        /// A size was given exceeding the maximum allowed value.
+        /// A size or address was given exceeding the maximum allowed value.
         ExceedingMaximum = 119,
         // InvalidEnum = 120,
         /// The given entry does not exist.
@@ -56,7 +56,8 @@ enum_with_val! {
         // UnhandledInterrupt = 124,
         /// Attempted to start a process that was already started.
         ProcessAlreadyStarted = 125,
-        // ReservedValue = 126,
+        /// Attempted to use an unknown value, reserved for future use.
+        ReservedValue = 126,
         // InvalidHardwareBreakpoint = 127,
         // FatalException = 128,
         // LastThreadNotYours = 129,

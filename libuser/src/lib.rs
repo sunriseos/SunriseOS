@@ -33,7 +33,12 @@ extern crate kfs_libkern;
 extern crate failure;
 extern crate font_rs;
 extern crate hashmap_core;
+#[macro_use]
+extern crate log;
+#[macro_use]
+extern crate lazy_static;
 
+pub mod caps;
 pub mod syscalls;
 pub mod types;
 pub mod ipc;
@@ -43,6 +48,7 @@ pub mod error;
 pub mod allocator;
 pub mod terminal;
 pub mod window;
+mod log_impl;
 
 pub use kfs_libutils::io;
 
@@ -134,6 +140,7 @@ pub unsafe extern fn start() -> ! {
         fn main(argc: isize, argv: *const *const u8) -> i32;
     }
 
+    log_impl::init();
     let _ret = main(0, core::ptr::null());
     syscalls::exit_process();
 }
