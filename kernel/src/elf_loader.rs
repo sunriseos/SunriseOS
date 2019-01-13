@@ -86,19 +86,11 @@ impl<'a> Drop for MappedGrubModule<'a> {
 
 /// Gets the desired kernel access controls for a process based on the
 /// .kernel_caps section in its elf
-pub fn get_kacs<'a>(module: &'a MappedGrubModule) -> Option<&'a [u32]> {
+pub fn get_kacs<'a>(module: &'a MappedGrubModule) -> Option<&'a [u8]> {
     let elf = module.elf.as_ref().expect("Failed parsing multiboot module as elf");
 
-    if let Some(section) = elf.find_section_by_name(".kernel_caps") {
-        unsafe {
-            // Safety: FOR FUCK'S SAKE. When will rust get a function to safely
-            // cast between array of integers of different sizes >_>.
-            let section_data = section.raw_data(&elf);
-            Some(core::slice::from_raw_parts(section_data.as_ptr() as *const u32, section_data.len() / 4))
-        }
-    } else {
-        None
-    }
+    elf.find_section_by_name(".kernel_caps")
+        .map(|section| section.raw_data(&elf))
 }
 
 /// Loads the given kernel built-in into the given page table.

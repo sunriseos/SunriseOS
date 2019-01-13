@@ -391,7 +391,7 @@ impl ProcessStruct {
     ///
     /// Panics if max PID has been reached, which it shouldn't have since we're the first process.
     // todo: return an error instead of panicking
-    pub fn new(name: String, kacs: Option<&[u32]>) -> Result<Arc<ProcessStruct>, KernelError> {
+    pub fn new(name: String, kacs: Option<&[u8]>) -> Result<Arc<ProcessStruct>, KernelError> {
         // allocate its memory space
         let pmemory = Mutex::new(ProcessMemory::default());
 
