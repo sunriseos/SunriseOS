@@ -90,6 +90,17 @@ version = "0.1.9"
 source = "git+https://github.com/pepyakin/hashmap_core?rev=add-alloc-layout-extra#fbf5de0e4bb62d9b5bd30a25ac86580e85bf2b29"
 
 [[package]]
+name = "kfs-ahci"
+version = "0.1.0"
+dependencies = [
+ "kfs-libuser 0.1.0",
+ "kfs-libutils 0.1.0",
+ "lazy_static 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spin 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "kfs-bootstrap"
 version = "0.1.0"
 dependencies = [
