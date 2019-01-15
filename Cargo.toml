@@ -1,5 +1,5 @@
 [workspace]
-members = ["kernel", "bootstrap", "shell", "libuser", "clock", "sm", "vi", "libutils", "libkern"]
+members = ["kernel", "bootstrap", "shell", "libuser", "clock", "sm", "vi", "ahci", "libutils", "libkern"]
 
 [profile.release]
 debug = true
