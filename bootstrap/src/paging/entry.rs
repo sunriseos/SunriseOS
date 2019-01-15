@@ -53,7 +53,7 @@ impl Debug for Entry {
 
 impl Entry {
     /// Is the entry unused ?
-    pub fn is_unused(&self) -> bool { self.0 == 0 }
+    pub fn is_unused(self) -> bool { self.0 == 0 }
 
     /// Clear the entry
     pub fn set_unused(&mut self) -> PageState<Frame> {
@@ -69,13 +69,13 @@ impl Entry {
     }
 
     /// Is the entry a page guard ?
-    pub fn is_guard(&self) -> bool { self.flags().contains(EntryFlags::GUARD_PAGE) }
+    pub fn is_guard(self) -> bool { self.flags().contains(EntryFlags::GUARD_PAGE) }
 
     /// Get the current entry flags
-    pub fn flags(&self) -> EntryFlags { EntryFlags::from_bits_truncate(self.0) }
+    pub fn flags(self) -> EntryFlags { EntryFlags::from_bits_truncate(self.0) }
 
     /// Get the associated physical address, if available
-    pub fn pointed_frame(&self) -> PageState<PhysicalAddress> {
+    pub fn pointed_frame(self) -> PageState<PhysicalAddress> {
         if self.flags().contains(EntryFlags::PRESENT) {
             let frame_phys_addr = self.0 as usize & ENTRY_PHYS_ADDRESS_MASK;
             PageState::Present(PhysicalAddress(frame_phys_addr))

@@ -741,6 +741,12 @@ impl I386PageTablesSet for InactivePageTables {
     }
 }
 
+impl Default for InactivePageTables {
+    fn default() -> InactivePageTables {
+        InactivePageTables::new()
+    }
+}
+
 impl InactivePageTables {
     /// Creates a new set of inactive page tables
     pub fn new() -> InactivePageTables {
