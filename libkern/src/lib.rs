@@ -146,8 +146,9 @@ macro_rules! syscalls {
     (
         static $byname:ident;
         mod $byid:ident;
-        maxid = $maxid:expr;
-        $($name:ident = $id:expr),* $(,)*
+        $($name:ident = $id:expr,)*
+        ---
+        $max_svc_ident:ident = $max_svc_id:expr
     ) => {
         pub mod $byid {
             //! Syscall numbers
@@ -161,12 +162,15 @@ macro_rules! syscalls {
                 #[allow(non_upper_case_globals)]
                 pub const $name: usize = $id;
             )*
+
+            #[allow(non_upper_case_globals)]
+            pub const $max_svc_ident: usize = $max_svc_id;
         }
         lazy_static! {
             /// A table associating a syscall name string for every syscall
             /// number.
-            pub static ref $byname: [&'static str; $maxid] = {
-                let mut arr = ["Unknown"; $maxid];
+            pub static ref $byname: [&'static str; $max_svc_id + 1] = {
+                let mut arr = ["Unknown"; $max_svc_id + 1];
                 $(arr[$id] = stringify!($name);)*
                 arr
             };
@@ -177,7 +181,6 @@ macro_rules! syscalls {
 syscalls! {
     static SYSCALL_NAMES;
     mod nr;
-    maxid = 0x82;
     SetHeapSize = 0x01,
     SetMemoryPermission = 0x02,
     SetMemoryAttribute = 0x03,
@@ -299,6 +302,7 @@ syscalls! {
     MapFramebuffer = 0x80,
     StartProcessEntrypoint = 0x81,
 
+    ---
     // Add SVCs before this line.
     MaxSvc = 0x81
 }
