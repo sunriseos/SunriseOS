@@ -39,12 +39,13 @@ use core::marker::PhantomData;
 use alloc::prelude::*;
 use spin::Mutex;
 use core::ops::{Deref, DerefMut, Index};
+use core::fmt::{self, Debug};
 use error::Error;
 
 /// A handle to a waitable object.
-pub trait IWaitable {
+pub trait IWaitable: Debug {
     /// Gets the handleref for use in the `wait_synchronization` call.
-    fn get_handle<'a>(&'a self) -> HandleRef<'a>;
+    fn get_handle(&self) -> HandleRef<'_>;
     /// Function the manager calls when this object gets signaled.
     ///
     /// Takes the manager as a parameter, allowing the handler to add new handles
@@ -57,6 +58,7 @@ pub trait IWaitable {
 }
 
 /// The event loop manager. Waits on the waitable objects added to it.
+#[derive(Debug, Default)]
 pub struct WaitableManager {
     to_add_waitables: Mutex<Vec<Box<IWaitable>>>
 }
@@ -116,6 +118,7 @@ pub trait Object {
 }
 
 #[repr(C, align(16))]
+#[derive(Debug)]
 struct Align16<T>(T);
 impl<T> Deref for Align16<T> {
     type Target = T;
@@ -146,6 +149,16 @@ pub struct SessionWrapper<T: Object> {
     buf: Align16<[u8; 0x100]>
 }
 
+impl<T: Object + Debug> Debug for SessionWrapper<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("SessionWrapper")
+            .field("handle", &self.handle)
+            .field("object", &self.object)
+            .field("buf", &&self.buf[..])
+            .finish()
+    }
+}
+
 impl<T: Object> SessionWrapper<T> {
     /// Create a new SessionWrapper from an open ServerSession and a backing
     /// Object.
@@ -158,7 +171,7 @@ impl<T: Object> SessionWrapper<T> {
     }
 }
 
-impl<T: Object> IWaitable for SessionWrapper<T> {
+impl<T: Object + Debug> IWaitable for SessionWrapper<T> {
     fn get_handle<'a>(&'a self) -> HandleRef<'a> {
         self.handle.0.as_ref()
     }
@@ -182,12 +195,21 @@ impl<T: Object> IWaitable for SessionWrapper<T> {
 /// A wrapper around a Server Port that implements the IWaitable trait. Waits for
 /// connection requests, and creates a new SessionWrapper around the incoming
 /// connections, which gets registered on the WaitableManager.
-pub struct PortHandler<T: Object + Default> {
+pub struct PortHandler<T: Object + Default + Debug> {
     handle: ServerPort,
     phantom: PhantomData<T>
 }
 
-impl<T: Object + Default + 'static> IWaitable for PortHandler<T> {
+impl<T: Object + Default + Debug> Debug for PortHandler<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("PortHandler")
+            .field("handle", &self.handle)
+            .field("phantom", &self.phantom)
+            .finish()
+    }
+}
+
+impl<T: Object + Default + Debug + 'static> IWaitable for PortHandler<T> {
     fn get_handle<'a>(&'a self) -> HandleRef<'a> {
         self.handle.0.as_ref()
     }
@@ -213,7 +235,7 @@ fn encode_bytes(s: &str) -> u64 {
         | (*s.get(6).unwrap_or(&0) as u64) << 48 | (*s.get(7).unwrap_or(&0) as u64) << 56
 }
 
-impl<T: Object + Default> PortHandler<T> {
+impl<T: Object + Default + Debug> PortHandler<T> {
     /// Registers a new PortHandler of the given name to the sm: service.
     pub fn new(server_name: &str) -> Result<PortHandler<T>, Error> {
         use sm::IUserInterface;

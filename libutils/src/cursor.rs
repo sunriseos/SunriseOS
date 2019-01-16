@@ -1,3 +1,14 @@
+//! Simple cursor
+//!
+//! This module contains a very simple cursor, similar to std::io's, but without
+//! relying on the io module. It also offers additional convenience functions to
+//! make writing PODs easy.
+//!
+//! If std::io is ever ported to core::io, this module can disappear.
+//!
+//! - https://github.com/rust-lang/rust/issues/48331
+//! - https://github.com/rust-lang-nursery/portability-wg/issues/12
+
 use byteorder::ByteOrder;
 use core::mem::{self, size_of};
 use core::slice;
@@ -10,8 +21,11 @@ use core::slice;
 /// A minimal Cursor for writing, for use in libcore.
 ///
 /// See https://doc.rust-lang.org/std/io/struct.Cursor.html
+#[derive(Debug)]
 pub struct CursorWrite<'a> {
+    /// Data backing this cursor.
     data: &'a mut [u8],
+    /// Position of the cursor in the data.
     pos: usize
 }
 
@@ -75,9 +89,12 @@ impl<'a> CursorWrite<'a> {
 /// A minimal Cursor for writing, for use in libcore.
 ///
 /// See https://doc.rust-lang.org/std/io/struct.Cursor.html
+#[derive(Debug)]
 pub struct CursorRead<'a> {
+    /// Data backing this cursor.
     data: &'a [u8],
     // Let's cheat
+    /// Position of the cursor in the data.
     pos: ::core::cell::Cell<usize>
 }
 

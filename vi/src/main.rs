@@ -44,7 +44,7 @@ use libuser::syscalls::MemoryPermissions;
 use kfs_libutils::align_up;
 
 /// Entry point interface.
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct ViInterface;
 
 object! {
@@ -179,6 +179,7 @@ impl Buffer {
 }
 
 /// IPC Window object
+#[derive(Debug)]
 struct IBuffer {
     buffer: Arc<Buffer>,
 }

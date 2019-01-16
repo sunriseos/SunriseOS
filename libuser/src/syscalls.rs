@@ -6,10 +6,14 @@ pub use kfs_libkern::nr;
 pub use kfs_libkern::{MemoryInfo, MemoryPermissions};
 use error::KernelError;
 
-#[cfg(all(target_arch = "x86", not(test)))]
-global_asm!("
+// Assembly blob can't get documented, but clippy requires it.
+#[allow(clippy::missing_docs_in_private_items)]
+mod syscall_inner {
+    #[cfg(all(target_arch = "x86", not(test)))]
+    global_asm!("
 .intel_syntax noprefix
 .global syscall_inner
+// Call the syscall using arch-specific syscall ABI.
 syscall_inner:
     push ebp
     mov  ebp, esp
@@ -49,8 +53,13 @@ syscall_inner:
     pop ebp
     ret
 ");
+}
 
+/// Register backup structure. The syscall_inner will pop the registers from this
+/// structure before jumping into the kernel, and then update the structure with
+/// the registers set by the syscall.
 #[repr(C)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct Registers {
     eax: usize,
     ebx: usize,
@@ -65,6 +74,7 @@ extern {
     fn syscall_inner(registers: &mut Registers);
 }
 
+/// Generic syscall function.
 unsafe fn syscall(nr: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize, arg5: usize, arg6: usize) -> Result<(usize, usize, usize, usize), KernelError> {
     let mut registers = Registers {
         eax: nr,
@@ -135,9 +145,9 @@ pub fn exit_process() -> ! {
 }
 
 /// Creates a thread in the current process.
-pub fn create_thread(ip: fn() -> !, _context: usize, sp: *const u8, _priority: u32, _processor_id: u32) -> Result<Thread, KernelError> {
+pub fn create_thread(ip: fn() -> !, context: usize, sp: *const u8, priority: u32, processor_id: u32) -> Result<Thread, KernelError> {
     unsafe {
-        let (out_handle, ..) = syscall(nr::CreateThread, ip as usize, _context, sp as _, _priority as _, _processor_id as _, 0)?;
+        let (out_handle, ..) = syscall(nr::CreateThread, ip as usize, context, sp as _, priority as _, processor_id as _, 0)?;
         Ok(Thread(Handle::new(out_handle as _)))
     }
 }

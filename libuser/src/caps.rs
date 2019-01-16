@@ -134,6 +134,7 @@ macro_rules! capabilities {
 
 /// Create a kernel flag capability. Specifies the lowest/highest priority this
 /// process is allowed to take, and which CPUs it is allowed to access.
+#[allow(clippy::cast_lossless)] // Can't use From::from in const fn
 pub const fn kernel_flags(lowest_prio: u32, highest_prio: u32, lowest_cpuid: u8, highest_cpuid: u8) -> u32 {
     0b111 | ((lowest_prio & 0x3F) << 4) | ((highest_prio & 0x3F) << 10)
         | ((lowest_cpuid as u32) << 16) | ((highest_cpuid as u32) << 24)
@@ -150,6 +151,7 @@ pub const fn map_normal_page(page: u32) -> u32 {
 }
 
 /// Allows the process to use the given IO Ports directly (through the in/out).
+#[allow(clippy::cast_lossless)] // Can't use From::from in const fn
 pub const fn ioport(ioport: u16) -> u32 {
    0b1111111111 | ((ioport as u32) << 11)
 }
@@ -157,6 +159,7 @@ pub const fn ioport(ioport: u16) -> u32 {
 /// Allows the process to create an IRQEvent for those IRQs. Each IRQ should be
 /// under or equal to 0xFF, or equal to 0x3FF, in which case the IRQ will be
 /// ignored.
+#[allow(clippy::cast_lossless)] // Can't use From::from in const fn
 pub const fn irq_pair(irq1: u16, irq2: u16) -> u32 {
     0b11111111111 | ((irq1 as u32 & 0x3FF) << 12) | ((irq2 as u32 & 0x3FF) << 22)
 }
@@ -180,6 +183,7 @@ pub const fn handle_table_size(size: u32) -> u32 {
 
 /// Declares whether this application can be debugged (e.g. it allows the use
 /// of the debug syscalls on it), and whether it can debug other processes.
+#[allow(clippy::cast_lossless)] // Can't use From::from in const fn
 pub const fn debug_flags(can_be_debugged: bool, can_debug_others: bool) -> u32 {
     0b1111111111111111 | ((can_be_debugged as u32) << 17) | ((can_debug_others as u32) << 18)
 }
