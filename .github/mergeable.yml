@@ -4,4 +4,4 @@ mergeable:
     approvals:
       min: 2
       except:
-        label: `^dependencies$`
+        label: '^dependencies$'
