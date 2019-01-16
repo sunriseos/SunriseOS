@@ -21,6 +21,9 @@ script = ["cp linker-scripts/userspace.ld    link.T"]
 [tasks.install-rust-src]
 install_crate = { rustup_component_name = "rust-src" }
 
+[tasks.install-mkisofs-rs]
+install_crate = "mkisofs-rs"
+
 [tasks.bootstrap]
 workspace = false
 description = "Compiles the i386 bootstrap for debug"
@@ -142,7 +145,7 @@ cp target/i386-unknown-none/debug/kfs-clock     isofiles/boot/
 cp target/i386-unknown-none/debug/kfs-sm        isofiles/boot/
 cp target/i386-unknown-none/debug/kfs-vi        isofiles/boot/
 cp target/i386-unknown-none/debug/kfs-ahci      isofiles/boot/
-grub-mkrescue -o os.iso isofiles
+mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
 '''
 ]
 
@@ -159,7 +162,7 @@ cp target/i386-unknown-none/release/kfs-clock     isofiles/boot/
 cp target/i386-unknown-none/release/kfs-sm        isofiles/boot/
 cp target/i386-unknown-none/release/kfs-vi        isofiles/boot/
 cp target/i386-unknown-none/release/kfs-ahci      isofiles/boot/
-grub-mkrescue -o os.iso isofiles
+mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
 '''
 ]
 
