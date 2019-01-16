@@ -2,11 +2,9 @@ language: rust
 rust:
 - stable
 
-# Install grub-mkrescue
 addons:
   apt:
     packages:
-    - grub-common
     - gcc-multilib
 
 # Install cargo-make and rust-src rustup component

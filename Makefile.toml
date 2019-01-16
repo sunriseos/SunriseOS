@@ -22,7 +22,7 @@ script = ["cp linker-scripts/userspace.ld    link.T"]
 install_crate = { rustup_component_name = "rust-src" }
 
 [tasks.install-mkisofs-rs]
-install_crate = "mkisofs-rs"
+install_crate = { crate_name = "mkisofs-rs", binary = "mkisofs-rs", test_arg = "--help" }
 
 [tasks.bootstrap]
 workspace = false
@@ -135,7 +135,7 @@ dependencies = ["shell-release", "clock-release", "sm-release", "vi-release", "a
 [tasks.iso]
 workspace = false
 description = "Creates a bootable ISO containing the kernel and grub."
-dependencies = ["bootstrap", "kernel", "userspace"]
+dependencies = ["bootstrap", "kernel", "userspace", "install-mkisofs-rs"]
 script = [
 '''
 cp target/i386-unknown-none/debug/kfs-bootstrap isofiles/boot/
@@ -152,7 +152,7 @@ mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltori
 [tasks.iso-release]
 workspace = false
 description = "Creates a bootable ISO containing the kernel and grub."
-dependencies = ["bootstrap-release", "kernel-release", "userspace-release"]
+dependencies = ["bootstrap-release", "kernel-release", "userspace-release", "install-mkisofs-rs"]
 script = [
 '''
 cp target/i386-unknown-none/release/kfs-bootstrap isofiles/boot/
