@@ -48,7 +48,7 @@ fn map_framebuffer() -> Result<(usize, usize, usize, usize), UserspaceError> {
                                 * tag.framebuffer_dimensions().0 as usize
                                 * tag.framebuffer_dimensions().1 as usize / 8;
     let frame_buffer_phys_region = unsafe {
-        PhysicalMemRegion::on_fixed_mmio(PhysicalAddress(tag.framebuffer_addr()), framebuffer_size)
+        PhysicalMemRegion::on_fixed_mmio(PhysicalAddress(tag.framebuffer_addr()), framebuffer_size)?
     };
 
     let process = get_current_process();

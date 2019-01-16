@@ -4,14 +4,15 @@
 
 use super::{FrameAllocator, FrameAllocatorTraitPrivate};
 use crate::paging::PAGE_SIZE;
-use crate::mem::PhysicalAddress;
-use crate::utils::{align_down, div_ceil, check_aligned, Splittable};
+use crate::mem::{PhysicalAddress, VirtualAddress};
+use crate::utils::{div_ceil, check_aligned, check_nonzero_length, Splittable};
 use core::ops::Range;
 use core::iter::StepBy;
 use core::fmt::{Formatter, Error, Debug};
 use core::marker::PhantomData;
 use crate::error::KernelError;
 use alloc::vec::Vec;
+use failure::Backtrace;
 
 /// A span of adjacent physical frames. A frame is [PAGE_SIZE].
 ///
@@ -45,16 +46,27 @@ impl PhysicalMemRegion {
     /// On drop the region won't be given back to the [FrameAllocator],
     /// and thous stay marked as reserved.
     ///
-    /// # Panic
+    /// # Error
     ///
-    /// * Panics if any of the frames in this span wasn't marked as reserved in
-    /// the [FrameAllocator], as it could had mistakenly given it as regular ram.
-    pub unsafe fn on_fixed_mmio(start_addr: PhysicalAddress, len: usize) -> Self {
-        assert!(FrameAllocator::check_is_reserved(start_addr, len));
-        PhysicalMemRegion {
-            start_addr: align_down(start_addr.addr(), PAGE_SIZE),
-            frames: div_ceil(len, PAGE_SIZE),
-            should_free_on_drop: false
+    /// * InvalidAddress:
+    ///     * `address` is not PAGE_SIZE aligned.
+    ///     * One or more of the frames in this span wasn't marked as reserved in
+    ///       the [FrameAllocator], as it could had mistakenly given it as regular RAM.
+    /// * InvalidLength:
+    ///     * `length` is not PAGE_SIZE aligned.
+    ///     * `length` is zero.
+    pub unsafe fn on_fixed_mmio(address: PhysicalAddress, length: usize) -> Result<Self, KernelError> {
+        check_nonzero_length(length)?;
+        check_aligned(length, PAGE_SIZE)?;
+        check_aligned(address.addr(), PAGE_SIZE)?;
+        if !FrameAllocator::check_is_reserved(address, length) {
+            Err(KernelError::InvalidAddress { address: VirtualAddress(address.addr()), length, backtrace: Backtrace::new() })
+        } else {
+            Ok(PhysicalMemRegion {
+                start_addr: address.addr(),
+                frames: div_ceil(length, PAGE_SIZE),
+                should_free_on_drop: false
+            })
         }
     }
 
