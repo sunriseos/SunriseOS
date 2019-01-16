@@ -1,0 +1,7 @@
+mergeable:
+  pull_requests:
+    # Minimum of 5 approvals is needed.
+    approvals:
+      min: 2
+      except:
+        label: `^dependencies$`
