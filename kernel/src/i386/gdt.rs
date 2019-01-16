@@ -244,7 +244,7 @@ impl DescriptorTable {
 
         let ptr = DescriptorTablePointer {
             base: self.table.as_ptr() as u32,
-            limit: (self.table.len() * size_of::<DescriptorTableEntry>() - 1) as u16,
+            limit: (self.table.len() * size_of::<DescriptorTableEntry>()) as u16,
         };
 
         let oldptr = sgdt();
