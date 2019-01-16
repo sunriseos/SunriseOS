@@ -397,3 +397,21 @@ pub fn map_framebuffer() -> Result<(&'static mut [u8], usize, usize, usize), Ker
         Ok((slice::from_raw_parts_mut(addr as *mut u8, framebuffer_size), width, height, bpp))
     }
 }
+
+/// Maps a physical region in the address space of the process.
+///
+/// # Errors
+///
+/// * InvalidAddress:
+///     * `virtual_address` is already occupied.
+///     * `virtual_address` is not PAGE_SIZE aligned.
+///     * `physical_address` points to a physical region in DRAM (it's not MMIO).
+/// * InvalidLength:
+///     * `length` is not PAGE_SIZE aligned.
+///     * `length` is zero.
+pub fn map_mmio_region(physical_address: usize, size: usize, virtual_address: usize, writable: bool) -> Result<(), KernelError> {
+    unsafe {
+        syscall(nr::MapMmioRegion, physical_address, size, virtual_address, writable as usize, 0, 0)?;
+        Ok(())
+    }
+}

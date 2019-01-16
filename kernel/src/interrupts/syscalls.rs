@@ -483,6 +483,29 @@ fn create_session(_is_light: bool, _unk: usize) -> Result<(usize, usize), Usersp
     Ok((serverhnd as _, clienthnd as _))
 }
 
+/// Maps a physical region in the address space of the process.
+///
+/// # Returns
+///
+/// The virtual address where it was mapped.
+///
+/// # Errors
+///
+/// * InvalidAddress:
+///     * `virtual_address` is already occupied.
+///     * `virtual_address` is not PAGE_SIZE aligned.
+///     * `physical_address` points to a physical region in DRAM (it's not MMIO).
+/// * InvalidLength:
+///     * `length` is not PAGE_SIZE aligned.
+///     * `length` is zero.
+pub fn map_mmio_region(physical_address: usize, size: usize, virtual_address: usize, writable: bool) -> Result<(), UserspaceError> {
+    let region = unsafe { PhysicalMemRegion::on_fixed_mmio(PhysicalAddress(physical_address), size)? };
+    let curproc = scheduler::get_current_process();
+    let mut mem = curproc.pmemory.lock();
+    mem.map_phys_region_to(region, VirtualAddress(virtual_address), if writable { MappingAccessRights::u_rw() } else { MappingAccessRights::u_r() })?;
+    Ok(())
+}
+
 impl Registers {
     /// Update the Registers with the passed result.
     fn apply0(&mut self, ret: Result<(), UserspaceError>) {
@@ -614,6 +637,7 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
 
         // KFS extensions
         (true, nr::MapFramebuffer) => registers.apply4(map_framebuffer()),
+        (true, nr::MapMmioRegion) => registers.apply0(map_mmio_region(x0, x1, x2, x3 != 0)),
 
         // Unknown/unauthorized syscall.
         (false, _) => {

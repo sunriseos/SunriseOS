@@ -301,8 +301,9 @@ syscalls! {
     // KFS Extensions
     MapFramebuffer = 0x80,
     StartProcessEntrypoint = 0x81,
+    MapMmioRegion = 0x82,
 
     ---
     // Add SVCs before this line.
-    MaxSvc = 0x81
+    MaxSvc = 0x82
 }
