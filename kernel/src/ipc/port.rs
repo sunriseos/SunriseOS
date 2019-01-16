@@ -137,7 +137,7 @@ impl ServerPort {
             let _ = event::wait(Some(self as &dyn Waitable))?;
 
             // Acquire the connection.
-            while let Some(incoming) = self.0.incoming_connections.lock().pop() {
+            if let Some(incoming) = self.0.incoming_connections.lock().pop() {
                 let mut lock = incoming.session.lock();
 
                 // Check if it was already handled by another accepter!

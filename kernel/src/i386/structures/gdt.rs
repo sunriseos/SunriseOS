@@ -30,7 +30,7 @@ impl SegmentSelector {
 
     /// Returns the requested privilege level.
     pub fn rpl(self) -> PrivilegeLevel {
-        PrivilegeLevel::from_u16(self.0.get_bits(0..2))
+        PrivilegeLevel::from_u8(self.0.get_bits(0..2) as u8)
     }
 
     /// If true, this descriptor is backed by the LDT. If false, it is backed by

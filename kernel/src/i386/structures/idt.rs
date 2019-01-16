@@ -435,7 +435,7 @@ impl Idt {
             limit: (size_of::<Self>() - 1) as u16,
         };
 
-        unsafe { lidt(&ptr) };
+        unsafe { lidt(ptr) };
     }
 }
 
@@ -499,11 +499,25 @@ impl IndexMut<usize> for Idt {
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub struct IdtEntry<F> {
+    /// Low word of the interrupt handler's virtual address. In an interrupt/trap
+    /// gate, the processor will far jump to this pointer when the interrupt
+    /// occurs. It is unused for task gates.
     pointer_low: u16,
+    /// A segment selector.
+    ///
+    /// - For interrupt/trap gates, the selector will be used when far jumping to
+    ///   the handler. It should be a selector to a code segment.
+    /// - For task gates, the selector will be used to perform hardware task
+    ///   switching. It should be a selector to a TSS segment.
     gdt_selector: SegmentSelector,
+    /// Unused.
     zero: u8,
+    /// Option bitfield.
     options: EntryOptions,
+    /// High word of the interrupt handler's virtual address.
     pointer_high: u16,
+    /// Type-safety guarantee: ensure that the function handler has the correct
+    /// amount of arguments, return types, etc...
     phantom: PhantomData<F>,
 }
 
@@ -519,8 +533,10 @@ impl<F> fmt::Debug for IdtEntry<F> {
                 GateType::InterruptGate32 => "IdtEntry::InterruptGate32",
                 GateType::TrapGate32 => "IdtEntry::TrapGate32",
             };
+            let pointer = (u32::from(self.pointer_high) << 16) | u32::from(self.pointer_low);
+            let pointer = VirtualAddress(pointer as usize);
             f.debug_struct(name)
-                .field("pointer", &(((self.pointer_high as u32) << 16) | self.pointer_low as u32))
+                .field("pointer", &pointer)
                 .field("gdt_selector", &self.gdt_selector)
                 .field("privilege_level", &self.options.privilege_level())
                 .finish()
@@ -633,8 +649,13 @@ impl_set_handler_fn!(HandlerFuncWithErrCode);
 impl_set_handler_fn!(PageFaultHandlerFunc);
 
 /// Represents the type of an IDT descriptor (called a gate).
+///
+/// Technically, this represents a subset of [SystemDescriptorType].
+///
+/// [SystemDescriptorType]: kfs_kernel::i386::gdt::SystemDescriptorType
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
+#[allow(clippy::missing_docs_in_private_items)]
 enum GateType {
     TaskGate32 = 0b0101,
     InterruptGate16 = 0b0110,
@@ -678,6 +699,7 @@ impl EntryOptions {
         options
     }
 
+    /// Set the kind of gate this IdtEntry represents.
     fn set_gate_type(&mut self, gate_type: GateType) -> &mut Self {
         self.0.set_bits(0..4, gate_type as u8);
         self
@@ -733,6 +755,7 @@ pub struct ExceptionStackFrame {
 
 impl fmt::Debug for ExceptionStackFrame {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        #[allow(clippy::missing_docs_in_private_items)]
         struct Hex(u32);
         impl fmt::Debug for Hex {
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

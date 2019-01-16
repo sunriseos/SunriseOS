@@ -205,7 +205,7 @@ pub fn schedule() {
         fn lock(&self) { /* no-op */ }
     }
 
-    let _ : () = internal_schedule(&NoopLock, false);
+    internal_schedule(&NoopLock, false);
 }
 
 /// Parses the queue to find the first unlocked process.

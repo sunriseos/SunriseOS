@@ -1,36 +1,34 @@
+//! IRQ Handling
+//!
+//! IRQs are asynchronous interruptions coming from an external source,
+//! generally a device. Each platform has its own IRQ handlers. The API exposed
+//! by this module consists solely of an IRQ_HANDLERS array containing function
+//! pointers for all the IRQs, redirecting them to the generic IRQ management
+//! defined in the event module. It is expected that these pointer will then be
+//! inserted in an architecture-specific interrupt table (such as i386's IDT).
+
 use i386::structures::idt::ExceptionStackFrame;
 use devices::pic;
 
-fn acknowledge_irq(irq: u8) {
-    pic::get().acknowledge(irq)
-}
-
+#[allow(clippy::missing_docs_in_private_items)]
 extern "x86-interrupt" fn timer_handler(_stack_frame: &mut ExceptionStackFrame) {
-    // TODO: Reroute this into a generic interrupt system?
-    acknowledge_irq(0);
-}
-
-#[allow(unused)]
-macro_rules! irq_handler_none {
-    ($irq:expr, $name:ident) => {{
-        extern "x86-interrupt" fn $name(stack_frame: &mut ExceptionStackFrame) {
-            // TODO: Reroute this into a generic interrupt system?
-            acknowledge_irq($irq);
-        }
-        $name
-    }}
+    // TODO: Feed the timer handler into a kernel preemption handler.
+    pic::get().acknowledge(0);
 }
 
 macro_rules! irq_handler {
     ($irq:expr, $name:ident) => {{
+        #[allow(clippy::missing_docs_in_private_items)]
         extern "x86-interrupt" fn $name(_stack_frame: &mut ExceptionStackFrame) {
-            acknowledge_irq($irq);
+            pic::get().acknowledge($irq);
             ::event::dispatch_event($irq);
         }
         $name
     }}
 }
 
+/// Array of interrupt handlers. The position in the array defines the IRQ this
+/// handler is targeting. See the module documentation for more information.
 pub static IRQ_HANDLERS : [extern "x86-interrupt" fn(stack_frame: &mut ExceptionStackFrame); 16] = [
     irq_handler!(0, timer_handler),
     irq_handler!(1, keyboard_handler),

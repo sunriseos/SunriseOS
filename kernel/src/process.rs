@@ -236,7 +236,9 @@ impl Handle {
 /// function.
 #[derive(Debug)]
 pub struct HandleTable {
+    /// Internal mapping from a handle number to a Kernel Object.
     table: BTreeMap<u32, Arc<Handle>>,
+    /// The next handle's ID.
     counter: u32
 }
 
@@ -261,6 +263,7 @@ impl HandleTable {
     // BODY: handle will not get reused.
     /// Add a handle to the handle table, returning the userspace handle number
     /// associated to the given handle.
+    #[allow(clippy::map_entry)]
     pub fn add_handle(&mut self, handle: Arc<Handle>) -> u32 {
         loop {
             let handlenum = self.counter;
@@ -334,6 +337,7 @@ impl Debug for ThreadStateAtomic {
 }
 
 #[allow(missing_docs)]
+#[allow(clippy::missing_docs_in_private_items)]
 impl ThreadStateAtomic {
     pub fn new(state: ThreadState) -> ThreadStateAtomic {
         ThreadStateAtomic(AtomicUsize::new(state as usize))

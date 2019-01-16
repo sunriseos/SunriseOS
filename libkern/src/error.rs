@@ -86,7 +86,7 @@ impl KernelError {
     }
 
     /// Gets the underlying KernelError description.
-    pub fn description(&self) -> u32 {
+    pub fn description(self) -> u32 {
         self.0
     }
 }

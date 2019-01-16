@@ -32,18 +32,18 @@ pub mod instructions {
 
         /// A struct describing a pointer to a descriptor table (GDT / IDT).
         /// This is in a format suitable for giving to 'lgdt' or 'lidt'.
-        #[derive(Debug)]
+        #[derive(Clone, Copy, Debug)]
         #[repr(C, packed)]
         pub struct DescriptorTablePointer {
             /// Size of the DT.
             pub limit: u16,
-            /// Pointer to the memory region containing the DT.
+            /// Physical address of the memory region containing the DT.
             pub base: u32,
         }
 
         /// Load GDT table.
-        pub unsafe fn lgdt(gdt: &DescriptorTablePointer) {
-            asm!("lgdt ($0)" :: "r" (gdt) : "memory" : "volatile");
+        pub unsafe fn lgdt(gdt: DescriptorTablePointer) {
+            asm!("lgdt ($0)" :: "r" (&gdt) : "memory" : "volatile");
         }
 
         /// Store GDT table.
@@ -73,8 +73,8 @@ pub mod instructions {
         }
 
         /// Load IDT table.
-        pub unsafe fn lidt(idt: &DescriptorTablePointer) {
-            asm!("lidt ($0)" :: "r" (idt) : "memory");
+        pub unsafe fn lidt(idt: DescriptorTablePointer) {
+            asm!("lidt ($0)" :: "r" (&idt) : "memory");
         }
     }
 
@@ -230,7 +230,7 @@ pub enum PrivilegeLevel {
 
 impl From<u8> for PrivilegeLevel {
     fn from(ring: u8) -> PrivilegeLevel {
-        PrivilegeLevel::from_u16(ring as u16)
+        PrivilegeLevel::from_u8(ring)
     }
 }
 
@@ -238,7 +238,7 @@ impl PrivilegeLevel {
     /// Creates a `PrivilegeLevel` from a numeric value. The value must be in the range 0..4.
     ///
     /// This function panics if the passed value is >3.
-    pub fn from_u16(value: u16) -> PrivilegeLevel {
+    pub fn from_u8(value: u8) -> PrivilegeLevel {
         match value {
             0 => PrivilegeLevel::Ring0,
             1 => PrivilegeLevel::Ring1,
@@ -417,6 +417,7 @@ impl TssStruct {
 ///   begins, if part of the 104 bytes is not physically contiguous, the
 ///   processor will access incorrect information without generating a
 ///   page-fault exception.
+#[derive(Debug)]
 #[repr(C, align(4096))]
 pub struct AlignedTssStruct(TssStruct);
 

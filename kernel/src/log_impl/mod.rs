@@ -1,5 +1,5 @@
 //! A simple log implementation based on env_logger
-
+#![allow(clippy::missing_docs_in_private_items)]
 mod filter;
 
 use log::{self, Log, Metadata, Record, LevelFilter};

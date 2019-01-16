@@ -17,6 +17,7 @@ use mem::VirtualAddress;
 pub struct Allocator(Once<SpinLock<Heap>>);
 
 // 512MB. Should be a multiple of PAGE_SIZE.
+/// Maximum size of our Kernel Heap.
 const RESERVED_HEAP_SIZE : usize = 512 * 1024 * 1024;
 
 impl Allocator {
@@ -44,6 +45,7 @@ impl Allocator {
         }
     }
 
+    /// Create a new Heap of `RESERVED_HEAP_SIZE` bytes.
     fn init() -> SpinLock<Heap> {
         let mut active_pages = get_kernel_memory();
         // Reserve 512MB of virtual memory for heap space. Don't actually allocate it.
