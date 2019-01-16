@@ -5,3 +5,4 @@ mergeable:
       min: 2
       except:
         label: `^dependencies$`
+
