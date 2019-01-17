@@ -27,12 +27,15 @@ bitflags! {
         const INIT      = 0x10;
     }
 }
+
+/// ICW4: 8086/88 (MCS-80/85) mode.
 const ICW4_8086: u8     = 0x01;       /* 8086/88 (MCS-80/85) mode */
 //const icw4_auto         = 0x02;       /* Auto (normal) EOI */
 //const icw4_buf_slave    = 0x08;       /* Buffered mode/slave */
 //const icw4_buf_master   = 0x0C;       /* Buffered mode/master */
 //const icw4_sfnm         = 0x10;       /* Special fully nested (not) */
 
+/// The PIC manager.
 static PIC: Once<Pic> = Once::new();
 
 /// Acquires a reference to the PIC, initializing it if it wasn't already setup.
@@ -52,14 +55,18 @@ pub fn init() {
 /// A single PIC8259 device.
 #[derive(Debug)]
 struct InternalPic {
+    /// The PIC's COMMAND IO port.
     port_cmd: Pio<u8>,
+    /// The PIC's DATA IO port.
     port_data: Pio<u8>
 }
 
 /// A master/slave PIC setup, as commonly found on IBM PCs.
 #[derive(Debug)]
 pub struct Pic {
+    /// The master PIC.
     master: SpinLockIRQ<InternalPic>,
+    /// The slave PIC, cascaded on line 2 of `.master`
     slave: SpinLockIRQ<InternalPic>,
 }
 

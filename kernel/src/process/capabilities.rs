@@ -98,6 +98,7 @@ const DEBUG_FLAGS: u32 = 16;
 /// IOPorts the process is allowed to talk to
 const IO_PORTS_ALLOWED: u32 = 10;
 
+/// The highest defined svc.
 const MAX_SVC: usize = ::kfs_libkern::nr::MaxSvc;
 
 /// Mask of kernel capabilities that cannot appear twice in a KCAP array.

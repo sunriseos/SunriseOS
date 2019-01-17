@@ -72,7 +72,7 @@ fn frame_to_addr(frame: usize) -> usize {
     frame << FRAME_BASE_LOG
 }
 
-
+/// A frame allocator backed up by a giant bitmap.
 pub struct FrameAllocatori386 {
     /// A big bitmap denoting for every frame if it is free or not
     ///
@@ -85,7 +85,9 @@ pub struct FrameAllocatori386 {
     initialized: bool
 }
 
+/// In the the bitmap, 1 means the frame is free.
 const FRAME_FREE:     bool = true;
+/// In the the bitmap, 0 means the frame is occupied.
 const FRAME_OCCUPIED: bool = false;
 
 /// A physical memory manger to allocate and free memory frames
@@ -94,6 +96,7 @@ const FRAME_OCCUPIED: bool = false;
 static FRAME_ALLOCATOR : SpinLock<FrameAllocatori386> = SpinLock::new(FrameAllocatori386::new());
 
 impl FrameAllocatori386 {
+    /// Called to initialize the [FRAME_ALLOCATOR] global.
     pub const fn new() -> Self {
         FrameAllocatori386 {
             // 0 is allocated/reserved

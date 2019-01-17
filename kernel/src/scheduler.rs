@@ -200,6 +200,7 @@ pub unsafe fn create_first_process() {
 ///  * as new process *
 /// 6. Re-enables interrupts
 pub fn schedule() {
+    /// A dummy Lock.
     struct NoopLock;
     impl Lock<'static, ()> for NoopLock {
         fn lock(&self) { /* no-op */ }

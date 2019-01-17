@@ -49,11 +49,19 @@ fn disable_interrupts() {
     }
 }
 
+/// Boolean to [permanently_disable_interrupts].
+///
+/// If this bool is set, all [enable_interrupts] and [disable_interrupts] calls are ignored,
+/// and system is put in an unrecoverable state.
+///
+/// This is used by kernel panic handlers.
 static INTERRUPT_DISARM: AtomicBool = AtomicBool::new(false);
 
 /// Permanently disables the interrupts. Forever.
 ///
 /// Only used by the panic handlers!
+///
+/// Simply sets [INTERRUPT_DISARM].
 pub unsafe fn permanently_disable_interrupts() {
     INTERRUPT_DISARM.store(true, Ordering::SeqCst);
     unsafe { cli() }
@@ -76,6 +84,7 @@ pub unsafe fn permanently_disable_interrupts() {
 /// a global counter to disable/enable interrupts. View INTERRUPT_DISABLE_COUNTER
 /// documentation for more information.
 pub struct SpinLockIRQ<T: ?Sized> {
+    /// SpinLock we wrap.
     internal: SpinLock<T>
 }
 

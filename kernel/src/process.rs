@@ -77,6 +77,9 @@ pub struct ProcessStruct {
     thread_maternity: SpinLock<Vec<Arc<ThreadStruct>>>,
 }
 
+/// Next available PID.
+///
+/// PIDs are just allocated sequentially in ascending order, and reaching usize::max_value() causes a panic.
 static NEXT_PROCESS_ID: AtomicUsize = AtomicUsize::new(0);
 
 /// The struct representing a thread. A process may own multiple threads.
@@ -311,6 +314,7 @@ pub enum ThreadState {
 }
 
 impl ThreadState {
+    /// ThreadState is stored in the ThreadStruct as an AtomicUsize. This function casts it back to the enum.
     fn from_primitive(v: usize) -> ThreadState {
         match v {
             0 => ThreadState::Running,

@@ -82,6 +82,10 @@ pub mod checks;
 // Make rust happy about rust_oom being no_mangle...
 pub use heap_allocator::rust_oom;
 
+/// The global heap allocator.
+///
+/// Creation of a Box, Vec, Arc, ... will use its API.
+/// See the [heap_allocator] module for more info.
 #[cfg(not(test))]
 #[global_allocator]
 static ALLOCATOR: heap_allocator::Allocator = heap_allocator::Allocator::new();
@@ -91,12 +95,45 @@ use paging::{PAGE_SIZE, MappingAccessRights};
 use mem::VirtualAddress;
 use process::{ProcessStruct, ThreadStruct};
 
+/// Forces a double fault by stack overflowing.
+///
+/// Can be used to manually check the double fault task gate is configured correctly.
+///
+/// Works by purposely creating a KernelStack overflow.
+///
+/// When we reach the top of the stack and attempt to write to the guard page following it, it causes a PageFault Execption.
+///
+/// CPU will attempt to handle the exception, and push some values at `$esp`, which still points in the guard page.
+/// This triggers the DoubleFault exception.
 unsafe fn force_double_fault() {
     loop {
         asm!("push 0" :::: "intel", "volatile");
     }
 }
 
+/// The kernel's `main`.
+///
+/// # State
+///
+/// Called after the arch-specific initialisations are done.
+///
+/// At this point the scheduler is initialized, and we are running as process `init`.
+///
+/// # Goal
+///
+/// Our job is to launch all the Kernel Internal Processes.
+///
+/// These are the minimal set of sysmodules considered essential to system bootup (`filesystem`, `loader`, `sm`, `pm`, `boot`),
+/// which either provide necessary services for loading a process, or may define the list of other processes to launch (`boot`).
+///
+/// We load their elf with a minimal [elf_loader], add them to the schedule queue, and run them as regular userspace processes.
+///
+/// # Afterwards
+///
+/// After this, our job here is done. We mark the `init` process (ourselves) as killed, unschedule, and kernel initialisation is
+/// considered finished.
+///
+/// From now on, the kernel's only job will be to respond to IRQs and serve syscalls.
 fn main() {
     info!("Loading all the init processes");
     for module in i386::multiboot::get_boot_information().module_tags().skip(1) {

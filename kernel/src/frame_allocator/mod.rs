@@ -31,9 +31,14 @@ pub trait FrameAllocatorTrait: FrameAllocatorTraitPrivate {
 use self::private::FrameAllocatorTraitPrivate;
 
 mod private {
+    //! Private FrameAllocator API
+
     use super::PhysicalMemRegion;
     use mem::PhysicalAddress;
 
+    /// An arch-specifig FrameAllocator must expose the following functions.
+    ///
+    /// These only provide an internal API for [PhysicalMemRegion]s.
     pub trait FrameAllocatorTraitPrivate {
         /// Marks a region as deallocated.
         /// Called when a PhysicalMemRegion is dropped.

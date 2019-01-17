@@ -650,9 +650,9 @@ impl_set_handler_fn!(PageFaultHandlerFunc);
 
 /// Represents the type of an IDT descriptor (called a gate).
 ///
-/// Technically, this represents a subset of [SystemDescriptorType].
+/// Technically, this represents a subset of [SystemDescriptorTypes].
 ///
-/// [SystemDescriptorType]: kfs_kernel::i386::gdt::SystemDescriptorType
+/// [SystemDescriptorTypes]: crate::i386::gdt::SystemDescriptorTypes
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
 #[allow(clippy::missing_docs_in_private_items)]
