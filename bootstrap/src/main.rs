@@ -23,29 +23,23 @@
 //!
 
 #![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt)]
-#![cfg_attr(target_os = "none", no_std)]
+#![no_std]
 #![cfg_attr(target_os = "none", no_main)]
 #![allow(unused)]
 #![warn(missing_docs)]
 #![deny(intra_doc_link_resolution_failure)]
-#[cfg(not(target_os = "none"))]
-use std as core;
 
 #[cfg(not(any(target_arch = "x86", test)))]
 compile_error!("WTF");
 
-extern crate arrayvec;
-extern crate bit_field;
+#[cfg(not(target_os = "none"))]
+extern crate std;
 #[macro_use]
 extern crate lazy_static;
-extern crate spin;
-extern crate multiboot2;
 #[macro_use]
 extern crate bitflags;
 #[macro_use]
 extern crate static_assertions;
-extern crate xmas_elf;
-extern crate kfs_libutils;
 
 use core::fmt::Write;
 use spin::Once;

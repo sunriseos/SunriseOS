@@ -437,7 +437,7 @@ mod test {
     /// The way you usually use it.
     #[test]
     fn ok() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
 
         let a = FrameAllocator::allocate_frame().unwrap();
         let b = FrameAllocator::allocate_region(2 * PAGE_SIZE).unwrap();
@@ -451,7 +451,7 @@ mod test {
 
     #[test]
     fn fragmented() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         // make it all available
         let mut allocator = FRAME_ALLOCATOR.lock();
         mark_area_free(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
@@ -473,7 +473,7 @@ mod test {
     /// You can't give it a size of 0.
     #[test]
     fn zero() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         FrameAllocator::allocate_region(0).unwrap_err();
         FrameAllocator::allocate_frames_fragmented(0).unwrap_err();
     }
@@ -485,7 +485,7 @@ mod test {
     /// Allocation fails if Out Of Memory.
     #[test]
     fn physical_oom_frame() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         // make it all reserved
         let mut allocator = FRAME_ALLOCATOR.lock();
         mark_area_reserved(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
@@ -499,7 +499,7 @@ mod test {
 
     #[test]
     fn physical_oom_frame_threshold() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         // make it all reserved
         let mut allocator = FRAME_ALLOCATOR.lock();
         mark_area_reserved(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
@@ -512,7 +512,7 @@ mod test {
 
     #[test]
     fn physical_oom_region() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         // make it all reserved
         let mut allocator = FRAME_ALLOCATOR.lock();
         mark_area_reserved(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
@@ -530,7 +530,7 @@ mod test {
 
     #[test]
     fn physical_oom_region_threshold() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         // make it all reserved
         let mut allocator = FRAME_ALLOCATOR.lock();
         mark_area_reserved(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
@@ -545,7 +545,7 @@ mod test {
 
     #[test]
     fn physical_oom_fragmented() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         // make it all available
         let mut allocator = FRAME_ALLOCATOR.lock();
         mark_area_free(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
@@ -559,7 +559,7 @@ mod test {
 
     #[test]
     fn physical_oom_threshold_fragmented() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         // make it all available
         let mut allocator = FRAME_ALLOCATOR.lock();
         mark_area_free(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
@@ -570,7 +570,7 @@ mod test {
 
     #[test]
     fn allocate_last_frame() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         // make it all available
         let mut allocator = FRAME_ALLOCATOR.lock();
         mark_area_free(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
@@ -602,7 +602,7 @@ mod test {
 
     #[test]
     fn oom_hard() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         // make it all reserved
         let mut allocator = FRAME_ALLOCATOR.lock();
         mark_area_reserved(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
@@ -646,7 +646,7 @@ mod test {
     /// and some frames will have been marked allocated.
     #[test]
     fn physical_oom_doesnt_leak() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         // make it all available
         let mut allocator = FRAME_ALLOCATOR.lock();
         mark_area_free(&mut allocator.memory_bitmap, 0, ALL_MEMORY);

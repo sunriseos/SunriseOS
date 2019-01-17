@@ -7,7 +7,7 @@
 //! screen. But hey, that's a start.
 
 #![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, allocator_api, alloc, box_syntax, no_more_cas, const_vec_new, range_contains, step_trait, thread_local, nll)]
-#![cfg_attr(target_os = "none", no_std)]
+#![no_std]
 #![cfg_attr(target_os = "none", no_main)]
 #![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
 #![warn(unused)]
@@ -19,7 +19,7 @@
 #![recursion_limit = "1024"]
 
 #[cfg(not(target_os = "none"))]
-use std as core;
+extern crate std;
 
 
 #[macro_use]

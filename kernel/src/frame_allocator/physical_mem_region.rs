@@ -211,23 +211,23 @@ impl Splittable for Vec<PhysicalMemRegion> {
 mod test {
     use super::super::{FrameAllocator, FrameAllocatorTrait};
     use super::{PhysicalMemRegion, PhysicalMemRegionIter};
-    use utils::Splittable;
-    use mem::PhysicalAddress;
-    use paging::PAGE_SIZE;
+    use crate::utils::Splittable;
+    use crate::mem::PhysicalAddress;
+    use crate::paging::PAGE_SIZE;
 
     #[test]
     #[should_panic]
     fn on_fixed_mmio_checks_reserved() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         unsafe { PhysicalMemRegion::on_fixed_mmio(PhysicalAddress(0x00000000), PAGE_SIZE) };
     }
 
     #[test]
     fn on_fixed_mmio_rounds_unaligned() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         // reserve them so we don't panic
-        ::frame_allocator::mark_frame_bootstrap_allocated(PhysicalAddress(0));
-        ::frame_allocator::mark_frame_bootstrap_allocated(PhysicalAddress(PAGE_SIZE));
+        crate::frame_allocator::mark_frame_bootstrap_allocated(PhysicalAddress(0));
+        crate::frame_allocator::mark_frame_bootstrap_allocated(PhysicalAddress(PAGE_SIZE));
 
         let region = unsafe { PhysicalMemRegion::on_fixed_mmio(PhysicalAddress(0x00000007), PAGE_SIZE + 1) };
         assert_eq!(region.start_addr, 0);
@@ -237,20 +237,20 @@ mod test {
     #[test]
     #[should_panic]
     fn reconstruct_checks_was_allocated() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         unsafe { PhysicalMemRegion::reconstruct(PhysicalAddress(0), 4 * PAGE_SIZE) };
     }
 
     #[test]
     #[should_panic]
     fn reconstruct_too_long() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         unsafe { PhysicalMemRegion::reconstruct(PhysicalAddress(4 * PAGE_SIZE), 64 * PAGE_SIZE) };
     }
 
     #[test]
     fn reconstruct_no_dealloc_doesnt_dealloc() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         let region = FrameAllocator::allocate_region(PAGE_SIZE).unwrap();
         let addr = region.address();
         ::core::mem::forget(region);
