@@ -21,29 +21,21 @@
 #[cfg(not(target_os = "none"))]
 use std as core;
 
-extern crate bit_field;
+
 #[macro_use]
 extern crate lazy_static;
-extern crate multiboot2;
 #[macro_use]
 extern crate bitflags;
 #[macro_use]
 extern crate static_assertions;
 #[macro_use]
 extern crate alloc;
-extern crate linked_list_allocator;
 #[macro_use]
 extern crate log;
-extern crate smallvec;
-extern crate hashmap_core;
-extern crate xmas_elf;
-extern crate rustc_demangle;
-extern crate byteorder;
 #[macro_use]
 extern crate failure;
 #[macro_use]
 extern crate bitfield;
-extern crate kfs_libkern;
 #[cfg(test)]
 #[macro_use]
 extern crate mashup;
@@ -231,7 +223,7 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 /// Note that if `None` is passed, this function is safe.
 ///
 /// [dump_stack]: ::stack::dump_stack
-unsafe fn do_panic(msg: core::fmt::Arguments, stackdump_source: Option<stack::StackDumpSource>) -> ! {
+unsafe fn do_panic(msg: core::fmt::Arguments<'_>, stackdump_source: Option<stack::StackDumpSource>) -> ! {
 
     // Disable interrupts forever!
     unsafe { sync::permanently_disable_interrupts(); }
@@ -261,7 +253,7 @@ unsafe fn do_panic(msg: core::fmt::Arguments, stackdump_source: Option<stack::St
         .and_then(|module| Some(elf_loader::map_grub_module(module)));
 
     /// Gets the symbol table of a mapped module.
-    fn get_symbols<'a>(mapped_kernel_elf: &'a Option<MappedGrubModule>) -> Option<(&'a ElfFile<'a>, &'a[Entry32])> {
+    fn get_symbols<'a>(mapped_kernel_elf: &'a Option<MappedGrubModule<'_>>) -> Option<(&'a ElfFile<'a>, &'a[Entry32])> {
         let module = mapped_kernel_elf.as_ref()?;
         let elf = module.elf.as_ref().ok()?;
         let data = elf.find_section_by_name(".symtab")?
@@ -301,7 +293,7 @@ unsafe fn do_panic(msg: core::fmt::Arguments, stackdump_source: Option<stack::St
 /// Kernel panics.
 #[cfg(target_os = "none")]
 #[panic_handler] #[no_mangle]
-pub extern fn panic_fmt(p: &::core::panic::PanicInfo) -> ! {
+pub extern fn panic_fmt(p: &::core::panic::PanicInfo<'_>) -> ! {
     unsafe {
         // safe: we're not passing a stackdump_source
         //       so it will use our current stack, which is safe.

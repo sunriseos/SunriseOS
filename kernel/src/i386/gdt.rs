@@ -290,7 +290,7 @@ enum SystemDescriptorTypes {
 struct DescriptorTableEntry(u64);
 
 impl fmt::Debug for DescriptorTableEntry {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         //ES =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
         if self.0 == 0 {
             write!(f, "DescriptorTableEntry(NULLDESC)")

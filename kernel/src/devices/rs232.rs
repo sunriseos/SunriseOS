@@ -82,7 +82,7 @@ impl SerialAttributes {
 /// );
 /// ```
 impl Display for SerialAttributes {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(f, "\x1B[{};{}m", self.fg as u8 + 30, self.bg as u8 + 40)
     }
 }

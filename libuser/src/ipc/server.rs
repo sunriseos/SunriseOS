@@ -58,7 +58,7 @@ pub trait IWaitable {
 
 /// The event loop manager. Waits on the waitable objects added to it.
 pub struct WaitableManager {
-    to_add_waitables: Mutex<Vec<Box<IWaitable>>>
+    to_add_waitables: Mutex<Vec<Box<dyn IWaitable>>>
 }
 
 impl WaitableManager {
@@ -70,7 +70,7 @@ impl WaitableManager {
     }
 
     /// Add a new handle for the waitable manager to wait on.
-    pub fn add_waitable(&self, waitable: Box<IWaitable>) {
+    pub fn add_waitable(&self, waitable: Box<dyn IWaitable>) {
         self.to_add_waitables.lock().push(waitable);
     }
 
@@ -88,7 +88,7 @@ impl WaitableManager {
             }
 
             let idx = {
-                let handles = waitables.iter().map(|v| v.get_handle()).collect::<Vec<HandleRef>>();
+                let handles = waitables.iter().map(|v| v.get_handle()).collect::<Vec<HandleRef<'_>>>();
                 // TODO: new_waitable_event
                 syscalls::wait_synchronization(&*handles, None).unwrap()
             };

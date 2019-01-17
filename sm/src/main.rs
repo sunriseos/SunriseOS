@@ -31,8 +31,8 @@
 extern crate kfs_libuser as libuser;
 #[macro_use]
 extern crate alloc;
-extern crate spin;
-extern crate hashmap_core;
+
+
 #[macro_use]
 extern crate lazy_static;
 

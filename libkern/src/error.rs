@@ -92,7 +92,7 @@ impl KernelError {
 }
 
 impl fmt::Display for KernelError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             KernelError::InvalidKernelCaps => write!(f, "Invalid kernel capabilities. Check the format."),
             KernelError::NotImplemented => write!(f, "Method not implemented. Notify roblabla!"),

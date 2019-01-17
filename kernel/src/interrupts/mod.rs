@@ -41,7 +41,7 @@ pub fn check_thread_killed() {
 }
 
 /// Panics with an informative message.
-fn panic_on_exception(exception_string: Arguments, exception_stack_frame: &ExceptionStackFrame) -> ! {
+fn panic_on_exception(exception_string: Arguments<'_>, exception_stack_frame: &ExceptionStackFrame) -> ! {
     unsafe {
         // safe: we're not passing a stackdump_source
         //       so it will use our current kernel stack, which is safe.

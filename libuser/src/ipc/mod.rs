@@ -135,7 +135,7 @@ pub struct IPCBuffer<'a> {
 impl<'a> IPCBuffer<'a> {
     /// Creates an IPC buffer from a mutable reference and a type. The type
     /// should be of type B, W or C.
-    pub fn from_mut_ref<T>(val: &'a mut T, ty: IPCBufferType) -> IPCBuffer {
+    pub fn from_mut_ref<T>(val: &'a mut T, ty: IPCBufferType) -> IPCBuffer<'_> {
         IPCBuffer {
             addr: val as *mut T as usize,
             size: mem::size_of::<T>(),
@@ -145,7 +145,7 @@ impl<'a> IPCBuffer<'a> {
     }
     /// Creates an IPC buffer from a reference and a type. The type should be of
     /// type A or X.
-    pub fn from_ref<T>(val: &'a T, ty: IPCBufferType) -> IPCBuffer {
+    pub fn from_ref<T>(val: &'a T, ty: IPCBufferType) -> IPCBuffer<'_> {
         IPCBuffer {
             addr: val as *const T as usize,
             size: mem::size_of::<T>(),
@@ -155,7 +155,7 @@ impl<'a> IPCBuffer<'a> {
     }
     /// Creates an IPC buffer from a mutable slice and a type. The type should be
     /// of type B, W or C.
-    pub fn from_slice<T>(val: &'a [T], ty: IPCBufferType) -> IPCBuffer {
+    pub fn from_slice<T>(val: &'a [T], ty: IPCBufferType) -> IPCBuffer<'_> {
         IPCBuffer {
             addr: if val.len() == 0 { 0 } else { val.as_ptr() as usize },
             size: mem::size_of::<T>() * val.len(),
@@ -165,7 +165,7 @@ impl<'a> IPCBuffer<'a> {
     }
     /// Creates an IPC buffer from a slice and a type. The type should be of
     /// type A or X.
-    pub fn from_mut_slice<T>(val: &'a mut [T], ty: IPCBufferType) -> IPCBuffer {
+    pub fn from_mut_slice<T>(val: &'a mut [T], ty: IPCBufferType) -> IPCBuffer<'_> {
         IPCBuffer {
             addr: if val.len() == 0 { 0 } else { val.as_ptr() as usize },
             size: mem::size_of::<T>() * val.len(),
@@ -392,7 +392,7 @@ where
     ///
     /// Panics if attempting to push more handles than there is space for in this
     /// message.
-    pub fn push_handle_copy(&mut self, handle: HandleRef) -> &mut Self {
+    pub fn push_handle_copy(&mut self, handle: HandleRef<'_>) -> &mut Self {
         self.copy_handles.push(handle.inner.get());
         self
     }

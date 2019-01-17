@@ -259,7 +259,7 @@ fn pci_config_write_word(bus: u8, slot: u8, func: u8, register: u8, value: u32) 
 /// Then, an additional [PciDevice] will be returned for every of its other functions that also
 /// return anything different from `0xFFFF_FFFF`.
 fn discover() -> Vec<PciDevice> {
-    let mut devices = Vec::new();
+    let mut devices = vec![];
     for bus in 0..MAX_BUS {
         for slot in 0..MAX_SLOT {
             // test function 0.

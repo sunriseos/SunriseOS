@@ -10,7 +10,7 @@
 #![warn(missing_docs)]
 #![deny(intra_doc_link_resolution_failure)]
 
-extern crate gif;
+use gif;
 extern crate alloc;
 #[macro_use]
 extern crate log;
@@ -18,8 +18,8 @@ extern crate log;
 extern crate lazy_static;
 #[macro_use]
 extern crate kfs_libuser as libuser;
-extern crate byteorder;
-extern crate spin;
+
+
 
 mod ps2;
 use crate::libuser::io;

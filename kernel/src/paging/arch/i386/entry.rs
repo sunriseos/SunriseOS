@@ -54,7 +54,7 @@ const ENTRY_PHYS_ADDRESS_MASK: usize = 0xffff_f000;
 pub struct I386Entry(u32);
 
 impl Debug for I386Entry {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         f.debug_struct("Entry")
             .field("flags", &self.flags())
             .field("frame", &self.pointed_frame().as_option())

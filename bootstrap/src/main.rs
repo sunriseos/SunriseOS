@@ -201,7 +201,7 @@ pub extern "C" fn do_bootstrap(multiboot_info_addr: usize) -> ! {
 /// Something went really wrong, just print a message on serial output, and spin indefinitely.
 #[cfg(target_os = "none")]
 #[panic_handler] #[no_mangle]
-pub extern fn panic_fmt(p: &::core::panic::PanicInfo) -> ! {
+pub extern fn panic_fmt(p: &::core::panic::PanicInfo<'_>) -> ! {
 
     let _ = writeln!(Serial,
                               "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\

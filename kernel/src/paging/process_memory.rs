@@ -164,7 +164,7 @@ impl ProcessMemory {
     }
 
     /// If these tables are the one currently in use, we return them as an ActiveHierarchy instead.
-    fn get_hierarchy(&mut self) -> DynamicHierarchy {
+    fn get_hierarchy(&mut self) -> DynamicHierarchy<'_> {
         if self.table_hierarchy.is_currently_active() {
             unsafe {
                 // safe because the lock in the ProcessStuct is held, and there is no other safe way
@@ -301,7 +301,7 @@ impl ProcessMemory {
     /// # Error
     ///
     /// Returns a KernelError if address does not fall in UserLand.
-    pub fn query_memory(&self, address: VirtualAddress) -> Result<QueryMemory, KernelError> {
+    pub fn query_memory(&self, address: VirtualAddress) -> Result<QueryMemory<'_>, KernelError> {
         UserLand::check_contains_address(address)?;
         Ok(self.userspace_bookkeping.mapping_at(address))
     }
@@ -443,7 +443,7 @@ impl ProcessMemory {
     ///
     /// Returns an Error if the mapping is Available/Guarded/SystemReserved, as there would be
     /// no point to remap it, and dereferencing the pointer would cause the kernel to page-fault.
-    pub fn mirror_mapping(&self, address: VirtualAddress, length: usize) -> Result<CrossProcessMapping, KernelError> {
+    pub fn mirror_mapping(&self, address: VirtualAddress, length: usize) -> Result<CrossProcessMapping<'_>, KernelError> {
         UserLand::check_contains_address(address)?;
         let mapping = self.userspace_bookkeping.occupied_mapping_at(address)?;
         let offset = address - mapping.address();

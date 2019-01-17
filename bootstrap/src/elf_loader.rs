@@ -39,7 +39,7 @@ pub fn load_kernel(page_table: &mut PagingOffPageSet, multiboot_info: &BootInfor
 /// Loads an elf segment by coping file_size bytes to the right address,
 /// and filling remaining with 0s.
 /// This is used by NOBITS sections (.bss), this way we initialize them to 0.
-fn load_segment(page_table: &mut PagingOffPageSet, segment: &ProgramHeader, elf_file: &ElfFile) {
+fn load_segment(page_table: &mut PagingOffPageSet, segment: &ProgramHeader<'_>, elf_file: &ElfFile<'_>) {
     // Map the segment memory
     let mem_size_total = align_up(segment.mem_size() as usize, PAGE_SIZE);
     let vaddr = segment.virtual_addr() as usize;

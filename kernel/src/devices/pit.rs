@@ -132,7 +132,7 @@ struct PITChannel2<'ports> {
 impl<'ports> PITChannel2<'ports> {
 
     /// Sets mode #0 for channel 2
-    fn init(ports: &mut PITPorts) -> PITChannel2 {
+    fn init(ports: &mut PITPorts) -> PITChannel2<'_> {
         ports.port_cmd.write(
             0b10110000 // channel 2, lobyte/hibyte, interrupt on terminal count
         );

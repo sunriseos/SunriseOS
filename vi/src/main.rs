@@ -12,11 +12,11 @@
 
 #[macro_use]
 extern crate kfs_libuser as libuser;
-extern crate kfs_libutils;
+
 #[macro_use]
 extern crate alloc;
-extern crate spin;
-extern crate hashmap_core;
+
+
 #[macro_use]
 extern crate lazy_static;
 
@@ -65,7 +65,7 @@ object! {
             BUFFERS.lock().push(Arc::downgrade(&buf.buffer));
             let (server, client) = syscalls::create_session(false, 0)?;
             let wrapper = SessionWrapper::new(server, buf);
-            manager.add_waitable(Box::new(wrapper) as Box<IWaitable>);
+            manager.add_waitable(Box::new(wrapper) as Box<dyn IWaitable>);
             Ok((client.into_handle(),))
         }
 
@@ -104,7 +104,7 @@ fn get_intersect((atop, aleft, awidth, aheight): (u32, u32, u32, u32), (btop, bl
 }
 
 /// Draw a portion of a buffer onto the framebuffer.
-fn draw(buf: &Buffer, framebuffer: &mut Framebuffer, top: u32, left: u32, width: u32, height: u32) {
+fn draw(buf: &Buffer, framebuffer: &mut Framebuffer<'_>, top: u32, left: u32, width: u32, height: u32) {
     unsafe {
         // TODO: Safety of the vi::draw IPC method
         // BODY: When calling vi::draw, vi reads from the shared memory. There is

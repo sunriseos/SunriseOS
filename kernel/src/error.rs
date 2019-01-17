@@ -12,7 +12,7 @@ pub use kfs_libkern::error::KernelError as UserspaceError;
 pub enum ArithmeticOperation { Add, Sub, Mul, Div, Mod, Pow }
 
 impl Display for ArithmeticOperation {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             ArithmeticOperation::Add => write!(f, "+"),
             ArithmeticOperation::Sub => write!(f, "-"),

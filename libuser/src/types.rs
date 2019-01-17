@@ -33,7 +33,7 @@ impl Handle {
 
     /// Creates a new reference to this handle. See the documentation of
     /// [HandleRef] for more information.
-    pub fn as_ref(&self) -> HandleRef {
+    pub fn as_ref(&self) -> HandleRef<'_> {
         HandleRef {
             inner: self.0,
             lifetime: PhantomData

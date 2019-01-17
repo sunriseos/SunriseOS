@@ -15,11 +15,11 @@ struct Logger {
 
 #[allow(unused_must_use)]
 impl Log for Logger {
-    fn enabled(&self, metadata: &Metadata) -> bool {
+    fn enabled(&self, metadata: &Metadata<'_>) -> bool {
         self.filter.read().enabled(metadata)
     }
 
-    fn log(&self, record: &Record) {
+    fn log(&self, record: &Record<'_>) {
         if self.filter.read().matches(record) {
             if let Some(thread) = scheduler::try_get_current_thread() {
                 writeln!(SerialLogger, "[{}] - {} - {} - {}", record.level(), record.target(), thread.process.name, record.args());

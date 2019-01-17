@@ -147,7 +147,7 @@ impl<'a> IntoIterator for &'a PhysicalMemRegion {
 }
 
 impl Debug for PhysicalMemRegion {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(f, "P region {:#010x} - {:#010x}, {} frames", self.start_addr,
                self.start_addr + self.frames * PAGE_SIZE - 1, self.frames)
     }

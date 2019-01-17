@@ -57,7 +57,7 @@ impl IUserInterface {
         msg.pack(&mut buf[..]);
 
 		    self.0.send_sync_request_with_user_buffer(&mut buf[..])?;
-		    let mut res : Message<(), [_; 0], [_; 0], [_; 1]> = Message::unpack(&buf[..]);
+		    let mut res : Message<'_, (), [_; 0], [_; 0], [_; 1]> = Message::unpack(&buf[..]);
         res.error()?;
 		    Ok(ClientSession(res.pop_handle_move()?))
     }
@@ -86,7 +86,7 @@ impl IUserInterface {
         msg.pack(&mut buf[..]);
 
 		    self.0.send_sync_request_with_user_buffer(&mut buf[..])?;
-		    let mut res : Message<(), [_; 0], [_; 0], [_; 1]> = Message::unpack(&buf[..]);
+		    let mut res : Message<'_, (), [_; 0], [_; 0], [_; 1]> = Message::unpack(&buf[..]);
         res.error()?;
 		    Ok(ServerPort(res.pop_handle_move()?))
     }

@@ -137,7 +137,7 @@ pub struct ThreadStruct {
 pub enum Handle {
     /// An event on which we can wait. Could be an IRQ, or a user-generated
     /// event.
-    ReadableEvent(Box<Waitable>),
+    ReadableEvent(Box<dyn Waitable>),
     /// The server side of an IPC port. See [::ipc::port] for more information.
     ServerPort(ServerPort),
     /// The client side of an IPC port. See [::ipc::port] for more information.
@@ -158,7 +158,7 @@ pub enum Handle {
 
 impl Handle {
     /// Gets the handle as a [Waitable], or return a `UserspaceError` if the handle cannot be waited on.
-    pub fn as_waitable(&self) -> Result<&Waitable, UserspaceError> {
+    pub fn as_waitable(&self) -> Result<&dyn Waitable, UserspaceError> {
         match self {
             &Handle::ReadableEvent(ref waitable) => Ok(&**waitable),
             &Handle::ServerPort(ref serverport) => Ok(serverport),
@@ -329,7 +329,7 @@ impl ThreadState {
 pub struct ThreadStateAtomic(AtomicUsize);
 
 impl Debug for ThreadStateAtomic {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         Debug::fmt(&self.load(Ordering::SeqCst), f)
     }
 }

@@ -59,7 +59,7 @@ impl<'a> CrossProcessMapping<'a> {
     /// Returns an Error if `offset` + `len` would overflow.
     // todo: should be offset + (len - 1), but need to check that it wouldn't overflow in our function
     /// Returns an Error if `len` is 0.
-    pub fn mirror_mapping(mapping: &Mapping, offset: usize, len: usize) -> Result<CrossProcessMapping, KernelError> {
+    pub fn mirror_mapping(mapping: &Mapping, offset: usize, len: usize) -> Result<CrossProcessMapping<'_>, KernelError> {
         check_nonzero_length(len)?;
         if add_or_error(offset, len)? > mapping.length() {
             return Err(KernelError::MmError(MmError::InvalidMapping { backtrace: Backtrace::new() }))

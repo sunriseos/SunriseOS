@@ -1,3 +1,4 @@
+//! TODO: Write some AHCI documentation
 #![feature(alloc, const_let)]
 #![no_std]
 
@@ -14,10 +15,9 @@
 #![deny(intra_doc_link_resolution_failure)]
 
 #[macro_use]
-extern crate kfs_libuser;
-extern crate kfs_libutils;
 extern crate alloc;
-extern crate spin;
+#[macro_use]
+extern crate kfs_libuser;
 #[macro_use]
 extern crate log;
 

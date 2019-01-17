@@ -106,7 +106,7 @@ pub fn add_to_schedule_queue(thread: Arc<ThreadStruct>) {
 }
 
 /// Checks if a thread is already either in the schedule queue or currently running.
-pub fn is_in_schedule_queue(queue: &SpinLockIRQGuard<Vec<Arc<ThreadStruct>>>,
+pub fn is_in_schedule_queue(queue: &SpinLockIRQGuard<'_, Vec<Arc<ThreadStruct>>>,
                             thread: &Arc<ThreadStruct>) -> bool {
     unsafe { CURRENT_THREAD.iter() }.filter(|v| {
         v.state.load(Ordering::SeqCst) != ThreadState::Stopped

@@ -3,6 +3,7 @@ name = "kfs-libkern"
 version = "0.1.0"
 authors = ["roblabla <unfiltered@roblab.la>"]
 license = "Apache-2.0 OR MIT"
+edition = "2018"
 
 [dependencies]
 kfs-libutils = { path = "../libutils" }
