@@ -98,9 +98,9 @@ fn test_threads(terminal: Terminal) -> Terminal {
         };
         for _ in 0..10 {
             if let Some(mut lock) = terminal.try_lock() {
-                writeln!(lock, "A");
+                let _ = writeln!(lock, "A");
             }
-            libuser::syscalls::sleep_thread(0);
+            let _ = libuser::syscalls::sleep_thread(0);
         }
     }
 
@@ -112,9 +112,9 @@ fn test_threads(terminal: Terminal) -> Terminal {
             };
             for _ in 0..10 {
                 if let Some(mut lock) = terminal.try_lock() {
-                    writeln!(lock, "B");
+                    let _ = writeln!(lock, "B");
                 }
-                libuser::syscalls::sleep_thread(0);
+                let _ = libuser::syscalls::sleep_thread(0);
             }
         }
         libuser::syscalls::exit_thread()
@@ -160,7 +160,7 @@ fn test_threads(terminal: Terminal) -> Terminal {
             Ok(terminal) => break terminal.into_inner(),
             Err(x) => terminal = x
         }
-        libuser::syscalls::sleep_thread(0);
+        let _ = libuser::syscalls::sleep_thread(0);
     }
 }
 
