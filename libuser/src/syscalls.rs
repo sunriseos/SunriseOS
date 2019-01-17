@@ -134,9 +134,9 @@ pub fn exit_process() -> ! {
 }
 
 /// Creates a thread in the current process.
-pub fn create_thread(ip: fn() -> !, _context: usize, sp: *const u8, _priority: u32, _processor_id: u32) -> Result<Thread, KernelError> {
+pub fn create_thread(ip: extern fn() -> !, arg: usize, sp: *const u8, _priority: u32, _processor_id: u32) -> Result<Thread, KernelError> {
     unsafe {
-        let (out_handle, ..) = syscall(nr::CreateThread, ip as usize, _context, sp as _, _priority as _, _processor_id as _, 0)?;
+        let (out_handle, ..) = syscall(nr::CreateThread, ip as usize, arg, sp as _, _priority as _, _processor_id as _, 0)?;
         Ok(Thread(Handle::new(out_handle as _)))
     }
 }

@@ -8,6 +8,7 @@ license = "Apache-2.0 OR MIT"
 gif = { git = "https://github.com/roblabla/image-gif" }
 log = "0.4.6"
 kfs-libuser = { path = "../libuser" }
+spin = "0.5"
 
 [dependencies.byteorder]
 default-features = false
