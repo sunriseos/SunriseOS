@@ -113,6 +113,9 @@ pub struct ThreadStruct {
     ///
     /// Used by the SpinLockIRQ to implement recursive irqsave logic.
     pub int_disable_counter: AtomicUsize,
+
+    /// Argument passed to the entrypoint on first schedule.
+    pub arg: usize
 }
 
 /// A handle to a userspace-accessible resource.
@@ -505,7 +508,7 @@ impl ThreadStruct {
     ///
     /// The thread's only strong reference is stored in the process' maternity,
     /// and we return only a weak to it, that can directly be put in a thread_handle.
-    pub fn new(belonging_process: &Arc<ProcessStruct>, ep: VirtualAddress, stack: VirtualAddress) -> Result<Weak<Self>, KernelError> {
+    pub fn new(belonging_process: &Arc<ProcessStruct>, ep: VirtualAddress, stack: VirtualAddress, arg: usize) -> Result<Weak<Self>, KernelError> {
 
         // allocate its kernel stack
         let kstack = KernelStack::allocate_stack()?;
@@ -523,6 +526,7 @@ impl ThreadStruct {
                 hwcontext : empty_hwcontext,
                 int_disable_counter: AtomicUsize::new(0),
                 process: Arc::clone(belonging_process),
+                arg
             }
         );
 
@@ -595,6 +599,7 @@ impl ThreadStruct {
                 hwcontext,
                 int_disable_counter: AtomicUsize::new(0),
                 process: Arc::clone(&process),
+                arg: 0
             }
         );
 

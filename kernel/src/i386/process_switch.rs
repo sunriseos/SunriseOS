@@ -287,13 +287,14 @@ fn first_schedule() {
         }
 
         // call the scheduler to finish the high-level process switch mechanics
-        ::scheduler::scheduler_first_schedule(current, || jump_to_entrypoint(entrypoint, userspace_stack));
+        let arg = current.arg;
+        ::scheduler::scheduler_first_schedule(current, || jump_to_entrypoint(entrypoint, userspace_stack, arg));
 
         unreachable!()
     }
 }
 
-fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize) {
+fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize, arg: usize) {
     unsafe {
         asm!("
         mov ax,0x2B // Set data segment selector to Userland Data, Ring 3
@@ -310,7 +311,7 @@ fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize) {
         push $0     // Entrypoint
 
         // Clean up all registers. Also setup arguments.
-        mov eax, 0
+        mov eax, $2
         mov ebx, 0
         mov ecx, 0
         mov edx, 0
@@ -319,7 +320,7 @@ fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize) {
         mov esi, 0
 
         iretd
-        " :: "r"(ep), "r"(userspace_stack_ptr) :
+        " :: "r"(ep), "r"(userspace_stack_ptr), "r"(arg) :
              /* Prevent using eax as input, it's used early. */ "eax" : "intel", "volatile");
     }
 }

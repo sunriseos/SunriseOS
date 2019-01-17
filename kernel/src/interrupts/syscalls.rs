@@ -160,7 +160,7 @@ fn exit_thread() -> Result<(), UserspaceError> {
 /// # Params
 ///
 /// * `ip` the entry point of the thread,
-/// * `context` ignored,
+/// * `arg` the initial argument of the thread (passed in eax),
 /// * `sp` the top of the stack,
 /// * `priority` ignored,
 /// * `processor_id` ignored,
@@ -168,9 +168,9 @@ fn exit_thread() -> Result<(), UserspaceError> {
 /// # Returns
 ///
 /// A thread_handle to the created thread.
-fn create_thread(ip: usize, _context: usize, sp: usize, _priority: u32, _processor_id: u32) -> Result<usize, UserspaceError> {
+fn create_thread(ip: usize, arg: usize, sp: usize, _priority: u32, _processor_id: u32) -> Result<usize, UserspaceError> {
     let cur_proc = get_current_process();
-    let thread = ThreadStruct::new( &cur_proc, VirtualAddress(ip), VirtualAddress(sp))?;
+    let thread = ThreadStruct::new(&cur_proc, VirtualAddress(ip), VirtualAddress(sp), arg)?;
     let handle = Handle::Thread(thread);
     let mut handles_table = cur_proc.phandles.lock();
     Ok(handles_table.add_handle(Arc::new(handle)) as usize)
