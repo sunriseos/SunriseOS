@@ -16,7 +16,7 @@ use core::fmt::Write;
 
 pub mod io;
 mod cursor;
-pub use cursor::*;
+pub use crate::cursor::*;
 
 /// Align the address to the next alignment.
 ///

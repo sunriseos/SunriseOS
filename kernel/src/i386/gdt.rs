@@ -5,24 +5,24 @@
 
 #![allow(dead_code)]
 
-use sync::{SpinLock, Once};
+use crate::sync::{SpinLock, Once};
 use bit_field::BitField;
 use core::mem::{self, size_of};
 use core::ops::{Deref, DerefMut};
 use core::slice;
 use core::fmt;
 
-use i386::{PrivilegeLevel, TssStruct};
-use i386::structures::gdt::SegmentSelector;
-use i386::instructions::tables::{lgdt, sgdt, DescriptorTablePointer};
-use i386::instructions::segmentation::*;
+use crate::i386::{PrivilegeLevel, TssStruct};
+use crate::i386::structures::gdt::SegmentSelector;
+use crate::i386::instructions::tables::{lgdt, sgdt, DescriptorTablePointer};
+use crate::i386::instructions::segmentation::*;
 
-use paging::PAGE_SIZE;
-use paging::{MappingFlags, kernel_memory::get_kernel_memory};
-use frame_allocator::{FrameAllocator, FrameAllocatorTrait};
-use mem::VirtualAddress;
+use crate::paging::PAGE_SIZE;
+use crate::paging::{MappingFlags, kernel_memory::get_kernel_memory};
+use crate::frame_allocator::{FrameAllocator, FrameAllocatorTrait};
+use crate::mem::VirtualAddress;
 use alloc::vec::Vec;
-use utils::align_up;
+use crate::utils::align_up;
 
 static GDT: Once<SpinLock<GdtManager>> = Once::new();
 
@@ -38,7 +38,7 @@ static GLOBAL_LDT: Once<DescriptorTable> = Once::new();
 /// This function should only be called once. Further calls will be silently
 /// ignored.
 pub fn init_gdt() {
-    use i386::instructions::tables::{lldt, ltr};
+    use crate::i386::instructions::tables::{lldt, ltr};
 
     let ldt = GLOBAL_LDT.call_once(|| DescriptorTable::new());
 
@@ -161,7 +161,7 @@ impl DerefMut for GdtManager {
 /// Push a task segment.
 pub fn push_task_segment(task: &'static TssStruct) -> u16 {
     info!("Pushing TSS: {:#?}", task);
-    let mut gdt = GDT.try().unwrap().lock();
+    let mut gdt = GDT.r#try().unwrap().lock();
     let idx = gdt.push(DescriptorTableEntry::new_tss(task, PrivilegeLevel::Ring0, 0));
     gdt.commit(0x8, 0x10, 0x18);
     idx

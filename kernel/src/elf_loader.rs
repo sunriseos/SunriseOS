@@ -17,10 +17,10 @@ use multiboot2::ModuleTag;
 use core::slice;
 use xmas_elf::ElfFile;
 use xmas_elf::program::{ProgramHeader, Type::Load, SegmentData};
-use mem::{VirtualAddress, PhysicalAddress};
-use paging::{PAGE_SIZE, MappingFlags, process_memory::ProcessMemory, kernel_memory::get_kernel_memory};
-use frame_allocator::PhysicalMemRegion;
-use utils::{self, align_up};
+use crate::mem::{VirtualAddress, PhysicalAddress};
+use crate::paging::{PAGE_SIZE, MappingFlags, process_memory::ProcessMemory, kernel_memory::get_kernel_memory};
+use crate::frame_allocator::PhysicalMemRegion;
+use crate::utils::{self, align_up};
 
 /// Represents a grub module once mapped in kernel memory
 pub struct MappedGrubModule<'a> {

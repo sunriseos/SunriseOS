@@ -30,14 +30,14 @@
 //!   and it is currently (constly) borrowed by the CrossProcessMapping.
 //!
 
-use mem::VirtualAddress;
+use crate::mem::VirtualAddress;
 use super::{PAGE_SIZE, MappingFlags};
 use super::mapping::{Mapping, MappingType};
 use super::kernel_memory::get_kernel_memory;
 use super::error::MmError;
-use utils::{check_nonzero_length, add_or_error};
+use crate::utils::{check_nonzero_length, add_or_error};
 use failure::Backtrace;
-use error::KernelError;
+use crate::error::KernelError;
 
 /// A struct representing a UserLand mapping temporarily mirrored in KernelSpace.
 pub struct CrossProcessMapping<'a> {

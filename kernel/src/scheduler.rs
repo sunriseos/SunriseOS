@@ -4,11 +4,11 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::mem;
 
-use process::{ProcessStruct, ThreadStruct, ThreadState};
-use i386::process_switch::process_switch;
-use sync::{Lock, SpinLockIRQ, SpinLockIRQGuard};
+use crate::process::{ProcessStruct, ThreadStruct, ThreadState};
+use crate::i386::process_switch::process_switch;
+use crate::sync::{Lock, SpinLockIRQ, SpinLockIRQGuard};
 use core::sync::atomic::Ordering;
-use error::{UserspaceError};
+use crate::error::{UserspaceError};
 
 /// An Arc to the currently running thread.
 ///
@@ -243,7 +243,7 @@ where
                 // Temporarily revive interrupts for hlt.
                 drop(interrupt_lock);
                 unsafe {
-                    ::i386::instructions::interrupts::hlt();
+                    crate::i386::instructions::interrupts::hlt();
                 }
 
                 // Kill interrupts again.
@@ -309,7 +309,7 @@ pub fn scheduler_first_schedule<F: FnOnce()>(current_thread: Arc<ThreadStruct>, 
 
     unsafe {
         // this is a new process, no SpinLockIRQ is held
-        ::i386::instructions::interrupts::sti();
+        crate::i386::instructions::interrupts::sti();
     }
 
     jump_to_entrypoint()

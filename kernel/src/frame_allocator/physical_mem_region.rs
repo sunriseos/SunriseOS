@@ -3,14 +3,14 @@
 //! A [PhysicalMemRegion] is a span of consecutive physical frames.
 
 use super::{FrameAllocator, FrameAllocatorTraitPrivate};
-use paging::PAGE_SIZE;
-use mem::PhysicalAddress;
-use utils::{align_down, div_ceil, check_aligned, Splittable};
+use crate::paging::PAGE_SIZE;
+use crate::mem::PhysicalAddress;
+use crate::utils::{align_down, div_ceil, check_aligned, Splittable};
 use core::ops::Range;
 use core::iter::StepBy;
 use core::fmt::{Formatter, Error, Debug};
 use core::marker::PhantomData;
-use error::KernelError;
+use crate::error::KernelError;
 use alloc::vec::Vec;
 
 /// A span of adjacent physical frames. A frame is [PAGE_SIZE].

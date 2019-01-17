@@ -18,10 +18,10 @@ use core::marker::PhantomData;
 use core::mem;
 use byteorder::{ByteOrder, LE};
 use arrayvec::{ArrayVec, Array};
-use utils::{self, align_up, CursorWrite, CursorRead};
-use types::{Handle, HandleRef, Pid};
+use crate::utils::{self, align_up, CursorWrite, CursorRead};
+use crate::types::{Handle, HandleRef, Pid};
 use bit_field::BitField;
-use error::{Error, LibuserError};
+use crate::error::{Error, LibuserError};
 
 #[macro_use]
 pub mod macros;

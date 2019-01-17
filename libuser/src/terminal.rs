@@ -7,8 +7,8 @@
 use alloc::prelude::*;
 use font_rs::{font, font::{Font, GlyphBitmap}};
 use hashmap_core::HashMap;
-use window::{Window, Color};
-use error::Error;
+use crate::window::{Window, Color};
+use crate::error::Error;
 
 /// Just an x and a y
 #[derive(Copy, Clone, Debug)]

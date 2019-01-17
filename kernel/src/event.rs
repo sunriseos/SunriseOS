@@ -12,11 +12,11 @@
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::fmt::Debug;
 use alloc::sync::Arc;
-use sync::SpinLockIRQ;
+use crate::sync::SpinLockIRQ;
 use alloc::vec::Vec;
-use error::UserspaceError;
-use process::ThreadStruct;
-use scheduler;
+use crate::error::UserspaceError;
+use crate::process::ThreadStruct;
+use crate::scheduler;
 
 // TODO: maybe we should use the libcore's task:: stuff...
 

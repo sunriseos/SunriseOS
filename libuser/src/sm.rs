@@ -20,8 +20,8 @@
 //! by "sm:" has an additional permission check done to ensure it isn't accessed
 //! by an unprivileged process.
 
-use types::*;
-use error::{KernelError, Error};
+use crate::types::*;
+use crate::error::{KernelError, Error};
 
 /// Main interface of the service manager. Allows registering and retrieving
 /// handles to all the services.
@@ -30,7 +30,7 @@ pub struct IUserInterface(ClientSession);
 impl IUserInterface {
     /// Connects to the Service Manager.
 	  pub fn raw_new() -> Result<IUserInterface, Error> {
-		    use syscalls;
+		    use crate::syscalls;
 
         loop {
 		        let _ = match syscalls::connect_to_named_port("sm:\0") {
@@ -43,7 +43,7 @@ impl IUserInterface {
 
     /// Retrieves a service registered in the service manager.
     pub fn get_service(&self, name: u64) -> Result<ClientSession, Error> {
-		    use ipc::Message;
+		    use crate::ipc::Message;
         let mut buf = [0; 0x100];
 
 		    #[repr(C)] #[derive(Clone, Copy, Default)]
@@ -68,7 +68,7 @@ impl IUserInterface {
     ///
     /// [create_port]: ::syscalls::create_port
     pub fn register_service(&self, name: u64, is_light: bool, max_handles: u32) -> Result<ServerPort, Error> {
-		    use ipc::Message;
+		    use crate::ipc::Message;
         let mut buf = [0; 0x100];
 
 		    #[repr(C)] #[derive(Clone, Copy, Default)]

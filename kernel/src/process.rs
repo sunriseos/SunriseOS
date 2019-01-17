@@ -1,23 +1,23 @@
 //! Process
 
-use stack::KernelStack;
-use i386::process_switch::*;
-use paging::process_memory::ProcessMemory;
+use crate::stack::KernelStack;
+use crate::i386::process_switch::*;
+use crate::paging::process_memory::ProcessMemory;
 use alloc::boxed::Box;
 use alloc::sync::{Arc, Weak};
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
-use event::Waitable;
-use sync::{SpinLockIRQ, SpinLock, Mutex};
+use crate::event::Waitable;
+use crate::sync::{SpinLockIRQ, SpinLock, Mutex};
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use core::fmt::{self, Debug};
-use scheduler;
-use error::{KernelError, UserspaceError};
-use ipc::{ServerPort, ClientPort, ServerSession, ClientSession};
-use mem::VirtualAddress;
+use crate::scheduler;
+use crate::error::{KernelError, UserspaceError};
+use crate::ipc::{ServerPort, ClientPort, ServerSession, ClientSession};
+use crate::mem::VirtualAddress;
 use failure::Backtrace;
-use frame_allocator::PhysicalMemRegion;
+use crate::frame_allocator::PhysicalMemRegion;
 
 mod capabilities;
 pub use self::capabilities::ProcessCapabilities;

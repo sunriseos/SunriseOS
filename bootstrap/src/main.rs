@@ -58,11 +58,11 @@ pub mod frame_alloc;
 pub mod elf_loader;
 pub mod bootstrap_stack;
 
-use bootstrap_logging::Serial;
-use frame_alloc::FrameAllocator;
-use paging::{PageTablesSet, KernelLand, EntryFlags, ACTIVE_PAGE_TABLES};
-use bootstrap_stack::BootstrapStack;
-use address::VirtualAddress;
+use crate::bootstrap_logging::Serial;
+use crate::frame_alloc::FrameAllocator;
+use crate::paging::{PageTablesSet, KernelLand, EntryFlags, ACTIVE_PAGE_TABLES};
+use crate::bootstrap_stack::BootstrapStack;
+use crate::address::VirtualAddress;
 
 /// 4 pages, PAGE_SIZE aligned.
 #[repr(align(4096))]
@@ -79,8 +79,8 @@ pub fn print_stack() {
     unsafe {
         let sp: usize;
         asm!("mov $0, esp" : "=r"(sp) : : : "intel");
-        let sp_start = sp - ::STACK.0.as_ptr() as usize;
-        kfs_libutils::print_hexdump(&mut Serial, &::STACK.0[sp_start..]);
+        let sp_start = sp - crate::STACK.0.as_ptr() as usize;
+        kfs_libutils::print_hexdump(&mut Serial, &crate::STACK.0[sp_start..]);
     }
 }
 

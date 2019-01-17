@@ -22,10 +22,10 @@ extern crate byteorder;
 extern crate spin;
 
 mod ps2;
-use libuser::io;
-use libuser::sm;
-use libuser::window::{Window, Color};
-use libuser::terminal::{Terminal, WindowSize};
+use crate::libuser::io;
+use crate::libuser::sm;
+use crate::libuser::window::{Window, Color};
+use crate::libuser::terminal::{Terminal, WindowSize};
 
 use core::fmt::Write;
 use alloc::prelude::*;

@@ -22,16 +22,16 @@ extern crate lazy_static;
 
 mod vbe;
 
-use vbe::{VBEColor, FRAMEBUFFER, Framebuffer};
+use crate::vbe::{VBEColor, FRAMEBUFFER, Framebuffer};
 use core::cmp::{min, max};
 use alloc::prelude::*;
 use alloc::sync::{Arc, Weak};
-use libuser::syscalls;
-use libuser::ipc::server::{WaitableManager, PortHandler, IWaitable, SessionWrapper};
-use libuser::types::*;
+use crate::libuser::syscalls;
+use crate::libuser::ipc::server::{WaitableManager, PortHandler, IWaitable, SessionWrapper};
+use crate::libuser::types::*;
 use spin::Mutex;
-use libuser::error::Error;
-use libuser::syscalls::MemoryPermissions;
+use crate::libuser::error::Error;
+use crate::libuser::syscalls::MemoryPermissions;
 use kfs_libutils::align_up;
 
 /// Entry point interface.
@@ -65,7 +65,7 @@ object! {
             BUFFERS.lock().push(Arc::downgrade(&buf.buffer));
             let (server, client) = syscalls::create_session(false, 0)?;
             let wrapper = SessionWrapper::new(server, buf);
-            manager.add_waitable(Box::new(wrapper) as Box<dyn IWaitable>);
+            manager.add_waitable(Box::new(wrapper) as Box<IWaitable>);
             Ok((client.into_handle(),))
         }
 

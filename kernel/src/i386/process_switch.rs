@@ -2,11 +2,11 @@
 //!
 //! This modules describe low-level functions and structures needed to perform a process switch
 
-use process::ThreadStruct;
-use i386::gdt;
+use crate::process::ThreadStruct;
+use crate::i386::gdt;
 use alloc::sync::Arc;
 use core::mem::size_of;
-use i386::TssStruct;
+use crate::i386::TssStruct;
 
 /// The hardware context of a paused thread. It contains just enough registers to get the thread
 /// running again.
@@ -288,7 +288,7 @@ fn first_schedule() {
 
         // call the scheduler to finish the high-level process switch mechanics
         let arg = current.arg;
-        ::scheduler::scheduler_first_schedule(current, || jump_to_entrypoint(entrypoint, userspace_stack, arg));
+        crate::scheduler::scheduler_first_schedule(current, || jump_to_entrypoint(entrypoint, userspace_stack, arg));
 
         unreachable!()
     }

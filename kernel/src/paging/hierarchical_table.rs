@@ -5,9 +5,9 @@ use super::arch::{PAGE_SIZE, ENTRY_COUNT};
 use super::lands::{RecursiveTablesLand, VirtualSpaceLand};
 use super::MappingFlags;
 
-use mem::{VirtualAddress, PhysicalAddress};
-use frame_allocator::{PhysicalMemRegion};
-use utils::align_up_checked;
+use crate::mem::{VirtualAddress, PhysicalAddress};
+use crate::frame_allocator::{PhysicalMemRegion};
+use crate::utils::align_up_checked;
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
 use core::iter::{Iterator, Peekable};

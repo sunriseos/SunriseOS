@@ -1,7 +1,7 @@
 //! Errors specific to memory management
 
-use error::UserspaceError;
-use mem::VirtualAddress;
+use crate::error::UserspaceError;
+use crate::mem::VirtualAddress;
 use failure::Backtrace;
 
 /// An error related to Memory Management

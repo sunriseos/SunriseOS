@@ -1,10 +1,10 @@
 //! Syscall Wrappers
 
 use core::slice;
-use types::*;
+use crate::types::*;
 pub use kfs_libkern::nr;
 pub use kfs_libkern::{MemoryInfo, MemoryPermissions};
-use error::KernelError;
+use crate::error::KernelError;
 
 #[cfg(all(target_arch = "x86", not(test)))]
 global_asm!("

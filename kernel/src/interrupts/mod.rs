@@ -6,21 +6,21 @@
 //! Feature `panic-on-exception` makes the kernel stop and panic when a thread generates
 //! an exception. This is useful for debugging.
 
-use i386::structures::idt::{ExceptionStackFrame, PageFaultErrorCode, Idt};
-use i386::instructions::interrupts::sti;
-use mem::VirtualAddress;
-use paging::kernel_memory::get_kernel_memory;
-use i386::{TssStruct, PrivilegeLevel};
-use i386::gdt;
-use scheduler::get_current_thread;
-use process::{ProcessStruct, ThreadState};
-use sync::SpinLockIRQ;
+use crate::i386::structures::idt::{ExceptionStackFrame, PageFaultErrorCode, Idt};
+use crate::i386::instructions::interrupts::sti;
+use crate::mem::VirtualAddress;
+use crate::paging::kernel_memory::get_kernel_memory;
+use crate::i386::{TssStruct, PrivilegeLevel};
+use crate::i386::gdt;
+use crate::scheduler::get_current_thread;
+use crate::process::{ProcessStruct, ThreadState};
+use crate::sync::SpinLockIRQ;
 use core::sync::atomic::Ordering;
 
 use core::fmt::Arguments;
-use sync::SpinLock;
-use devices::pic;
-use scheduler;
+use crate::sync::SpinLock;
+use crate::devices::pic;
+use crate::scheduler;
 
 mod irq;
 mod syscalls;
@@ -45,7 +45,7 @@ fn panic_on_exception(exception_string: Arguments, exception_stack_frame: &Excep
     unsafe {
         // safe: we're not passing a stackdump_source
         //       so it will use our current kernel stack, which is safe.
-        ::do_panic(
+        crate::do_panic(
             format_args!("{} in {:?}: {:?}",
                          exception_string,
                          scheduler::try_get_current_process().as_ref().map(|p| &p.name),
@@ -155,20 +155,20 @@ fn double_fault_handler() {
         if let Some(tss_main) = (gdt::MAIN_TASK.addr() as *const TssStruct).as_ref() {
 
             // safe: we're in an exception handler, nobody can modify the faulty thread's stack.
-            ::do_panic(format_args!("Double fault!
+            crate::do_panic(format_args!("Double fault!
                     EIP={:#010x} CR3={:#010x}
                     EAX={:#010x} EBX={:#010x} ECX={:#010x} EDX={:#010x}
                     ESI={:#010x} EDI={:#010X} ESP={:#010x} EBP={:#010x}",
                     tss_main.eip, tss_main.cr3,
                     tss_main.eax, tss_main.ebx, tss_main.ecx, tss_main.edx,
                     tss_main.esi, tss_main.edi, tss_main.esp, tss_main.ebp),
-                Some(::stack::StackDumpSource::new(
+                Some(crate::stack::StackDumpSource::new(
                     tss_main.esp as usize, tss_main.ebp as usize, tss_main.eip as usize
                     )));
         } else {
             // safe: we're not passing a stackdump_source
             //       so it will use our current stack, which is safe.
-            ::do_panic(format_args!("Doudble fault! Cannot get main TSS, good luck"), None)
+            crate::do_panic(format_args!("Doudble fault! Cannot get main TSS, good luck"), None)
         }
     }
 }
@@ -222,7 +222,7 @@ extern "x86-interrupt" fn general_protection_fault_handler(stack_frame: &mut Exc
 
 extern "x86-interrupt" fn page_fault_handler(stack_frame: &mut ExceptionStackFrame, errcode: PageFaultErrorCode) {
     {
-        let cause_address = ::paging::read_cr2();
+        let cause_address = crate::paging::read_cr2();
 
         if cfg!(feature = "panic-on-exception") {
             panic_on_exception(format_args!("Page Fault accessing {:?}, error: {:?}", cause_address, errcode), stack_frame);

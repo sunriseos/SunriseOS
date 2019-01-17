@@ -3,11 +3,11 @@
 mod filter;
 
 use log::{self, Log, Metadata, Record, LevelFilter};
-use devices::rs232::SerialLogger;
+use crate::devices::rs232::SerialLogger;
 use core::fmt::Write;
-use i386::multiboot::get_boot_information;
-use sync::{RwLock, Once};
-use scheduler;
+use crate::i386::multiboot::get_boot_information;
+use crate::sync::{RwLock, Once};
+use crate::scheduler;
 
 struct Logger {
     filter: RwLock<filter::Filter>
@@ -47,7 +47,7 @@ pub fn early_init() {
 
 /// Reinitializes the logger using the cmdline. This requires the heap.
 pub fn init() {
-    let logger = LOGGER.try().expect("early_init to be called before init");
+    let logger = LOGGER.r#try().expect("early_init to be called before init");
     let cmdline = get_boot_information().command_line_tag().unwrap().command_line();
     let newfilter = filter::Builder::new().parse(cmdline).build();
     *logger.filter.write() = newfilter;

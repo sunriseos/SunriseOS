@@ -25,12 +25,12 @@ use super::mapping::{Mapping, MappingType};
 use super::cross_process::CrossProcessMapping;
 use super::error::MmError;
 use super::MappingFlags;
-use mem::{VirtualAddress, PhysicalAddress};
-use frame_allocator::{FrameAllocator, FrameAllocatorTrait, PhysicalMemRegion};
-use paging::arch::Entry;
-use error::KernelError;
-use utils::{check_aligned, check_nonzero_length};
-use utils::Splittable;
+use crate::mem::{VirtualAddress, PhysicalAddress};
+use crate::frame_allocator::{FrameAllocator, FrameAllocatorTrait, PhysicalMemRegion};
+use crate::paging::arch::Entry;
+use crate::error::KernelError;
+use crate::utils::{check_aligned, check_nonzero_length};
+use crate::utils::Splittable;
 use alloc::{vec::Vec, sync::Arc};
 use failure::Backtrace;
 

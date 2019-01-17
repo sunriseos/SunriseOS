@@ -1,8 +1,8 @@
 //! UserspaceError and KernelError
 
 use failure::Backtrace;
-use paging::error::MmError;
-use mem::VirtualAddress;
+use crate::paging::error::MmError;
+use crate::mem::VirtualAddress;
 use core::fmt::{self, Display};
 
 pub use kfs_libkern::error::KernelError as UserspaceError;

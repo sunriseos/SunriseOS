@@ -1,11 +1,11 @@
 //! Bookkeeping of mappings in UserLand
 
-use mem::VirtualAddress;
-use paging::lands::{KernelLand, RecursiveTablesLand, VirtualSpaceLand};
+use crate::mem::VirtualAddress;
+use crate::paging::lands::{KernelLand, RecursiveTablesLand, VirtualSpaceLand};
 use alloc::collections::BTreeMap;
-use error::KernelError;
+use crate::error::KernelError;
 use super::error::MmError;
-use utils::check_nonzero_length;
+use crate::utils::check_nonzero_length;
 use failure::Backtrace;
 use super::mapping::Mapping;
 

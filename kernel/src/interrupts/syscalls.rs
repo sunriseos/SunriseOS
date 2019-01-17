@@ -1,21 +1,21 @@
 //! Syscall implementations
 
-use i386;
-use mem::{VirtualAddress, PhysicalAddress};
-use mem::{UserSpacePtr, UserSpacePtrMut};
-use paging::{MappingFlags, mapping::MappingType};
-use frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
-use process::{Handle, ThreadStruct, ProcessStruct};
-use event::{self, Waitable};
-use scheduler::{self, get_current_thread, get_current_process};
-use devices::pit;
+use crate::i386;
+use crate::mem::{VirtualAddress, PhysicalAddress};
+use crate::mem::{UserSpacePtr, UserSpacePtrMut};
+use crate::paging::{MappingFlags, mapping::MappingType};
+use crate::frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
+use crate::process::{Handle, ThreadStruct, ProcessStruct};
+use crate::event::{self, Waitable};
+use crate::scheduler::{self, get_current_thread, get_current_process};
+use crate::devices::pit;
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use ipc;
+use crate::ipc;
 use super::check_thread_killed;
-use error::UserspaceError;
+use crate::error::UserspaceError;
 use kfs_libkern::{nr, SYSCALL_NAMES, MemoryInfo, MemoryAttributes, MemoryPermissions};
 use bit_field::BitArray;
 

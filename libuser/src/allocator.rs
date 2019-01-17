@@ -7,8 +7,8 @@ use core::alloc::{GlobalAlloc, Layout};
 use spin::{Mutex, MutexGuard};
 use core::ptr::NonNull;
 use linked_list_allocator::{Heap, align_up};
-use syscalls::set_heap_size;
-use error::KernelError;
+use crate::syscalls::set_heap_size;
+use crate::error::KernelError;
 
 /// The libuser heap allocator.
 ///

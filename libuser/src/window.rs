@@ -2,11 +2,11 @@
 //!
 //! APIs allowing the creation of a window, and drawing inside of it.
 
-use types::{SharedMemory, MappedSharedMemory};
-use vi::{ViInterface, IBuffer};
-use syscalls::MemoryPermissions;
+use crate::types::{SharedMemory, MappedSharedMemory};
+use crate::vi::{ViInterface, IBuffer};
+use crate::syscalls::MemoryPermissions;
 use kfs_libutils::align_up;
-use error::Error;
+use crate::error::Error;
 use core::slice;
 
 /// A rgb color
@@ -50,7 +50,7 @@ impl Window {
         let size = height * width * bpp / 8;
 
         let sharedmem = SharedMemory::new(align_up(size, 0x1000) as _, MemoryPermissions::READABLE | MemoryPermissions::WRITABLE, MemoryPermissions::READABLE)?;
-        let addr = ::find_free_address(size as _, 0x1000)?;
+        let addr = crate::find_free_address(size as _, 0x1000)?;
         let buf = sharedmem.map(addr, align_up(size as _, 0x1000), MemoryPermissions::READABLE | MemoryPermissions::WRITABLE)?;
         let handle = vi.create_buffer(buf.as_shared_mem(), top, left, width, height)?;
 

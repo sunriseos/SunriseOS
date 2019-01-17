@@ -14,17 +14,17 @@
 
 use super::{PhysicalMemRegion, FrameAllocatorTrait, FrameAllocatorTraitPrivate};
 
-use paging::PAGE_SIZE;
+use crate::paging::PAGE_SIZE;
 use multiboot2::BootInformation;
-use sync::SpinLock;
+use crate::sync::SpinLock;
 use alloc::vec::Vec;
-use utils::{check_aligned, check_nonzero_length};
+use crate::utils::{check_aligned, check_nonzero_length};
 use bit_field::BitArray;
-use utils::BitArrayExt;
-use mem::PhysicalAddress;
-use mem::{round_to_page, round_to_page_upper};
-use paging::kernel_memory::get_kernel_memory;
-use error::KernelError;
+use crate::utils::BitArrayExt;
+use crate::mem::PhysicalAddress;
+use crate::mem::{round_to_page, round_to_page_upper};
+use crate::paging::kernel_memory::get_kernel_memory;
+use crate::error::KernelError;
 use failure::Backtrace;
 
 const FRAME_OFFSET_MASK: usize = 0xFFF;              // The offset part in a frame
@@ -311,7 +311,7 @@ pub fn init(boot_info: &BootInformation) {
         let mut cur = None;
         for (i, bitmap) in allocator.memory_bitmap.iter().enumerate() {
             for j in 0..8 {
-                let curaddr = (i * 8 + j) * ::paging::PAGE_SIZE;
+                let curaddr = (i * 8 + j) * crate::paging::PAGE_SIZE;
                 if bitmap & (1 << j) != 0 {
                     // Area is available
                     match cur {

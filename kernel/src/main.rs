@@ -50,7 +50,7 @@ extern crate mashup;
 
 use core::fmt::Write;
 use alloc::prelude::*;
-use utils::io;
+use crate::utils::io;
 
 pub mod paging;
 pub mod event;
@@ -75,16 +75,16 @@ pub mod checks;
 
 #[cfg(target_os = "none")]
 // Make rust happy about rust_oom being no_mangle...
-pub use heap_allocator::rust_oom;
+pub use crate::heap_allocator::rust_oom;
 
 #[cfg(not(test))]
 #[global_allocator]
 static ALLOCATOR: heap_allocator::Allocator = heap_allocator::Allocator::new();
 
-use i386::stack;
-use paging::{PAGE_SIZE, MappingFlags};
-use mem::VirtualAddress;
-use process::{ProcessStruct, ThreadStruct};
+use crate::i386::stack;
+use crate::paging::{PAGE_SIZE, MappingFlags};
+use crate::mem::VirtualAddress;
+use crate::process::{ProcessStruct, ThreadStruct};
 
 unsafe fn force_double_fault() {
     loop {
@@ -157,7 +157,7 @@ pub unsafe extern fn start() -> ! {
 #[cfg(target_os = "none")]
 #[no_mangle]
 pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
-    use devices::rs232::{SerialAttributes, SerialColor};
+    use crate::devices::rs232::{SerialAttributes, SerialColor};
 
     log_impl::early_init();
 
@@ -241,7 +241,7 @@ unsafe fn do_panic(msg: core::fmt::Arguments, stackdump_source: Option<stack::St
     //todo: force unlock the KernelMemory lock
     //      and also the process memory lock for userspace stack dumping (only if panic-on-excetpion ?).
 
-    use devices::rs232::SerialLogger;
+    use crate::devices::rs232::SerialLogger;
 
     let _ = writeln!(SerialLogger, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\
                                     ! Panic! at the disco\n\
@@ -254,7 +254,7 @@ unsafe fn do_panic(msg: core::fmt::Arguments, stackdump_source: Option<stack::St
     use xmas_elf::symbol_table::Entry32;
     use xmas_elf::sections::SectionData;
     use xmas_elf::ElfFile;
-    use elf_loader::MappedGrubModule;
+    use crate::elf_loader::MappedGrubModule;
 
     let mapped_kernel_elf = i386::multiboot::try_get_boot_information()
         .and_then(|info| info.module_tags().nth(0))
@@ -283,10 +283,10 @@ unsafe fn do_panic(msg: core::fmt::Arguments, stackdump_source: Option<stack::St
     if let Some(sds) = stackdump_source {
         unsafe {
             // this is unsafe, caller must check safety
-            ::stack::dump_stack(sds, elf_and_st)
+            crate::stack::dump_stack(sds, elf_and_st)
         }
     } else {
-        ::stack::KernelStack::dump_current_stack(elf_and_st)
+        crate::stack::KernelStack::dump_current_stack(elf_and_st)
     }
 
     let _ = writeln!(SerialLogger, "Thread : {:#x?}", scheduler::try_get_current_thread());

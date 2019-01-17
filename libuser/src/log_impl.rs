@@ -6,7 +6,7 @@
 use spin::Mutex;
 use arrayvec::ArrayString;
 use log::{self, Log, LevelFilter, Metadata, Record};
-use syscalls::output_debug_string;
+use crate::syscalls::output_debug_string;
 use core::fmt::{self, Write};
 
 lazy_static! {

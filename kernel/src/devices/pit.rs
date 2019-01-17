@@ -52,11 +52,11 @@
 //! * [this very good ppt](https://www.cs.usfca.edu/~cruse/cs630f08/lesson15.ppt)
 //!
 
-use sync::SpinLock;
-use io::Io;
-use ::i386::pio::Pio;
-use event::{self, IRQEvent, Waitable};
-use utils::div_ceil;
+use crate::sync::SpinLock;
+use crate::io::Io;
+use crate::i386::pio::Pio;
+use crate::event::{self, IRQEvent, Waitable};
+use crate::utils::div_ceil;
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 

@@ -65,7 +65,7 @@ use core::mem;
 use core::fmt::{self, Write};
 use alloc::prelude::*;
 use log::{Level, LevelFilter, Record, Metadata};
-use devices::rs232::SerialLogger;
+use crate::devices::rs232::SerialLogger;
 use smallvec::SmallVec;
 
 #[path = "string.rs"]

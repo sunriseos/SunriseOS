@@ -13,7 +13,7 @@
 //! in their documentation.
 
 use alloc::vec::Vec;
-use error::KernelError;
+use crate::error::KernelError;
 use failure::Backtrace;
 use bit_field::BitField;
 use bit_field::BitArray;

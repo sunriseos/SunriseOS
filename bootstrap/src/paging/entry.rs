@@ -1,7 +1,7 @@
 //! i386 page table entry
 
-use ::frame_alloc::Frame;
-use ::address::PhysicalAddress;
+use crate::frame_alloc::Frame;
+use crate::address::PhysicalAddress;
 use core::fmt::{Debug, Formatter, Error};
 
 bitflags! {

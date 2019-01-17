@@ -4,11 +4,11 @@
 //! modules are newtypes around Handle.
 
 use core::marker::PhantomData;
-use syscalls;
+use crate::syscalls;
 use core::num::NonZeroU32;
 use kfs_libkern::MemoryPermissions;
-use error::{Error, KernelError};
-use ipc::{Message, MessageTy};
+use crate::error::{Error, KernelError};
+use crate::ipc::{Message, MessageTy};
 use core::mem;
 
 /// A Handle is a sort of reference to a Kernel Object. Its underlying

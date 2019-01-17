@@ -1,11 +1,11 @@
 //! Mapping
 
-use mem::VirtualAddress;
-use paging::{PAGE_SIZE, MappingFlags, error::MmError};
-use error::KernelError;
-use frame_allocator::PhysicalMemRegion;
+use crate::mem::VirtualAddress;
+use crate::paging::{PAGE_SIZE, MappingFlags, error::MmError};
+use crate::error::KernelError;
+use crate::frame_allocator::PhysicalMemRegion;
 use alloc::{vec::Vec, sync::Arc};
-use utils::{check_aligned, check_nonzero_length, Splittable};
+use crate::utils::{check_aligned, check_nonzero_length, Splittable};
 use failure::Backtrace;
 use kfs_libkern;
 

@@ -14,11 +14,11 @@ use core::marker::PhantomData;
 use core::mem;
 use core::ops::{Index, IndexMut};
 use bit_field::BitField;
-use i386::{AlignedTssStruct, TssStruct, PrivilegeLevel};
-use mem::VirtualAddress;
-use paging::{PAGE_SIZE, kernel_memory::get_kernel_memory};
+use crate::i386::{AlignedTssStruct, TssStruct, PrivilegeLevel};
+use crate::mem::VirtualAddress;
+use crate::paging::{PAGE_SIZE, kernel_memory::get_kernel_memory};
 use alloc::boxed::Box;
-use i386::gdt;
+use crate::i386::gdt;
 
 /// An Interrupt Descriptor Table with 256 entries.
 ///
@@ -394,7 +394,7 @@ impl Idt {
 
     /// Loads the IDT in the CPU using the `lidt` command.
     pub fn load(&'static self) {
-        use i386::instructions::tables::{lidt, DescriptorTablePointer};
+        use crate::i386::instructions::tables::{lidt, DescriptorTablePointer};
         use core::mem::size_of;
 
         let ptr = DescriptorTablePointer {
@@ -507,7 +507,7 @@ impl<F> IdtEntry<F> {
     /// The function returns a mutable reference to the entry's options that allows
     /// further customization.
     pub unsafe fn set_interrupt_gate_addr(&mut self, addr: u32) -> &mut EntryOptions {
-        use i386::instructions::segmentation;
+        use crate::i386::instructions::segmentation;
 
         self.pointer_low = addr as u16;
         self.pointer_high = (addr >> 16) as u16;

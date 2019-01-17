@@ -1,8 +1,8 @@
 //! Physical and Virtual address wrappers
 
 use core::fmt::{Formatter, Error, Display, Debug, LowerHex};
-use paging::PAGE_SIZE;
-use frame_alloc::{round_to_page, round_to_page_upper};
+use crate::paging::PAGE_SIZE;
+use crate::frame_alloc::{round_to_page, round_to_page_upper};
 
 /// Represents a Physical address
 ///

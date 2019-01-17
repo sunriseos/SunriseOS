@@ -1,9 +1,9 @@
 //! RS-232
 
 use core::fmt::{Display, Write, Error, Formatter};
-use sync::{Once, SpinLock};
-use io::Io;
-use i386::pio::Pio;
+use crate::sync::{Once, SpinLock};
+use crate::io::Io;
+use crate::i386::pio::Pio;
 
 /// The port of a COM
 #[derive(Debug, Copy, Clone)]

@@ -1,6 +1,6 @@
 //! i386 page table entry
 
-use mem::PhysicalAddress;
+use crate::mem::PhysicalAddress;
 use core::fmt::{Debug, Formatter, Error};
 use super::super::super::hierarchical_table::{HierarchicalEntry, PageState};
 use super::super::super::MappingFlags;

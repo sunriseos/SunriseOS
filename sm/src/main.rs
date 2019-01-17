@@ -37,11 +37,11 @@ extern crate hashmap_core;
 extern crate lazy_static;
 
 use alloc::prelude::*;
-use libuser::syscalls;
-use libuser::ipc::server::{WaitableManager, PortHandler, IWaitable};
-use libuser::types::*;
-use libuser::error::Error;
-use libuser::error::SmError;
+use crate::libuser::syscalls;
+use crate::libuser::ipc::server::{WaitableManager, PortHandler, IWaitable};
+use crate::libuser::types::*;
+use crate::libuser::error::Error;
+use crate::libuser::error::SmError;
 use hashmap_core::map::{HashMap, Entry};
 use spin::Mutex;
 

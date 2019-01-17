@@ -8,9 +8,9 @@ use core::fmt;
 use core::mem::ManuallyDrop;
 use core::ops::{Deref, DerefMut};
 pub use self::spin::{Mutex as SpinLock, MutexGuard as SpinLockGuard};
-use i386::instructions::interrupts::*;
+use crate::i386::instructions::interrupts::*;
 use core::sync::atomic::{AtomicBool, Ordering};
-use scheduler;
+use crate::scheduler;
 
 /// Placeholder for future Mutex implementation.
 pub type Mutex<T> = SpinLock<T>;

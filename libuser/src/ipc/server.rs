@@ -33,13 +33,13 @@
 //! }
 //! ```
 
-use syscalls;
-use types::{HandleRef, ServerPort, ServerSession};
+use crate::syscalls;
+use crate::types::{HandleRef, ServerPort, ServerSession};
 use core::marker::PhantomData;
 use alloc::prelude::*;
 use spin::Mutex;
 use core::ops::{Deref, DerefMut, Index};
-use error::Error;
+use crate::error::Error;
 
 /// A handle to a waitable object.
 pub trait IWaitable {
@@ -216,7 +216,7 @@ fn encode_bytes(s: &str) -> u64 {
 impl<T: Object + Default> PortHandler<T> {
     /// Registers a new PortHandler of the given name to the sm: service.
     pub fn new(server_name: &str) -> Result<PortHandler<T>, Error> {
-        use sm::IUserInterface;
+        use crate::sm::IUserInterface;
         let port = IUserInterface::raw_new()?.register_service(encode_bytes(server_name), false, 0)?;
         Ok(PortHandler {
             handle: port,
