@@ -85,7 +85,7 @@ impl FrameAllocatori386 {
 
 /// The physical memory manager.
 ///
-/// Serves physical memory in atomic blocks of size [PAGE_SIZE](::paging::PAGE_SIZE), called frames.
+/// Serves physical memory in atomic blocks of size [PAGE_SIZE](crate::paging::PAGE_SIZE), called frames.
 ///
 /// An allocation request returns a [PhysicalMemRegion], which represents a list of
 /// physically adjacent frames. When this returned `PhysicalMemRegion` is eventually dropped

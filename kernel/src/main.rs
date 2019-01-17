@@ -222,7 +222,7 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 ///
 /// Note that if `None` is passed, this function is safe.
 ///
-/// [dump_stack]: ::stack::dump_stack
+/// [dump_stack]: crate::stack::dump_stack
 unsafe fn do_panic(msg: core::fmt::Arguments<'_>, stackdump_source: Option<stack::StackDumpSource>) -> ! {
 
     // Disable interrupts forever!

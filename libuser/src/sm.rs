@@ -66,7 +66,7 @@ impl IUserInterface {
     ///
     /// Look at the [create_port] syscall for more information on the parameters.
     ///
-    /// [create_port]: ::syscalls::create_port
+    /// [create_port]: crate::syscalls::create_port
     pub fn register_service(&self, name: u64, is_light: bool, max_handles: u32) -> Result<ServerPort, Error> {
 		    use crate::ipc::Message;
         let mut buf = [0; 0x100];
