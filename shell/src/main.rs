@@ -3,7 +3,7 @@
 //! Creates an interactive terminal window, providing a few functions useful to
 //! test KFS. Type help followed by enter to get a list of allowed commands.
 
-#![feature(alloc, asm)]
+#![feature(alloc, asm, naked_functions)]
 #![feature(const_let)]
 #![no_std]
 
@@ -19,7 +19,7 @@
 #![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
 #![deny(intra_doc_link_resolution_failure)]
 
-extern crate gif;
+use gif;
 extern crate alloc;
 #[macro_use]
 extern crate log;
@@ -27,17 +27,20 @@ extern crate log;
 extern crate lazy_static;
 #[macro_use]
 extern crate kfs_libuser as libuser;
-extern crate byteorder;
+
+
 
 mod ps2;
-use libuser::io;
-use libuser::sm;
-use libuser::window::{Window, Color};
-use libuser::terminal::{Terminal, WindowSize};
+use crate::libuser::io;
+use crate::libuser::sm;
+use crate::libuser::window::{Window, Color};
+use crate::libuser::terminal::{Terminal, WindowSize};
 
 use core::fmt::Write;
-use alloc::vec::Vec;
+use alloc::prelude::*;
+use alloc::sync::Arc;
 use byteorder::{ByteOrder, LE};
+use spin::Mutex;
 
 fn main() {
     let mut terminal = Terminal::new(WindowSize::FontLines(-1, false)).unwrap();
@@ -45,7 +48,7 @@ fn main() {
         match &*ps2::get_next_line(&mut terminal) {
             "gif3" => show_gif(&LOUIS3[..]),
             "gif4" => show_gif(&LOUIS4[..]),
-            //"test_threads" => test_threads(&mut terminal),
+            "test_threads" => terminal = test_threads(terminal),
             "test_divide_by_zero" => test_divide_by_zero(),
             "test_page_fault" => test_page_fault(),
             "connect" => {
@@ -98,40 +101,78 @@ fn show_gif(louis: &[u8]) {
     }
 }
 
-// TODO: Re-enable test_threads
-// BODY: Test threads has been disabled when VBELoggers were removed, as they
-// BODY: would need the ability to get the terminal via an argument somehow.
-/*
-fn test_threads() {
-
-    fn thread_a() {
+fn test_threads(terminal: Terminal) -> Terminal {
+    fn thread_a(terminal: usize) {
+        let terminal = unsafe {
+            Arc::from_raw(terminal as *const Mutex<Terminal>)
+        };
         for _ in 0..10 {
-            writeln!(&mut VBELogger, "A");
-            sleep_thread(0);
+            if let Some(mut lock) = terminal.try_lock() {
+                let _ = writeln!(lock, "A");
+            }
+            let _ = libuser::syscalls::sleep_thread(0);
         }
     }
 
-    fn thread_b() -> ! {
-        for _ in 0..10 {
-            writeln!(&mut VBELogger, "B");
-            sleep_thread(0);
+    fn thread_b(terminal: usize) -> ! {
+        // Wrap in a block to forcibly call Arc destructor before exiting the thread.
+        {
+            let terminal = unsafe {
+                Arc::from_raw(terminal as *const Mutex<Terminal>)
+            };
+            for _ in 0..10 {
+                if let Some(mut lock) = terminal.try_lock() {
+                    let _ = writeln!(lock, "B");
+                }
+                let _ = libuser::syscalls::sleep_thread(0);
+            }
         }
-        exit_thread()
+        libuser::syscalls::exit_thread()
+    }
+
+    #[naked]
+    extern fn function_wrapper() {
+        unsafe {
+            asm!("
+            push eax
+            call $0
+            " :: "i"(thread_b as *const u8) :: "intel");
+        }
     }
 
     const THREAD_STACK_SIZE: usize = 0x2000;
 
+    let mut terminal = Arc::new(Mutex::new(terminal));
     let stack = Box::new([0u8; THREAD_STACK_SIZE]);
     let sp = (Box::into_raw(stack) as *const u8).wrapping_offset(THREAD_STACK_SIZE as isize);
-    let ip = thread_b;
-    let thread_handle = create_thread(ip, 0, sp, 0, 0)
+    let ip : extern fn() -> ! = unsafe {
+        // Safety: This is changing the return type from () to !. It's safe. It
+        // sucks though. This is, yet again, an instance of "naked functions are
+        // fucking horrible".
+        // Also, fun fact about the Rust Type System. Every function has its own
+        // type, that's zero-sized. Those usually get casted automatically into
+        // fn() pointers, but of course transmute is special. So we need to help
+        // it a bit.
+        let fn_wrapper: extern fn() = function_wrapper;
+        core::mem::transmute(fn_wrapper)
+    };
+    let thread_handle = libuser::syscalls::create_thread(ip, Arc::into_raw(terminal.clone()) as usize, sp, 0, 0)
         .expect("svcCreateThread returned an error");
     thread_handle.start()
         .expect("svcStartThread returned an error");
 
     // thread is running b, run a meanwhile
-    thread_a();
-}*/
+    thread_a(Arc::into_raw(terminal.clone()) as usize);
+
+    // Wait for thread_b to terminate.
+    loop {
+        match Arc::try_unwrap(terminal) {
+            Ok(terminal) => break terminal.into_inner(),
+            Err(x) => terminal = x
+        }
+        let _ = libuser::syscalls::sleep_thread(0);
+    }
+}
 
 fn test_divide_by_zero() {
     // don't panic, we want to actually divide by zero

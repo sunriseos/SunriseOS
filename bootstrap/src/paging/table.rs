@@ -10,8 +10,8 @@ pub mod entry;
 
 use self::entry::{EntryFlags as I386EntryFlags, PageState};
 use super::*;
-use ::frame_alloc::{Frame, FrameAllocator, MEMORY_FRAME_SIZE};
-use ::address::{VirtualAddress, PhysicalAddress};
+use crate::frame_alloc::{Frame, FrameAllocator, MEMORY_FRAME_SIZE};
+use crate::address::{VirtualAddress, PhysicalAddress};
 use core::ops::Deref;
 use core::ops::DerefMut;
 use core::marker::PhantomData;

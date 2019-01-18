@@ -22,15 +22,15 @@
 //! let server_sess = server.accept();
 //! ```
 
-use scheduler;
+use crate::scheduler;
 use alloc::vec::Vec;
 use alloc::sync::{Arc, Weak};
-use sync::SpinLock;
-use error::UserspaceError;
-use event::{self, Waitable};
-use process::ThreadStruct;
+use crate::sync::SpinLock;
+use crate::error::UserspaceError;
+use crate::event::{self, Waitable};
+use crate::process::ThreadStruct;
 use core::sync::atomic::{AtomicUsize, Ordering};
-use ipc::session::{self, ClientSession, ServerSession};
+use crate::ipc::session::{self, ClientSession, ServerSession};
 
 /// An endpoint which can be connected to.
 #[derive(Debug)]

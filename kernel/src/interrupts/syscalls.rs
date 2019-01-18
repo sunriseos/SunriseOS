@@ -1,21 +1,21 @@
 //! Syscall implementations
 
-use i386;
-use mem::{VirtualAddress, PhysicalAddress};
-use mem::{UserSpacePtr, UserSpacePtrMut};
-use paging::{MappingAccessRights, mapping::MappingType};
-use frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
-use process::{Handle, ThreadStruct, ProcessStruct};
-use event::{self, Waitable};
-use scheduler::{self, get_current_thread, get_current_process};
-use devices::pit;
+use crate::i386;
+use crate::mem::{VirtualAddress, PhysicalAddress};
+use crate::mem::{UserSpacePtr, UserSpacePtrMut};
+use crate::paging::{MappingAccessRights, mapping::MappingType};
+use crate::frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
+use crate::process::{Handle, ThreadStruct, ProcessStruct};
+use crate::event::{self, Waitable};
+use crate::scheduler::{self, get_current_thread, get_current_process};
+use crate::devices::pit;
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use ipc;
+use crate::ipc;
 use super::check_thread_killed;
-use error::UserspaceError;
+use crate::error::UserspaceError;
 use kfs_libkern::{nr, SYSCALL_NAMES, MemoryInfo, MemoryAttributes, MemoryPermissions};
 use bit_field::BitArray;
 
@@ -32,7 +32,7 @@ use bit_field::BitArray;
 ///
 /// * `new_size` must be [PAGE_SIZE] aligned.
 ///
-/// [PAGE_SIZE]: ::paging::PAGE_SIZE
+/// [PAGE_SIZE]: crate::paging::PAGE_SIZE
 fn set_heap_size(new_size: usize) -> Result<usize, UserspaceError> {
     let p = get_current_process();
     let mut pmemory = p.pmemory.lock();
@@ -198,7 +198,7 @@ fn exit_thread() -> Result<(), UserspaceError> {
 /// # Params
 ///
 /// * `ip` the entry point of the thread,
-/// * `context` ignored,
+/// * `arg` the initial argument of the thread (passed in eax),
 /// * `sp` the top of the stack,
 /// * `priority` ignored,
 /// * `processor_id` ignored,
@@ -206,9 +206,9 @@ fn exit_thread() -> Result<(), UserspaceError> {
 /// # Returns
 ///
 /// A thread_handle to the created thread.
-fn create_thread(ip: usize, _context: usize, sp: usize, _priority: u32, _processor_id: u32) -> Result<usize, UserspaceError> {
+fn create_thread(ip: usize, arg: usize, sp: usize, _priority: u32, _processor_id: u32) -> Result<usize, UserspaceError> {
     let cur_proc = get_current_process();
-    let thread = ThreadStruct::new( &cur_proc, VirtualAddress(ip), VirtualAddress(sp))?;
+    let thread = ThreadStruct::new(&cur_proc, VirtualAddress(ip), VirtualAddress(sp), arg)?;
     let handle = Handle::Thread(thread);
     let mut handles_table = cur_proc.phandles.lock();
     Ok(handles_table.add_handle(Arc::new(handle)) as usize)

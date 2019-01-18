@@ -84,7 +84,7 @@ impl Error {
 }
 
 impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // TODO: Better Display implementation for libuser::Error
         // BODY: Right now, the libuser::Error Display just shims back to the Debug implementation.
         // BODY: It'd be nice if it delegated the display to the underlying Error types.

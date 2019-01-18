@@ -4,16 +4,16 @@ mod entry;
 mod table;
 
 use multiboot2::{BootInformation, ElfSectionFlags};
-use ::address::{PhysicalAddress, VirtualAddress};
-use ::frame_alloc::{round_to_page, round_to_page_upper};
+use crate::address::{PhysicalAddress, VirtualAddress};
+use crate::frame_alloc::{round_to_page, round_to_page_upper};
 
 pub use self::table::{ActivePageTables, InactivePageTables, PagingOffPageSet, MappingType, EntryFlags};
 pub use self::table::PageTablesSet;
 
 use self::table::entry::Entry;
 use spin::Mutex;
-use ::core::fmt::Write;
-use bootstrap_logging::Serial;
+use core::fmt::Write;
+use crate::bootstrap_logging::Serial;
 
 /// The size of a single page.
 pub const PAGE_SIZE: usize = 4096;

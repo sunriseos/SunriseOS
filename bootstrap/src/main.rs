@@ -23,7 +23,7 @@
 //!
 
 #![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt)]
-#![cfg_attr(target_os = "none", no_std)]
+#![no_std]
 #![cfg_attr(target_os = "none", no_main)]
 
 // rustc warnings
@@ -42,24 +42,17 @@
 // clippy override
 #![allow(clippy::cast_lossless)]
 
-#[cfg(not(target_os = "none"))]
-use std as core;
-
 #[cfg(not(any(target_arch = "x86", test)))]
 compile_error!("WTF");
 
-extern crate arrayvec;
-extern crate bit_field;
+#[cfg(not(target_os = "none"))]
+extern crate std;
 #[macro_use]
 extern crate lazy_static;
-extern crate spin;
-extern crate multiboot2;
 #[macro_use]
 extern crate bitflags;
 #[macro_use]
 extern crate static_assertions;
-extern crate xmas_elf;
-extern crate kfs_libutils;
 
 use core::fmt::Write;
 
@@ -71,10 +64,10 @@ pub mod frame_alloc;
 pub mod elf_loader;
 pub mod bootstrap_stack;
 
-use bootstrap_logging::Serial;
-use frame_alloc::FrameAllocator;
-use paging::{PageTablesSet, KernelLand};
-use bootstrap_stack::BootstrapStack;
+use crate::bootstrap_logging::Serial;
+use crate::frame_alloc::FrameAllocator;
+use crate::paging::{PageTablesSet, KernelLand};
+use crate::bootstrap_stack::BootstrapStack;
 
 /// 4 pages, PAGE_SIZE aligned.
 #[repr(align(4096))]
@@ -91,8 +84,8 @@ pub fn print_stack() {
     unsafe {
         let sp: usize;
         asm!("mov $0, esp" : "=r"(sp) : : : "intel");
-        let sp_start = sp - ::STACK.0.as_ptr() as usize;
-        kfs_libutils::print_hexdump(&mut Serial, &::STACK.0[sp_start..]);
+        let sp_start = sp - crate::STACK.0.as_ptr() as usize;
+        kfs_libutils::print_hexdump(&mut Serial, &crate::STACK.0[sp_start..]);
     }
 }
 
@@ -213,7 +206,7 @@ pub extern "C" fn do_bootstrap(multiboot_info_addr: usize) -> ! {
 /// Something went really wrong, just print a message on serial output, and spin indefinitely.
 #[cfg(target_os = "none")]
 #[panic_handler] #[no_mangle]
-pub extern fn panic_fmt(p: &::core::panic::PanicInfo) -> ! {
+pub extern fn panic_fmt(p: &::core::panic::PanicInfo<'_>) -> ! {
 
     let _ = writeln!(Serial,
                               "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\

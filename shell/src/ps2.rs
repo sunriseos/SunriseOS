@@ -1,12 +1,12 @@
 
 #![allow(clippy::match_bool)] // more readable
 
-use io::{Io, Pio};
+use crate::io::{Io, Pio};
 use core::sync::atomic::{AtomicBool, Ordering::SeqCst};
 use alloc::string::String;
-use libuser::syscalls;
-use libuser::types::ReadableEvent;
-use libuser::terminal::Terminal;
+use crate::libuser::syscalls;
+use crate::libuser::types::ReadableEvent;
+use crate::libuser::terminal::Terminal;
 use core::fmt::Write;
 
 struct PS2 {

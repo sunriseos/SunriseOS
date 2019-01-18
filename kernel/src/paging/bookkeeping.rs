@@ -1,11 +1,11 @@
 //! Bookkeeping of mappings in UserLand
 
-use mem::VirtualAddress;
-use paging::lands::{KernelLand, RecursiveTablesLand, VirtualSpaceLand};
+use crate::mem::VirtualAddress;
+use crate::paging::lands::{KernelLand, RecursiveTablesLand, VirtualSpaceLand};
 use alloc::collections::BTreeMap;
-use error::KernelError;
+use crate::error::KernelError;
 use super::error::MmError;
-use utils::check_nonzero_length;
+use crate::utils::check_nonzero_length;
 use failure::Backtrace;
 use super::mapping::Mapping;
 
@@ -77,7 +77,7 @@ impl UserspaceBookkeeping {
     }
 
     /// Returns the mapping `address` falls into.
-    pub fn mapping_at(&self, address: VirtualAddress) -> QueryMemory {
+    pub fn mapping_at(&self, address: VirtualAddress) -> QueryMemory<'_> {
         let start_addr = match self.mapping_at_or_preceding(address) {
             // check cannot overflow
             Some(m) if m.length() - 1 + m.address() >= address => return QueryMemory::Used(m), // address falls in m

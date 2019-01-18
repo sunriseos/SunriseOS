@@ -68,7 +68,7 @@ use core::mem;
 use core::fmt::{self, Write};
 use alloc::prelude::*;
 use log::{Level, LevelFilter, Record, Metadata};
-use devices::rs232::SerialLogger;
+use crate::devices::rs232::SerialLogger;
 use smallvec::SmallVec;
 
 #[path = "string.rs"]
@@ -156,7 +156,7 @@ impl Filter {
     }
 
     /// Checks if this record matches the configured filter.
-    pub fn matches(&self, record: &Record) -> bool {
+    pub fn matches(&self, record: &Record<'_>) -> bool {
         if !self.enabled(record.metadata()) {
             return false;
         }
@@ -171,7 +171,7 @@ impl Filter {
     }
 
     /// Determines if a log message with the specified metadata would be logged.
-    pub fn enabled(&self, metadata: &Metadata) -> bool {
+    pub fn enabled(&self, metadata: &Metadata<'_>) -> bool {
         let level = metadata.level();
         let target = metadata.target();
 
@@ -271,7 +271,7 @@ impl Default for Builder {
 }
 
 impl fmt::Debug for Filter {
-    fn fmt(&self, f: &mut fmt::Formatter)->fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>)->fmt::Result {
         f.debug_struct("Filter")
             .field("filter", &self.filter)
             .field("directives", &self.directives)
@@ -280,7 +280,7 @@ impl fmt::Debug for Filter {
 }
 
 impl fmt::Debug for Builder {
-    fn fmt(&self, f: &mut fmt::Formatter)->fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>)->fmt::Result {
         f.debug_struct("Filter")
             .field("filter", &self.filter)
             .field("directives", &self.directives)

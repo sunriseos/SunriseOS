@@ -1,9 +1,9 @@
 //! Generic useful functions
 
-extern crate kfs_libutils;
+use kfs_libutils;
 pub use self::kfs_libutils::*;
-pub use checks::*;
-use error::KernelError;
+pub use crate::checks::*;
+use crate::error::KernelError;
 
 /// A trait for things that can be splitted in two parts
 pub trait Splittable where Self: Sized {

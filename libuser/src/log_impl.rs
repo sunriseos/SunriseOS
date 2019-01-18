@@ -6,7 +6,7 @@
 use spin::Mutex;
 use arrayvec::ArrayString;
 use log::{self, Log, LevelFilter, Metadata, Record};
-use syscalls::output_debug_string;
+use crate::syscalls::output_debug_string;
 use core::fmt::{self, Write};
 
 lazy_static! {
@@ -23,11 +23,11 @@ lazy_static! {
 struct Logger;
 
 impl Log for Logger {
-    fn enabled(&self, _metadata: &Metadata) -> bool {
+    fn enabled(&self, _metadata: &Metadata<'_>) -> bool {
         true
     }
 
-    fn log(&self, record: &Record) {
+    fn log(&self, record: &Record<'_>) {
         let _ = writeln!(Logger, "[{}] - {} - {}", record.level(), record.target(), record.args());
     }
 

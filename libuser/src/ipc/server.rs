@@ -33,14 +33,14 @@
 //! }
 //! ```
 
-use syscalls;
-use types::{HandleRef, ServerPort, ServerSession};
+use crate::syscalls;
+use crate::types::{HandleRef, ServerPort, ServerSession};
 use core::marker::PhantomData;
 use alloc::prelude::*;
 use spin::Mutex;
 use core::ops::{Deref, DerefMut, Index};
 use core::fmt::{self, Debug};
-use error::Error;
+use crate::error::Error;
 
 /// A handle to a waitable object.
 pub trait IWaitable: Debug {
@@ -60,7 +60,7 @@ pub trait IWaitable: Debug {
 /// The event loop manager. Waits on the waitable objects added to it.
 #[derive(Debug, Default)]
 pub struct WaitableManager {
-    to_add_waitables: Mutex<Vec<Box<IWaitable>>>
+    to_add_waitables: Mutex<Vec<Box<dyn IWaitable>>>
 }
 
 impl WaitableManager {
@@ -72,7 +72,7 @@ impl WaitableManager {
     }
 
     /// Add a new handle for the waitable manager to wait on.
-    pub fn add_waitable(&self, waitable: Box<IWaitable>) {
+    pub fn add_waitable(&self, waitable: Box<dyn IWaitable>) {
         self.to_add_waitables.lock().push(waitable);
     }
 
@@ -90,7 +90,7 @@ impl WaitableManager {
             }
 
             let idx = {
-                let handles = waitables.iter().map(|v| v.get_handle()).collect::<Vec<HandleRef>>();
+                let handles = waitables.iter().map(|v| v.get_handle()).collect::<Vec<HandleRef<'_>>>();
                 // TODO: new_waitable_event
                 syscalls::wait_synchronization(&*handles, None).unwrap()
             };
@@ -238,7 +238,7 @@ fn encode_bytes(s: &str) -> u64 {
 impl<T: Object + Default + Debug> PortHandler<T> {
     /// Registers a new PortHandler of the given name to the sm: service.
     pub fn new(server_name: &str) -> Result<PortHandler<T>, Error> {
-        use sm::IUserInterface;
+        use crate::sm::IUserInterface;
         let port = IUserInterface::raw_new()?.register_service(encode_bytes(server_name), false, 0)?;
         Ok(PortHandler {
             handle: port,

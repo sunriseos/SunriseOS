@@ -7,8 +7,8 @@
 //! defined in the event module. It is expected that these pointer will then be
 //! inserted in an architecture-specific interrupt table (such as i386's IDT).
 
-use i386::structures::idt::ExceptionStackFrame;
-use devices::pic;
+use crate::i386::structures::idt::ExceptionStackFrame;
+use crate::devices::pic;
 
 #[allow(clippy::missing_docs_in_private_items)]
 extern "x86-interrupt" fn timer_handler(_stack_frame: &mut ExceptionStackFrame) {
@@ -21,7 +21,7 @@ macro_rules! irq_handler {
         #[allow(clippy::missing_docs_in_private_items)]
         extern "x86-interrupt" fn $name(_stack_frame: &mut ExceptionStackFrame) {
             pic::get().acknowledge($irq);
-            ::event::dispatch_event($irq);
+            crate::event::dispatch_event($irq);
         }
         $name
     }}

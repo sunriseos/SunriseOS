@@ -4,11 +4,11 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::mem;
 
-use process::{ProcessStruct, ThreadStruct, ThreadState};
-use i386::process_switch::process_switch;
-use sync::{Lock, SpinLockIRQ, SpinLockIRQGuard};
+use crate::process::{ProcessStruct, ThreadStruct, ThreadState};
+use crate::i386::process_switch::process_switch;
+use crate::sync::{Lock, SpinLockIRQ, SpinLockIRQGuard};
 use core::sync::atomic::Ordering;
-use error::{UserspaceError};
+use crate::error::{UserspaceError};
 
 /// An Arc to the currently running thread.
 ///
@@ -107,7 +107,7 @@ pub fn add_to_schedule_queue(thread: Arc<ThreadStruct>) {
 }
 
 /// Checks if a thread is already either in the schedule queue or currently running.
-pub fn is_in_schedule_queue(queue: &SpinLockIRQGuard<Vec<Arc<ThreadStruct>>>,
+pub fn is_in_schedule_queue(queue: &SpinLockIRQGuard<'_, Vec<Arc<ThreadStruct>>>,
                             thread: &Arc<ThreadStruct>) -> bool {
     unsafe { CURRENT_THREAD.iter() }.filter(|v| {
         v.state.load(Ordering::SeqCst) != ThreadState::Stopped
@@ -245,7 +245,7 @@ where
                 // Temporarily revive interrupts for hlt.
                 drop(interrupt_lock);
                 unsafe {
-                    ::i386::instructions::interrupts::hlt();
+                    crate::i386::instructions::interrupts::hlt();
                 }
 
                 // Kill interrupts again.
@@ -311,7 +311,7 @@ pub fn scheduler_first_schedule<F: FnOnce()>(current_thread: Arc<ThreadStruct>, 
 
     unsafe {
         // this is a new process, no SpinLockIRQ is held
-        ::i386::instructions::interrupts::sti();
+        crate::i386::instructions::interrupts::sti();
     }
 
     jump_to_entrypoint()

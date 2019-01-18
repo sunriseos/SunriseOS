@@ -1,10 +1,10 @@
 //! Module describing the split between the UserSpace and KernelSpace,
 //! and a few functions to work with it.
 
-use mem::VirtualAddress;
+use crate::mem::VirtualAddress;
 use super::PAGE_SIZE;
 use super::arch::ENTRY_COUNT;
-use error::KernelError;
+use crate::error::KernelError;
 use failure::Backtrace;
 
 /// A trait describing the splitting of virtual memory between Kernel and User.

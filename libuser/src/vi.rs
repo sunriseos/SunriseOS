@@ -1,9 +1,9 @@
 //! Vi Compositor service
 
-use types::*;
-use sm;
+use crate::types::*;
+use crate::sm;
 use core::mem;
-use error::{Error, SmError};
+use crate::error::{Error, SmError};
 
 /// Main compositor interface.
 pub struct ViInterface(ClientSession);
@@ -11,7 +11,7 @@ pub struct ViInterface(ClientSession);
 impl ViInterface {
     /// Connects to the vi service.
     pub fn raw_new() -> Result<ViInterface, Error> {
-        use syscalls;
+        use crate::syscalls;
 
         loop {
             let svcname = unsafe {
@@ -30,7 +30,7 @@ impl ViInterface {
     /// content will be copied to the screen on each call to draw(), or when
     /// another buffer calls draw whose position intersects with this buffer.
     pub fn create_buffer(&mut self, handle: &SharedMemory, top: i32, left: i32, width: u32, height: u32,) -> Result<IBuffer, Error> {
-        use ipc::Message;
+        use crate::ipc::Message;
         let mut buf = [0; 0x100];
 
         #[repr(C)] #[derive(Clone, Copy, Default)]
@@ -48,7 +48,7 @@ impl ViInterface {
         msg.pack(&mut buf[..]);
 
         self.0.send_sync_request_with_user_buffer(&mut buf[..])?;
-        let mut res : Message<(), [_; 0], [_; 0], [_; 1]> = Message::unpack(&buf[..]);
+        let mut res : Message<'_, (), [_; 0], [_; 0], [_; 1]> = Message::unpack(&buf[..]);
         res.error()?;
         Ok(IBuffer(ClientSession(res.pop_handle_move().unwrap())))
     }
@@ -63,14 +63,14 @@ impl IBuffer {
     /// Ask the compositor to redraw the window. This will cause the compositor
     /// to redraw every window intersecting with this one as well.
     pub fn draw(&mut self) -> Result<(), Error> {
-        use ipc::Message;
+        use crate::ipc::Message;
         let mut buf = [0; 0x100];
 
         let msg = Message::<(), [_; 0], [_; 0], [_; 0]>::new_request(None, 0);
         msg.pack(&mut buf[..]);
 
         self.0.send_sync_request_with_user_buffer(&mut buf[..])?;
-        let res : Message<(), [_; 0], [_; 0], [_; 1]> = Message::unpack(&buf[..]);
+        let res : Message<'_, (), [_; 0], [_; 0], [_; 1]> = Message::unpack(&buf[..]);
         res.error()?;
         Ok(())
     }

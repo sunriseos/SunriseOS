@@ -14,7 +14,7 @@
 //! [`BOOT_INFO`]: self::multiboot::BOOT_INFO
 //! [`get_boot_information`]: self::multiboot::get_boot_information
 
-use sync::Once;
+use crate::sync::Once;
 use multiboot2::BootInformation;
 
 /// Stores the address of the multiboot.
@@ -27,7 +27,7 @@ static BOOT_INFO: Once<BootInformation> = Once::new();
 /// Panics if the BootInformation hasn't been inited yet. This normally happens
 /// right after paging is enabled.
 pub fn get_boot_information() -> &'static BootInformation {
-    BOOT_INFO.try().expect("BootInformation is not init'd")
+    BOOT_INFO.r#try().expect("BootInformation is not init'd")
 }
 
 /// Tries to get a pointer to the multiboot information structure.
@@ -35,7 +35,7 @@ pub fn get_boot_information() -> &'static BootInformation {
 /// Returns `None` if the BootInformation hasn't been inited yet. This normally happens
 /// right after paging is enabled.
 pub fn try_get_boot_information() -> Option<&'static BootInformation> {
-    BOOT_INFO.try()
+    BOOT_INFO.r#try()
 }
 
 /// Initializes the boot information module, allowing the `get_boot_information`

@@ -17,22 +17,21 @@
 #![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
 #![deny(intra_doc_link_resolution_failure)]
 
-extern crate linked_list_allocator;
 #[macro_use]
 extern crate alloc;
-extern crate byteorder;
-extern crate arrayvec;
+
+
 #[macro_use]
 extern crate bitfield;
-extern crate bit_field;
-extern crate spin;
+
+
 #[macro_use]
 extern crate kfs_libutils;
-extern crate kfs_libkern;
+use kfs_libkern;
 #[macro_use]
 extern crate failure;
-extern crate font_rs;
-extern crate hashmap_core;
+
+
 #[macro_use]
 extern crate log;
 #[macro_use]
@@ -53,7 +52,7 @@ mod log_impl;
 pub use kfs_libutils::io;
 
 use kfs_libutils as utils;
-use error::{Error, LibuserError};
+use crate::error::{Error, LibuserError};
  
 // TODO: report #[cfg(not(test))] and #[global_allocator]
 // BODY: `#[cfg(not(test))]` still compiles this item with cargo test,
@@ -101,7 +100,7 @@ pub fn find_free_address(size: usize, align: usize) -> Result<usize, Error> {
 /// kernel debug logger, and exits the process.
 #[cfg(target_os = "none")]
 #[panic_handler] #[no_mangle]
-pub extern fn panic_fmt(p: &core::panic::PanicInfo) -> ! {
+pub extern fn panic_fmt(p: &core::panic::PanicInfo<'_>) -> ! {
     let _ = syscalls::output_debug_string(&format!("{}", p));
     syscalls::exit_process();
 }

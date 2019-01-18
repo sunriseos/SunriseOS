@@ -3,8 +3,8 @@
 //! This module can only allocate and free whole frames.
 
 use alloc::vec::Vec;
-use error::KernelError;
-use paging::PAGE_SIZE;
+use crate::error::KernelError;
+use crate::paging::PAGE_SIZE;
 
 pub mod physical_mem_region;
 pub use self::physical_mem_region::{PhysicalMemRegion, PhysicalMemRegionIter};
@@ -34,7 +34,7 @@ mod private {
     //! Private FrameAllocator API
 
     use super::PhysicalMemRegion;
-    use mem::PhysicalAddress;
+    use crate::mem::PhysicalAddress;
 
     /// An arch-specifig FrameAllocator must expose the following functions.
     ///

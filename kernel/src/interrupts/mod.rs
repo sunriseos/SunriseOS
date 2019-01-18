@@ -5,26 +5,31 @@
 //! Feature `panic-on-exception` makes the kernel stop and panic when a thread generates
 //! an exception. This is useful for debugging.
 
-use i386::structures::idt::{ExceptionStackFrame, PageFaultErrorCode, Idt};
-use i386::instructions::interrupts::sti;
-use mem::VirtualAddress;
-use paging::kernel_memory::get_kernel_memory;
-use i386::{TssStruct, PrivilegeLevel};
-use i386::gdt;
-use scheduler::get_current_thread;
-use process::{ProcessStruct, ThreadState};
-use sync::SpinLockIRQ;
+use crate::i386::structures::idt::{ExceptionStackFrame, PageFaultErrorCode, Idt};
+use crate::i386::instructions::interrupts::sti;
+use crate::mem::VirtualAddress;
+use crate::paging::kernel_memory::get_kernel_memory;
+use crate::i386::{TssStruct, PrivilegeLevel};
+use crate::i386::gdt;
+use crate::scheduler::get_current_thread;
+use crate::process::{ProcessStruct, ThreadState};
+use crate::sync::SpinLockIRQ;
 use core::sync::atomic::Ordering;
 
 use core::fmt::Arguments;
-use sync::SpinLock;
-use devices::pic;
-use scheduler;
+use crate::sync::SpinLock;
+use crate::devices::pic;
+use crate::scheduler;
 
 mod irq;
 mod syscalls;
 
 /// Checks if our thread was killed, in which case unschedule ourselves.
+///
+/// # Note
+///
+/// As this function will be the last that will be called by a thread before dying,
+/// caller must make sure all of its scope variables are ok to be leaked.
 pub fn check_thread_killed() {
     if scheduler::get_current_thread().state.load(Ordering::SeqCst) == ThreadState::Killed {
         let lock = SpinLockIRQ::new(());
@@ -35,11 +40,11 @@ pub fn check_thread_killed() {
 }
 
 /// Panics with an informative message.
-fn panic_on_exception(exception_string: Arguments, exception_stack_frame: &ExceptionStackFrame) -> ! {
+fn panic_on_exception(exception_string: Arguments<'_>, exception_stack_frame: &ExceptionStackFrame) -> ! {
     unsafe {
         // safe: we're not passing a stackdump_source
         //       so it will use our current kernel stack, which is safe.
-        ::do_panic(
+        crate::do_panic(
             format_args!("{} in {:?}: {:?}",
                          exception_string,
                          scheduler::try_get_current_process().as_ref().map(|p| &p.name),
@@ -53,13 +58,15 @@ fn panic_on_exception(exception_string: Arguments, exception_stack_frame: &Excep
 ///
 /// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn divide_by_zero_handler(stack_frame: &mut ExceptionStackFrame) {
-    if cfg!(feature = "panic-on-exception") {
-        panic_on_exception(format_args!("Divide Error Exception"), stack_frame);
-    }
+    {
+        if cfg!(feature = "panic-on-exception") {
+            panic_on_exception(format_args!("Divide Error Exception"), stack_frame);
+        }
 
-    let thread = get_current_thread();
-    warn!("Divide Error Exception in {:#?}", thread);
-    ProcessStruct::kill_process(thread.process.clone());
+        let thread = get_current_thread();
+        error!("Divide Error Exception in {:#?}", thread);
+        ProcessStruct::kill_process(thread.process.clone());
+    }
 
     check_thread_killed();
 }
@@ -68,13 +75,15 @@ extern "x86-interrupt" fn divide_by_zero_handler(stack_frame: &mut ExceptionStac
 ///
 /// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn debug_handler(stack_frame: &mut ExceptionStackFrame) {
-    if cfg!(feature = "panic-on-exception") {
-        panic_on_exception(format_args!("Debug Exception"), stack_frame);
-    }
+    {
+        if cfg!(feature = "panic-on-exception") {
+            panic_on_exception(format_args!("Debug Exception"), stack_frame);
+        }
 
-    let thread = get_current_thread();
-    warn!("Debug Exception in {:#?}", thread);
-    ProcessStruct::kill_process(thread.process.clone());
+        let thread = get_current_thread();
+        error!("Debug Exception in {:#?}", thread);
+        ProcessStruct::kill_process(thread.process.clone());
+    }
 
     check_thread_killed();
 }
@@ -94,13 +103,15 @@ extern "x86-interrupt" fn breakpoint_handler(_stack_frame: &mut ExceptionStackFr
 ///
 /// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn overflow_handler(stack_frame: &mut ExceptionStackFrame) {
-    if cfg!(feature = "panic-on-exception") {
-        panic_on_exception(format_args!("Overflow Exception"), stack_frame);
-    }
+    {
+        if cfg!(feature = "panic-on-exception") {
+            panic_on_exception(format_args!("Overflow Exception"), stack_frame);
+        }
 
-    let thread = get_current_thread();
-    warn!("Overflow Exception in {:#?}", thread);
-    ProcessStruct::kill_process(thread.process.clone());
+        let thread = get_current_thread();
+        error!("Overflow Exception in {:#?}", thread);
+        ProcessStruct::kill_process(thread.process.clone());
+    }
 
     check_thread_killed();
 }
@@ -109,13 +120,15 @@ extern "x86-interrupt" fn overflow_handler(stack_frame: &mut ExceptionStackFrame
 ///
 /// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn bound_range_exceeded_handler(stack_frame: &mut ExceptionStackFrame) {
-    if cfg!(feature = "panic-on-exception") {
-        panic_on_exception(format_args!("BOUND Range Exceeded Exception"), stack_frame);
-    }
+    {
+        if cfg!(feature = "panic-on-exception") {
+            panic_on_exception(format_args!("BOUND Range Exceeded Exception"), stack_frame);
+        }
 
-    let thread = get_current_thread();
-    warn!("BOUND Range Exceeded Exception in {:#?}", thread);
-    ProcessStruct::kill_process(thread.process.clone());
+        let thread = get_current_thread();
+        error!("BOUND Range Exceeded Exception in {:#?}", thread);
+        ProcessStruct::kill_process(thread.process.clone());
+    }
 
     check_thread_killed();
 }
@@ -124,13 +137,15 @@ extern "x86-interrupt" fn bound_range_exceeded_handler(stack_frame: &mut Excepti
 ///
 /// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn invalid_opcode_handler(stack_frame: &mut ExceptionStackFrame) {
-    if cfg!(feature = "panic-on-exception") {
-        panic_on_exception(format_args!("Invalid opcode Exception"), stack_frame);
-    }
+    {
+        if cfg!(feature = "panic-on-exception") {
+            panic_on_exception(format_args!("Invalid opcode Exception"), stack_frame);
+        }
 
-    let thread = get_current_thread();
-    warn!("Invalid opcode Exception in {:#?}", thread);
-    ProcessStruct::kill_process(thread.process.clone());
+        let thread = get_current_thread();
+        error!("Invalid opcode Exception in {:#?}", thread);
+        ProcessStruct::kill_process(thread.process.clone());
+    }
 
     check_thread_killed();
 }
@@ -139,13 +154,15 @@ extern "x86-interrupt" fn invalid_opcode_handler(stack_frame: &mut ExceptionStac
 ///
 /// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn device_not_available_handler(stack_frame: &mut ExceptionStackFrame) {
-    if cfg!(feature = "panic-on-exception") {
-        panic_on_exception(format_args!("Device Not Available Exception"), stack_frame);
-    }
+    {
+        if cfg!(feature = "panic-on-exception") {
+            panic_on_exception(format_args!("Device Not Available Exception"), stack_frame);
+        }
 
-    let thread = get_current_thread();
-    warn!("Device Not Available Exception in {:#?}", thread);
-    ProcessStruct::kill_process(thread.process.clone());
+        let thread = get_current_thread();
+        error!("Device Not Available Exception in {:#?}", thread);
+        ProcessStruct::kill_process(thread.process.clone());
+    }
 
     check_thread_killed();
 }
@@ -158,20 +175,20 @@ fn double_fault_handler() {
         if let Some(tss_main) = (gdt::MAIN_TASK.addr() as *const TssStruct).as_ref() {
 
             // safe: we're in an exception handler, nobody can modify the faulty thread's stack.
-            ::do_panic(format_args!("Double fault!
+            crate::do_panic(format_args!("Double fault!
                     EIP={:#010x} CR3={:#010x}
                     EAX={:#010x} EBX={:#010x} ECX={:#010x} EDX={:#010x}
                     ESI={:#010x} EDI={:#010X} ESP={:#010x} EBP={:#010x}",
                     tss_main.eip, tss_main.cr3,
                     tss_main.eax, tss_main.ebx, tss_main.ecx, tss_main.edx,
                     tss_main.esi, tss_main.edi, tss_main.esp, tss_main.ebp),
-                Some(::stack::StackDumpSource::new(
+                Some(crate::stack::StackDumpSource::new(
                     tss_main.esp as usize, tss_main.ebp as usize, tss_main.eip as usize
                     )));
         } else {
             // safe: we're not passing a stackdump_source
             //       so it will use our current stack, which is safe.
-            ::do_panic(format_args!("Doudble fault! Cannot get main TSS, good luck"), None)
+            crate::do_panic(format_args!("Doudble fault! Cannot get main TSS, good luck"), None)
         }
     }
 }
@@ -186,13 +203,15 @@ extern "x86-interrupt" fn invalid_tss_handler(stack_frame: &mut ExceptionStackFr
 ///
 /// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn segment_not_present_handler(stack_frame: &mut ExceptionStackFrame, errcode: u32) {
-    if cfg!(feature = "panic-on-exception") {
-        panic_on_exception(format_args!("Segment Not Present: error code: {:?}", errcode), stack_frame);
-    }
+    {
+        if cfg!(feature = "panic-on-exception") {
+            panic_on_exception(format_args!("Segment Not Present: error code: {:?}", errcode), stack_frame);
+        }
 
-    let thread = get_current_thread();
-    warn!("Segment Not Present in {:#?}", thread);
-    ProcessStruct::kill_process(thread.process.clone());
+        let thread = get_current_thread();
+        error!("Segment Not Present in {:#?}", thread);
+        ProcessStruct::kill_process(thread.process.clone());
+    }
 
     check_thread_killed();
 }
@@ -201,13 +220,15 @@ extern "x86-interrupt" fn segment_not_present_handler(stack_frame: &mut Exceptio
 ///
 /// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn stack_segment_fault_handler(stack_frame: &mut ExceptionStackFrame, errcode: u32) {
-    if cfg!(feature = "panic-on-exception") {
-        panic_on_exception(format_args!("Stack Fault Exception: error code: {:?}", errcode), stack_frame);
-    }
+    {
+        if cfg!(feature = "panic-on-exception") {
+            panic_on_exception(format_args!("Stack Fault Exception: error code: {:?}", errcode), stack_frame);
+        }
 
-    let thread = get_current_thread();
-    warn!("Exception : Stack Fault Exception in {:#?}", thread);
-    ProcessStruct::kill_process(thread.process.clone());
+        let thread = get_current_thread();
+        error!("Exception : Stack Fault Exception in {:#?}", thread);
+        ProcessStruct::kill_process(thread.process.clone());
+    }
 
     check_thread_killed();
 }
@@ -216,13 +237,15 @@ extern "x86-interrupt" fn stack_segment_fault_handler(stack_frame: &mut Exceptio
 ///
 /// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn general_protection_fault_handler(stack_frame: &mut ExceptionStackFrame, errcode: u32) {
-    if cfg!(feature = "panic-on-exception") {
-        panic_on_exception(format_args!("General Protection Fault Exception: error code: {:?}", errcode), stack_frame);
-    }
+    {
+        if cfg!(feature = "panic-on-exception") {
+            panic_on_exception(format_args!("General Protection Fault Exception: error code: {:?}", errcode), stack_frame);
+        }
 
-    let thread = get_current_thread();
-    warn!("Exception : General Protection Fault Exception in {:#?}", thread);
-    ProcessStruct::kill_process(thread.process.clone());
+        let thread = get_current_thread();
+        error!("Exception : General Protection Fault Exception in {:#?}", thread);
+        ProcessStruct::kill_process(thread.process.clone());
+    }
 
     check_thread_killed();
 }
@@ -231,15 +254,17 @@ extern "x86-interrupt" fn general_protection_fault_handler(stack_frame: &mut Exc
 ///
 /// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn page_fault_handler(stack_frame: &mut ExceptionStackFrame, errcode: PageFaultErrorCode) {
-    let cause_address = ::paging::read_cr2();
+    {
+        let cause_address = crate::paging::read_cr2();
 
-    if cfg!(feature = "panic-on-exception") {
-        panic_on_exception(format_args!("Page Fault accessing {:?}, error: {:?}", cause_address, errcode), stack_frame);
+        if cfg!(feature = "panic-on-exception") {
+            panic_on_exception(format_args!("Page Fault accessing {:?}, error: {:?}", cause_address, errcode), stack_frame);
+        }
+
+        let thread = get_current_thread();
+        error!("Exception : Page Fault accessing {:?}, error: {:?} in {:#?}", cause_address, errcode, thread);
+        ProcessStruct::kill_process(thread.process.clone());
     }
-
-    let thread = get_current_thread();
-    warn!("Exception : Page Fault accessing {:?}, error: {:?} in {:#?}", cause_address, errcode, thread);
-    ProcessStruct::kill_process(thread.process.clone());
 
     check_thread_killed();
 }
@@ -248,13 +273,15 @@ extern "x86-interrupt" fn page_fault_handler(stack_frame: &mut ExceptionStackFra
 ///
 /// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn x87_floating_point_handler(stack_frame: &mut ExceptionStackFrame) {
-    if cfg!(feature = "panic-on-exception") {
-        panic_on_exception(format_args!("x87 FPU floating-point error"), stack_frame);
-    }
+    {
+        if cfg!(feature = "panic-on-exception") {
+            panic_on_exception(format_args!("x87 FPU floating-point error"), stack_frame);
+        }
 
-    let thread = get_current_thread();
-    warn!("x87 FPU floating-point error in {:#?}", thread);
-    ProcessStruct::kill_process(thread.process.clone());
+        let thread = get_current_thread();
+        error!("x87 FPU floating-point error in {:#?}", thread);
+        ProcessStruct::kill_process(thread.process.clone());
+    }
 
     check_thread_killed();
 }
@@ -263,13 +290,15 @@ extern "x86-interrupt" fn x87_floating_point_handler(stack_frame: &mut Exception
 ///
 /// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn alignment_check_handler(stack_frame: &mut ExceptionStackFrame, errcode: u32) {
-    if cfg!(feature = "panic-on-exception") {
-        panic_on_exception(format_args!("Alignment Check Exception: error code: {:?}", errcode), stack_frame);
-    }
+    {
+        if cfg!(feature = "panic-on-exception") {
+            panic_on_exception(format_args!("Alignment Check Exception: error code: {:?}", errcode), stack_frame);
+        }
 
-    let thread = get_current_thread();
-    warn!("Alignment Check Exception in {:#?}", thread);
-    ProcessStruct::kill_process(thread.process.clone());
+        let thread = get_current_thread();
+        error!("Alignment Check Exception in {:#?}", thread);
+        ProcessStruct::kill_process(thread.process.clone());
+    }
 
     check_thread_killed();
 }
@@ -284,13 +313,15 @@ extern "x86-interrupt" fn machine_check_handler(stack_frame: &mut ExceptionStack
 ///
 /// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn simd_floating_point_handler(stack_frame: &mut ExceptionStackFrame) {
-    if cfg!(feature = "panic-on-exception") {
-        panic_on_exception(format_args!("SIMD Floating-Point Exception"), stack_frame);
-    }
+    {
+        if cfg!(feature = "panic-on-exception") {
+            panic_on_exception(format_args!("SIMD Floating-Point Exception"), stack_frame);
+        }
 
-    let thread = get_current_thread();
-    warn!("SIMD Floating-Point Exception in {:#?}", thread);
-    ProcessStruct::kill_process(thread.process.clone());
+        let thread = get_current_thread();
+        error!("SIMD Floating-Point Exception in {:#?}", thread);
+        ProcessStruct::kill_process(thread.process.clone());
+    }
 
     check_thread_killed();
 }
@@ -299,13 +330,15 @@ extern "x86-interrupt" fn simd_floating_point_handler(stack_frame: &mut Exceptio
 ///
 /// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn virtualization_handler(stack_frame: &mut ExceptionStackFrame) {
-    if cfg!(feature = "panic-on-exception") {
-        panic_on_exception(format_args!("Virtualization Exception"), stack_frame);
-    }
+    {
+        if cfg!(feature = "panic-on-exception") {
+            panic_on_exception(format_args!("Virtualization Exception"), stack_frame);
+        }
 
-    let thread = get_current_thread();
-    warn!("Virtualization Exception in {:#?}", thread);
-    ProcessStruct::kill_process(thread.process.clone());
+        let thread = get_current_thread();
+        error!("Virtualization Exception in {:#?}", thread);
+        ProcessStruct::kill_process(thread.process.clone());
+    }
 
     check_thread_killed();
 }

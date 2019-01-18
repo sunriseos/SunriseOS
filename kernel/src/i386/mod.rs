@@ -20,7 +20,7 @@ pub mod pio {
     //!
     //! Look at libutils::io for more documentation.
 
-    pub use utils::io::Pio;
+    pub use crate::utils::io::Pio;
 }
 
 pub mod instructions {
@@ -28,7 +28,7 @@ pub mod instructions {
     pub mod tables {
         //! Instructions for loading descriptor tables (GDT, IDT, etc.).
 
-        use i386::structures::gdt::SegmentSelector;
+        use crate::i386::structures::gdt::SegmentSelector;
 
         /// A struct describing a pointer to a descriptor table (GDT / IDT).
         /// This is in a format suitable for giving to 'lgdt' or 'lidt'.
@@ -81,7 +81,7 @@ pub mod instructions {
     pub mod segmentation {
         //! Provides functions to read and write segment registers.
 
-        use i386::structures::gdt::SegmentSelector;
+        use crate::i386::structures::gdt::SegmentSelector;
 
         /// Reload code segment register.
         /// Note this is special since we can not directly move
@@ -147,7 +147,7 @@ pub mod instructions {
 
         /// Returns whether interrupts are enabled.
         pub fn are_enabled() -> bool {
-            use i386::registers::eflags::{self, EFlags};
+            use crate::i386::registers::eflags::{self, EFlags};
 
             eflags::read().contains(EFlags::INTERRUPT_FLAG)
         }

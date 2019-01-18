@@ -21,6 +21,9 @@ script = ["cp linker-scripts/userspace.ld    link.T"]
 [tasks.install-rust-src]
 install_crate = { rustup_component_name = "rust-src" }
 
+[tasks.install-mkisofs-rs]
+install_crate = { crate_name = "mkisofs-rs", binary = "mkisofs-rs", test_arg = "--help" }
+
 [tasks.bootstrap]
 workspace = false
 description = "Compiles the i386 bootstrap for debug"
@@ -105,20 +108,34 @@ dependencies = ["userspace-linker", "install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-clock", "--release"]
 
+[tasks.ahci]
+workspace = false
+description = "Compiles kfs-ahci"
+dependencies = ["userspace-linker", "install-rust-src"]
+command = "cargo"
+args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-ahci"]
+
+[tasks.ahci-release]
+workspace = false
+description = "Compiles kfs-ahci"
+dependencies = ["userspace-linker", "install-rust-src"]
+command = "cargo"
+args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-ahci", "--release"]
+
 [tasks.userspace]
 workspace = false
 description = "Compiles userspace apps"
-dependencies = ["shell", "clock", "sm", "vi"]
+dependencies = ["shell", "clock", "sm", "vi", "ahci"]
 
 [tasks.userspace-release]
 workspace = false
 description = "Compiles userspace apps"
-dependencies = ["shell-release", "clock-release", "sm-release", "vi-release"]
+dependencies = ["shell-release", "clock-release", "sm-release", "vi-release", "ahci-release"]
 
 [tasks.iso]
 workspace = false
 description = "Creates a bootable ISO containing the kernel and grub."
-dependencies = ["bootstrap", "kernel", "userspace"]
+dependencies = ["bootstrap", "kernel", "userspace", "install-mkisofs-rs"]
 script = [
 '''
 cp target/i386-unknown-none/debug/kfs-bootstrap isofiles/boot/
@@ -127,14 +144,15 @@ cp target/i386-unknown-none/debug/kfs-shell     isofiles/boot/
 cp target/i386-unknown-none/debug/kfs-clock     isofiles/boot/
 cp target/i386-unknown-none/debug/kfs-sm        isofiles/boot/
 cp target/i386-unknown-none/debug/kfs-vi        isofiles/boot/
-grub-mkrescue -o os.iso isofiles
+cp target/i386-unknown-none/debug/kfs-ahci      isofiles/boot/
+mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
 '''
 ]
 
 [tasks.iso-release]
 workspace = false
 description = "Creates a bootable ISO containing the kernel and grub."
-dependencies = ["bootstrap-release", "kernel-release", "userspace-release"]
+dependencies = ["bootstrap-release", "kernel-release", "userspace-release", "install-mkisofs-rs"]
 script = [
 '''
 cp target/i386-unknown-none/release/kfs-bootstrap isofiles/boot/
@@ -143,7 +161,8 @@ cp target/i386-unknown-none/release/kfs-shell     isofiles/boot/
 cp target/i386-unknown-none/release/kfs-clock     isofiles/boot/
 cp target/i386-unknown-none/release/kfs-sm        isofiles/boot/
 cp target/i386-unknown-none/release/kfs-vi        isofiles/boot/
-grub-mkrescue -o os.iso isofiles
+cp target/i386-unknown-none/release/kfs-ahci      isofiles/boot/
+mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
 '''
 ]
 

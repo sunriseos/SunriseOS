@@ -1,0 +1,16 @@
+[package]
+name = "kfs-ahci"
+version = "0.1.0"
+authors = ["orycterope <tvermeilh@gmail.com>", "roblabla <unfiltered@roblab.la>"]
+license = "Apache-2.0 OR MIT"
+edition = "2018"
+
+[dependencies]
+kfs-libuser = { path = "../libuser" }
+kfs-libutils = { path = "../libutils" }
+spin = "0.4"
+log = "0.4.6"
+
+[dependencies.lazy_static]
+features = ["spin_no_std"]
+version = "1.2.0"

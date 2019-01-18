@@ -26,11 +26,11 @@ use super::lands::{KernelLand, RecursiveTablesLand, VirtualSpaceLand};
 use super::arch::{PAGE_SIZE, ActiveHierarchy};
 use super::hierarchical_table::{TableHierarchy, PageState};
 use super::MappingAccessRights;
-use mem::{VirtualAddress, PhysicalAddress};
-use frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait,
+use crate::mem::{VirtualAddress, PhysicalAddress};
+use crate::frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait,
                       mark_frame_bootstrap_allocated};
-use sync::{Mutex, MutexGuard};
-use error::KernelError;
+use crate::sync::{Mutex, MutexGuard};
+use crate::error::KernelError;
 use failure::Backtrace;
 
 /// A struct that acts on KernelLand and RecursiveTablesLand.
@@ -215,7 +215,7 @@ impl KernelMemory {
     /// If `address` is not in KernelLand.
     pub fn mapping_state(&mut self, addr: VirtualAddress) -> PageState<PhysicalAddress> {
         let mut mapping= None;
-        let addr_aligned = VirtualAddress(::utils::align_down(addr.addr(), PAGE_SIZE));
+        let addr_aligned = VirtualAddress(crate::utils::align_down(addr.addr(), PAGE_SIZE));
         assert!(KernelLand::contains_address(addr));
         // use for_every_entry with length of just one page
         self.tables.for_every_entry(addr_aligned, PAGE_SIZE,

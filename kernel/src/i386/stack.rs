@@ -27,15 +27,15 @@
 //!  in order to be able to find its bottom from any page.
 
 use ::core::mem::size_of;
-use paging::lands::{VirtualSpaceLand, UserLand, KernelLand};
-use paging::{PAGE_SIZE, process_memory::QueryMemory, MappingAccessRights, PageState, kernel_memory::get_kernel_memory};
-use frame_allocator::{FrameAllocator, FrameAllocatorTrait};
-use mem::VirtualAddress;
-use error::KernelError;
+use crate::paging::lands::{VirtualSpaceLand, UserLand, KernelLand};
+use crate::paging::{PAGE_SIZE, process_memory::QueryMemory, MappingAccessRights, PageState, kernel_memory::get_kernel_memory};
+use crate::frame_allocator::{FrameAllocator, FrameAllocatorTrait};
+use crate::mem::VirtualAddress;
+use crate::error::KernelError;
 use xmas_elf::ElfFile;
 use xmas_elf::symbol_table::{Entry32, Entry};
 use rustc_demangle::demangle as rustc_demangle;
-use scheduler;
+use crate::scheduler;
 
 /// The size of a kernel stack in pages, not accounting for the page guard.
 pub const STACK_SIZE: usize            = 4;
@@ -221,7 +221,7 @@ impl StackDumpSource {
 /// is stopped and will remain unscheduled at least until this function returns.
 #[allow(unused_must_use)]
 pub unsafe fn dump_stack<'a>(source: &StackDumpSource, elf_symbols: Option<(&ElfFile<'a>, &'a [Entry32])>) {
-    use devices::rs232::SerialLogger;
+    use crate::devices::rs232::SerialLogger;
     use core::fmt::Write;
 
     writeln!(SerialLogger, "---------- Dumping stack ---------");
@@ -310,9 +310,9 @@ pub unsafe fn dump_stack<'a>(source: &StackDumpSource, elf_symbols: Option<(&Elf
 #[allow(unused_must_use)]
 #[allow(clippy::cast_ptr_alignment)] // we're x86_32 only
 fn dump_stack_from_slice<'a>(stack: &[u8], orig_address: usize, mut esp: usize, mut ebp: usize, mut eip: usize, elf: Option<(&ElfFile<'a>, &'a [Entry32])>) {
-    use devices::rs232::SerialLogger;
+    use crate::devices::rs232::SerialLogger;
     use core::fmt::Write;
-    use utils::print_hexdump_as_if_at_addr;
+    use crate::utils::print_hexdump_as_if_at_addr;
 
     writeln!(SerialLogger, "# Stack start: {:#010x}, Stack end: {:#010x}", orig_address, orig_address + stack.len() - 1);
 

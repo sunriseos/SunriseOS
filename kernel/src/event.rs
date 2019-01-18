@@ -12,11 +12,11 @@
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::fmt::Debug;
 use alloc::sync::Arc;
-use sync::SpinLockIRQ;
+use crate::sync::SpinLockIRQ;
 use alloc::vec::Vec;
-use error::UserspaceError;
-use process::ThreadStruct;
-use scheduler;
+use crate::error::UserspaceError;
+use crate::process::ThreadStruct;
+use crate::scheduler;
 
 /// A waitable item.
 ///
@@ -91,9 +91,9 @@ pub trait Waitable: Debug + Send + Sync {
 }
 
 /// Waits for an event to occur on one of the given Waitable objects.
-pub fn wait<'wait, INTOITER>(waitable_intoiter: INTOITER) -> Result<&'wait Waitable, UserspaceError>
+pub fn wait<'wait, INTOITER>(waitable_intoiter: INTOITER) -> Result<&'wait dyn Waitable, UserspaceError>
 where
-    INTOITER: IntoIterator<Item=&'wait Waitable>,
+    INTOITER: IntoIterator<Item=&'wait dyn Waitable>,
     <INTOITER as IntoIterator>::IntoIter: Clone
 {
     let _thread = scheduler::get_current_thread();

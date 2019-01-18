@@ -1,10 +1,10 @@
 //! Syscall Wrappers
 
 use core::slice;
-use types::*;
+use crate::types::*;
 pub use kfs_libkern::nr;
 pub use kfs_libkern::{MemoryInfo, MemoryPermissions};
-use error::KernelError;
+use crate::error::KernelError;
 
 // Assembly blob can't get documented, but clippy requires it.
 #[allow(clippy::missing_docs_in_private_items)]
@@ -145,9 +145,9 @@ pub fn exit_process() -> ! {
 }
 
 /// Creates a thread in the current process.
-pub fn create_thread(ip: fn() -> !, context: usize, sp: *const u8, priority: u32, processor_id: u32) -> Result<Thread, KernelError> {
+pub fn create_thread(ip: extern fn() -> !, arg: usize, sp: *const u8, priority: u32, processor_id: u32) -> Result<Thread, KernelError> {
     unsafe {
-        let (out_handle, ..) = syscall(nr::CreateThread, ip as usize, context, sp as _, priority as _, processor_id as _, 0)?;
+        let (out_handle, ..) = syscall(nr::CreateThread, ip as usize, arg, sp as _, priority as _, processor_id as _, 0)?;
         Ok(Thread(Handle::new(out_handle as _)))
     }
 }
@@ -275,7 +275,7 @@ pub(crate) fn close_handle(handle: u32) -> Result<(), KernelError> {
 /// - 0xee01: Too many handles. Returned when the number of handles passed is
 ///   >0x40. Note: KFS currently does not return this error. It is perfectly able
 ///   to wait on more than 0x40 handles.
-pub fn wait_synchronization(handles: &[HandleRef], timeout_ns: Option<usize>) -> Result<usize, KernelError> {
+pub fn wait_synchronization(handles: &[HandleRef<'_>], timeout_ns: Option<usize>) -> Result<usize, KernelError> {
     unsafe {
         let (handleidx, ..) = syscall(nr::WaitSynchronization, handles.as_ptr() as _, handles.len(), timeout_ns.unwrap_or_else(usize::max_value), 0, 0, 0)?;
         Ok(handleidx)
@@ -345,7 +345,7 @@ pub fn accept_session(port: &ServerPort) -> Result<ServerSession, KernelError> {
 /// returned.
 ///
 /// [switchbrew's IPC marshalling page]: https://http://switchbrew.org/index.php?title=IPC_Marshalling
-pub fn reply_and_receive_with_user_buffer(buf: &mut [u8], handles: &[HandleRef], replytarget: Option<HandleRef>, timeout: Option<usize>) -> Result<usize, KernelError> {
+pub fn reply_and_receive_with_user_buffer(buf: &mut [u8], handles: &[HandleRef<'_>], replytarget: Option<HandleRef<'_>>, timeout: Option<usize>) -> Result<usize, KernelError> {
     unsafe {
         let (idx, ..) = syscall(nr::ReplyAndReceiveWithUserBuffer, buf.as_ptr() as _, buf.len(), handles.as_ptr() as _, handles.len(), match replytarget {
             Some(s) => s.inner.get() as _,

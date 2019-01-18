@@ -16,9 +16,9 @@ use spin::Mutex;
 use bit_field::BitArray;
 use kfs_libutils::BitArrayExt;
 use kfs_libutils::{bit_array_first_one, bit_array_first_count_one};
-use paging::PAGE_SIZE;
-use address::PhysicalAddress;
-use bootstrap_logging::Serial;
+use crate::paging::PAGE_SIZE;
+use crate::address::PhysicalAddress;
+use crate::bootstrap_logging::Serial;
 use core::fmt::Write;
 
 /// A memory frame is the same size as a page

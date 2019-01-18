@@ -1,15 +1,15 @@
 //! Loads the kernel in high memory
 
 use multiboot2::BootInformation;
-use bootstrap_logging::Serial;
+use crate::bootstrap_logging::Serial;
 use core::fmt::Write;
 use core::slice;
 use xmas_elf::ElfFile;
 use xmas_elf::program::{ProgramHeader, Type::Load, SegmentData};
-use paging::{PagingOffPageSet, PAGE_SIZE, PageTablesSet, EntryFlags};
-use address::VirtualAddress;
+use crate::paging::{PagingOffPageSet, PAGE_SIZE, PageTablesSet, EntryFlags};
+use crate::address::VirtualAddress;
 use kfs_libutils::align_up;
-use frame_alloc::FrameAllocator;
+use crate::frame_alloc::FrameAllocator;
 
 /// Loads the kernel in high memory
 /// Returns address of entry point
@@ -40,7 +40,7 @@ pub fn load_kernel(page_table: &mut PagingOffPageSet, multiboot_info: &BootInfor
 /// and filling remaining with 0s.
 /// This is used by NOBITS sections (.bss), this way we initialize them to 0.
 #[allow(clippy::match_bool)] // more readable
-fn load_segment(page_table: &mut PagingOffPageSet, segment: ProgramHeader, elf_file: &ElfFile) {
+fn load_segment(page_table: &mut PagingOffPageSet, segment: ProgramHeader<'_>, elf_file: &ElfFile<'_>) {
     // Map the segment memory
     let mem_size_total = align_up(segment.mem_size() as usize, PAGE_SIZE);
     let vaddr = segment.virtual_addr() as usize;
@@ -65,7 +65,7 @@ fn load_segment(page_table: &mut PagingOffPageSet, segment: ProgramHeader, elf_f
         SegmentData::Undefined(elf_data) =>
         {
             let dest_ptr = phys_addr.addr() as *mut u8;
-            let mut dest = unsafe { slice::from_raw_parts_mut(dest_ptr, mem_size_total) };
+            let dest = unsafe { slice::from_raw_parts_mut(dest_ptr, mem_size_total) };
             let (dest_data, dest_pad) = dest.split_at_mut(segment.file_size() as usize);
 
             // Copy elf data

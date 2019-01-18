@@ -1,8 +1,8 @@
 //! UserspaceError and KernelError
 
 use failure::Backtrace;
-use paging::error::MmError;
-use mem::VirtualAddress;
+use crate::paging::error::MmError;
+use crate::mem::VirtualAddress;
 use core::fmt::{self, Display};
 
 pub use kfs_libkern::error::KernelError as UserspaceError;
@@ -12,7 +12,7 @@ pub use kfs_libkern::error::KernelError as UserspaceError;
 pub enum ArithmeticOperation { Add, Sub, Mul, Div, Mod, Pow }
 
 impl Display for ArithmeticOperation {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             ArithmeticOperation::Add => write!(f, "+"),
             ArithmeticOperation::Sub => write!(f, "-"),

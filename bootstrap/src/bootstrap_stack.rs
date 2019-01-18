@@ -29,8 +29,8 @@
 //! Must be consistent with KernelStack, as kernel considers it's already running on a KernelStack.
 
 use ::core::mem::size_of;
-use paging::*;
-use address::VirtualAddress;
+use crate::paging::*;
+use crate::address::VirtualAddress;
 
 /// The size of a kernel stack, not accounting for the page guard
 pub const STACK_SIZE: usize            = 4;

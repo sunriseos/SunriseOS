@@ -1,11 +1,11 @@
 //! Mapping
 
-use mem::VirtualAddress;
-use paging::{PAGE_SIZE, MappingAccessRights, error::MmError};
-use error::KernelError;
-use frame_allocator::PhysicalMemRegion;
+use crate::mem::VirtualAddress;
+use crate::paging::{PAGE_SIZE, MappingAccessRights, error::MmError};
+use crate::error::KernelError;
+use crate::frame_allocator::PhysicalMemRegion;
 use alloc::{vec::Vec, sync::Arc};
-use utils::{check_aligned, check_nonzero_length, Splittable};
+use crate::utils::{check_aligned, check_nonzero_length, Splittable};
 use failure::Backtrace;
 use kfs_libkern;
 
@@ -216,13 +216,14 @@ mod test {
     use super::Mapping;
     use super::MappingAccessRights;
     use super::MappingType;
-    use mem::{VirtualAddress, PhysicalAddress};
-    use paging::PAGE_SIZE;
-    use frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
+    use crate::mem::{VirtualAddress, PhysicalAddress};
+    use crate::paging::PAGE_SIZE;
+    use crate::frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
     use std::sync::Arc;
-    use utils::Splittable;
-    use error::KernelError;
-    use paging::error::MmError;
+    use std::vec::Vec;
+    use crate::utils::Splittable;
+    use crate::error::KernelError;
+    use crate::paging::error::MmError;
 
     /// Applies the same tests to guard, available and system_reserved.
     macro_rules! test_empty_mapping {
@@ -278,7 +279,7 @@ mod test {
 
     #[test]
     fn mapping_regular_ok() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         let frames = FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap();
         let flags = MappingAccessRights::u_rw();
         let _mapping = Mapping::new_regular(VirtualAddress(0x40000000), frames, flags).unwrap();
@@ -286,7 +287,7 @@ mod test {
 
     #[test]
     fn mapping_shared_ok() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         let frames = Arc::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap());
         let flags = MappingAccessRights::u_rw();
         let _mapping = Mapping::new_shared(VirtualAddress(0x40000000), frames, flags).unwrap();
@@ -294,7 +295,7 @@ mod test {
 
     #[test]
     fn mapping_regular_empty_vec() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         let frames = Vec::new();
         let flags = MappingAccessRights::u_rw();
         let _mapping_err = Mapping::new_regular(VirtualAddress(0x40000000), frames, flags).unwrap_err();
@@ -302,7 +303,7 @@ mod test {
 
     #[test]
     fn mapping_shared_empty_vec() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         let frames = Arc::new(Vec::new());
         let flags = MappingAccessRights::u_rw();
         let _mapping_err = Mapping::new_shared(VirtualAddress(0x40000000), frames, flags).unwrap_err();
@@ -310,7 +311,7 @@ mod test {
 
     #[test]
     fn mapping_regular_zero_sized_region() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         let region = unsafe { PhysicalMemRegion::reconstruct_no_dealloc(PhysicalAddress(PAGE_SIZE), 0) };
         let frames = vec![region];
         let flags = MappingAccessRights::u_rw();
@@ -319,7 +320,7 @@ mod test {
 
     #[test]
     fn mapping_regular_zero_sized_regions() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         let region1 = unsafe { PhysicalMemRegion::reconstruct_no_dealloc(PhysicalAddress(PAGE_SIZE), 0) };
         let region2 = unsafe { PhysicalMemRegion::reconstruct_no_dealloc(PhysicalAddress(PAGE_SIZE), 0) };
         let frames = vec![region1, region2];
@@ -329,7 +330,7 @@ mod test {
 
     #[test]
     fn mapping_regular_unaligned_addr() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         let frames = FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap();
         let flags = MappingAccessRights::u_rw();
         let _mapping_err = Mapping::new_regular(VirtualAddress(0x40000007), frames, flags).unwrap_err();
@@ -337,7 +338,7 @@ mod test {
 
     #[test]
     fn mapping_shared_unaligned_addr() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         let frames = Arc::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap());
         let flags = MappingAccessRights::u_rw();
         let _mapping_err = Mapping::new_shared(VirtualAddress(0x40000007), frames, flags).unwrap_err();
@@ -347,7 +348,7 @@ mod test {
     #[test]
     #[should_panic]
     fn mapping_regular_unaligned_len() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         let frames = FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE + 7).unwrap();
         let flags = MappingAccessRights::u_rw();
         let _mapping = Mapping::new_regular(VirtualAddress(0x40000000), frames, flags).unwrap();
@@ -356,7 +357,7 @@ mod test {
     #[test]
     #[should_panic]
     fn mapping_shared_unaligned_len() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         let frames = Arc::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE + 7).unwrap());
         let flags = MappingAccessRights::u_rw();
         let _mapping = Mapping::new_shared(VirtualAddress(0x40000000), frames, flags).unwrap();
@@ -364,7 +365,7 @@ mod test {
 
     #[test]
     fn mapping_regular_threshold() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         let frames = FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap();
         let flags = MappingAccessRights::u_rw();
         let _mapping = Mapping::new_regular(VirtualAddress(usize::max_value() - 2 * PAGE_SIZE + 1), frames, flags).unwrap();
@@ -372,7 +373,7 @@ mod test {
 
     #[test]
     fn mapping_shared_threshold() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         let frames = Arc::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap());
         let flags = MappingAccessRights::u_rw();
         let _mapping = Mapping::new_shared(VirtualAddress(usize::max_value() - 2 * PAGE_SIZE + 1), frames, flags).unwrap();
@@ -380,7 +381,7 @@ mod test {
 
     #[test]
     fn mapping_regular_overflow() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         let frames = FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap();
         let flags = MappingAccessRights::u_rw();
         let _mapping_err = Mapping::new_regular(VirtualAddress(usize::max_value() - 2 * PAGE_SIZE), frames, flags).unwrap_err();
@@ -388,7 +389,7 @@ mod test {
 
     #[test]
     fn mapping_shared_overflow() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         let frames = Arc::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap());
         let flags = MappingAccessRights::u_rw();
         let _mapping_err = Mapping::new_shared(VirtualAddress(usize::max_value() - 2 * PAGE_SIZE), frames, flags).unwrap_err();
@@ -397,7 +398,7 @@ mod test {
     /// Splitting a mapping should only be valid for a PAGE_SIZE aligned offset.
     #[test]
     fn splittable_unaligned() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         let frames = vec![FrameAllocator::allocate_region(3 * PAGE_SIZE).unwrap()];
         let mut mapping = Mapping::new_regular(VirtualAddress(2 * PAGE_SIZE), frames, MappingAccessRights::k_r()).unwrap();
         match mapping.split_at(PAGE_SIZE + 1).unwrap_err() {
@@ -417,7 +418,7 @@ mod test {
     /// Splitting a shared mapping should unconditionally fail.
     #[test]
     fn splittable_shared() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         let frames = Arc::new(vec![FrameAllocator::allocate_region(3 * PAGE_SIZE).unwrap()]);
         let mut mapping = Mapping::new_shared(VirtualAddress(2 * PAGE_SIZE), frames, MappingAccessRights::k_r()).unwrap();
         match mapping.split_at(0).unwrap_err() {
@@ -454,7 +455,7 @@ mod test {
 
     #[test]
     fn splittable_split_at_zero() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         let frames = vec![FrameAllocator::allocate_region(3 * PAGE_SIZE).unwrap()];
         let mut mapping = Mapping::new_regular(VirtualAddress(2 * PAGE_SIZE), frames, MappingAccessRights::k_r()).unwrap();
         let right = mapping.split_at(0).unwrap();
@@ -471,7 +472,7 @@ mod test {
 
     #[test]
     fn splittable_split_at_too_big() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         let frames = vec![FrameAllocator::allocate_region(3 * PAGE_SIZE).unwrap()];
         let mut mapping = Mapping::new_regular(VirtualAddress(2 * PAGE_SIZE), frames, MappingAccessRights::k_r()).unwrap();
         let right = mapping.split_at(3 * PAGE_SIZE).unwrap();
@@ -488,7 +489,7 @@ mod test {
 
     #[test]
     fn splittable_split_at() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         let frames = vec![FrameAllocator::allocate_region(3 * PAGE_SIZE).unwrap()];
         let mut left = Mapping::new_regular(VirtualAddress(5 * PAGE_SIZE), frames, MappingAccessRights::k_r()).unwrap();
         // 3 -> 2 + 1

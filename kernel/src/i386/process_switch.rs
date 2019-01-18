@@ -2,11 +2,11 @@
 //!
 //! This modules describe low-level functions and structures needed to perform a process switch
 
-use process::ThreadStruct;
-use i386::gdt;
+use crate::process::ThreadStruct;
+use crate::i386::gdt;
 use alloc::sync::Arc;
 use core::mem::size_of;
-use i386::TssStruct;
+use crate::i386::TssStruct;
 
 /// The hardware context of a paused thread. It contains just enough registers to get the thread
 /// running again.
@@ -291,7 +291,8 @@ fn first_schedule() {
         }
 
         // call the scheduler to finish the high-level process switch mechanics
-        ::scheduler::scheduler_first_schedule(current, || jump_to_entrypoint(entrypoint, userspace_stack));
+        let arg = current.arg;
+        crate::scheduler::scheduler_first_schedule(current, || jump_to_entrypoint(entrypoint, userspace_stack, arg));
 
         unreachable!()
     }
@@ -309,7 +310,7 @@ fn first_schedule() {
 ///
 /// This way, just after the `iret`, cpu will be in ring 3, witl all of its registers cleared,
 /// `$eip` pointing to `ep`, and `$esp` pointing to `userspace_stack_ptr`.
-fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize) -> ! {
+fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize, arg: usize) -> ! {
     unsafe {
         asm!("
         mov ax,0x2B // Set data segment selector to Userland Data, Ring 3
@@ -326,7 +327,7 @@ fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize) -> ! {
         push $0     // Entrypoint
 
         // Clean up all registers. Also setup arguments.
-        mov eax, 0
+        mov eax, $2
         mov ebx, 0
         mov ecx, 0
         mov edx, 0
@@ -335,7 +336,7 @@ fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize) -> ! {
         mov esi, 0
 
         iretd
-        " :: "r"(ep), "r"(userspace_stack_ptr) :
+        " :: "r"(ep), "r"(userspace_stack_ptr), "r"(arg) :
              /* Prevent using eax as input, it's used early. */ "eax" : "intel", "volatile");
     }
 

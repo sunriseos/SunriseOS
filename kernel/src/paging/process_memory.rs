@@ -25,12 +25,12 @@ use super::mapping::{Mapping, MappingType};
 use super::cross_process::CrossProcessMapping;
 use super::error::MmError;
 use super::MappingAccessRights;
-use mem::{VirtualAddress, PhysicalAddress};
-use frame_allocator::{FrameAllocator, FrameAllocatorTrait, PhysicalMemRegion};
-use paging::arch::Entry;
-use error::KernelError;
-use utils::{check_aligned, check_nonzero_length};
-use utils::Splittable;
+use crate::mem::{VirtualAddress, PhysicalAddress};
+use crate::frame_allocator::{FrameAllocator, FrameAllocatorTrait, PhysicalMemRegion};
+use crate::paging::arch::Entry;
+use crate::error::KernelError;
+use crate::utils::{check_aligned, check_nonzero_length};
+use crate::utils::Splittable;
 use alloc::{vec::Vec, sync::Arc};
 use failure::Backtrace;
 
@@ -51,7 +51,7 @@ pub struct ProcessMemory {
     ///
     /// The location of each process's heap should be random, to implement ASLR.
     ///
-    /// [set_heap_size]: ::interrupts::syscalls::set_heap_size
+    /// [set_heap_size]: crate::interrupts::syscalls::set_heap_size
     heap_base_address: VirtualAddress,
 }
 
@@ -179,7 +179,7 @@ impl ProcessMemory {
     }
 
     /// If these tables are the one currently in use, we return them as an ActiveHierarchy instead.
-    fn get_hierarchy(&mut self) -> DynamicHierarchy {
+    fn get_hierarchy(&mut self) -> DynamicHierarchy<'_> {
         if self.table_hierarchy.is_currently_active() {
             unsafe {
                 // safe because the lock in the ProcessStuct is held, and there is no other safe way
@@ -316,7 +316,7 @@ impl ProcessMemory {
     /// # Error
     ///
     /// Returns a KernelError if address does not fall in UserLand.
-    pub fn query_memory(&self, address: VirtualAddress) -> Result<QueryMemory, KernelError> {
+    pub fn query_memory(&self, address: VirtualAddress) -> Result<QueryMemory<'_>, KernelError> {
         UserLand::check_contains_address(address)?;
         Ok(self.userspace_bookkeping.mapping_at(address))
     }
@@ -458,7 +458,7 @@ impl ProcessMemory {
     ///
     /// Returns an Error if the mapping is Available/Guarded/SystemReserved, as there would be
     /// no point to remap it, and dereferencing the pointer would cause the kernel to page-fault.
-    pub fn mirror_mapping(&self, address: VirtualAddress, length: usize) -> Result<CrossProcessMapping, KernelError> {
+    pub fn mirror_mapping(&self, address: VirtualAddress, length: usize) -> Result<CrossProcessMapping<'_>, KernelError> {
         UserLand::check_contains_address(address)?;
         let mapping = self.userspace_bookkeping.occupied_mapping_at(address)?;
         let offset = address - mapping.address();

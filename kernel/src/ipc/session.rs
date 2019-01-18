@@ -20,18 +20,18 @@
 //!
 //! [switchbrew]: https://switchbrew.org/w/index.php?title=IPC_Marshalling
 
-use scheduler;
+use crate::scheduler;
 use alloc::vec::Vec;
 use alloc::sync::{Arc, Weak};
-use sync::SpinLock;
-use error::UserspaceError;
-use event::Waitable;
-use process::ThreadStruct;
+use crate::sync::SpinLock;
+use crate::error::UserspaceError;
+use crate::event::Waitable;
+use crate::process::ThreadStruct;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::slice;
 use byteorder::{LE, ByteOrder};
-use paging::{MappingAccessRights, mapping::MappingType, process_memory::ProcessMemory};
-use mem::{UserSpacePtr, UserSpacePtrMut, VirtualAddress};
+use crate::paging::{MappingAccessRights, mapping::MappingType, process_memory::ProcessMemory};
+use crate::mem::{UserSpacePtr, UserSpacePtrMut, VirtualAddress};
 use bit_field::BitField;
 
 #[derive(Debug)]

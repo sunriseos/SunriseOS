@@ -9,7 +9,7 @@ pub mod instructions {
     pub mod tables {
         //! Instructions for loading descriptor tables (GDT, IDT, etc.).
 
-        use gdt::segment_selector::SegmentSelector;
+        use crate::gdt::segment_selector::SegmentSelector;
 
         /// A struct describing a pointer to a descriptor table (GDT / IDT).
         /// This is in a format suitable for giving to 'lgdt' or 'lidt'.
@@ -46,7 +46,7 @@ pub mod instructions {
     pub mod segmentation {
         //! Provides functions to read and write segment registers.
 
-        use gdt::segment_selector::SegmentSelector;
+        use crate::gdt::segment_selector::SegmentSelector;
 
         /// Reload code segment register.
         /// Note this is special since we can not directly move
@@ -199,7 +199,7 @@ pub struct TssStruct {
     _reservedc: u16,
 }
 
-use gdt::segment_selector::SegmentSelector;
+use crate::gdt::segment_selector::SegmentSelector;
 
 impl TssStruct {
     pub fn new(cr3: u32, sp0: (SegmentSelector, usize), sp1: (SegmentSelector, usize), sp2: (SegmentSelector, usize), ldt: SegmentSelector) -> TssStruct {

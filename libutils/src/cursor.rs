@@ -31,7 +31,7 @@ pub struct CursorWrite<'a> {
 
 impl<'a> CursorWrite<'a> {
     /// Creates a new cursor wrapping the provided underlying in-memory buffer.
-    pub fn new(data: &mut [u8]) -> CursorWrite {
+    pub fn new(data: &mut [u8]) -> CursorWrite<'_> {
         CursorWrite {
             data: data,
             pos: 0
@@ -100,7 +100,7 @@ pub struct CursorRead<'a> {
 
 impl<'a> CursorRead<'a> {
     /// Creates a new cursor wrapping the provided underlying in-memory buffer.
-    pub fn new(data: &[u8]) -> CursorRead {
+    pub fn new(data: &[u8]) -> CursorRead<'_> {
         CursorRead {
             data: data,
             pos: 0.into()

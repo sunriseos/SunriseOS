@@ -1,6 +1,6 @@
 //! Checked maths functions returning useful errors.
 
-use error::KernelError;
+use crate::error::KernelError;
 use failure::Backtrace;
 
 /// checks that a certain value meets the given alignment.
@@ -25,7 +25,7 @@ pub fn add_or_error(lhs: usize, rhs: usize) -> Result<usize, KernelError> {
     match lhs.checked_add(rhs) {
         Some(result) => Ok(result),
         None => Err(KernelError::WouldOverflow { lhs,
-                                                 operation: ::error::ArithmeticOperation::Add,
+                                                 operation: crate::error::ArithmeticOperation::Add,
                                                  rhs,
                                                  backtrace: Backtrace::new() })
     }
@@ -36,7 +36,7 @@ pub fn sub_or_error(lhs: usize, rhs: usize) -> Result<usize, KernelError> {
     match lhs.checked_add(rhs) {
         Some(result) => Ok(result),
         None => Err(KernelError::WouldOverflow { lhs,
-                                                 operation: ::error::ArithmeticOperation::Sub,
+                                                 operation: crate::error::ArithmeticOperation::Sub,
                                                  rhs,
                                                  backtrace: Backtrace::new() })
     }

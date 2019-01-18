@@ -14,17 +14,17 @@
 
 use super::{PhysicalMemRegion, FrameAllocatorTrait, FrameAllocatorTraitPrivate};
 
-use paging::PAGE_SIZE;
+use crate::paging::PAGE_SIZE;
 use multiboot2::BootInformation;
-use sync::SpinLock;
+use crate::sync::SpinLock;
 use alloc::vec::Vec;
-use utils::{check_aligned, check_nonzero_length};
+use crate::utils::{check_aligned, check_nonzero_length};
 use bit_field::BitArray;
-use utils::BitArrayExt;
-use mem::PhysicalAddress;
-use mem::{round_to_page, round_to_page_upper};
-use paging::kernel_memory::get_kernel_memory;
-use error::KernelError;
+use crate::utils::BitArrayExt;
+use crate::mem::PhysicalAddress;
+use crate::mem::{round_to_page, round_to_page_upper};
+use crate::paging::kernel_memory::get_kernel_memory;
+use crate::error::KernelError;
 use failure::Backtrace;
 
 /// The offset part in a [PhysicalAddress].
@@ -108,7 +108,7 @@ impl FrameAllocatori386 {
 
 /// The physical memory manager.
 ///
-/// Serves physical memory in atomic blocks of size [PAGE_SIZE](::paging::PAGE_SIZE), called frames.
+/// Serves physical memory in atomic blocks of size [PAGE_SIZE](crate::paging::PAGE_SIZE), called frames.
 ///
 /// An allocation request returns a [PhysicalMemRegion], which represents a list of
 /// physically adjacent frames. When this returned `PhysicalMemRegion` is eventually dropped
@@ -336,7 +336,7 @@ pub fn init(boot_info: &BootInformation) {
         let mut cur = None;
         for (i, bitmap) in allocator.memory_bitmap.iter().enumerate() {
             for j in 0..8 {
-                let curaddr = (i * 8 + j) * ::paging::PAGE_SIZE;
+                let curaddr = (i * 8 + j) * crate::paging::PAGE_SIZE;
                 if bitmap & (1 << j) != 0 {
                     // Area is available
                     match cur {
@@ -462,7 +462,7 @@ mod test {
     /// The way you usually use it.
     #[test]
     fn ok() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
 
         let a = FrameAllocator::allocate_frame().unwrap();
         let b = FrameAllocator::allocate_region(2 * PAGE_SIZE).unwrap();
@@ -476,7 +476,7 @@ mod test {
 
     #[test]
     fn fragmented() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         // make it all available
         let mut allocator = FRAME_ALLOCATOR.lock();
         mark_area_free(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
@@ -498,7 +498,7 @@ mod test {
     /// You can't give it a size of 0.
     #[test]
     fn zero() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         FrameAllocator::allocate_region(0).unwrap_err();
         FrameAllocator::allocate_frames_fragmented(0).unwrap_err();
     }
@@ -510,7 +510,7 @@ mod test {
     /// Allocation fails if Out Of Memory.
     #[test]
     fn physical_oom_frame() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         // make it all reserved
         let mut allocator = FRAME_ALLOCATOR.lock();
         mark_area_reserved(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
@@ -524,7 +524,7 @@ mod test {
 
     #[test]
     fn physical_oom_frame_threshold() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         // make it all reserved
         let mut allocator = FRAME_ALLOCATOR.lock();
         mark_area_reserved(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
@@ -537,7 +537,7 @@ mod test {
 
     #[test]
     fn physical_oom_region() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         // make it all reserved
         let mut allocator = FRAME_ALLOCATOR.lock();
         mark_area_reserved(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
@@ -555,7 +555,7 @@ mod test {
 
     #[test]
     fn physical_oom_region_threshold() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         // make it all reserved
         let mut allocator = FRAME_ALLOCATOR.lock();
         mark_area_reserved(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
@@ -570,7 +570,7 @@ mod test {
 
     #[test]
     fn physical_oom_fragmented() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         // make it all available
         let mut allocator = FRAME_ALLOCATOR.lock();
         mark_area_free(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
@@ -584,7 +584,7 @@ mod test {
 
     #[test]
     fn physical_oom_threshold_fragmented() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         // make it all available
         let mut allocator = FRAME_ALLOCATOR.lock();
         mark_area_free(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
@@ -595,7 +595,7 @@ mod test {
 
     #[test]
     fn allocate_last_frame() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         // make it all available
         let mut allocator = FRAME_ALLOCATOR.lock();
         mark_area_free(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
@@ -627,7 +627,7 @@ mod test {
 
     #[test]
     fn oom_hard() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         // make it all reserved
         let mut allocator = FRAME_ALLOCATOR.lock();
         mark_area_reserved(&mut allocator.memory_bitmap, 0, ALL_MEMORY);
@@ -671,7 +671,7 @@ mod test {
     /// and some frames will have been marked allocated.
     #[test]
     fn physical_oom_doesnt_leak() {
-        let _f = ::frame_allocator::init();
+        let _f = crate::frame_allocator::init();
         // make it all available
         let mut allocator = FRAME_ALLOCATOR.lock();
         mark_area_free(&mut allocator.memory_bitmap, 0, ALL_MEMORY);

@@ -1,6 +1,6 @@
 //! Synchronization primitives used by KFS
 
-extern crate spin;
+use spin;
 
 pub use self::spin::{Once, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
@@ -8,9 +8,9 @@ use core::fmt;
 use core::mem::ManuallyDrop;
 use core::ops::{Deref, DerefMut};
 pub use self::spin::{Mutex as SpinLock, MutexGuard as SpinLockGuard};
-use i386::instructions::interrupts::*;
+use crate::i386::instructions::interrupts::*;
 use core::sync::atomic::{AtomicBool, Ordering};
-use scheduler;
+use crate::scheduler;
 
 /// Placeholder for future Mutex implementation.
 pub type Mutex<T> = SpinLock<T>;
@@ -104,7 +104,7 @@ impl<T> SpinLockIRQ<T> {
 
 impl<T: ?Sized> SpinLockIRQ<T> {
     /// Disables interrupts and locks the mutex.
-    pub fn lock(&self) -> SpinLockIRQGuard<T> {
+    pub fn lock(&self) -> SpinLockIRQGuard<'_, T> {
         // Disable irqs
         unsafe { disable_interrupts(); }
 
@@ -117,7 +117,7 @@ impl<T: ?Sized> SpinLockIRQ<T> {
     }
 
     /// Disables interrupts and locks the mutex.
-    pub fn try_lock(&self) -> Option<SpinLockIRQGuard<T>> {
+    pub fn try_lock(&self) -> Option<SpinLockIRQGuard<'_, T>> {
         // Disable irqs
         unsafe { disable_interrupts(); }
 
@@ -142,7 +142,7 @@ impl<T: ?Sized> SpinLockIRQ<T> {
 }
 
 impl<T: fmt::Debug> fmt::Debug for SpinLockIRQ<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.try_lock() {
             Some(d) => {
                 write!(f, "SpinLockIRQ {{ data: ")?;
@@ -156,7 +156,7 @@ impl<T: fmt::Debug> fmt::Debug for SpinLockIRQ<T> {
 
 /// The SpinLockIrq lock guard.
 #[derive(Debug)]
-pub struct SpinLockIRQGuard<'a, T: ?Sized + 'a>(ManuallyDrop<SpinLockGuard<'a, T>>);
+pub struct SpinLockIRQGuard<'a, T: ?Sized>(ManuallyDrop<SpinLockGuard<'a, T>>);
 
 impl<'a, T: ?Sized + 'a> Drop for SpinLockIRQGuard<'a, T> {
     fn drop(&mut self) {
@@ -199,25 +199,25 @@ pub trait Lock<'a, GUARD: 'a> {
 }
 
 impl<'a, T> Lock<'a, SpinLockGuard<'a, T>> for SpinLock<T> {
-    fn lock(&self) -> SpinLockGuard<T> {
+    fn lock(&self) -> SpinLockGuard<'_, T> {
         self.lock()
     }
 }
 
 impl<'a, T> Lock<'a, SpinLockIRQGuard<'a, T>> for SpinLockIRQ<T> {
-    fn lock(&self) -> SpinLockIRQGuard<T> {
+    fn lock(&self) -> SpinLockIRQGuard<'_, T> {
         self.lock()
     }
 }
 
 impl<'a, T> Lock<'a, RwLockReadGuard<'a, T>> for RwLock<T> {
-    fn lock(&self) -> RwLockReadGuard<T> {
+    fn lock(&self) -> RwLockReadGuard<'_, T> {
         self.read()
     }
 }
 
 impl<'a, T> Lock<'a, RwLockWriteGuard<'a, T>> for RwLock<T> {
-    fn lock(&self) -> RwLockWriteGuard<T> {
+    fn lock(&self) -> RwLockWriteGuard<'_, T> {
         self.write()
     }
 }

@@ -1,7 +1,7 @@
 //! Types for the Global Descriptor Table and segment selectors.
 
 use core::fmt;
-use i386::PrivilegeLevel;
+use crate::i386::PrivilegeLevel;
 use bit_field::BitField;
 
 /// Specifies which element to load into a segment from
@@ -41,7 +41,7 @@ impl SegmentSelector {
 }
 
 impl fmt::Debug for SegmentSelector {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut s = f.debug_struct("SegmentSelector");
         s.field("index", &self.index());
         s.field("rpl", &self.rpl());
