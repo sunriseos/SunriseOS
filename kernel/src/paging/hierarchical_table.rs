@@ -5,9 +5,9 @@ use super::arch::{PAGE_SIZE, ENTRY_COUNT};
 use super::lands::{RecursiveTablesLand, VirtualSpaceLand};
 use super::MappingFlags;
 
-use mem::{VirtualAddress, PhysicalAddress};
-use frame_allocator::{PhysicalMemRegion};
-use utils::align_up_checked;
+use crate::mem::{VirtualAddress, PhysicalAddress};
+use crate::frame_allocator::{PhysicalMemRegion};
+use crate::utils::align_up_checked;
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
 use core::iter::{Iterator, Peekable};
@@ -207,7 +207,7 @@ impl PagingCacheFlusher for NoFlush { fn flush_whole_cache() { /* do nothing */ 
 
 /// This is just a wrapper for a pointer to a table.
 /// It enables us to do handle when it is dropped
-pub struct SmartHierarchicalTable<'a, T: HierarchicalTable + 'a>(*mut T, PhantomData<&'a T>);
+pub struct SmartHierarchicalTable<'a, T: HierarchicalTable>(*mut T, PhantomData<&'a T>);
 
 impl<'a, T: HierarchicalTable> SmartHierarchicalTable<'a, T> {
     pub fn new(inner: *mut T) -> SmartHierarchicalTable<'a, T> {
@@ -279,7 +279,7 @@ pub trait TableHierarchy {
 
         /// Delay work to child tables, and map it ourselves when we have no more children.
         /// Panics if any entry was already in use
-        fn rec_map_to<T, I>(table: &mut SmartHierarchicalTable<T>,
+        fn rec_map_to<T, I>(table: &mut SmartHierarchicalTable<'_, T>,
                             frames_iterator: &mut Peekable<I>,
                             start_address: usize,
                             flags: MappingFlags)
@@ -333,7 +333,7 @@ pub trait TableHierarchy {
 
         /// Delay work to child tables, and guard it ourselves when we have no more children.
         /// Panics if any entry was already in use
-        fn rec_guard<T>(table : &mut SmartHierarchicalTable<T>,
+        fn rec_guard<T>(table : &mut SmartHierarchicalTable<'_, T>,
                         start_address: usize,
                         length: &mut usize)
         where T: HierarchicalTable
@@ -396,7 +396,7 @@ pub trait TableHierarchy {
         assert_eq!(length         % PAGE_SIZE, 0, "Length is not page aligned");
 
         /// Delay work to child tables, and unmap it ourselves when we have no more children.
-        fn rec_unmap<T, C>(table: &mut SmartHierarchicalTable<T>,
+        fn rec_unmap<T, C>(table: &mut SmartHierarchicalTable<'_, T>,
                         start_address: usize,
                         length: &mut usize,
                         callback: &mut C)
@@ -458,7 +458,7 @@ pub trait TableHierarchy {
         assert_eq!(length         % PAGE_SIZE, 0, "Length is not page aligned");
 
         /// Delay work to child tables, and iter it ourselves when we have no more children.
-        fn rec_iter<T, C>(table: &mut SmartHierarchicalTable<T>,
+        fn rec_iter<T, C>(table: &mut SmartHierarchicalTable<'_, T>,
                         start_address: usize,
                         length: &mut usize,
                         callback: &mut C)
@@ -528,7 +528,7 @@ pub trait TableHierarchy {
         }
 
         /// Delay work to child tables.
-        fn rec_find<T>(table: &mut SmartHierarchicalTable<T>,
+        fn rec_find<T>(table: &mut SmartHierarchicalTable<'_, T>,
                        table_addr: usize,
                        hole: &mut Hole,
                        desired_length: usize,

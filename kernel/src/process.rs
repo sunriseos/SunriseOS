@@ -1,23 +1,23 @@
 //! Process
 
-use stack::KernelStack;
-use i386::process_switch::*;
-use paging::process_memory::ProcessMemory;
+use crate::stack::KernelStack;
+use crate::i386::process_switch::*;
+use crate::paging::process_memory::ProcessMemory;
 use alloc::boxed::Box;
 use alloc::sync::{Arc, Weak};
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
-use event::Waitable;
-use sync::{SpinLockIRQ, SpinLock, Mutex};
+use crate::event::Waitable;
+use crate::sync::{SpinLockIRQ, SpinLock, Mutex};
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use core::fmt::{self, Debug};
-use scheduler;
-use error::{KernelError, UserspaceError};
-use ipc::{ServerPort, ClientPort, ServerSession, ClientSession};
-use mem::VirtualAddress;
+use crate::scheduler;
+use crate::error::{KernelError, UserspaceError};
+use crate::ipc::{ServerPort, ClientPort, ServerSession, ClientSession};
+use crate::mem::VirtualAddress;
 use failure::Backtrace;
-use frame_allocator::PhysicalMemRegion;
+use crate::frame_allocator::PhysicalMemRegion;
 
 mod capabilities;
 pub use self::capabilities::ProcessCapabilities;
@@ -131,21 +131,21 @@ pub struct ThreadStruct {
 /// IPC. This can be used, for instance, to share a handle to a memory region,
 /// allowing for the mapping of Shared Memory.
 ///
-/// Most handles can be waited on via [::interrupts::syscalls::wait_synchronization], which
+/// Most handles can be waited on via [crate::interrupts::syscalls::wait_synchronization], which
 /// will have relevant behavior for all the different kind of handles.
 #[derive(Debug)]
 pub enum Handle {
     /// An event on which we can wait. Could be an IRQ, or a user-generated
     /// event.
-    ReadableEvent(Box<Waitable>),
-    /// The server side of an IPC port. See [::ipc::port] for more information.
+    ReadableEvent(Box<dyn Waitable>),
+    /// The server side of an IPC port. See [crate::ipc::port] for more information.
     ServerPort(ServerPort),
-    /// The client side of an IPC port. See [::ipc::port] for more information.
+    /// The client side of an IPC port. See [crate::ipc::port] for more information.
     ClientPort(ClientPort),
-    /// The server side of an IPC session. See [::ipc::session] for more
+    /// The server side of an IPC session. See [crate::ipc::session] for more
     /// information.
     ServerSession(ServerSession),
-    /// The client side of an IPC session. See [::ipc::session] for more
+    /// The client side of an IPC session. See [crate::ipc::session] for more
     /// information.
     ClientSession(ClientSession),
     /// A thread.
@@ -158,7 +158,7 @@ pub enum Handle {
 
 impl Handle {
     /// Gets the handle as a [Waitable], or return a `UserspaceError` if the handle cannot be waited on.
-    pub fn as_waitable(&self) -> Result<&Waitable, UserspaceError> {
+    pub fn as_waitable(&self) -> Result<&dyn Waitable, UserspaceError> {
         match self {
             &Handle::ReadableEvent(ref waitable) => Ok(&**waitable),
             &Handle::ServerPort(ref serverport) => Ok(serverport),
@@ -329,7 +329,7 @@ impl ThreadState {
 pub struct ThreadStateAtomic(AtomicUsize);
 
 impl Debug for ThreadStateAtomic {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         Debug::fmt(&self.load(Ordering::SeqCst), f)
     }
 }

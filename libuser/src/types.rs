@@ -4,11 +4,11 @@
 //! modules are newtypes around Handle.
 
 use core::marker::PhantomData;
-use syscalls;
+use crate::syscalls;
 use core::num::NonZeroU32;
 use kfs_libkern::MemoryPermissions;
-use error::{Error, KernelError};
-use ipc::{Message, MessageTy};
+use crate::error::{Error, KernelError};
+use crate::ipc::{Message, MessageTy};
 use core::mem;
 
 /// A Handle is a sort of reference to a Kernel Object. Its underlying
@@ -18,7 +18,7 @@ use core::mem;
 ///
 /// Handles are closed automatically when Dropped via [close_handle].
 ///
-/// [close_handle]: ::syscalls::close_handle.
+/// [close_handle]: crate::syscalls::close_handle.
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct Handle(pub(crate) NonZeroU32);
@@ -33,7 +33,7 @@ impl Handle {
 
     /// Creates a new reference to this handle. See the documentation of
     /// [HandleRef] for more information.
-    pub fn as_ref(&self) -> HandleRef {
+    pub fn as_ref(&self) -> HandleRef<'_> {
         HandleRef {
             inner: self.0,
             lifetime: PhantomData
@@ -70,8 +70,8 @@ pub struct ReadableEvent(pub Handle);
 /// However, an anonymous session pair might be created through the
 /// [create_session] syscall, or by calling [connect_to_named_port].
 ///
-/// [create_session]: ::syscalls::create_session
-/// [connect_to_named_port]: ::syscalls::connect_to_named_port
+/// [create_session]: crate::syscalls::create_session
+/// [connect_to_named_port]: crate::syscalls::connect_to_named_port
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct ClientSession(pub Handle);
@@ -85,7 +85,7 @@ impl ClientSession {
     /// library. Look at the [ipc module] for more information on the IPC
     /// message format.
     ///
-    /// [ipc module]: ::ipc
+    /// [ipc module]: crate::ipc
     pub fn send_sync_request_with_user_buffer(&self, buf: &mut [u8]) -> Result<(), Error> {
         syscalls::send_sync_request_with_user_buffer(buf, self)
             .map_err(|v| v.into())
@@ -118,7 +118,7 @@ impl Drop for ClientSession {
 /// the [create_session] syscall, providing a server/client session pair.
 ///
 /// [accept]: ServerPort::accept
-/// [create_session]: ::syscalls::create_session
+/// [create_session]: crate::syscalls::create_session
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct ServerSession(pub Handle);
@@ -135,7 +135,7 @@ impl ServerSession {
     /// library. Look at the [ipc module] for more information on the IPC
     /// message format.
     ///
-    /// [ipc module]: ::ipc
+    /// [ipc module]: crate::ipc
     pub fn receive(&self, buf: &mut [u8], timeout: Option<usize>) -> Result<(), Error> {
         syscalls::reply_and_receive_with_user_buffer(buf, &[self.0.as_ref()], None, timeout).map(|_| ())
             .map_err(|v| v.into())
@@ -148,7 +148,7 @@ impl ServerSession {
     /// library. Look at the [ipc module] for more information on the IPC
     /// message format.
     ///
-    /// [ipc module]: ::ipc
+    /// [ipc module]: crate::ipc
     pub fn reply(&self, buf: &mut [u8]) -> Result<(), Error> {
         syscalls::reply_and_receive_with_user_buffer(buf, &[], Some(self.0.as_ref()), Some(0))
             .map(|_| ())
@@ -166,7 +166,7 @@ impl ServerSession {
 ///
 /// Obtained by creating an anonymous port pair with the [create_port] syscall.
 ///
-/// [create_port]: ::syscalls::create_port
+/// [create_port]: crate::syscalls::create_port
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct ClientPort(pub Handle);
@@ -185,7 +185,7 @@ impl ClientPort {
 /// Usually obtained by registering a service through the sm: service manager, or
 /// by calling [manage_named_port] to obtained a kernel-managed port.
 ///
-/// [manage_named_port]: ::syscalls::manage_named_port
+/// [manage_named_port]: crate::syscalls::manage_named_port
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct ServerPort(pub Handle);
@@ -201,7 +201,7 @@ impl ServerPort {
 
 /// A Thread. Created with the [create_thread syscall].
 ///
-/// [create_thread syscall]: ::syscalls::create_thread.
+/// [create_thread syscall]: crate::syscalls::create_thread.
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct Thread(pub Handle);

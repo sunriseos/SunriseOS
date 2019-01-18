@@ -6,12 +6,12 @@
 use core::ops::{Deref, DerefMut};
 use core::mem;
 use core::fmt::{Formatter, Error, Display, Debug, LowerHex};
-use error::{KernelError, ArithmeticOperation};
+use crate::error::{KernelError, ArithmeticOperation};
 use failure::Backtrace;
 use core::iter::Step;
 
-use paging::PAGE_SIZE;
-use utils::{align_down, align_up, div_ceil};
+use crate::paging::PAGE_SIZE;
+use crate::utils::{align_down, align_up, div_ceil};
 
 /// Rounds an address to its page address
 #[inline] pub fn round_to_page(addr: usize) -> usize { align_down(addr, PAGE_SIZE) }
@@ -111,37 +111,37 @@ impl ::core::ops::Sub<PhysicalAddress> for PhysicalAddress {
 }
 
 impl Debug for PhysicalAddress {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(f, "P {:#010x}", self.0)
     }
 }
 
 impl Display for PhysicalAddress {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(f, "P {:#010x}", self.0)
     }
 }
 
 impl LowerHex for PhysicalAddress {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(f, "P {:#010x}", self.0)
     }
 }
 
 impl Debug for VirtualAddress {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(f, "V {:#010x}", self.0)
     }
 }
 
 impl Display for VirtualAddress {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(f, "V {:#010x}", self.0)
     }
 }
 
 impl LowerHex for VirtualAddress {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(f, "V {:#010x}", self.0)
     }
 }

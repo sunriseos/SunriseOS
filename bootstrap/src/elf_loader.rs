@@ -1,15 +1,15 @@
 //! Loads the kernel in high memory
 
 use multiboot2::BootInformation;
-use bootstrap_logging::Serial;
+use crate::bootstrap_logging::Serial;
 use core::fmt::Write;
 use core::slice;
 use xmas_elf::ElfFile;
 use xmas_elf::program::{ProgramHeader, Type::Load, SegmentData};
-use paging::{PagingOffPageSet, PAGE_SIZE, UserLand, MappingType, PageTablesSet, EntryFlags};
-use address::{PhysicalAddress, VirtualAddress};
+use crate::paging::{PagingOffPageSet, PAGE_SIZE, UserLand, MappingType, PageTablesSet, EntryFlags};
+use crate::address::{PhysicalAddress, VirtualAddress};
 use kfs_libutils::{self, align_up};
-use frame_alloc::FrameAllocator;
+use crate::frame_alloc::FrameAllocator;
 
 /// Loads the kernel in high memory
 /// Returns address of entry point
@@ -39,7 +39,7 @@ pub fn load_kernel(page_table: &mut PagingOffPageSet, multiboot_info: &BootInfor
 /// Loads an elf segment by coping file_size bytes to the right address,
 /// and filling remaining with 0s.
 /// This is used by NOBITS sections (.bss), this way we initialize them to 0.
-fn load_segment(page_table: &mut PagingOffPageSet, segment: &ProgramHeader, elf_file: &ElfFile) {
+fn load_segment(page_table: &mut PagingOffPageSet, segment: &ProgramHeader<'_>, elf_file: &ElfFile<'_>) {
     // Map the segment memory
     let mem_size_total = align_up(segment.mem_size() as usize, PAGE_SIZE);
     let vaddr = segment.virtual_addr() as usize;

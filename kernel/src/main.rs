@@ -7,7 +7,7 @@
 //! screen. But hey, that's a start.
 
 #![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, allocator_api, alloc, box_syntax, no_more_cas, const_vec_new, range_contains, step_trait, thread_local, nll)]
-#![cfg_attr(target_os = "none", no_std)]
+#![no_std]
 #![cfg_attr(target_os = "none", no_main)]
 #![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
 #![warn(unused)]
@@ -19,38 +19,30 @@
 #![recursion_limit = "1024"]
 
 #[cfg(not(target_os = "none"))]
-use std as core;
+extern crate std;
 
-extern crate bit_field;
+
 #[macro_use]
 extern crate lazy_static;
-extern crate multiboot2;
 #[macro_use]
 extern crate bitflags;
 #[macro_use]
 extern crate static_assertions;
 #[macro_use]
 extern crate alloc;
-extern crate linked_list_allocator;
 #[macro_use]
 extern crate log;
-extern crate smallvec;
-extern crate hashmap_core;
-extern crate xmas_elf;
-extern crate rustc_demangle;
-extern crate byteorder;
 #[macro_use]
 extern crate failure;
 #[macro_use]
 extern crate bitfield;
-extern crate kfs_libkern;
 #[cfg(test)]
 #[macro_use]
 extern crate mashup;
 
 use core::fmt::Write;
 use alloc::prelude::*;
-use utils::io;
+use crate::utils::io;
 
 pub mod paging;
 pub mod event;
@@ -75,16 +67,16 @@ pub mod checks;
 
 #[cfg(target_os = "none")]
 // Make rust happy about rust_oom being no_mangle...
-pub use heap_allocator::rust_oom;
+pub use crate::heap_allocator::rust_oom;
 
 #[cfg(not(test))]
 #[global_allocator]
 static ALLOCATOR: heap_allocator::Allocator = heap_allocator::Allocator::new();
 
-use i386::stack;
-use paging::{PAGE_SIZE, MappingFlags};
-use mem::VirtualAddress;
-use process::{ProcessStruct, ThreadStruct};
+use crate::i386::stack;
+use crate::paging::{PAGE_SIZE, MappingFlags};
+use crate::mem::VirtualAddress;
+use crate::process::{ProcessStruct, ThreadStruct};
 
 unsafe fn force_double_fault() {
     loop {
@@ -157,7 +149,7 @@ pub unsafe extern fn start() -> ! {
 #[cfg(target_os = "none")]
 #[no_mangle]
 pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
-    use devices::rs232::{SerialAttributes, SerialColor};
+    use crate::devices::rs232::{SerialAttributes, SerialColor};
 
     log_impl::early_init();
 
@@ -230,8 +222,8 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 ///
 /// Note that if `None` is passed, this function is safe.
 ///
-/// [dump_stack]: ::stack::dump_stack
-unsafe fn do_panic(msg: core::fmt::Arguments, stackdump_source: Option<stack::StackDumpSource>) -> ! {
+/// [dump_stack]: crate::stack::dump_stack
+unsafe fn do_panic(msg: core::fmt::Arguments<'_>, stackdump_source: Option<stack::StackDumpSource>) -> ! {
 
     // Disable interrupts forever!
     unsafe { sync::permanently_disable_interrupts(); }
@@ -241,7 +233,7 @@ unsafe fn do_panic(msg: core::fmt::Arguments, stackdump_source: Option<stack::St
     //todo: force unlock the KernelMemory lock
     //      and also the process memory lock for userspace stack dumping (only if panic-on-excetpion ?).
 
-    use devices::rs232::SerialLogger;
+    use crate::devices::rs232::SerialLogger;
 
     let _ = writeln!(SerialLogger, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\
                                     ! Panic! at the disco\n\
@@ -254,14 +246,14 @@ unsafe fn do_panic(msg: core::fmt::Arguments, stackdump_source: Option<stack::St
     use xmas_elf::symbol_table::Entry32;
     use xmas_elf::sections::SectionData;
     use xmas_elf::ElfFile;
-    use elf_loader::MappedGrubModule;
+    use crate::elf_loader::MappedGrubModule;
 
     let mapped_kernel_elf = i386::multiboot::try_get_boot_information()
         .and_then(|info| info.module_tags().nth(0))
         .and_then(|module| Some(elf_loader::map_grub_module(module)));
 
     /// Gets the symbol table of a mapped module.
-    fn get_symbols<'a>(mapped_kernel_elf: &'a Option<MappedGrubModule>) -> Option<(&'a ElfFile<'a>, &'a[Entry32])> {
+    fn get_symbols<'a>(mapped_kernel_elf: &'a Option<MappedGrubModule<'_>>) -> Option<(&'a ElfFile<'a>, &'a[Entry32])> {
         let module = mapped_kernel_elf.as_ref()?;
         let elf = module.elf.as_ref().ok()?;
         let data = elf.find_section_by_name(".symtab")?
@@ -283,10 +275,10 @@ unsafe fn do_panic(msg: core::fmt::Arguments, stackdump_source: Option<stack::St
     if let Some(sds) = stackdump_source {
         unsafe {
             // this is unsafe, caller must check safety
-            ::stack::dump_stack(sds, elf_and_st)
+            crate::stack::dump_stack(sds, elf_and_st)
         }
     } else {
-        ::stack::KernelStack::dump_current_stack(elf_and_st)
+        crate::stack::KernelStack::dump_current_stack(elf_and_st)
     }
 
     let _ = writeln!(SerialLogger, "Thread : {:#x?}", scheduler::try_get_current_thread());
@@ -301,7 +293,7 @@ unsafe fn do_panic(msg: core::fmt::Arguments, stackdump_source: Option<stack::St
 /// Kernel panics.
 #[cfg(target_os = "none")]
 #[panic_handler] #[no_mangle]
-pub extern fn panic_fmt(p: &::core::panic::PanicInfo) -> ! {
+pub extern fn panic_fmt(p: &::core::panic::PanicInfo<'_>) -> ! {
     unsafe {
         // safe: we're not passing a stackdump_source
         //       so it will use our current stack, which is safe.

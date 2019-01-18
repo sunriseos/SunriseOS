@@ -12,26 +12,26 @@
 
 #[macro_use]
 extern crate kfs_libuser as libuser;
-extern crate kfs_libutils;
+
 #[macro_use]
 extern crate alloc;
-extern crate spin;
-extern crate hashmap_core;
+
+
 #[macro_use]
 extern crate lazy_static;
 
 mod vbe;
 
-use vbe::{VBEColor, FRAMEBUFFER, Framebuffer};
+use crate::vbe::{VBEColor, FRAMEBUFFER, Framebuffer};
 use core::cmp::{min, max};
 use alloc::prelude::*;
 use alloc::sync::{Arc, Weak};
-use libuser::syscalls;
-use libuser::ipc::server::{WaitableManager, PortHandler, IWaitable, SessionWrapper};
-use libuser::types::*;
+use crate::libuser::syscalls;
+use crate::libuser::ipc::server::{WaitableManager, PortHandler, IWaitable, SessionWrapper};
+use crate::libuser::types::*;
 use spin::Mutex;
-use libuser::error::Error;
-use libuser::syscalls::MemoryPermissions;
+use crate::libuser::error::Error;
+use crate::libuser::syscalls::MemoryPermissions;
 use kfs_libutils::align_up;
 
 /// Entry point interface.
@@ -104,7 +104,7 @@ fn get_intersect((atop, aleft, awidth, aheight): (u32, u32, u32, u32), (btop, bl
 }
 
 /// Draw a portion of a buffer onto the framebuffer.
-fn draw(buf: &Buffer, framebuffer: &mut Framebuffer, top: u32, left: u32, width: u32, height: u32) {
+fn draw(buf: &Buffer, framebuffer: &mut Framebuffer<'_>, top: u32, left: u32, width: u32, height: u32) {
     unsafe {
         // TODO: Safety of the vi::draw IPC method
         // BODY: When calling vi::draw, vi reads from the shared memory. There is

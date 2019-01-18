@@ -1,9 +1,9 @@
 //! RS-232
 
 use core::fmt::{Display, Write, Error, Formatter};
-use sync::{Once, SpinLock};
-use io::Io;
-use i386::pio::Pio;
+use crate::sync::{Once, SpinLock};
+use crate::io::Io;
+use crate::i386::pio::Pio;
 
 /// The port of a COM
 #[derive(Debug, Copy, Clone)]
@@ -82,7 +82,7 @@ impl SerialAttributes {
 /// );
 /// ```
 impl Display for SerialAttributes {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(f, "\x1B[{};{}m", self.fg as u8 + 30, self.bg as u8 + 40)
     }
 }

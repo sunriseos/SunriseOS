@@ -13,7 +13,7 @@
 //! in their documentation.
 
 use alloc::vec::Vec;
-use error::KernelError;
+use crate::error::KernelError;
 use failure::Backtrace;
 use bit_field::BitField;
 use bit_field::BitArray;
@@ -53,7 +53,7 @@ pub struct ProcessCapabilities {
 struct MaskPrinter<'a, T>(&'a [T]);
 
 impl<'a, T: BitField> fmt::Debug for MaskPrinter<'a, T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_list()
             .entries(self.0.iter().enumerate().flat_map(|(idx, v)| {
                 (0..T::bit_length())
@@ -65,7 +65,7 @@ impl<'a, T: BitField> fmt::Debug for MaskPrinter<'a, T> {
 }
 
 impl fmt::Debug for ProcessCapabilities {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ProcessCapabilities")
             .field("syscall_mask", &MaskPrinter(&self.syscall_mask))
             .field("irq_access_mask", &MaskPrinter(&self.irq_access_mask))

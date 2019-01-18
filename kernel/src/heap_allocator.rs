@@ -3,13 +3,13 @@
 //! A simple wrapper around linked_list_allocator. We catch the OomError, and
 //! try to expand the heap with more pages in that case.
 use core::alloc::{GlobalAlloc, Layout, AllocErr};
-use sync::{SpinLock, Once};
+use crate::sync::{SpinLock, Once};
 use core::ops::Deref;
 use core::ptr::NonNull;
 use linked_list_allocator::{Heap, align_up};
-use paging::{PAGE_SIZE, MappingFlags, kernel_memory::get_kernel_memory};
-use frame_allocator::{FrameAllocator, FrameAllocatorTrait};
-use mem::VirtualAddress;
+use crate::paging::{PAGE_SIZE, MappingFlags, kernel_memory::get_kernel_memory};
+use crate::frame_allocator::{FrameAllocator, FrameAllocatorTrait};
+use crate::mem::VirtualAddress;
 
 /// Simple wrapper around linked_list_allocator, growing heap by allocating pages
 /// with the frame allocator as necessary.

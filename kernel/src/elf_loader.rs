@@ -17,10 +17,10 @@ use multiboot2::ModuleTag;
 use core::slice;
 use xmas_elf::ElfFile;
 use xmas_elf::program::{ProgramHeader, Type::Load, SegmentData};
-use mem::{VirtualAddress, PhysicalAddress};
-use paging::{PAGE_SIZE, MappingFlags, process_memory::ProcessMemory, kernel_memory::get_kernel_memory};
-use frame_allocator::PhysicalMemRegion;
-use utils::{self, align_up};
+use crate::mem::{VirtualAddress, PhysicalAddress};
+use crate::paging::{PAGE_SIZE, MappingFlags, process_memory::ProcessMemory, kernel_memory::get_kernel_memory};
+use crate::frame_allocator::PhysicalMemRegion;
+use crate::utils::{self, align_up};
 
 /// Represents a grub module once mapped in kernel memory
 pub struct MappedGrubModule<'a> {
@@ -35,7 +35,7 @@ pub struct MappedGrubModule<'a> {
 }
 
 /// Maps a grub module, which already lives in reserved physical memory, into the KernelLand.
-pub fn map_grub_module(module: &ModuleTag) -> MappedGrubModule {
+pub fn map_grub_module(module: &ModuleTag) -> MappedGrubModule<'_> {
     let start_address_aligned = PhysicalAddress(utils::align_down(module.start_address() as usize, PAGE_SIZE));
     // Use start_address_aligned to calculate the number of pages, to avoid an off-by-one.
     let module_len_aligned = utils::align_up(module.end_address() as usize - start_address_aligned.addr(), PAGE_SIZE);
@@ -82,7 +82,7 @@ impl<'a> Drop for MappedGrubModule<'a> {
 
 /// Gets the desired kernel access controls for a process based on the
 /// .kernel_caps section in its elf
-pub fn get_kacs<'a>(module: &'a MappedGrubModule) -> Option<&'a [u32]> {
+pub fn get_kacs<'a>(module: &'a MappedGrubModule<'_>) -> Option<&'a [u32]> {
     let elf = module.elf.as_ref().expect("Failed parsing multiboot module as elf");
 
     if let Some(section) = elf.find_section_by_name(".kernel_caps") {
@@ -99,7 +99,7 @@ pub fn get_kacs<'a>(module: &'a MappedGrubModule) -> Option<&'a [u32]> {
 
 /// Loads the given kernel built-in into the given page table.
 /// Returns address of entry point
-pub fn load_builtin(process_memory: &mut ProcessMemory, module: &MappedGrubModule) -> usize {
+pub fn load_builtin(process_memory: &mut ProcessMemory, module: &MappedGrubModule<'_>) -> usize {
     let elf = module.elf.as_ref().expect("Failed parsing multiboot module as elf");
 
     // load all segments into the page_table we had above
@@ -119,7 +119,7 @@ pub fn load_builtin(process_memory: &mut ProcessMemory, module: &MappedGrubModul
 /// Loads an elf segment by coping file_size bytes to the right address,
 /// and filling remaining with 0s.
 /// This is used by NOBITS sections (.bss), this way we initialize them to 0.
-fn load_segment(process_memory: &mut ProcessMemory, segment: &ProgramHeader, elf_file: &ElfFile) {
+fn load_segment(process_memory: &mut ProcessMemory, segment: &ProgramHeader<'_>, elf_file: &ElfFile<'_>) {
     // Map the segment memory in KernelLand
     let mem_size_total = align_up(segment.mem_size() as usize, PAGE_SIZE);
 

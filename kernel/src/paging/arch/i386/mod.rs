@@ -5,7 +5,7 @@
 pub mod entry;
 pub mod table;
 
-use mem::{VirtualAddress, PhysicalAddress};
+use crate::mem::{VirtualAddress, PhysicalAddress};
 
 /// The page size. Dictated by the MMU.
 /// In simple, elegant, sane i386 paging, a page is 4kB.

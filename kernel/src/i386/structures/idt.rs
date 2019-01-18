@@ -14,11 +14,11 @@ use core::marker::PhantomData;
 use core::mem;
 use core::ops::{Index, IndexMut};
 use bit_field::BitField;
-use i386::{AlignedTssStruct, TssStruct, PrivilegeLevel};
-use mem::VirtualAddress;
-use paging::{PAGE_SIZE, kernel_memory::get_kernel_memory};
+use crate::i386::{AlignedTssStruct, TssStruct, PrivilegeLevel};
+use crate::mem::VirtualAddress;
+use crate::paging::{PAGE_SIZE, kernel_memory::get_kernel_memory};
 use alloc::boxed::Box;
-use i386::gdt;
+use crate::i386::gdt;
 
 /// An Interrupt Descriptor Table with 256 entries.
 ///
@@ -394,7 +394,7 @@ impl Idt {
 
     /// Loads the IDT in the CPU using the `lidt` command.
     pub fn load(&'static self) {
-        use i386::instructions::tables::{lidt, DescriptorTablePointer};
+        use crate::i386::instructions::tables::{lidt, DescriptorTablePointer};
         use core::mem::size_of;
 
         let ptr = DescriptorTablePointer {
@@ -423,9 +423,9 @@ impl Index<usize> for Idt {
             18 => &self.machine_check,
             19 => &self.simd_floating_point,
             20 => &self.virtualization,
-            i @ 32...255 => &self.interrupts[i - 32],
-            i @ 15 | i @ 31 | i @ 21...29 => panic!("entry {} is reserved", i),
-            i @ 8 | i @ 10...14 | i @ 17 | i @ 30 => {
+            i @ 32..=255 => &self.interrupts[i - 32],
+            i @ 15 | i @ 31 | i @ 21..=29 => panic!("entry {} is reserved", i),
+            i @ 8 | i @ 10..=14 | i @ 17 | i @ 30 => {
                 panic!("entry {} is an exception with error code", i)
             }
             i => panic!("no entry with index {}", i),
@@ -449,9 +449,9 @@ impl IndexMut<usize> for Idt {
             18 => &mut self.machine_check,
             19 => &mut self.simd_floating_point,
             20 => &mut self.virtualization,
-            i @ 32...255 => &mut self.interrupts[i - 32],
-            i @ 15 | i @ 31 | i @ 21...29 => panic!("entry {} is reserved", i),
-            i @ 8 | i @ 10...14 | i @ 17 | i @ 30 => {
+            i @ 32..=255 => &mut self.interrupts[i - 32],
+            i @ 15 | i @ 31 | i @ 21..=29 => panic!("entry {} is reserved", i),
+            i @ 8 | i @ 10..=14 | i @ 17 | i @ 30 => {
                 panic!("entry {} is an exception with error code", i)
             }
             i => panic!("no entry with index {}", i),
@@ -507,7 +507,7 @@ impl<F> IdtEntry<F> {
     /// The function returns a mutable reference to the entry's options that allows
     /// further customization.
     pub unsafe fn set_interrupt_gate_addr(&mut self, addr: u32) -> &mut EntryOptions {
-        use i386::instructions::segmentation;
+        use crate::i386::instructions::segmentation;
 
         self.pointer_low = addr as u16;
         self.pointer_high = (addr >> 16) as u16;
@@ -640,10 +640,10 @@ pub struct ExceptionStackFrame {
 }
 
 impl fmt::Debug for ExceptionStackFrame {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         struct Hex(u32);
         impl fmt::Debug for Hex {
-            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(f, "{:#x}", self.0)
             }
         }

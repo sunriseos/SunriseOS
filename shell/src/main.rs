@@ -10,7 +10,7 @@
 #![warn(missing_docs)]
 #![deny(intra_doc_link_resolution_failure)]
 
-extern crate gif;
+use gif;
 extern crate alloc;
 #[macro_use]
 extern crate log;
@@ -18,14 +18,14 @@ extern crate log;
 extern crate lazy_static;
 #[macro_use]
 extern crate kfs_libuser as libuser;
-extern crate byteorder;
-extern crate spin;
+
+
 
 mod ps2;
-use libuser::io;
-use libuser::sm;
-use libuser::window::{Window, Color};
-use libuser::terminal::{Terminal, WindowSize};
+use crate::libuser::io;
+use crate::libuser::sm;
+use crate::libuser::window::{Window, Color};
+use crate::libuser::terminal::{Terminal, WindowSize};
 
 use core::fmt::Write;
 use alloc::prelude::*;
@@ -98,9 +98,9 @@ fn test_threads(terminal: Terminal) -> Terminal {
         };
         for _ in 0..10 {
             if let Some(mut lock) = terminal.try_lock() {
-                writeln!(lock, "A");
+                let _ = writeln!(lock, "A");
             }
-            libuser::syscalls::sleep_thread(0);
+            let _ = libuser::syscalls::sleep_thread(0);
         }
     }
 
@@ -112,9 +112,9 @@ fn test_threads(terminal: Terminal) -> Terminal {
             };
             for _ in 0..10 {
                 if let Some(mut lock) = terminal.try_lock() {
-                    writeln!(lock, "B");
+                    let _ = writeln!(lock, "B");
                 }
-                libuser::syscalls::sleep_thread(0);
+                let _ = libuser::syscalls::sleep_thread(0);
             }
         }
         libuser::syscalls::exit_thread()
@@ -160,7 +160,7 @@ fn test_threads(terminal: Terminal) -> Terminal {
             Ok(terminal) => break terminal.into_inner(),
             Err(x) => terminal = x
         }
-        libuser::syscalls::sleep_thread(0);
+        let _ = libuser::syscalls::sleep_thread(0);
     }
 }
 

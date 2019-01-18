@@ -77,9 +77,9 @@
 //! let clientsess = ipc::connect_to_named_port(b"test\0\0\0\0\0\0\0\0\0\0\0\0")?;
 //! ```
 
-use sync::RwLock;
+use crate::sync::RwLock;
 use alloc::string::String;
-use error::UserspaceError;
+use crate::error::UserspaceError;
 use hashmap_core::HashMap;
 
 pub mod session;

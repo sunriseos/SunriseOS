@@ -1,5 +1,5 @@
-use i386::structures::idt::ExceptionStackFrame;
-use devices::pic;
+use crate::i386::structures::idt::ExceptionStackFrame;
+use crate::devices::pic;
 
 fn acknowledge_irq(irq: u8) {
     pic::get().acknowledge(irq)
@@ -25,7 +25,7 @@ macro_rules! irq_handler {
     ($irq:expr, $name:ident) => {{
         extern "x86-interrupt" fn $name(_stack_frame: &mut ExceptionStackFrame) {
             acknowledge_irq($irq);
-            ::event::dispatch_event($irq);
+            crate::event::dispatch_event($irq);
         }
         $name
     }}

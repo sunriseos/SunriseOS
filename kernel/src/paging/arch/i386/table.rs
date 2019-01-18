@@ -9,8 +9,8 @@ use super::super::super::hierarchical_table::{HierarchicalTable, SmartHierarchic
 use super::super::super::lands::{KernelLand, UserLand, VirtualSpaceLand};
 use super::super::super::kernel_memory::get_kernel_memory;
 use super::super::super::MappingFlags;
-use mem::{VirtualAddress, PhysicalAddress};
-use frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
+use crate::mem::{VirtualAddress, PhysicalAddress};
+use crate::frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
 
 /// When paging is on, accessing this address loops back to the directory itself thanks to
 /// recursive mapping on directory's last entry

@@ -6,9 +6,9 @@
 #![warn(missing_docs)]
 #![deny(intra_doc_link_resolution_failure)]
 
-extern crate byteorder;
-extern crate bit_field;
-extern crate num_traits;
+
+
+
 
 use num_traits::Num;
 use core::ops::{Not, BitAnd};
@@ -16,7 +16,7 @@ use core::fmt::Write;
 
 pub mod io;
 mod cursor;
-pub use cursor::*;
+pub use crate::cursor::*;
 
 /// Align the address to the next alignment.
 ///

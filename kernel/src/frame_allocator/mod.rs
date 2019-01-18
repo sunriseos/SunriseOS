@@ -3,8 +3,8 @@
 //! This module can only allocate and free whole frames.
 
 use alloc::vec::Vec;
-use error::KernelError;
-use paging::PAGE_SIZE;
+use crate::error::KernelError;
+use crate::paging::PAGE_SIZE;
 
 pub mod physical_mem_region;
 pub use self::physical_mem_region::{PhysicalMemRegion, PhysicalMemRegionIter};
@@ -32,7 +32,7 @@ use self::private::FrameAllocatorTraitPrivate;
 
 mod private {
     use super::PhysicalMemRegion;
-    use mem::PhysicalAddress;
+    use crate::mem::PhysicalAddress;
 
     pub trait FrameAllocatorTraitPrivate {
         /// Marks a region as deallocated.

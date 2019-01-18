@@ -7,8 +7,8 @@ use core::alloc::{GlobalAlloc, Layout};
 use spin::{Mutex, MutexGuard};
 use core::ptr::NonNull;
 use linked_list_allocator::{Heap, align_up};
-use syscalls::set_heap_size;
-use error::KernelError;
+use crate::syscalls::set_heap_size;
+use crate::error::KernelError;
 
 /// The libuser heap allocator.
 ///
@@ -18,7 +18,7 @@ pub struct Allocator(Mutex<Heap>);
 
 impl Allocator {
     /// Safely expands the heap if possible.
-    fn expand(heap: &mut MutexGuard<Heap>, by: usize) -> Result<(), KernelError> {
+    fn expand(heap: &mut MutexGuard<'_, Heap>, by: usize) -> Result<(), KernelError> {
         let total = heap.size() + align_up(by, 0x200_000); // set_heap_size requires this alignment.
 
         let heap_bottom = unsafe { set_heap_size(total)? };

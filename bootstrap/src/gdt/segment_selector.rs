@@ -33,7 +33,7 @@ impl SegmentSelector {
 }
 
 impl fmt::Debug for SegmentSelector {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut s = f.debug_struct("SegmentSelector");
         s.field("index", &self.index());
         s.field("rpl", &self.rpl());

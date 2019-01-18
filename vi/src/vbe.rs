@@ -1,8 +1,8 @@
 //! VESA Bios Extensions Framebuffer
 
 use spin::Mutex;
-use syscalls;
-use libuser::error::Error;
+use crate::syscalls;
+use crate::libuser::error::Error;
 use core::slice;
 
 /// A rgb color

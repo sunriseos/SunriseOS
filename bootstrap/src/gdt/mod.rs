@@ -101,7 +101,7 @@ lazy_static! {
     };
     pub static ref FAULT_TASK: TssStruct = {
         unsafe {
-            TssStruct::new(0, (SegmentSelector(0x18), (::STACK.0.as_ptr() as usize + ::STACK.0.len() - 1)), (SegmentSelector(0), 0), (SegmentSelector(0), 0), SegmentSelector(7 << 3))
+            TssStruct::new(0, (SegmentSelector(0x18), (crate::STACK.0.as_ptr() as usize + crate::STACK.0.len() - 1)), (SegmentSelector(0), 0), (SegmentSelector(0), 0), SegmentSelector(7 << 3))
         }
         //let tss = TssStruct::new(0, (SegmentSelector(0x18), ::STACK + ::STACK.len() - 1), (SegmentSelector(0), 0), (SegmentSelector(0), 0), SegmentSelector(7 << 3));
         //tss.ss0 = 0x18;
