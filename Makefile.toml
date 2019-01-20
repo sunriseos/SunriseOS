@@ -231,3 +231,29 @@ args = ["xclippy", "--target=i386-unknown-none", "--",
 	"-W", "clippy::wildcard_dependencies",
 	"-W", "clippy::wrong_pub_self_convention",
 	]
+
+[tasks.clippy-ci]
+workspace = false
+dependencies = ["install-rust-src"]
+install_crate = { rustup_component_name = "clippy" }
+description = "Run clippy"
+command = "cargo"
+args = ["xclippy", "--target=i386-unknown-none", "--",
+	"-A", "clippy::redundant_field_names",
+	"-A", "clippy::unreadable_literal",
+	"-A", "clippy::identity_op",
+	"-A", "clippy::zero_prefixed_literal",
+	"-W", "clippy::cast_possible_wrap",
+	"-W", "clippy::cast_sign_loss",
+	"-W", "clippy::default_trait_access",
+	"-W", "clippy::explicit_into_iter_loop",
+	"-W", "clippy::explicit_iter_loop",
+	"-W", "clippy::missing_docs_in_private_items",
+	"-W", "clippy::mut_mut",
+	"-W", "clippy::replace_consts",
+	"-W", "clippy::used_underscore_binding",
+	"-W", "clippy::wildcard_dependencies",
+	"-W", "clippy::wrong_pub_self_convention",
+	"-D", "warnings"
+	]
+
