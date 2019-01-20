@@ -54,23 +54,36 @@ use crate::libuser::error::SmError;
 use hashmap_core::map::{HashMap, Entry};
 use spin::Mutex;
 
+/// `sm:` service interface.
+/// The main interface to the Service Manager. Clients can use it to connect to
+/// or register new services (assuming they have the appropriate capabilities).
+///
+/// Make sure to call the [UserInterface::initialize] method before using it.
 #[derive(Debug, Default)]
 struct UserInterface;
 
 lazy_static! {
+    /// Global mapping of Service Name -> ClientPort.
     static ref SERVICES: Mutex<HashMap<u64, ClientPort>> = Mutex::new(HashMap::new());
 }
 // TODO: global event when services are accessed.
 
+/// Get the length of a service encoded as an u64.
+#[allow(clippy::verbose_bit_mask)] // More readable this way...
 fn get_service_length(servicename: u64) -> usize{
     for i in 0..8 {
         if (servicename >> (8*i)) & 0xFF == 0 {
             return i;
         }
     }
-    return 8;
+    8
 }
 
+/// Casts an &u64 into an &str.
+///
+/// # Panics
+///
+/// Panics if the bytes of the u64 don't match valid UTF-8.
 fn get_service_str(servicename: &u64) -> &str {
     // TODO: Don't fail, return an error (invalid servicename or something).
     // TODO: Maybe I should use &[u8] instead?
@@ -82,11 +95,15 @@ fn get_service_str(servicename: &u64) -> &str {
 
 object! {
     impl UserInterface {
+        /// Initialize the UserInterface, acquiring the Pid of the remote
+        /// process, which will then be used to validate the permissions of each
+        /// calls.
         #[cmdid(0)]
         fn initialize(&mut self, _pid: Pid,) -> Result<(), Error> {
             Ok(())
         }
 
+        /// Get a ClientSession to this service.
         #[cmdid(1)]
         fn get_service(&mut self, servicename: u64,) -> Result<(Handle,), Error> {
             match SERVICES.lock().get(&servicename) {
@@ -95,6 +112,8 @@ object! {
             }
         }
 
+        /// Register a new service, returning a ServerPort to the newly
+        /// registered service.
         #[cmdid(2)]
         fn register_service(&mut self, servicename: u64, is_light: u8, max_handles: u32,) -> Result<(Handle,), Error> {
             let (clientport, serverport) = syscalls::create_port(max_handles, is_light != 0, get_service_str(&servicename))?;
@@ -107,6 +126,7 @@ object! {
             }
         }
 
+        /// Unregister a service.
         #[cmdid(3)]
         fn unregister_service(&mut self, servicename: u64,) -> Result<(), Error> {
             match SERVICES.lock().remove(&servicename) {

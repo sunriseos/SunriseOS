@@ -106,6 +106,7 @@ impl PciDevice {
     ///
     /// This is done by reading the Device ID - Vendor ID register (register 0).
     /// If `0xFFFF_FFFF` is read back, this means that the device was non-existent, and we return None.
+    #[allow(clippy::absurd_extreme_comparisons)]
     fn probe(bus: u8, slot: u8, function: u8) -> Option<Self> {
         debug_assert!(bus <= MAX_BUS);
         debug_assert!(slot <= MAX_SLOT);
@@ -208,6 +209,7 @@ impl PciDevice {
 }
 
 /// Read one of the 64 32-bit registers of a pci bus>device>func.
+#[allow(clippy::absurd_extreme_comparisons)]
 fn pci_config_read_word(bus: u8, slot: u8, func: u8, register: u8) -> u32 {
     debug_assert!(bus <= MAX_BUS);
     debug_assert!(slot <= MAX_SLOT);
@@ -231,6 +233,7 @@ fn pci_config_read_word(bus: u8, slot: u8, func: u8, register: u8) -> u32 {
 }
 
 /// Read one of the 64 32-bit registers of a pci bus>device>func.
+#[allow(clippy::absurd_extreme_comparisons)]
 fn pci_config_write_word(bus: u8, slot: u8, func: u8, register: u8, value: u32) {
     debug_assert!(bus <= MAX_BUS);
     debug_assert!(slot <= MAX_SLOT);

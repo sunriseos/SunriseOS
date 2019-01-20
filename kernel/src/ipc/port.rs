@@ -35,8 +35,12 @@ use crate::ipc::session::{self, ClientSession, ServerSession};
 /// An endpoint which can be connected to.
 #[derive(Debug)]
 struct Port {
+    /// List of incoming connection requests.
     incoming_connections: SpinLock<Vec<Arc<IncomingConnection>>>,
+    /// List of threads waiting for a connection request.
     accepters: SpinLock<Vec<Weak<ThreadStruct>>>,
+    /// Number of active ServerPort. When it drops to 0, future connection
+    /// attempts will faill with [UserspaceError::PortRemoteDead].
     servercount: AtomicUsize,
 }
 
@@ -55,17 +59,6 @@ pub struct ClientPort(Arc<Port>);
 pub struct ServerPort(Arc<Port>);
 
 impl Port {
-    /// Creates a new port. This port may only have _max_sessions sessions active at
-    /// a given time.
-    fn new(_max_sessions: u32) -> (ServerPort, ClientPort) {
-        let port = Arc::new(Port {
-            servercount: AtomicUsize::new(0),
-            incoming_connections: SpinLock::new(Vec::new()),
-            accepters: SpinLock::new(Vec::new())
-        });
-        (Port::server(port.clone()), Port::client(port.clone()))
-    }
-
     /// Returns a ClientPort from this Port.
     fn client(this: Arc<Self>) -> ClientPort {
         ClientPort(this)
@@ -80,8 +73,14 @@ impl Port {
 
 /// Create a new Port pair. Those ports are linked to each-other: The server will
 /// receive connections from the client.
+/// A port may only have max_sessions sessions active at a given time.
 pub fn new(_max_sessions: u32) -> (ServerPort, ClientPort) {
-    Port::new(_max_sessions)
+    let port = Arc::new(Port {
+        servercount: AtomicUsize::new(0),
+        incoming_connections: SpinLock::new(Vec::new()),
+        accepters: SpinLock::new(Vec::new())
+    });
+    (Port::server(port.clone()), Port::client(port.clone()))
 }
 
 // Wait for a connection to become available.
@@ -123,9 +122,12 @@ impl Drop for ServerPort {
     }
 }
 
+/// Represents a connection request from the creator thread.
 #[derive(Debug)]
 struct IncomingConnection {
+    /// Session that this connection request is for.
     session: SpinLock<Option<ClientSession>>,
+    /// Thread that wants to connect to this Port.
     creator: Arc<ThreadStruct>
 }
 

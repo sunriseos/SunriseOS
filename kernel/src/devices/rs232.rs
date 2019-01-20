@@ -108,7 +108,7 @@ struct SerialInternal<T> {
     status_port: T
 }
 
-impl <T> SerialInternal<T> {
+impl SerialInternal<Pio<u8>> {
     /// Creates a COM port from it's base IO address.
     #[cfg(all(target_arch="x86", not(test)))]
     #[allow(unused)]
@@ -136,9 +136,7 @@ impl <T> SerialInternal<T> {
 
     #[cfg(test)]
     pub fn new(_com_port: ComPort) -> SerialInternal<Pio<u8>> { panic!("mock implementation !") }
-}
 
-impl SerialInternal<Pio<u8>> {
     /// Outputs a string to this COM.
     fn send_string(&mut self, string: &str) {
         for byte in string.bytes() {

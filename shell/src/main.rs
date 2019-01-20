@@ -71,6 +71,8 @@ fn main() {
     }
 }
 
+/// Shows a GIF in a new window, blocking the caller. When a key is pressed, the
+/// window is closed and control is given back to the caller.
 fn show_gif(louis: &[u8]) {
     let mut window = Window::new(0, 0, 1280, 800).unwrap();
     let mut reader = gif::Decoder::new(&louis[..]).read_info().unwrap();
@@ -90,7 +92,6 @@ fn show_gif(louis: &[u8]) {
         for y in 0..(reader.height() as usize) {
             for x in 0..(reader.width() as usize) {
                 let frame_coord = (y * reader.width() as usize + x) * 4;
-                let vbe_coord = window.get_px_offset(x, y);
                 window.write_px_at(x, y, Color::rgb(buf[frame_coord], buf[frame_coord + 1], buf[frame_coord + 2]));
             }
         }
@@ -101,7 +102,9 @@ fn show_gif(louis: &[u8]) {
     }
 }
 
+/// Test function ensuring threads are working properly.
 fn test_threads(terminal: Terminal) -> Terminal {
+    #[doc(hidden)]
     fn thread_a(terminal: usize) {
         let terminal = unsafe {
             Arc::from_raw(terminal as *const Mutex<Terminal>)
@@ -114,6 +117,7 @@ fn test_threads(terminal: Terminal) -> Terminal {
         }
     }
 
+    #[doc(hidden)]
     fn thread_b(terminal: usize) -> ! {
         // Wrap in a block to forcibly call Arc destructor before exiting the thread.
         {
@@ -130,6 +134,7 @@ fn test_threads(terminal: Terminal) -> Terminal {
         libuser::syscalls::exit_thread()
     }
 
+    /// Small wrapper around thread_b fixing the thread calling convention.
     #[naked]
     extern fn function_wrapper() {
         unsafe {
@@ -140,11 +145,12 @@ fn test_threads(terminal: Terminal) -> Terminal {
         }
     }
 
+    /// Size of the test_threads stack.
     const THREAD_STACK_SIZE: usize = 0x2000;
 
     let mut terminal = Arc::new(Mutex::new(terminal));
     let stack = Box::new([0u8; THREAD_STACK_SIZE]);
-    let sp = (Box::into_raw(stack) as *const u8).wrapping_offset(THREAD_STACK_SIZE as isize);
+    let sp = (Box::into_raw(stack) as *const u8).wrapping_add(THREAD_STACK_SIZE);
     let ip : extern fn() -> ! = unsafe {
         // Safety: This is changing the return type from () to !. It's safe. It
         // sucks though. This is, yet again, an instance of "naked functions are
@@ -174,6 +180,8 @@ fn test_threads(terminal: Terminal) -> Terminal {
     }
 }
 
+/// Test function ensuring divide by zero interruption kills only the current
+/// process.
 fn test_divide_by_zero() {
     // don't panic, we want to actually divide by zero
     unsafe {
@@ -184,13 +192,19 @@ fn test_divide_by_zero() {
     }
 }
 
+/// Test function ensuring pagefaults kills only the current process.
 fn test_page_fault() {
-    let ptr = 0x00000000 as *const u8;
+    let ptr: *const u8 = core::ptr::null();
     let _res = unsafe { *ptr };
 }
 
+/// Meme for KFS3
 static LOUIS3: &'static [u8; 1318100] = include_bytes!("../img/meme3.gif");
+/// Meme for KFS4
 static LOUIS4: &'static [u8; 103803] = include_bytes!("../img/meme4.gif");
+// TODO: Meme for KFS5.
+// BODY: We cannot give KFS5 until we have a meme. It is of utmost importance
+// BODY: that a meme is found and placed here.
 
 capabilities!(CAPABILITIES = Capabilities {
     svcs: [

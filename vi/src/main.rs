@@ -158,6 +158,7 @@ fn get_real_bounds((top, left, width, height): (i32, i32, u32, u32), framebuffer
 
 /// Internal representation of a window.
 #[derive(Debug)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct Buffer {
     top: i32,
     left: i32,
@@ -181,6 +182,7 @@ impl Buffer {
 /// IPC Window object
 #[derive(Debug)]
 struct IBuffer {
+    /// The Buffer linked with this window object instance.
     buffer: Arc<Buffer>,
 }
 

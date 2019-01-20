@@ -34,16 +34,27 @@ use crate::paging::{MappingAccessRights, mapping::MappingType, process_memory::P
 use crate::mem::{UserSpacePtr, UserSpacePtrMut, VirtualAddress};
 use bit_field::BitField;
 
+/// Wrapper around the currently active session and the incoming request list.
+/// They are kept together so they are locked together.
 #[derive(Debug)]
-struct InternalSession {
+struct SessionRequests {
+    /// The request currently being serviced. Sessions are sequential: they can
+    /// only service a single request at a time.
     active_request: Option<Request>,
+    /// Pending Requests.
     incoming_requests: Vec<Request>,
 }
 
+/// Shared part of a Session.
 #[derive(Debug)]
 struct Session {
-    internal: SpinLock<InternalSession>,
+    /// Pending requests and currently active request are there.
+    internal: SpinLock<SessionRequests>,
+    /// List of threads waiting for a request.
     accepters: SpinLock<Vec<Weak<ThreadStruct>>>,
+    /// Count of live ServerSessions. Once it drops to 0, all attempts to call
+    /// [ServerSession::send_request] will fail with
+    /// [UserspaceError::PortRemoteDead].
     servercount: AtomicUsize,
 }
 
@@ -111,19 +122,6 @@ bitfield! {
 }
 
 impl Session {
-    fn new() -> (ServerSession, ClientSession) {
-        let sess = Arc::new(Session {
-            internal: SpinLock::new(InternalSession {
-                incoming_requests: Vec::new(),
-                active_request: None
-            }),
-            accepters: SpinLock::new(Vec::new()),
-            servercount: AtomicUsize::new(0)
-        });
-
-        (Session::server(sess.clone()), Session::client(sess))
-    }
-
     /// Returns a ClientPort from this Port.
     fn client(this: Arc<Self>) -> ClientSession {
         ClientSession(this)
@@ -139,7 +137,16 @@ impl Session {
 /// Create a new Session pair. Those sessions are linked to each-other: The
 /// server will receive requests sent through the client.
 pub fn new() -> (ServerSession, ClientSession) {
-    Session::new()
+    let sess = Arc::new(Session {
+        internal: SpinLock::new(SessionRequests {
+            incoming_requests: Vec::new(),
+            active_request: None
+        }),
+        accepters: SpinLock::new(Vec::new()),
+        servercount: AtomicUsize::new(0)
+    });
+
+    (Session::server(sess.clone()), Session::client(sess))
 }
 
 impl Waitable for ServerSession {
@@ -167,15 +174,39 @@ impl Waitable for ServerSession {
     }
 }
 
+/// An incoming IPC request.
 #[derive(Debug)]
 struct Request {
+    /// Address of the mirror-mapped (in-kernel) IPC buffer. Guaranteed to be
+    /// at least sender_bufsize in size.
     sender_buf: VirtualAddress,
+    /// Size of the IPC buffer.
     sender_bufsize: usize,
+    /// Thread that sent this request. It should be woken up when the request
+    /// is answered.
     sender: Arc<ThreadStruct>,
+    /// A really really broken excuse for a condvar. The thread replying should
+    /// insert a result (potentially an error) in this option before waking up
+    /// the sender.
     answered: Arc<SpinLock<Option<Result<(), UserspaceError>>>>,
 }
 
 // TODO finish buf_map
+/// Send an IPC Buffer from the sender into the receiver.
+///
+/// There are two "families" of IPC buffers:
+///
+/// - Buffers, also known as IPC type A, B and W, are going to remap the Page
+///   from the sender's address space to the receiver's. As a result, those
+///   buffers are required to be page-aligned.
+/// - Pointers, also known as IPC type X and C, involve the kernel copying the
+///   data from the type X Pointer to the associated type C pointer. This results
+///   in much more flexibility for the userspace, at the cost of a bit of
+///   performance.
+///
+/// In practice, the performance lost by memcpying the data can be made up by not
+/// requiring to flush the page table cache, so care must be taken when chosing
+/// between Buffer or Pointer family of IPC.
 #[allow(unused)]
 fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mut ProcessMemory, to_mem: &mut ProcessMemory, flags: MappingAccessRights) -> Result<(), UserspaceError> {
     let lowersize = LE::read_u32(&from_buf[*curoff..*curoff + 4]);
@@ -362,6 +393,17 @@ impl ServerSession {
 // TODO: Kernel IPC: Implement X and C descriptor support in pass_message.
 // BODY: X and C descriptors are complicated and support for them is put off for
 // BODY: the time being. We'll likely want them when implementing FS though.
+/// Send a message from the sender to the receiver. This is more or less a
+/// memcpy, with some special case done to satisfy the various commands of the
+/// CMIF structure:
+///
+/// - If send_pid is enabled, write the pid of the sender in the spot reserved
+///   for this,
+/// - Copy/Move handles are added to the receiver's Handle Table, and removed
+///   from the sender's Handle Table when appropriate. The handle numbers are
+///   rewritten to the receiver's.
+/// - Buffers are appropriately mapped through the [buf_map] function, and the
+///   address are rewritten to in the receiver's address space.
 #[allow(unused)]
 fn pass_message(from_buf: &[u8], from_proc: Arc<ThreadStruct>, to_buf: &mut [u8], to_proc: Arc<ThreadStruct>) -> Result<(), UserspaceError> {
     // TODO: pass_message deadlocks when sending message to the same process.
