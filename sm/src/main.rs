@@ -42,7 +42,7 @@ use crate::libuser::ipc::server::{WaitableManager, PortHandler, IWaitable};
 use crate::libuser::types::*;
 use crate::libuser::error::Error;
 use crate::libuser::error::SmError;
-use hashmap_core::map::{HashMap, Entry};
+use hashbrown::hash_map::{HashMap, Entry};
 use spin::Mutex;
 
 #[derive(Debug, Default)]

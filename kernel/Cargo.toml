@@ -28,7 +28,6 @@ static_assertions = "*"
 linked_list_allocator = "0.6.2"
 log = "0.4.6"
 xmas-elf = "0.6.2"
-hashmap_core = "0.1.9"
 rustc-demangle = "0.1"
 failure = { version = "0.1", default-features = false, features = ["derive"] }
 bitfield = "0.13"
@@ -41,6 +40,10 @@ version = "0.6.7"
 [dependencies.byteorder]
 default-features = false
 version = "1.2.7"
+
+[dependencies.hashbrown]
+features = ["nightly"]
+version = "0.1.8"
 
 [dependencies.lazy_static]
 features = ["spin_no_std"]

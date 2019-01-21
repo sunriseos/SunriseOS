@@ -6,7 +6,7 @@
 
 use alloc::prelude::*;
 use font_rs::{font, font::{Font, GlyphBitmap}};
-use hashmap_core::HashMap;
+use hashbrown::HashMap;
 use crate::window::{Window, Color};
 use crate::error::Error;
 
