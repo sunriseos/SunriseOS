@@ -80,7 +80,7 @@
 use crate::sync::RwLock;
 use alloc::string::String;
 use crate::error::UserspaceError;
-use hashmap_core::HashMap;
+use hashbrown::HashMap;
 
 pub mod session;
 pub mod port;

@@ -14,7 +14,6 @@ kfs-libutils = { path = "../libutils" }
 kfs-libkern = { path = "../libkern" }
 failure = { version = "0.1", default-features = false, features = ["derive"] }
 font-rs = { git = "https://github.com/orycterope/font-rs" }
-hashmap_core = "0.1.9"
 log = "0.4"
 lazy_static = "1.2"
 
@@ -25,3 +24,7 @@ version = "1.2.7"
 [dependencies.arrayvec]
 default-features = false
 version = "0.4.10"
+
+[dependencies.hashbrown]
+features = ["nightly"]
+version = "0.1.8"
