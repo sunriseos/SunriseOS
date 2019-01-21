@@ -110,7 +110,7 @@ impl KernelStack {
     /// The safe method of getting the stack is by getting current [`ProcessStruct`], *lock it*,
     /// and use its `pstack`.
     ///
-    /// [`ProcessStruct`]: ::process::ProcessStruct
+    /// [`ProcessStruct`]: crate::process::ProcessStruct
     pub unsafe fn get_current_stack() -> KernelStack {
         let stack_bottom = Self::get_current_stack_bottom();
         KernelStack { stack_address: VirtualAddress(stack_bottom) }

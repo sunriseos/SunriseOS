@@ -30,7 +30,7 @@
 //!   and it is currently (constly) borrowed by the `CrossProcessMapping`.
 //!
 //! [`CrossProcessMapping`]: self::CrossProcessMapping<'a>
-//! [`ProcessMemory`]: ::paging::process_memory::ProcessMemory
+//! [`ProcessMemory`]: crate::paging::process_memory::ProcessMemory
 
 use crate::mem::VirtualAddress;
 use super::{PAGE_SIZE, MappingAccessRights};

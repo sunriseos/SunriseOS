@@ -53,7 +53,7 @@ struct Session {
     /// List of threads waiting for a request.
     accepters: SpinLock<Vec<Weak<ThreadStruct>>>,
     /// Count of live ServerSessions. Once it drops to 0, all attempts to call
-    /// [ServerSession::send_request] will fail with
+    /// [ClientSession::send_request] will fail with
     /// [UserspaceError::PortRemoteDead].
     servercount: AtomicUsize,
 }
