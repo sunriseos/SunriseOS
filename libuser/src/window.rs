@@ -34,13 +34,18 @@ impl Color {
 /// A managed window.
 #[derive(Debug)]
 pub struct Window {
+    /// The framebuffer memory shared with Vi. Drawing to this buffer will take
+    /// effect on the next call to [IBuffer::draw].
     buf: MappedSharedMemory,
+    /// Vi handle for this window.
     handle: IBuffer,
+    /// Width of the window.
     width: usize,
+    /// Height of the window.
     height: usize,
+    /// Bits per pixel for the framebuffer.
     bpp: usize
 }
-
 
 impl Window {
     /// Creates a window in the vi compositor.

@@ -1,4 +1,3 @@
-//! TODO: Write some AHCI documentation
 #![feature(alloc, const_let)]
 #![no_std]
 
@@ -11,7 +10,11 @@
 #![cfg_attr(test, allow(unused_imports))]
 
 // rustdoc warnings
-#![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
+// TODO: Write documentation for AHCI
+// BODY: Documentation lints are disabled on AHCI for now, to avoid conflicts.
+// BODY: Get @orycterope to write some doc \o/
+#![allow(missing_docs)]
+#![allow(clippy::missing_docs_in_private_items)]
 #![deny(intra_doc_link_resolution_failure)]
 
 #[macro_use]

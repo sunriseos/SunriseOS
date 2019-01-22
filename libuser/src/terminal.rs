@@ -12,6 +12,7 @@ use crate::error::Error;
 
 /// Just an x and a y
 #[derive(Copy, Clone, Debug)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct Pos {
     x: usize,
     y: usize,
@@ -21,17 +22,24 @@ struct Pos {
 /// Renders characters from a .ttf font using the font-rs crate
 #[allow(missing_debug_implementations)] // Font does not implement Debug :/ Maybe I could do a PR
 pub struct Terminal {
+    /// Rendering target for this terminal.
     framebuffer: Window,
-    cursor_pos: Pos,        /* Cursor pos, in pixels. Does not account for bpp.
-                               Reprensents the pen position on the baseline. */
+    /// Cursor pos, in pixels. Does not account for bpp. Reprensents the pen
+    /// position on the baseline.
+    cursor_pos: Pos,
+    /// The font in use for this terminal.
     font: Font<'static>,
-    cached_glyphs: HashMap<char, GlyphBitmap>, /* We cache ascii glyphs
-                                                  to avoid rendering them every time */
-    advance_width:  usize, /* Expected to be the same for every glyph since
-                              it should be a monospaced font */
-    linespace: usize,      /* The distance between two baselines */
-    ascent: usize,         /* The maximum ascent  in the font. */
-    descent: usize,        /* The maximum descent in the font. */
+    /// We cache ascii glyphs to avoid rendering them every time.
+    cached_glyphs: HashMap<char, GlyphBitmap>,
+    /// Expected to be the same for every glyph since it should be a monospaced
+    /// font.
+    advance_width:  usize,
+    /// The distance between two baselines.
+    linespace: usize,
+    /// The maximum ascent in the font.
+    ascent: usize,
+    /// The maximum descent in the font.
+    descent: usize,
 }
 
 /// The font we choose to render in
@@ -117,11 +125,14 @@ impl Terminal {
         self.framebuffer.draw()
     }
 
+    /// Move the cursor to the beginning of the current line.
     #[inline]
     fn carriage_return(&mut self) {
         self.cursor_pos.x = 0;
     }
 
+    /// Move the cursor to the beginning of the next line, scrolling the screen
+    /// if necessary.
     #[inline]
     fn line_feed(&mut self) {
         let _ = self.draw();
@@ -134,6 +145,8 @@ impl Terminal {
         self.carriage_return();
     }
 
+    /// Move the cursor to the next position for drawing a character, possibly
+    /// the next line if we need to wrap.
     #[inline]
     fn advance_pos(&mut self) {
         self.cursor_pos.x += self.advance_width;
@@ -143,6 +156,8 @@ impl Terminal {
         }
     }
 
+    /// Move the cursor back to the previous position. If we are already on the
+    /// first character position on this line, do not move.
     fn move_pos_back(&mut self) {
         if self.cursor_pos.x >= self.advance_width {
             self.cursor_pos.x -= self.advance_width;
@@ -224,16 +239,18 @@ impl Terminal {
         }
     }
 
+
     /// Copies a rendered character to the screen, displaying it in a bg colored box
     ///
     /// # Panics
     ///
     /// Panics if pos makes writing the glyph overflow the screen
-    // TODO: Review Terminal::new cast_sign_loss and cast_possible_wrap
+    // TODO: Review Terminal::display_glyph_in_box cast_sign_loss and cast_possible_wrap
     // BODY: Ping @orycterope. I'm pretty sure they're correct but just want to
     // BODY: make sure it looks good with you since it's originally your code.
     #[allow(clippy::cast_sign_loss)]
     #[allow(clippy::cast_possible_wrap)]
+    #[allow(clippy::too_many_arguments)]
     fn display_glyph_in_box(glyph: &GlyphBitmap, framebuffer: &mut Window,
                             box_width: usize, box_ascent: usize, box_descent: usize,
                             fg: Color, bg: Color, pos: Pos) {

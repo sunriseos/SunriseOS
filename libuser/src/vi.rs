@@ -6,6 +6,7 @@ use core::mem;
 use crate::error::{Error, SmError};
 
 /// Main compositor interface.
+#[derive(Debug)]
 pub struct ViInterface(ClientSession);
 
 impl ViInterface {
@@ -34,6 +35,7 @@ impl ViInterface {
         let mut buf = [0; 0x100];
 
         #[repr(C)] #[derive(Clone, Copy, Default)]
+        #[allow(clippy::missing_docs_in_private_items)]
         struct InRaw {
             top: i32,
             left: i32,

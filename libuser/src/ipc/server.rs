@@ -60,6 +60,7 @@ pub trait IWaitable: Debug {
 /// The event loop manager. Waits on the waitable objects added to it.
 #[derive(Debug, Default)]
 pub struct WaitableManager {
+    /// Vector of items to add to the waitable list on the next loop.
     to_add_waitables: Mutex<Vec<Box<dyn IWaitable>>>
 }
 
@@ -117,6 +118,8 @@ pub trait Object {
     fn dispatch(&mut self, manager: &WaitableManager, cmdid: u32, buf: &mut [u8]) -> Result<(), Error>;
 }
 
+/// Wrapper struct that forces the alignment to 0x10. Somewhat necessary for the
+/// IPC command buffer.
 #[repr(C, align(16))]
 #[derive(Debug)]
 struct Align16<T>(T);
@@ -142,10 +145,13 @@ impl<T, Idx> Index<Idx> for Align16<T> where T: Index<Idx> {
 /// A wrapper around an Object backed by an IPC Session that implements the
 /// IWaitable trait.
 pub struct SessionWrapper<T: Object> {
+    /// Kernel Handle backing this object.
     handle: ServerSession,
+    /// Object instance.
     object: T,
 
-    // Ensure 16 bytes of alignment so the raw data is properly aligned.
+    /// Command buffer for this session.
+    /// Ensure 16 bytes of alignment so the raw data is properly aligned.
     buf: Align16<[u8; 0x100]>
 }
 
@@ -196,7 +202,9 @@ impl<T: Object + Debug> IWaitable for SessionWrapper<T> {
 /// connection requests, and creates a new SessionWrapper around the incoming
 /// connections, which gets registered on the WaitableManager.
 pub struct PortHandler<T: Object + Default + Debug> {
+    /// The kernel object backing this Port Handler.
     handle: ServerPort,
+    /// Type of the Object this port creates.
     phantom: PhantomData<T>
 }
 
@@ -225,6 +233,7 @@ impl<T: Object + Default + Debug + 'static> IWaitable for PortHandler<T> {
     }
 }
 
+/// Encode an 8-character service string into an u64
 fn encode_bytes(s: &str) -> u64 {
     assert!(s.len() < 8);
     let s = s.as_bytes();

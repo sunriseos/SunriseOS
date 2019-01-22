@@ -215,10 +215,10 @@ fn pci_config_read_word(bus: u8, slot: u8, func: u8, register: u8) -> u32 {
     debug_assert!(slot <= MAX_SLOT);
     debug_assert!(func <= MAX_FUNC);
     debug_assert!(register <= MAX_REGISTER);
-    let lbus = bus as u32;
-    let lslot = slot as u32;
-    let lfunc = func as u32;
-    let lregister = register as u32;
+    let lbus = u32::from(bus);
+    let lslot = u32::from(slot);
+    let lfunc = u32::from(func);
+    let lregister = u32::from(register);
     let mut ports = PCI_CONFIG_PORTS.lock();
 
     /* create the configuration address */
@@ -239,10 +239,10 @@ fn pci_config_write_word(bus: u8, slot: u8, func: u8, register: u8, value: u32) 
     debug_assert!(slot <= MAX_SLOT);
     debug_assert!(func <= MAX_FUNC);
     debug_assert!(register <= MAX_REGISTER);
-    let lbus = bus as u32;
-    let lslot = slot as u32;
-    let lfunc = func as u32;
-    let lregister = register as u32;
+    let lbus = u32::from(bus);
+    let lslot = u32::from(slot);
+    let lfunc = u32::from(func);
+    let lregister = u32::from(register);
     let mut ports = PCI_CONFIG_PORTS.lock();
 
     /* create the configuration address */

@@ -227,6 +227,9 @@ impl<'a> IPCBuffer<'a> {
     }
 
     // Based on http://switchbrew.org/index.php?title=IPC_Marshalling#Official_marshalling_code
+    /// Gets the [IPCBufferType] of this buffer. The buffer type determines how
+    /// the buffer is passed to the other process and if it's an argument or a
+    /// return value.
     fn buftype(&self) -> IPCBufferType {
         self.ty
     }
@@ -273,14 +276,43 @@ where
     MOVE: Array<Item=u32>,
     RAW: Copy + Default,
 {
+    /// Type of the message. This is derived from [MessageTy] and
+    /// [Message::token].
     ty: u16,
+    /// Optional PID included in the message. For outgoing messages, the actual
+    /// value is not relevant, as the kernel will replace it with the sender's
+    /// pid.
     pid: Option<u64>,
+    /// Array of IPC Buffers included in the message.
+    ///
+    /// The user may configure the size of this array in the type, allowing
+    /// precise control over the size of the Message type.
     buffers: ArrayVec<BUFF>,
+    /// Array of copy handles included in the message. Copy handles are copied
+    /// from the sender's process into the receiver's process. The sender and
+    /// receiver may both use their respective handles.
+    ///
+    /// The user may configure the size of this array in the type, allowing
+    /// precise control over the size of the Message type.
     copy_handles: ArrayVec<COPY>,
+    /// Array of move handles included in the message. Move handles are moved
+    /// from the sender's process into the receiver's process. The sender loses
+    /// control over the handle, as if it had been closed.
+    ///
+    /// The user may configure the size of this array in the type, allowing
+    /// precise control over the size of the Message type.
     move_handles: ArrayVec<MOVE>,
+    /// Whether this message contains an IPC request or an IPC response.
     is_request: bool,
+    /// Contains either the cmdid (if this message is a request) or an error
+    /// number (if this message is a response).
     cmdid_error: u32,
+    /// Optional tracking token. This is used to track the origin of each IPC
+    /// call. Generally, the creating application will chose a random token when
+    /// doing its request. Services will then use that token when they need to
+    /// make their own requests.
     token: Option<u32>,
+    /// The raw arguments included in this message.
     raw: RAW
 }
 
