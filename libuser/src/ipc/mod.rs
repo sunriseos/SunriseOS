@@ -98,6 +98,26 @@ pub enum IPCBufferType {
     },
 }
 
+impl IPCBufferType {
+    /// Checks if this buffer is a Send Buffer.
+    fn is_type_a(self) -> bool {
+        if let IPCBufferType::A { .. } = self {
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Checks if this buffer is a Receive Buffer.
+    fn is_type_b(self) -> bool {
+        if let IPCBufferType::B { .. } = self {
+            true
+        } else {
+            false
+        }
+    }
+}
+
 /// An IPC Buffer represents a section of memory to send to the other side of the
 /// pipe. It is usually used for sending big chunks of data that would not send
 /// in the comparatively small argument area (which is usually around 200 bytes).
@@ -157,7 +177,7 @@ impl<'a> IPCBuffer<'a> {
     /// of type B, W or C.
     pub fn from_slice<T>(val: &'a [T], ty: IPCBufferType) -> IPCBuffer<'_> {
         IPCBuffer {
-            addr: if val.len() == 0 { 0 } else { val.as_ptr() as usize },
+            addr: if val.is_empty() { 0 } else { val.as_ptr() as usize },
             size: mem::size_of::<T>() * val.len(),
             ty,
             phantom: PhantomData
@@ -167,7 +187,7 @@ impl<'a> IPCBuffer<'a> {
     /// type A or X.
     pub fn from_mut_slice<T>(val: &'a mut [T], ty: IPCBufferType) -> IPCBuffer<'_> {
         IPCBuffer {
-            addr: if val.len() == 0 { 0 } else { val.as_ptr() as usize },
+            addr: if val.is_empty() { 0 } else { val.as_ptr() as usize },
             size: mem::size_of::<T>() * val.len(),
             ty,
             phantom: PhantomData
@@ -213,6 +233,7 @@ impl<'a> IPCBuffer<'a> {
 }
 
 /// Type of an IPC message.
+#[derive(Debug)]
 pub enum MessageTy {
     /// Requests the other end to close the handle and any resource associated
     /// with it. Normally called when dropping the ClientSession.
@@ -411,7 +432,7 @@ where
     pub fn pop_handle_move(&mut self) -> Result<Handle, Error> {
         self.move_handles.pop_at(0)
             .map(Handle::new)
-            .ok_or(LibuserError::InvalidMoveHandleCount.into())
+            .ok_or_else(|| LibuserError::InvalidMoveHandleCount.into())
     }
 
     /// Retrieve a copied handle from this IPC message. Those are popped in the
@@ -424,7 +445,7 @@ where
     pub fn pop_handle_copy(&mut self) -> Result<Handle, Error> {
         self.copy_handles.pop_at(0)
             .map(Handle::new)
-            .ok_or(LibuserError::InvalidCopyHandleCount.into())
+            .ok_or_else(|| LibuserError::InvalidCopyHandleCount.into())
     }
 
     /// Retrieve the PID of the remote process (if sent at all). This message
@@ -437,7 +458,7 @@ where
     pub fn pop_pid(&mut self) -> Result<Pid, Error> {
         self.pid.take()
             .map(Pid)
-            .ok_or(LibuserError::PidMissing.into())
+            .ok_or_else(|| LibuserError::PidMissing.into())
     }
 
     /// Packs this IPC Message to an IPC buffer.
@@ -450,10 +471,10 @@ where
 
         for bufty in self.buffers.iter().map(|b| b.buftype()) {
             match bufty {
-                IPCBufferType::X { .. } => descriptor_count_x += 1,
-                IPCBufferType::A { .. } => descriptor_count_a += 1,
-                IPCBufferType::B { .. } => descriptor_count_b += 1,
-                IPCBufferType::C { .. } => descriptor_count_c += 1,
+                IPCBufferType::X { .. } => descriptor_count_x += 1u8,
+                IPCBufferType::A { .. } => descriptor_count_a += 1u8,
+                IPCBufferType::B { .. } => descriptor_count_b += 1u8,
+                IPCBufferType::C { .. } => descriptor_count_c += 1u8,
             }
         }
 
@@ -472,7 +493,7 @@ where
             } else if descriptor_count_c == 1 {
                 hdr.set_c_descriptor_flags(2);
             } else {
-                hdr.set_c_descriptor_flags(2 + descriptor_count_c as u8);
+                hdr.set_c_descriptor_flags(2 + descriptor_count_c);
             }
 
             // 0x10 = padding, 8 = sfci, 8 = cmdid, data = T
@@ -539,7 +560,7 @@ where
                 assert!(addr >> 39 == 0, "Invalid buffer address");
                 assert!(size >> 16 == 0, "Invalid buffer size");
                 assert!(counter & !0b1111 == 0, "Invalid counter");
-                let num = *(counter.get_bits(0..4) as u32)
+                let num = *u32::from(counter.get_bits(0..4))
                     .set_bits(6..9, addr.get_bits(36..39) as u32)
                     .set_bits(12..16, addr.get_bits(32..36) as u32)
                     .set_bits(16..32, size as u32);
@@ -548,44 +569,35 @@ where
             }
         }
 
-        // A descriptors
-        for buf in self.buffers.iter() {
-            let (addr, size, flags) = match buf.buftype() {
-                IPCBufferType::A {flags} => (buf.addr, buf.size, flags),
-                _ => continue
-            };
+        /// Pack a list of A, B or W descriptor in the buffer at the position of
+        /// the cursor.
+        fn pack_abw_descriptors<'a, I: Iterator<Item = &'a IPCBuffer<'a>>>(cursor: &mut CursorWrite, buffers: I) {
+            for buf in buffers {
+                let (addr, size, flags) = match buf.buftype() {
+                    IPCBufferType::A {flags} => (buf.addr, buf.size, flags),
+                    IPCBufferType::B {flags} => (buf.addr, buf.size, flags),
+                    _ => unreachable!()
+                };
 
-            assert!(addr >> 39 == 0, "Invalid buffer address");
-            assert!(size >> 35 == 0, "Invalid buffer size");
+                assert!(addr >> 39 == 0, "Invalid buffer address");
+                assert!(size >> 35 == 0, "Invalid buffer size");
 
-            cursor.write_u32::<LE>((size & 0xFFFFFFFF) as u32);
-            cursor.write_u32::<LE>((addr & 0xFFFFFFFF) as u32);
+                cursor.write_u32::<LE>((size & 0xFFFFFFFF) as u32);
+                cursor.write_u32::<LE>((addr & 0xFFFFFFFF) as u32);
 
-            let num = flags as usize
-                | ((addr >> 36) & 0b111) << 2
-                | ((size >> 32) & 0b1111) << 24
-                | ((addr >> 32) & 0b1111) << 28;
-            cursor.write_u32::<LE>(num as u32);
+                let num = flags as usize
+                    | ((addr >> 36) & 0b111) << 2
+                    | ((size >> 32) & 0b1111) << 24
+                    | ((addr >> 32) & 0b1111) << 28;
+                cursor.write_u32::<LE>(num as u32);
+            }
         }
+
+        // A descriptors
+        pack_abw_descriptors(&mut cursor, self.buffers.iter().filter(|buf| buf.buftype().is_type_a()));
 
         // B descriptors
-        for buf in self.buffers.iter() {
-            let (addr, size, flags) = match buf.buftype() {
-                IPCBufferType::B {flags} => (buf.addr, buf.size, flags),
-                _ => continue
-            };
-            assert!(addr >> 39 == 0, "Invalid buffer address");
-            assert!(size >> 35 == 0, "Invalid buffer size");
-
-            cursor.write_u32::<LE>((size & 0xFFFFFFFF) as u32);
-            cursor.write_u32::<LE>((addr & 0xFFFFFFFF) as u32);
-
-            let num = flags as usize
-                | ((addr >> 36) & 0b111) << 2
-                | ((size >> 32) & 0b1111) << 24
-                | ((addr >> 32) & 0b1111) << 28;
-            cursor.write_u32::<LE>(num as u32);
-        }
+        pack_abw_descriptors(&mut cursor, self.buffers.iter().filter(|buf| buf.buftype().is_type_b()));
 
         // TODO: Implement W Descriptors
         // BODY: W Descriptors are read-write descriptors. Technically speaking,
@@ -701,9 +713,9 @@ where
             // skip 2 words
             let stuffed = cursor.read_u32::<LE>();
             let laddr = cursor.read_u32::<LE>();
-            let addr = *(laddr as u64)
-                .set_bits(32..36, stuffed.get_bits(12..16) as u64)
-                .set_bits(36..39, stuffed.get_bits(6..9) as u64) as usize;
+            let addr = *u64::from(laddr)
+                .set_bits(32..36, u64::from(stuffed.get_bits(12..16)))
+                .set_bits(36..39, u64::from(stuffed.get_bits(6..9))) as usize;
             let size = stuffed.get_bits(16..32) as usize;
             let counter = stuffed.get_bits(0..4) as u8;
             buffers.push(IPCBuffer { addr, size, ty: IPCBufferType::X { counter }, phantom: PhantomData });
@@ -713,11 +725,11 @@ where
             let lsize = cursor.read_u32::<LE>();
             let laddr = cursor.read_u32::<LE>();
             let stuff = cursor.read_u32::<LE>();
-            let addr = *(laddr as u64)
-                .set_bits(32..36, stuff.get_bits(28..32) as u64)
-                .set_bits(36..39, stuff.get_bits(2..5) as u64) as usize;
-            let size = *(lsize as u64)
-                .set_bits(32..36, stuff.get_bits(24..28) as u64) as usize;
+            let addr = *u64::from(laddr)
+                .set_bits(32..36, u64::from(stuff.get_bits(28..32)))
+                .set_bits(36..39, u64::from(stuff.get_bits(2..5))) as usize;
+            let size = *u64::from(lsize)
+                .set_bits(32..36, u64::from(stuff.get_bits(24..28))) as usize;
             let flags = stuff.get_bits(0..2) as u8;
 
             let ty = if i < hdr.num_a_descriptors() {

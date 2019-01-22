@@ -193,7 +193,7 @@ macro_rules! object {
             // all the arguments to msgout.
             match ret {
                 Ok(ret) => object!(@genret fields=(), retfields=(), msgout, ret, $($ret)*),
-                Err(err) => { msgout.set_error(err.into_code()); }
+                Err(err) => { msgout.set_error(err.as_code()); }
             }
             // Pack the message to msgout and we're done :D
             msgout.pack($buf);

@@ -72,7 +72,7 @@ impl Error {
     /// Pack this error into an error code. Note that the returned error code
     /// won't have any tracing information associated with it. If possible, to
     /// assist in debugging, a way to pass the backtrace should be provided.
-    pub fn into_code(&self) -> u32 {
+    pub fn as_code(&self) -> u32 {
         match *self {
             Error::Kernel(err, ..) => err.description() << 9 | Module::Kernel.0,
             Error::Sm(err, ..) => err.0 << 9 | Module::Sm.0,

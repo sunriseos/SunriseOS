@@ -172,7 +172,7 @@ impl<T: Object> SessionWrapper<T> {
 }
 
 impl<T: Object + Debug> IWaitable for SessionWrapper<T> {
-    fn get_handle<'a>(&'a self) -> HandleRef<'a> {
+    fn get_handle(&self) -> HandleRef<'_> {
         self.handle.0.as_ref()
     }
 
@@ -210,7 +210,7 @@ impl<T: Object + Default + Debug> Debug for PortHandler<T> {
 }
 
 impl<T: Object + Default + Debug + 'static> IWaitable for PortHandler<T> {
-    fn get_handle<'a>(&'a self) -> HandleRef<'a> {
+    fn get_handle(&self) -> HandleRef<'_> {
         self.handle.0.as_ref()
     }
 
@@ -229,10 +229,10 @@ fn encode_bytes(s: &str) -> u64 {
     assert!(s.len() < 8);
     let s = s.as_bytes();
     0
-        | (*s.get(0).unwrap_or(&0) as u64) << 00 | (*s.get(1).unwrap_or(&0) as u64) <<  8
-        | (*s.get(2).unwrap_or(&0) as u64) << 16 | (*s.get(3).unwrap_or(&0) as u64) << 24
-        | (*s.get(4).unwrap_or(&0) as u64) << 32 | (*s.get(5).unwrap_or(&0) as u64) << 40
-        | (*s.get(6).unwrap_or(&0) as u64) << 48 | (*s.get(7).unwrap_or(&0) as u64) << 56
+        | (u64::from(*s.get(0).unwrap_or(&0))) << 00 | (u64::from(*s.get(1).unwrap_or(&0))) <<  8
+        | (u64::from(*s.get(2).unwrap_or(&0))) << 16 | (u64::from(*s.get(3).unwrap_or(&0))) << 24
+        | (u64::from(*s.get(4).unwrap_or(&0))) << 32 | (u64::from(*s.get(5).unwrap_or(&0))) << 40
+        | (u64::from(*s.get(6).unwrap_or(&0))) << 48 | (u64::from(*s.get(7).unwrap_or(&0))) << 56
 }
 
 impl<T: Object + Default + Debug> PortHandler<T> {

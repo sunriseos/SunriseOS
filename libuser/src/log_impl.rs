@@ -48,7 +48,7 @@ impl fmt::Write for Logger {
                 let _ = output_debug_string(svc_log_buffer.as_str());
             }
             let _ = output_debug_string(data);
-            let _ = svc_log_buffer.clear();
+            svc_log_buffer.clear();
         }
         Ok(())
     }

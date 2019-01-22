@@ -59,6 +59,11 @@ pub enum WindowSize {
 
 impl Terminal {
     /// Creates a new Window of the requested size for terminal usage.
+    // TODO: Review Terminal::new cast_sign_loss and cast_possible_wrap
+    // BODY: Ping @orycterope. I'm pretty sure they're correct but just want to
+    // BODY: make sure it looks good with you since it's originally your code.
+    #[allow(clippy::cast_sign_loss)]
+    #[allow(clippy::cast_possible_wrap)]
     pub fn new(size: WindowSize) -> Result<Self, Error> {
         let my_font = font::parse(FONT)
             .expect("Failed parsing provided font");
@@ -224,6 +229,11 @@ impl Terminal {
     /// # Panics
     ///
     /// Panics if pos makes writing the glyph overflow the screen
+    // TODO: Review Terminal::new cast_sign_loss and cast_possible_wrap
+    // BODY: Ping @orycterope. I'm pretty sure they're correct but just want to
+    // BODY: make sure it looks good with you since it's originally your code.
+    #[allow(clippy::cast_sign_loss)]
+    #[allow(clippy::cast_possible_wrap)]
     fn display_glyph_in_box(glyph: &GlyphBitmap, framebuffer: &mut Window,
                             box_width: usize, box_ascent: usize, box_descent: usize,
                             fg: Color, bg: Color, pos: Pos) {
