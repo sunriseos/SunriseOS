@@ -14,6 +14,7 @@ use crate::error::KernelError;
 ///
 /// A wrapper to `linked_list_allocator` that uses the svcSetHeapSize syscall
 /// to expand its memory when needed.
+#[allow(missing_debug_implementations)] // Heap does not implement Debug :/
 pub struct Allocator(Mutex<Heap>);
 
 impl Allocator {
@@ -44,7 +45,7 @@ unsafe impl GlobalAlloc for Allocator {
         // If the heap is exhausted, then extend and attempt the allocation once again.
         match allocation_result {
             Err(_) => {
-                if let Ok(_) = Self::expand(&mut heap, layout.size()) {
+                if Self::expand(&mut heap, layout.size()).is_ok() {
                     heap.allocate_first_fit(layout)
                 } else {
                     // Return the original failed allocation if we can't expand.
@@ -52,7 +53,7 @@ unsafe impl GlobalAlloc for Allocator {
                 }
             }
             Ok(_) => allocation_result
-        }.ok().map_or(0 as *mut u8, |allocation| allocation.as_ptr())
+        }.ok().map_or(core::ptr::null_mut(), |allocation| allocation.as_ptr())
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {

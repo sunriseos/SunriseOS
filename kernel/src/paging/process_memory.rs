@@ -24,7 +24,7 @@ use super::bookkeeping::UserspaceBookkeeping;
 use super::mapping::{Mapping, MappingType};
 use super::cross_process::CrossProcessMapping;
 use super::error::MmError;
-use super::MappingFlags;
+use super::MappingAccessRights;
 use crate::mem::{VirtualAddress, PhysicalAddress};
 use crate::frame_allocator::{FrameAllocator, FrameAllocatorTrait, PhysicalMemRegion};
 use crate::paging::arch::Entry;
@@ -55,8 +55,21 @@ pub struct ProcessMemory {
     heap_base_address: VirtualAddress,
 }
 
+/// Page tables selector.
+///
+/// A process always stores its table_hierarchy as an inactive hierarchy. When it wants to modify
+/// its page tables, it will first call [`get_hierarchy`], which will detect if the hierarchy
+/// is already the currently active one, and return a `DynamicHierarchy`.
+///
+/// This returned `DynamicHierarchy` is just a wrapper which will dispatch all its calls to the right
+/// hierarchy, either the already active one, shortcutting the method calls by not having to map
+/// temporary directories and page tables, or going the long way and actually use the inactive one.
+///
+/// [`get_hierarchy`]: self::ProcessMemory::get_hierarchy
 enum DynamicHierarchy<'a> {
+    /// The process's hierarchy is already the currently active one.
     Active(ActiveHierarchy),
+    /// The process's hierarchy an inactive one.
     Inactive(&'a mut InactiveHierarchy)
 }
 
@@ -73,11 +86,11 @@ impl HierarchicalTable for () {
         unimplemented!()
     }
 
-    fn get_child_table<'a>(&'a mut self, _index: usize) -> PageState<SmartHierarchicalTable<'a, <Self as HierarchicalTable>::ChildTableType>> {
+    fn get_child_table(&mut self, _index: usize) -> PageState<SmartHierarchicalTable<<Self as HierarchicalTable>::ChildTableType>> {
         unimplemented!()
     }
 
-    fn create_child_table<'a>(&'a mut self, _index: usize) -> SmartHierarchicalTable<'a, <Self as HierarchicalTable>::ChildTableType> {
+    fn create_child_table(&mut self, _index: usize) -> SmartHierarchicalTable<<Self as HierarchicalTable>::ChildTableType> {
         unimplemented!()
     }
 }
@@ -85,55 +98,55 @@ impl HierarchicalTable for () {
 impl<'b> TableHierarchy for DynamicHierarchy<'b> {
     type TopLevelTableType = (); // Ignored
 
-    fn get_top_level_table<'a>(&'a mut self) -> SmartHierarchicalTable<'a, ()> {
+    fn get_top_level_table(&mut self) -> SmartHierarchicalTable<()> {
         panic!("Dynamic DynamicHierarchy reimplements everything");
     }
 
     fn map_to_from_iterator<I>(&mut self,
                                frames_iterator: I,
                                start_address: VirtualAddress,
-                               flags: MappingFlags)
+                               flags: MappingAccessRights)
     where I: Iterator<Item=PhysicalAddress>
     {
-        match self {
-            &mut DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.map_to_from_iterator(frames_iterator, start_address, flags),
-            &mut DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.map_to_from_iterator(frames_iterator, start_address, flags),
+        match *self {
+            DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.map_to_from_iterator(frames_iterator, start_address, flags),
+            DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.map_to_from_iterator(frames_iterator, start_address, flags),
         }
     }
 
     fn guard(&mut self, address: VirtualAddress, length: usize) {
-        match self {
-            &mut DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.guard(address, length),
-            &mut DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.guard(address, length),
+        match *self {
+            DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.guard(address, length),
+            DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.guard(address, length),
         }
     }
 
     fn unmap<C>(&mut self, address: VirtualAddress, length: usize, callback: C) where C: FnMut(PhysicalAddress) {
-        match self {
-            &mut DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.unmap(address, length, callback),
-            &mut DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.unmap(address, length, callback),
+        match *self {
+            DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.unmap(address, length, callback),
+            DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.unmap(address, length, callback),
         }
     }
 
     fn for_every_entry<C>(&mut self, address: VirtualAddress, length: usize, callback: C) where C: FnMut(PageState<PhysicalAddress>, usize) {
-        match self {
-            &mut DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.for_every_entry(address, length, callback),
-            &mut DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.for_every_entry(address, length, callback),
+        match *self {
+            DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.for_every_entry(address, length, callback),
+            DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.for_every_entry(address, length, callback),
         }
     }
 
     fn find_available_virtual_space_aligned(&mut self, length: usize, start_addr: VirtualAddress, end_addr: VirtualAddress, alignment: usize) -> Option<VirtualAddress> {
-        match self {
-            &mut DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.find_available_virtual_space_aligned(length, start_addr, end_addr, alignment),
-            &mut DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.find_available_virtual_space_aligned(length, start_addr, end_addr, alignment),
+        match *self {
+            DynamicHierarchy::Active(ref mut hierarchy) => hierarchy.find_available_virtual_space_aligned(length, start_addr, end_addr, alignment),
+            DynamicHierarchy::Inactive(ref mut hierarchy) => hierarchy.find_available_virtual_space_aligned(length, start_addr, end_addr, alignment),
         }
     }
 }
 
-impl ProcessMemory {
+impl Default for ProcessMemory {
     /// Creates a ProcessMemory, allocating the userspace-bookkeeping,
     /// and the top-level table of the table hierarchy.
-    pub fn new() -> Self {
+    fn default() -> Self {
         // we don't have ASRL yet :(
         let heap_base_address = VirtualAddress(0x80000000);
 
@@ -147,7 +160,9 @@ impl ProcessMemory {
             .expect("Cannot guard first page of ProcessMemory");
         ret
     }
+}
 
+impl ProcessMemory {
     /// Creates a ProcessMemory referencing the current page tables.
     /// Used only when becoming the first process for creating the first ProcessMemory.
     ///
@@ -186,7 +201,7 @@ impl ProcessMemory {
     pub fn map_phys_region_to(&mut self,
                               phys: PhysicalMemRegion,
                               address: VirtualAddress,
-                              flags: MappingFlags)
+                              flags: MappingAccessRights)
                               -> Result<(), KernelError> {
         let length = phys.size();
         check_aligned(address.addr(), PAGE_SIZE)?;
@@ -211,7 +226,7 @@ impl ProcessMemory {
     /// Returns a KernelError if there was already a mapping in the range.
     /// Returns a KernelError if address does not fall in UserLand.
     /// Returns a KernelError if address or length is not PAGE_SIZE aligned.
-    pub fn create_regular_mapping(&mut self, address: VirtualAddress, length: usize, flags: MappingFlags) -> Result<(), KernelError> {
+    pub fn create_regular_mapping(&mut self, address: VirtualAddress, length: usize, flags: MappingAccessRights) -> Result<(), KernelError> {
         check_aligned(address.addr(), PAGE_SIZE)?;
         check_aligned(length, PAGE_SIZE)?;
         check_nonzero_length(length)?;
@@ -238,7 +253,7 @@ impl ProcessMemory {
     pub fn map_shared_mapping(&mut self,
                               shared_mapping: Arc<Vec<PhysicalMemRegion>>,
                               address: VirtualAddress,
-                              flags: MappingFlags)
+                              flags: MappingAccessRights)
                               -> Result<(), KernelError> {
         check_aligned(address.addr(), PAGE_SIZE)?;
         // compute the length
@@ -332,7 +347,7 @@ impl ProcessMemory {
         };
         if new_size == 0 {
             // remove the mapping entirely, return everything as spill.
-            return self.unmap(start_addr, old_size).map(|mapping| Some(mapping))
+            return self.unmap(start_addr, old_size).map(Some)
         }
         if new_size == old_size {
             // don't do anything, and produce no spill
@@ -465,12 +480,13 @@ impl ProcessMemory {
     /// * InvalidSize if \[`address`..`new_size`\] does not fall in UserLand,
     ///   or overlaps an existing mapping.
     pub fn resize_heap(&mut self, new_size: usize) -> Result<VirtualAddress, KernelError> {
+        #[allow(clippy::missing_docs_in_private_items)]
         enum HeapState { NoHeap, Heap(usize) };
         UserLand::check_contains_region(self.heap_base_address, new_size)?;
         // get the previous heap size
         let previous_heap_state = {
             let query = self.userspace_bookkeping.mapping_at(self.heap_base_address);
-            let heap = query.as_ref();
+            let heap = query.mapping();
             if let MappingType::Available = heap.mtype_ref() {
                 HeapState::NoHeap
             } else {
@@ -480,7 +496,7 @@ impl ProcessMemory {
         let heap_base_address = self.heap_base_address;
         match previous_heap_state {
             HeapState::NoHeap if new_size == 0 => (), // don't do anything
-            HeapState::NoHeap => self.create_regular_mapping(heap_base_address, new_size, MappingFlags::u_rw())?,
+            HeapState::NoHeap => self.create_regular_mapping(heap_base_address, new_size, MappingAccessRights::u_rw())?,
             HeapState::Heap(old_size) if new_size < old_size => { self.shrink_mapping(heap_base_address, new_size)?; },
             HeapState::Heap(_) => self.expand_mapping(heap_base_address, new_size)?
         }

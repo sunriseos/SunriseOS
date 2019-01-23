@@ -17,12 +17,13 @@ use crate::i386::TssStruct;
 /// Stored in the ThreadStruct of every thread.
 #[derive(Debug)]
 pub struct ThreadHardwareContext {
-    esp: usize, // the top of the stack, where all other registers are saved
+    /// The top of the stack, where all other registers are saved.
+    esp: usize,
 }
 
-impl ThreadHardwareContext {
+impl Default for ThreadHardwareContext {
     /// Creates an empty ThreadHardwareContext.
-    pub fn new() -> Self {
+    fn default() -> Self {
         // the saved esp will be overwritten on schedule-out anyway
         Self { esp: 0x55555555 }
     }
@@ -94,7 +95,7 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
             .expect("process_switch cannot get destination thread' lock for writing");
         let mut thread_current_lock_phwcontext = thread_current.hwcontext.try_lock()
             .expect("process_switch cannot get current thread' lock for writing");
-        let thread_b_lock_phwcontext = thread_b.hwcontext.try_lock()
+        let     thread_b_lock_phwcontext = thread_b.hwcontext.try_lock()
             .expect("process_switch cannot get destination thread' lock for writing");
 
         // Switch the memory pages
@@ -123,7 +124,7 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
     // Set IOPB back to "nothing allowed" state
     // todo do not change iopb if thread_b belongs to the same process.
     let iopb = gdt::get_main_iopb();
-    for ioport in thread_current.process.capabilities.ioports.iter() {
+    for ioport in &thread_current.process.capabilities.ioports {
         let ioport = *ioport as usize;
         iopb[ioport / 8] = 0xFF;
     }
@@ -178,7 +179,7 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
     (*tss).esp0 = me.kstack.get_stack_start() as u32;
 
     // Set IOPB
-    for ioport in me.process.capabilities.ioports.iter() {
+    for ioport in &me.process.capabilities.ioports {
         let ioport = *ioport as usize;
         iopb[ioport / 8] &= !(1 << (ioport % 8));
     }
@@ -196,8 +197,10 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
 ///
 /// This function will definitely fuck up your stack, so make sure you're calling it on a
 /// never-scheduled thread's empty-stack.
+#[allow(clippy::fn_to_numeric_cast)]
 pub unsafe fn prepare_for_first_schedule(t: &ThreadStruct, entrypoint: usize, userspace_stack: usize) {
     #[repr(packed)]
+    #[allow(clippy::missing_docs_in_private_items)]
     struct RegistersOnStack {
         eflags: u32,
         edi: u32,
@@ -265,6 +268,7 @@ fn first_schedule() {
         " : : "i"(first_schedule_inner as *const u8) : : "volatile", "intel");
     }
 
+    /// Stack is set-up, now we can run rust code.
     extern "C" fn first_schedule_inner(whoami: *const ThreadStruct, entrypoint: usize, userspace_stack: usize) -> ! {
         // reconstruct an Arc to our ProcessStruct from the leaked pointer
         let current = unsafe { Arc::from_raw(whoami) };
@@ -281,7 +285,7 @@ fn first_schedule() {
         let iopb = unsafe {
             gdt::get_main_iopb()
         };
-        for ioport in current.process.capabilities.ioports.iter() {
+        for ioport in &current.process.capabilities.ioports {
             let ioport = *ioport as usize;
             iopb[ioport / 8] &= !(1 << (ioport % 8));
         }
@@ -294,7 +298,19 @@ fn first_schedule() {
     }
 }
 
-fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize, arg: usize) {
+/// Jumps to Userspace, and run a userspace program.
+///
+/// This function is called on the first schedule of a process or thread,
+/// after all the process_switch mechanics is over, and the thread is good to go.
+///
+/// It jumps to ring 3 by pushing the given `ep` and `userspace_stack_ptr` on the KernelStack,
+/// and executing an `iret`.
+///
+/// Just before doing the `iret`, it clears all general-purpose registers.
+///
+/// This way, just after the `iret`, cpu will be in ring 3, witl all of its registers cleared,
+/// `$eip` pointing to `ep`, and `$esp` pointing to `userspace_stack_ptr`.
+fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize, arg: usize) -> ! {
     unsafe {
         asm!("
         mov ax,0x2B // Set data segment selector to Userland Data, Ring 3
@@ -323,4 +339,6 @@ fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize, arg: usize) {
         " :: "r"(ep), "r"(userspace_stack_ptr), "r"(arg) :
              /* Prevent using eax as input, it's used early. */ "eax" : "intel", "volatile");
     }
+
+    unreachable!()
 }

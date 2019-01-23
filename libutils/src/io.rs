@@ -28,15 +28,18 @@ pub trait Io {
     /// this causes a read!
     #[inline(always)]
     fn writef(&mut self, flags: Self::Value, value: bool) {
-        let tmp: Self::Value = match value {
-            true => self.read() | flags,
-            false => self.read() & !flags,
+        let tmp: Self::Value = if value {
+            self.read() | flags
+        }else {
+            self.read() & !flags
         };
         self.write(tmp);
     }
 }
 
 /// A read-only wrapper around an IO device.
+#[derive(Debug)]
+#[allow(clippy::missing_docs_in_private_items)]
 pub struct ReadOnly<I> {
     inner: I
 }
@@ -65,6 +68,8 @@ impl<I: Io> ReadOnly<I> {
 }
 
 /// An Io that we can only write to.
+#[derive(Debug)]
+#[allow(clippy::missing_docs_in_private_items)]
 pub struct WriteOnly<I> {
     inner: I
 }
@@ -90,9 +95,11 @@ use core::marker::PhantomData;
 
 /// Port IO accessor.
 #[cfg(target_arch = "x86")]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct Pio<T> {
+    /// IO-space address this Pio reads from.
     port: u16,
+    /// The word size of this pointer. Should be u8, u16 or u32.
     value: PhantomData<T>,
 }
 

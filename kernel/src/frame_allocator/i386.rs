@@ -27,10 +27,30 @@ use crate::paging::kernel_memory::get_kernel_memory;
 use crate::error::KernelError;
 use failure::Backtrace;
 
-const FRAME_OFFSET_MASK: usize = 0xFFF;              // The offset part in a frame
-const FRAME_BASE_MASK:   usize = !FRAME_OFFSET_MASK; // The base part in a frame
-
-const FRAME_BASE_LOG: usize = 12; // frame_number = addr >> 12
+/// The offset part in a [PhysicalAddress].
+/// ```
+/// let phys_address = PhysicalAddress(0xccccc567);
+///
+/// let offset_in_frame = phys_address & FRAME_OFFSET_MASK;
+/// assert_eq!(offset_in_frame, 0x567);
+/// ```
+const FRAME_OFFSET_MASK: usize = 0xFFF;
+/// The frame part in [PhysicalAddress].
+/// ```
+/// let phys_address = PhysicalAddress(0xccccc567);
+///
+/// let frame_addr = phys_address & FRAME_BASE_MASK;
+/// assert_eq!(offset_in_frame, 0xccccc000);
+/// ```
+const FRAME_BASE_MASK:   usize = !FRAME_OFFSET_MASK;
+/// The right shift to perform to a Physical address to get its frame id.
+/// ```
+/// let phys_address = PhysicalAddress(0xabcde567);
+///
+/// let frame_id = phys_address >> FRAME_BASE_LOG;
+/// assert_eq!(frame_id, 0xabcde);
+/// ```
+const FRAME_BASE_LOG: usize = 12;
 
 /// The size of the frames_bitmap (~128ko)
 #[cfg(not(test))]
@@ -52,7 +72,7 @@ fn frame_to_addr(frame: usize) -> usize {
     frame << FRAME_BASE_LOG
 }
 
-
+/// A frame allocator backed up by a giant bitmap.
 pub struct FrameAllocatori386 {
     /// A big bitmap denoting for every frame if it is free or not
     ///
@@ -65,7 +85,9 @@ pub struct FrameAllocatori386 {
     initialized: bool
 }
 
+/// In the the bitmap, 1 means the frame is free.
 const FRAME_FREE:     bool = true;
+/// In the the bitmap, 0 means the frame is occupied.
 const FRAME_OCCUPIED: bool = false;
 
 /// A physical memory manger to allocate and free memory frames
@@ -74,6 +96,7 @@ const FRAME_OCCUPIED: bool = false;
 static FRAME_ALLOCATOR : SpinLock<FrameAllocatori386> = SpinLock::new(FrameAllocatori386::new());
 
 impl FrameAllocatori386 {
+    /// Called to initialize the [FRAME_ALLOCATOR] global.
     pub const fn new() -> Self {
         FrameAllocatori386 {
             // 0 is allocated/reserved
@@ -90,6 +113,7 @@ impl FrameAllocatori386 {
 /// An allocation request returns a [PhysicalMemRegion], which represents a list of
 /// physically adjacent frames. When this returned `PhysicalMemRegion` is eventually dropped
 /// the frames are automatically freed and can be re-served by the FrameAllocator.
+#[derive(Debug)]
 pub struct FrameAllocator;
 
 impl FrameAllocatorTraitPrivate for FrameAllocator {
@@ -157,6 +181,7 @@ impl FrameAllocatorTrait for FrameAllocator {
     /// # Panic
     ///
     /// * Panics if FRAME_ALLOCATOR was not initialized.
+    #[allow(clippy::match_bool)]
     fn allocate_region(length: usize) -> Result<PhysicalMemRegion, KernelError> {
         check_nonzero_length(length)?;
         check_aligned(length, PAGE_SIZE)?;
@@ -283,7 +308,7 @@ pub fn init(boot_info: &BootInformation) {
     let memory_map_tag = boot_info.memory_map_tag()
         .expect("GRUB, you're drunk. Give us our memory_map_tag.");
     for memarea in memory_map_tag.memory_areas() {
-        if memarea.start_address() > u32::max_value() as u64 || memarea.end_address() > u32::max_value() as u64 {
+        if memarea.start_address() > u64::from(u32::max_value()) || memarea.end_address() > u64::from(u32::max_value()) {
             continue;
         }
         mark_area_free(&mut allocator.memory_bitmap,

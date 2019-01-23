@@ -34,12 +34,12 @@ pub struct VirtualAddress(pub usize);
 
 impl VirtualAddress  {
     /// Gets the address as a `usize`.
-    pub fn addr(&self) -> usize { self.0 }
+    pub fn addr(self) -> usize { self.0 }
 }
 
 impl PhysicalAddress {
     /// Gets the address as a `usize`.
-    pub fn addr(&self) -> usize { self.0 }
+    pub fn addr(self) -> usize { self.0 }
 }
 
 impl ::core::ops::Add<usize> for VirtualAddress {
@@ -308,6 +308,7 @@ impl<T> Into<UserSpacePtr<T>> for UserSpacePtrMut<T> {
 /// Note that this is necessary due to the lack of a real DST type in the rust
 /// standard library. See https://github.com/rust-lang/rfcs/pull/2580
 #[repr(C)]
+#[derive(Debug)]
 pub struct FatPtr {
     /// A pointer to the underlying slice.
     pub data: usize,

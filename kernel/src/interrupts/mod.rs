@@ -1,6 +1,5 @@
 //! Interrupt handling.
 //!
-// todo document irqs.
 //! All exceptions are considered unrecoverable errors, and kill the process that issued it.
 //!
 //! Feature `panic-on-exception` makes the kernel stop and panic when a thread generates
@@ -55,6 +54,9 @@ fn panic_on_exception(exception_string: Arguments<'_>, exception_stack_frame: &E
     }
 }
 
+/// Divide by zero interruption handler. Kills the process unconditionally.
+///
+/// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn divide_by_zero_handler(stack_frame: &mut ExceptionStackFrame) {
     {
         if cfg!(feature = "panic-on-exception") {
@@ -69,6 +71,9 @@ extern "x86-interrupt" fn divide_by_zero_handler(stack_frame: &mut ExceptionStac
     check_thread_killed();
 }
 
+/// Debug interruption handler. Kills the process unconditionally.
+///
+/// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn debug_handler(stack_frame: &mut ExceptionStackFrame) {
     {
         if cfg!(feature = "panic-on-exception") {
@@ -83,15 +88,20 @@ extern "x86-interrupt" fn debug_handler(stack_frame: &mut ExceptionStackFrame) {
     check_thread_killed();
 }
 
+/// Non maskable interruption handler. Unconditionally panics the kernel.
 extern "x86-interrupt" fn non_maskable_interrupt_handler(stack_frame: &mut ExceptionStackFrame) {
     // unconditionally panic
     panic_on_exception(format_args!("An unexpected non-maskable (but still kinda maskable) interrupt occured"), stack_frame);
 }
 
+/// Breakpoint interruption handler. Does nothing.
 extern "x86-interrupt" fn breakpoint_handler(_stack_frame: &mut ExceptionStackFrame) {
     // don't do anything
 }
 
+/// Overflow interruption handler. Kills the process unconditionally.
+///
+/// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn overflow_handler(stack_frame: &mut ExceptionStackFrame) {
     {
         if cfg!(feature = "panic-on-exception") {
@@ -106,6 +116,9 @@ extern "x86-interrupt" fn overflow_handler(stack_frame: &mut ExceptionStackFrame
     check_thread_killed();
 }
 
+/// Bound range exceeded interruption handler. Kills the process unconditionally.
+///
+/// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn bound_range_exceeded_handler(stack_frame: &mut ExceptionStackFrame) {
     {
         if cfg!(feature = "panic-on-exception") {
@@ -120,6 +133,9 @@ extern "x86-interrupt" fn bound_range_exceeded_handler(stack_frame: &mut Excepti
     check_thread_killed();
 }
 
+/// Invalid opcode interruption handler. Kills the process unconditionally.
+///
+/// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn invalid_opcode_handler(stack_frame: &mut ExceptionStackFrame) {
     {
         if cfg!(feature = "panic-on-exception") {
@@ -134,6 +150,9 @@ extern "x86-interrupt" fn invalid_opcode_handler(stack_frame: &mut ExceptionStac
     check_thread_killed();
 }
 
+/// Device not available interruption handler. Kills the process unconditionally.
+///
+/// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn device_not_available_handler(stack_frame: &mut ExceptionStackFrame) {
     {
         if cfg!(feature = "panic-on-exception") {
@@ -148,6 +167,7 @@ extern "x86-interrupt" fn device_not_available_handler(stack_frame: &mut Excepti
     check_thread_killed();
 }
 
+/// Double fault handler. Panics the kernel unconditionally.
 fn double_fault_handler() {
     // Get the Main TSS so I can recover some information about what happened.
     unsafe {
@@ -173,11 +193,15 @@ fn double_fault_handler() {
     }
 }
 
+/// Invalid tss interruption handler. Panics the kernel unconditionally.
 extern "x86-interrupt" fn invalid_tss_handler(stack_frame: &mut ExceptionStackFrame, errcode: u32) {
     // inconditionally panic
     panic_on_exception(format_args!("Invalid TSS Exception: error code {:?}", errcode), stack_frame);
 }
 
+/// Segment not present interruption handler. Kills the process unconditionally.
+///
+/// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn segment_not_present_handler(stack_frame: &mut ExceptionStackFrame, errcode: u32) {
     {
         if cfg!(feature = "panic-on-exception") {
@@ -192,6 +216,9 @@ extern "x86-interrupt" fn segment_not_present_handler(stack_frame: &mut Exceptio
     check_thread_killed();
 }
 
+/// Stack segment fault handler. Kills the process unconditionally.
+///
+/// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn stack_segment_fault_handler(stack_frame: &mut ExceptionStackFrame, errcode: u32) {
     {
         if cfg!(feature = "panic-on-exception") {
@@ -206,6 +233,9 @@ extern "x86-interrupt" fn stack_segment_fault_handler(stack_frame: &mut Exceptio
     check_thread_killed();
 }
 
+/// General protection fault handler. Kills the process unconditionally.
+///
+/// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn general_protection_fault_handler(stack_frame: &mut ExceptionStackFrame, errcode: u32) {
     {
         if cfg!(feature = "panic-on-exception") {
@@ -220,6 +250,9 @@ extern "x86-interrupt" fn general_protection_fault_handler(stack_frame: &mut Exc
     check_thread_killed();
 }
 
+/// Page fault handler. Kills the process unconditionally.
+///
+/// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn page_fault_handler(stack_frame: &mut ExceptionStackFrame, errcode: PageFaultErrorCode) {
     {
         let cause_address = crate::paging::read_cr2();
@@ -236,6 +269,9 @@ extern "x86-interrupt" fn page_fault_handler(stack_frame: &mut ExceptionStackFra
     check_thread_killed();
 }
 
+/// X87 floating point interruption handler. Kills the process unconditionally.
+///
+/// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn x87_floating_point_handler(stack_frame: &mut ExceptionStackFrame) {
     {
         if cfg!(feature = "panic-on-exception") {
@@ -250,6 +286,9 @@ extern "x86-interrupt" fn x87_floating_point_handler(stack_frame: &mut Exception
     check_thread_killed();
 }
 
+/// Alignment check interruption handler. Kills the process unconditionally.
+///
+/// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn alignment_check_handler(stack_frame: &mut ExceptionStackFrame, errcode: u32) {
     {
         if cfg!(feature = "panic-on-exception") {
@@ -264,11 +303,15 @@ extern "x86-interrupt" fn alignment_check_handler(stack_frame: &mut ExceptionSta
     check_thread_killed();
 }
 
+/// Machine check interruption handler. Panics the kernel unconditionally.
 extern "x86-interrupt" fn machine_check_handler(stack_frame: &mut ExceptionStackFrame) {
     // unconditionally panic
     panic_on_exception(format_args!("Machine-Check Exception"), stack_frame);
 }
 
+/// SIMD exception handler. Kills the process unconditionally.
+///
+/// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn simd_floating_point_handler(stack_frame: &mut ExceptionStackFrame) {
     {
         if cfg!(feature = "panic-on-exception") {
@@ -283,6 +326,9 @@ extern "x86-interrupt" fn simd_floating_point_handler(stack_frame: &mut Exceptio
     check_thread_killed();
 }
 
+/// Virtualization exception handler. Kills the process unconditionally.
+///
+/// If the panic-on-exception feature is enabled, this will also panic the kernel.
 extern "x86-interrupt" fn virtualization_handler(stack_frame: &mut ExceptionStackFrame) {
     {
         if cfg!(feature = "panic-on-exception") {
@@ -297,6 +343,7 @@ extern "x86-interrupt" fn virtualization_handler(stack_frame: &mut ExceptionStac
     check_thread_killed();
 }
 
+/// Security exception handler. Panics the kernel unconditionally.
 extern "x86-interrupt" fn security_exception_handler(stack_frame: &mut ExceptionStackFrame, errcode: u32) {
     // unconditionally panic
     panic_on_exception(format_args!("Unexpected Security Exception: error code {:?}", errcode), stack_frame);
@@ -366,6 +413,7 @@ extern "C" fn syscall_handler() {
 }
 
 lazy_static! {
+    /// IDT address. Initialized in `init()`.
     static ref IDT: SpinLock<Option<VirtualAddress>> = SpinLock::new(None);
 }
 
@@ -374,6 +422,8 @@ lazy_static! {
 /// # Safety
 ///
 /// Should only be called once!
+#[allow(clippy::cast_ptr_alignment)] // this function is x86_32 only
+#[allow(clippy::fn_to_numeric_cast)] // this function is x86_32 only
 pub unsafe fn init() {
     pic::init();
 

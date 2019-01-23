@@ -48,12 +48,21 @@ impl fmt::Write for Logger {
                 let _ = output_debug_string(svc_log_buffer.as_str());
             }
             let _ = output_debug_string(data);
-            let _ = svc_log_buffer.clear();
+            svc_log_buffer.clear();
         }
         Ok(())
     }
 }
 
+/// Initializes the global logger with the svc logger.
+///
+/// This should be called early in the execution of a Rust program. Any log
+/// events that occur before initialization will be ignored.
+///
+/// # Panics
+///
+/// This function will panic if it is called more than once, or if another
+/// library has already initialized a global logger.
 pub fn init() {
     log::set_logger(&Logger)
         .expect("log_impl::init to be called only once");

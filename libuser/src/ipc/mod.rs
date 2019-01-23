@@ -98,6 +98,26 @@ pub enum IPCBufferType {
     },
 }
 
+impl IPCBufferType {
+    /// Checks if this buffer is a Send Buffer.
+    fn is_type_a(self) -> bool {
+        if let IPCBufferType::A { .. } = self {
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Checks if this buffer is a Receive Buffer.
+    fn is_type_b(self) -> bool {
+        if let IPCBufferType::B { .. } = self {
+            true
+        } else {
+            false
+        }
+    }
+}
+
 /// An IPC Buffer represents a section of memory to send to the other side of the
 /// pipe. It is usually used for sending big chunks of data that would not send
 /// in the comparatively small argument area (which is usually around 200 bytes).
@@ -157,7 +177,7 @@ impl<'a> IPCBuffer<'a> {
     /// of type B, W or C.
     pub fn from_slice<T>(val: &'a [T], ty: IPCBufferType) -> IPCBuffer<'_> {
         IPCBuffer {
-            addr: if val.len() == 0 { 0 } else { val.as_ptr() as usize },
+            addr: if val.is_empty() { 0 } else { val.as_ptr() as usize },
             size: mem::size_of::<T>() * val.len(),
             ty,
             phantom: PhantomData
@@ -167,7 +187,7 @@ impl<'a> IPCBuffer<'a> {
     /// type A or X.
     pub fn from_mut_slice<T>(val: &'a mut [T], ty: IPCBufferType) -> IPCBuffer<'_> {
         IPCBuffer {
-            addr: if val.len() == 0 { 0 } else { val.as_ptr() as usize },
+            addr: if val.is_empty() { 0 } else { val.as_ptr() as usize },
             size: mem::size_of::<T>() * val.len(),
             ty,
             phantom: PhantomData
@@ -207,12 +227,16 @@ impl<'a> IPCBuffer<'a> {
     }
 
     // Based on http://switchbrew.org/index.php?title=IPC_Marshalling#Official_marshalling_code
+    /// Gets the [IPCBufferType] of this buffer. The buffer type determines how
+    /// the buffer is passed to the other process and if it's an argument or a
+    /// return value.
     fn buftype(&self) -> IPCBufferType {
         self.ty
     }
 }
 
 /// Type of an IPC message.
+#[derive(Debug)]
 pub enum MessageTy {
     /// Requests the other end to close the handle and any resource associated
     /// with it. Normally called when dropping the ClientSession.
@@ -252,14 +276,43 @@ where
     MOVE: Array<Item=u32>,
     RAW: Copy + Default,
 {
+    /// Type of the message. This is derived from [MessageTy] and
+    /// [Message::token].
     ty: u16,
+    /// Optional PID included in the message. For outgoing messages, the actual
+    /// value is not relevant, as the kernel will replace it with the sender's
+    /// pid.
     pid: Option<u64>,
+    /// Array of IPC Buffers included in the message.
+    ///
+    /// The user may configure the size of this array in the type, allowing
+    /// precise control over the size of the Message type.
     buffers: ArrayVec<BUFF>,
+    /// Array of copy handles included in the message. Copy handles are copied
+    /// from the sender's process into the receiver's process. The sender and
+    /// receiver may both use their respective handles.
+    ///
+    /// The user may configure the size of this array in the type, allowing
+    /// precise control over the size of the Message type.
     copy_handles: ArrayVec<COPY>,
+    /// Array of move handles included in the message. Move handles are moved
+    /// from the sender's process into the receiver's process. The sender loses
+    /// control over the handle, as if it had been closed.
+    ///
+    /// The user may configure the size of this array in the type, allowing
+    /// precise control over the size of the Message type.
     move_handles: ArrayVec<MOVE>,
+    /// Whether this message contains an IPC request or an IPC response.
     is_request: bool,
+    /// Contains either the cmdid (if this message is a request) or an error
+    /// number (if this message is a response).
     cmdid_error: u32,
+    /// Optional tracking token. This is used to track the origin of each IPC
+    /// call. Generally, the creating application will chose a random token when
+    /// doing its request. Services will then use that token when they need to
+    /// make their own requests.
     token: Option<u32>,
+    /// The raw arguments included in this message.
     raw: RAW
 }
 
@@ -411,7 +464,7 @@ where
     pub fn pop_handle_move(&mut self) -> Result<Handle, Error> {
         self.move_handles.pop_at(0)
             .map(Handle::new)
-            .ok_or(LibuserError::InvalidMoveHandleCount.into())
+            .ok_or_else(|| LibuserError::InvalidMoveHandleCount.into())
     }
 
     /// Retrieve a copied handle from this IPC message. Those are popped in the
@@ -424,7 +477,7 @@ where
     pub fn pop_handle_copy(&mut self) -> Result<Handle, Error> {
         self.copy_handles.pop_at(0)
             .map(Handle::new)
-            .ok_or(LibuserError::InvalidCopyHandleCount.into())
+            .ok_or_else(|| LibuserError::InvalidCopyHandleCount.into())
     }
 
     /// Retrieve the PID of the remote process (if sent at all). This message
@@ -437,7 +490,7 @@ where
     pub fn pop_pid(&mut self) -> Result<Pid, Error> {
         self.pid.take()
             .map(Pid)
-            .ok_or(LibuserError::PidMissing.into())
+            .ok_or_else(|| LibuserError::PidMissing.into())
     }
 
     /// Packs this IPC Message to an IPC buffer.
@@ -450,10 +503,10 @@ where
 
         for bufty in self.buffers.iter().map(|b| b.buftype()) {
             match bufty {
-                IPCBufferType::X {counter: _} => descriptor_count_x += 1,
-                IPCBufferType::A {flags: _} => descriptor_count_a += 1,
-                IPCBufferType::B {flags: _} => descriptor_count_b += 1,
-                IPCBufferType::C {has_u16_size: _} => descriptor_count_c += 1,
+                IPCBufferType::X { .. } => descriptor_count_x += 1u8,
+                IPCBufferType::A { .. } => descriptor_count_a += 1u8,
+                IPCBufferType::B { .. } => descriptor_count_b += 1u8,
+                IPCBufferType::C { .. } => descriptor_count_c += 1u8,
             }
         }
 
@@ -472,7 +525,7 @@ where
             } else if descriptor_count_c == 1 {
                 hdr.set_c_descriptor_flags(2);
             } else {
-                hdr.set_c_descriptor_flags(2 + descriptor_count_c as u8);
+                hdr.set_c_descriptor_flags(2 + descriptor_count_c);
             }
 
             // 0x10 = padding, 8 = sfci, 8 = cmdid, data = T
@@ -539,7 +592,7 @@ where
                 assert!(addr >> 39 == 0, "Invalid buffer address");
                 assert!(size >> 16 == 0, "Invalid buffer size");
                 assert!(counter & !0b1111 == 0, "Invalid counter");
-                let num = *(counter.get_bits(0..4) as u32)
+                let num = *u32::from(counter.get_bits(0..4))
                     .set_bits(6..9, addr.get_bits(36..39) as u32)
                     .set_bits(12..16, addr.get_bits(32..36) as u32)
                     .set_bits(16..32, size as u32);
@@ -548,44 +601,35 @@ where
             }
         }
 
-        // A descriptors
-        for buf in self.buffers.iter() {
-            let (addr, size, flags) = match buf.buftype() {
-                IPCBufferType::A {flags} => (buf.addr, buf.size, flags),
-                _ => continue
-            };
+        /// Pack a list of A, B or W descriptor in the buffer at the position of
+        /// the cursor.
+        fn pack_abw_descriptors<'a, I: Iterator<Item = &'a IPCBuffer<'a>>>(cursor: &mut CursorWrite, buffers: I) {
+            for buf in buffers {
+                let (addr, size, flags) = match buf.buftype() {
+                    IPCBufferType::A {flags} => (buf.addr, buf.size, flags),
+                    IPCBufferType::B {flags} => (buf.addr, buf.size, flags),
+                    _ => unreachable!()
+                };
 
-            assert!(addr >> 39 == 0, "Invalid buffer address");
-            assert!(size >> 35 == 0, "Invalid buffer size");
+                assert!(addr >> 39 == 0, "Invalid buffer address");
+                assert!(size >> 35 == 0, "Invalid buffer size");
 
-            cursor.write_u32::<LE>((size & 0xFFFFFFFF) as u32);
-            cursor.write_u32::<LE>((addr & 0xFFFFFFFF) as u32);
+                cursor.write_u32::<LE>((size & 0xFFFFFFFF) as u32);
+                cursor.write_u32::<LE>((addr & 0xFFFFFFFF) as u32);
 
-            let num = flags as usize
-                | ((addr >> 36) & 0b111) << 2
-                | ((size >> 32) & 0b1111) << 24
-                | ((addr >> 32) & 0b1111) << 28;
-            cursor.write_u32::<LE>(num as u32);
+                let num = flags as usize
+                    | ((addr >> 36) & 0b111) << 2
+                    | ((size >> 32) & 0b1111) << 24
+                    | ((addr >> 32) & 0b1111) << 28;
+                cursor.write_u32::<LE>(num as u32);
+            }
         }
+
+        // A descriptors
+        pack_abw_descriptors(&mut cursor, self.buffers.iter().filter(|buf| buf.buftype().is_type_a()));
 
         // B descriptors
-        for buf in self.buffers.iter() {
-            let (addr, size, flags) = match buf.buftype() {
-                IPCBufferType::B {flags} => (buf.addr, buf.size, flags),
-                _ => continue
-            };
-            assert!(addr >> 39 == 0, "Invalid buffer address");
-            assert!(size >> 35 == 0, "Invalid buffer size");
-
-            cursor.write_u32::<LE>((size & 0xFFFFFFFF) as u32);
-            cursor.write_u32::<LE>((addr & 0xFFFFFFFF) as u32);
-
-            let num = flags as usize
-                | ((addr >> 36) & 0b111) << 2
-                | ((size >> 32) & 0b1111) << 24
-                | ((addr >> 32) & 0b1111) << 28;
-            cursor.write_u32::<LE>(num as u32);
-        }
+        pack_abw_descriptors(&mut cursor, self.buffers.iter().filter(|buf| buf.buftype().is_type_b()));
 
         // TODO: Implement W Descriptors
         // BODY: W Descriptors are read-write descriptors. Technically speaking,
@@ -654,7 +698,7 @@ where
 
         for buf in self.buffers.iter() {
             let buf = match buf.buftype() {
-                IPCBufferType::C { has_u16_size: _ } => buf,
+                IPCBufferType::C { .. } => buf,
                 _ => continue
             };
 
@@ -701,9 +745,9 @@ where
             // skip 2 words
             let stuffed = cursor.read_u32::<LE>();
             let laddr = cursor.read_u32::<LE>();
-            let addr = *(laddr as u64)
-                .set_bits(32..36, stuffed.get_bits(12..16) as u64)
-                .set_bits(36..39, stuffed.get_bits(6..9) as u64) as usize;
+            let addr = *u64::from(laddr)
+                .set_bits(32..36, u64::from(stuffed.get_bits(12..16)))
+                .set_bits(36..39, u64::from(stuffed.get_bits(6..9))) as usize;
             let size = stuffed.get_bits(16..32) as usize;
             let counter = stuffed.get_bits(0..4) as u8;
             buffers.push(IPCBuffer { addr, size, ty: IPCBufferType::X { counter }, phantom: PhantomData });
@@ -713,11 +757,11 @@ where
             let lsize = cursor.read_u32::<LE>();
             let laddr = cursor.read_u32::<LE>();
             let stuff = cursor.read_u32::<LE>();
-            let addr = *(laddr as u64)
-                .set_bits(32..36, stuff.get_bits(28..32) as u64)
-                .set_bits(36..39, stuff.get_bits(2..5) as u64) as usize;
-            let size = *(lsize as u64)
-                .set_bits(32..36, stuff.get_bits(24..28) as u64) as usize;
+            let addr = *u64::from(laddr)
+                .set_bits(32..36, u64::from(stuff.get_bits(28..32)))
+                .set_bits(36..39, u64::from(stuff.get_bits(2..5))) as usize;
+            let size = *u64::from(lsize)
+                .set_bits(32..36, u64::from(stuff.get_bits(24..28))) as usize;
             let flags = stuff.get_bits(0..2) as u8;
 
             let ty = if i < hdr.num_a_descriptors() {

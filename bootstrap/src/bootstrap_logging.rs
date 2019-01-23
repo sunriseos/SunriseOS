@@ -9,14 +9,14 @@ const COM1: u16 = 0x3F8;
 
 /// Init the rs232 COM1. Must be called before logging anything.
 pub unsafe fn init_bootstrap_log() {
-    let data_port       = COM1 + 0;
+    let _data_port      = COM1 + 0;
     let interrupt_port  = COM1 + 1;
     let baud_diviser_lo = COM1 + 0; // when DLB is set, data and intr
     let baud_diviser_hi = COM1 + 1; // become baud divisor lo and hi
     let fifo_port       = COM1 + 2;
     let lcr_port        = COM1 + 3;
-    let mcr_port        = COM1 + 4;
-    let status_port     = COM1 + 5;
+    let _mcr_port       = COM1 + 4;
+    let _status_port    = COM1 + 5;
 
     bootstrap_outb(interrupt_port , 0x00);       // Disable interrupts
     bootstrap_outb(lcr_port       , 0x80);       // Enable DLAB (set baud rate divisor)

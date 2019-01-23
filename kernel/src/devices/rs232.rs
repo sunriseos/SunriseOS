@@ -1,20 +1,24 @@
-//! RS-232
+//! RS-232 serial port driver
 
 use core::fmt::{Display, Write, Error, Formatter};
 use crate::sync::{Once, SpinLock};
 use crate::io::Io;
 use crate::i386::pio::Pio;
 
-/// The port of a COM
+/// The base IO port of a COM
 #[derive(Debug, Copy, Clone)]
 pub struct ComPort(u16);
 
+/// COM1: I/O port 0x3F8, IRQ 4
 #[cfg(all(target_arch="x86", not(test)))]
 const COM1: ComPort = ComPort(0x3F8);
+/// COM2: I/O port 0x2F8, IRQ 3
 #[cfg(all(target_arch="x86", not(test)))]
 const COM2: ComPort = ComPort(0x2F8);
+/// COM3: I/O port 0x3E8, IRQ 4
 #[cfg(all(target_arch="x86", not(test)))]
 const COM3: ComPort = ComPort(0x3E8);
+/// COM4: I/O port 0x2E8, IRQ 3
 #[cfg(all(target_arch="x86", not(test)))]
 const COM4: ComPort = ComPort(0x2E8);
 
@@ -23,7 +27,7 @@ const COM4: ComPort = ComPort(0x2E8);
 const COM1: ComPort = ComPort(0x7777);
 
 /// The possible colors for serial
-#[allow(missing_docs)]
+#[allow(missing_docs, clippy::missing_docs_in_private_items)]
 #[repr(u8)]
 #[derive(Debug, Copy, Clone)]
 pub enum SerialColor {
@@ -49,7 +53,9 @@ pub enum SerialColor {
 #[derive(Debug, Copy, Clone)]
 /// A foreground and a background combination
 pub struct SerialAttributes {
+    /// foreground color
     fg: SerialColor,
+    /// background color
     bg: SerialColor,
 }
 
@@ -87,15 +93,23 @@ impl Display for SerialAttributes {
     }
 }
 
+/// The serial logger.
+///
+/// Initialized on first use.
+///
+/// Log functions will access the [SerialInternal] it wraps, and send text to it.
 static G_SERIAL: Once<SpinLock<SerialInternal<Pio<u8>>>> = Once::new();
 
+/// A COM output. Wraps the IO ports of this COM, and provides function for writing to it.
 struct SerialInternal<T> {
+    /// The DATA IO port of this COM
     data_port: T,
+    /// The STATUS IO port of this COM
     status_port: T
 }
 
-impl <T> SerialInternal<T> {
-    /// Creates the serial for i386
+impl SerialInternal<Pio<u8>> {
+    /// Creates a COM port from it's base IO address.
     #[cfg(all(target_arch="x86", not(test)))]
     #[allow(unused)]
     pub fn new(com_port: ComPort) -> SerialInternal<Pio<u8>> {
@@ -122,9 +136,8 @@ impl <T> SerialInternal<T> {
 
     #[cfg(test)]
     pub fn new(_com_port: ComPort) -> SerialInternal<Pio<u8>> { panic!("mock implementation !") }
-}
 
-impl SerialInternal<Pio<u8>> {
+    /// Outputs a string to this COM.
     fn send_string(&mut self, string: &str) {
         for byte in string.bytes() {
             // Wait for the transmit buffer to be empty.
@@ -145,6 +158,7 @@ impl SerialInternal<Pio<u8>> {
 ///
 /// write!(SerialLogger, "I got {} problems, but logging ain't one", 99);
 /// ```
+#[derive(Debug)]
 pub struct SerialLogger;
 
 impl SerialLogger {

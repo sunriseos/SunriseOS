@@ -5,17 +5,14 @@ mod table;
 
 use multiboot2::{BootInformation, ElfSectionFlags};
 use crate::address::{PhysicalAddress, VirtualAddress};
-use crate::frame_alloc::{Frame, round_to_page, round_to_page_upper};
+use crate::frame_alloc::{round_to_page, round_to_page_upper};
 
 pub use self::table::{ActivePageTables, InactivePageTables, PagingOffPageSet, MappingType, EntryFlags};
 pub use self::table::PageTablesSet;
 
-use self::table::*;
 use self::table::entry::Entry;
 use spin::Mutex;
-use ::core::fmt::Write;
-use ::core::ops::Deref;
-use core;
+use core::fmt::Write;
 use crate::bootstrap_logging::Serial;
 
 /// The size of a single page.
@@ -97,7 +94,7 @@ pub unsafe fn map_bootstrap(boot_info : &BootInformation) -> PagingOffPageSet {
     // Page guard the first frame of the kernel.
     new_pages.map_page_guard(VirtualAddress(0xc0000000));
 
-    writeln!(Serial, "= Mapping the Bootstrap");
+    let _ = writeln!(Serial, "= Mapping the Bootstrap");
     let elf_sections_tag = boot_info.elf_sections_tag()
         .expect("GRUB, you're drunk. Give us our elf_sections_tag.");
     for section in elf_sections_tag.sections() {
@@ -116,7 +113,7 @@ pub unsafe fn map_bootstrap(boot_info : &BootInformation) -> PagingOffPageSet {
 
         let from = section.start_address() as usize;
         let to = from + kfs_libutils::align_up(section.size() as usize, PAGE_SIZE);
-        writeln!(Serial, "= Identity mapping {:#010x}-{:#010x}", from, to);
+        let _ = writeln!(Serial, "= Identity mapping {:#010x}-{:#010x}", from, to);
 
         new_pages.identity_map_region(PhysicalAddress(section.start_address() as usize),
                                       section.size() as usize,

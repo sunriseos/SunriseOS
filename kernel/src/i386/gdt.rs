@@ -18,12 +18,13 @@ use crate::i386::instructions::tables::{lgdt, sgdt, DescriptorTablePointer};
 use crate::i386::instructions::segmentation::*;
 
 use crate::paging::PAGE_SIZE;
-use crate::paging::{MappingFlags, kernel_memory::get_kernel_memory};
+use crate::paging::{MappingAccessRights, kernel_memory::get_kernel_memory};
 use crate::frame_allocator::{FrameAllocator, FrameAllocatorTrait};
 use crate::mem::VirtualAddress;
 use alloc::vec::Vec;
 use crate::utils::align_up;
 
+/// The global GDT. Needs to be initialized with init_gdt().
 static GDT: Once<SpinLock<GdtManager>> = Once::new();
 
 /// The global LDT used by all the processes.
@@ -40,7 +41,7 @@ static GLOBAL_LDT: Once<DescriptorTable> = Once::new();
 pub fn init_gdt() {
     use crate::i386::instructions::tables::{lldt, ltr};
 
-    let ldt = GLOBAL_LDT.call_once(|| DescriptorTable::new());
+    let ldt = GLOBAL_LDT.call_once(DescriptorTable::new);
 
     GDT.call_once(|| {
         let mut gdt = DescriptorTable::new();
@@ -113,11 +114,25 @@ pub fn init_gdt() {
     });
 }
 
+/// Safety wrapper that manages the lifetime of GDT tables.
+///
+/// Although Intel's guide doesn't really say much about it, modifying a GDT
+/// "live" is probably a terrible idea. To work around this, the GdtManager keeps
+/// two copies of the DescriptorTable, one being the currently active one (loaded
+/// in the GDTR), and the other being where the changes to the GDT go to until
+/// they are commited.
+///
+/// When `commit` is called, the internal GDT and current GDTR are swapped.
 struct GdtManager {
+    /// Inactive descriptor table. Changes to the GDT are done on this table, but
+    /// will not be active until the table is commited.
     unloaded_table: Option<DescriptorTable>,
 }
 
 impl GdtManager {
+    /// Create a GdtManager from a DescriptorTable and segment selectors. The
+    /// given DescriptorTable will be loaded into the GDTR, and the segment
+    /// selectors reloaded with the given value.
     pub fn load(cur_loaded: DescriptorTable, new_cs: u16, new_ds: u16, new_ss: u16) -> GdtManager {
         let clone = cur_loaded.clone();
         info!("{:#?}", cur_loaded);
@@ -128,6 +143,7 @@ impl GdtManager {
         }
     }
 
+    /// Commit the changes in the currently unloaded table.
     pub fn commit(&mut self, new_cs: u16, new_ds: u16, new_ss: u16) {
         let old_table = self.unloaded_table.take()
             .expect("Commit to not be called recursively")
@@ -159,7 +175,7 @@ impl DerefMut for GdtManager {
 }
 
 /// Push a task segment.
-pub fn push_task_segment(task: &'static TssStruct) -> u16 {
+pub fn push_task_segment(task: &'static TssStruct) -> SegmentSelector {
     info!("Pushing TSS: {:#?}", task);
     let mut gdt = GDT.r#try().unwrap().lock();
     let idx = gdt.push(DescriptorTableEntry::new_tss(task, PrivilegeLevel::Ring0, 0));
@@ -174,7 +190,7 @@ lazy_static! {
         // We need TssStruct + 0x2001 bytes of IOPB.
         let pregion = FrameAllocator::allocate_region(align_up(size_of::<TssStruct>() + 0x2001, PAGE_SIZE))
             .expect("Failed to allocate physical region for tss MAIN_TASK");
-        let vaddr = get_kernel_memory().map_phys_region(pregion, MappingFlags::WRITABLE);
+        let vaddr = get_kernel_memory().map_phys_region(pregion, MappingAccessRights::WRITABLE);
         let tss = vaddr.addr() as *mut TssStruct;
         unsafe {
             *tss = TssStruct::new();
@@ -206,6 +222,7 @@ pub unsafe fn get_main_iopb() -> &'static mut [u8] {
 /// A structure containing our GDT.
 #[derive(Debug, Clone)]
 struct DescriptorTable {
+    /// The GDT table, a growable array of DescriptorTableEntry.
     table: Vec<DescriptorTableEntry>,
 }
 
@@ -232,19 +249,21 @@ impl DescriptorTable {
     }
 
     /// Push a new entry to the table, returning a segment selector to it.
-    pub fn push(&mut self, entry: DescriptorTableEntry) -> u16 {
+    pub fn push(&mut self, entry: DescriptorTableEntry) -> SegmentSelector {
         let ret = self.table.len() << 3;
         self.table.push(entry);
-        ret as u16
+        SegmentSelector(ret as u16)
     }
 
+    /// Load this descriptor table into the GDTR, and set the segments to the
+    /// given values. Returns the old GDTR.
     fn load_global(mut self, new_cs: u16, new_ds: u16, new_ss: u16) -> DescriptorTablePointer {
         self.table.shrink_to_fit();
         assert_eq!(self.table.len(), self.table.capacity());
 
         let ptr = DescriptorTablePointer {
             base: self.table.as_ptr() as u32,
-            limit: (self.table.len() * size_of::<DescriptorTableEntry>() - 1) as u16,
+            limit: (self.table.len() * size_of::<DescriptorTableEntry>()) as u16,
         };
 
         let oldptr = sgdt();
@@ -252,7 +271,7 @@ impl DescriptorTable {
         // TODO: Figure out how to chose CS.
         unsafe {
 
-            lgdt(&ptr);
+            lgdt(ptr);
 
             // Reload segment selectors
             set_cs(SegmentSelector(new_cs));
@@ -269,22 +288,27 @@ impl DescriptorTable {
     }
 }
 
+/// Lists the valid values of System Descriptor Types.
+// Trap/Task/Interrupt gates are voluntarily absent. This enum should only
+// contain descriptor types valid for GDT/LDT. IDT is kept separate.
 #[derive(Debug, Clone, Copy)]
+#[allow(clippy::missing_docs_in_private_items)]
 enum SystemDescriptorTypes {
     AvailableTss16 = 1,
     Ldt = 2,
     BusyTss16 = 3,
     CallGate16 = 4,
-    TaskGate = 5,
-    InterruptGate16 = 6,
-    TrapGate16 = 7,
     AvailableTss32 = 9,
     BusyTss32 = 11,
     CallGate32 = 12,
-    InterruptGate32 = 14,
-    TrapGate32 = 15
 }
 
+/// An entry in the GDT/LDT.
+///
+/// Those entries generally describe a segment. However, the DescriptorTable also
+/// contains special descriptors called "System Descriptors". Those are used for
+/// specifying different kind of memory regions used by the CPU, such as TSS,
+/// LDT, or Call Gates.
 #[repr(transparent)]
 #[derive(Clone, Copy)]
 struct DescriptorTableEntry(u64);
@@ -323,6 +347,9 @@ impl fmt::Debug for DescriptorTableEntry {
 }
 
 impl DescriptorTableEntry {
+    /// Returns an empty descriptor. Using this descriptor is an error and will
+    /// raise a GPF. Should only be used to create a descriptor to place at index
+    /// 0 of the GDT.
     pub fn null_descriptor() -> DescriptorTableEntry {
         DescriptorTableEntry(0)
     }
@@ -350,7 +377,7 @@ impl DescriptorTableEntry {
         gdt
     }
 
-    /// Creates an empty GDT descriptor, but with some flags set correctly
+    /// Creates an empty GDT system descriptor of the given type.
     pub fn new_system(ty: SystemDescriptorTypes, base: u32, limit: u32, priv_level: PrivilegeLevel) -> DescriptorTableEntry {
         let mut gdt = Self::null_descriptor();
 
@@ -367,7 +394,7 @@ impl DescriptorTableEntry {
 
     /// Creates a new LDT descriptor.
     pub fn new_ldt(base: &'static DescriptorTable, priv_level: PrivilegeLevel) -> DescriptorTableEntry {
-        let limit = if base.table.len() == 0 { 0 } else { base.table.len() * size_of::<DescriptorTableEntry>() - 1 };
+        let limit = if base.table.is_empty() { 0 } else { base.table.len() * size_of::<DescriptorTableEntry>() - 1 };
         Self::new_system(SystemDescriptorTypes::Ldt, base as *const _ as u32, limit as u32, priv_level)
     }
 
@@ -377,69 +404,95 @@ impl DescriptorTableEntry {
         Self::new_system(SystemDescriptorTypes::AvailableTss32, base as *const _ as u32, (size_of::<TssStruct>() + iobp_size - 1) as u32, priv_level)
     }
 
-    fn get_limit(&self) -> u32 {
+    /// Gets the byte length of the entry, minus 1.
+    fn get_limit(self) -> u32 {
         (self.0.get_bits(0..16) as u32) | ((self.0.get_bits(48..52) << 16) as u32)
     }
 
+    /// Sets the entry's byte length to the given number plus one. Note that if
+    /// the given length is higher than 65536, it should be properly
+    /// page-aligned.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the given limit is higher than 65536 and not page aligned.
     fn set_limit(&mut self, mut newlimit: u32) {
         if newlimit > 65536 && (newlimit & 0xFFF) != 0xFFF {
             panic!("Limit {} is invalid", newlimit);
         }
 
         if newlimit > 65536 {
-            newlimit = newlimit >> 12;
+            newlimit >>= 12;
             self.set_4k_granularity(true);
         }
 
-        self.0.set_bits(0..16, newlimit.get_bits(0..16) as u64);
-        self.0.set_bits(48..52, newlimit.get_bits(16..20) as u64);
+        self.0.set_bits( 0..16, u64::from(newlimit.get_bits( 0..16)));
+        self.0.set_bits(48..52, u64::from(newlimit.get_bits(16..20)));
     }
 
-    fn get_base(&self) -> u32 {
+    /// Gets the base address of the entry.
+    fn get_base(self) -> u32 {
         (self.0.get_bits(16..40) as u32) | ((self.0.get_bits(56..64) << 24) as u32)
     }
 
+    /// Sets the base address of the entry.
     fn set_base(&mut self, newbase: u32) {
-        self.0.set_bits(16..40, newbase.get_bits(0..24) as u64);
-        self.0.set_bits(56..64, newbase.get_bits(24..32) as u64);
+        self.0.set_bits(16..40, u64::from(newbase.get_bits( 0..24)));
+        self.0.set_bits(56..64, u64::from(newbase.get_bits(24..32)));
     }
 
-    pub fn get_accessed(&self) -> bool {
+    /// CPU sets this bit to true when the segment is accessed.
+    pub fn get_accessed(self) -> bool {
         self.0.get_bit(40)
     }
 
-    pub fn is_readwrite_allowed(&self) -> bool {
+    /// - Code Segments: Whether read access for this segment is allowed.
+    /// - Data Segments: Whether write access for this segment is allowed.
+    pub fn is_readwrite_allowed(self) -> bool {
         self.0.get_bit(41)
     }
 
-    // TODO: also gets direction
-    pub fn is_comformant(&self) -> bool {
+    /// - Code Segments: if true, code in this segment can be executed from a
+    ///   lower privilege level (example: ring3 can far jump into ring2 code).
+    ///   If false, the code segment can only be executed from the right DPL.
+    /// - Data Segments: if true, the segment grows up. If false, the segment
+    ///   grows down.
+    pub fn is_comformant(self) -> bool {
         self.0.get_bit(42)
     }
 
-    pub fn is_executable(&self) -> bool {
+    /// Determines whether the segment is a code segment or a data segment. If
+    /// true, this is a code segment and can be executed. If false, this is a
+    /// data segment.
+    pub fn is_executable(self) -> bool {
         self.0.get_bit(43)
     }
 
     // bit 44 is unused
 
-    pub fn get_ring_level(&self) -> PrivilegeLevel {
-        PrivilegeLevel::from_u16(self.0.get_bits(45..47) as u16)
+    /// The privilege level associated with this segment.
+    pub fn get_ring_level(self) -> PrivilegeLevel {
+        PrivilegeLevel::from_u8(self.0.get_bits(45..47) as u8)
     }
 
-    pub fn get_present(&self) -> bool {
+    /// A segment needs to be present to have an effect. Using a not-present
+    /// segment will cause an exception.
+    pub fn get_present(self) -> bool {
         self.0.get_bit(47)
     }
 
-    pub fn is_4k_granularity(&self) -> bool {
+    /// If true, the limit is a count of 4k pages. If false, it is a byte count.
+    pub fn is_4k_granularity(self) -> bool {
         self.0.get_bit(55)
     }
 
+    /// If true, the limit is a count of 4k pages. If false, it is a byte count.
     fn set_4k_granularity(&mut self, is: bool) {
         self.0.set_bit(55, is);
     }
 
-    pub fn is_32bit(&self) -> bool {
+    /// If true, this is a 32-bit segment. If false, it is a 16-bit selector.
+    pub fn is_32bit(self) -> bool {
         self.0.get_bit(54)
     }
 }

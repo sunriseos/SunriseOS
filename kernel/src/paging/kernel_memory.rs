@@ -25,7 +25,7 @@
 use super::lands::{KernelLand, RecursiveTablesLand, VirtualSpaceLand};
 use super::arch::{PAGE_SIZE, ActiveHierarchy};
 use super::hierarchical_table::{TableHierarchy, PageState};
-use super::MappingFlags;
+use super::MappingAccessRights;
 use crate::mem::{VirtualAddress, PhysicalAddress};
 use crate::frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait,
                       mark_frame_bootstrap_allocated};
@@ -41,7 +41,9 @@ use failure::Backtrace;
 ///
 /// Because of this mechanism we do not permit modifying KernelLand in other tables
 /// than the currently active ones.
+#[derive(Debug)]
 pub struct KernelMemory {
+    /// The currently active page tables.
     tables: ActiveHierarchy
 }
 
@@ -76,7 +78,7 @@ impl KernelMemory {
     ///
     /// Panics if virtual region is not in KernelLand.
     // todo check va alignment
-    pub fn map_phys_region_to(&mut self, phys: PhysicalMemRegion, address: VirtualAddress, flags: MappingFlags) {
+    pub fn map_phys_region_to(&mut self, phys: PhysicalMemRegion, address: VirtualAddress, flags: MappingAccessRights) {
         assert!(KernelLand::contains_region(address, phys.size()));
         self.tables.map_to_from_iterator(phys.into_iter(), address, flags);
         // physical region must not be deallocated while it is mapped
@@ -88,7 +90,7 @@ impl KernelMemory {
     /// # Panics
     ///
     /// Panics if encounters virtual space exhaustion.
-    pub fn map_phys_region(&mut self, phys: PhysicalMemRegion, flags: MappingFlags) -> VirtualAddress {
+    pub fn map_phys_region(&mut self, phys: PhysicalMemRegion, flags: MappingAccessRights) -> VirtualAddress {
         let va = self.find_virtual_space(phys.size()).unwrap();
         self.map_phys_region_to(phys, va, flags);
         va
@@ -103,7 +105,7 @@ impl KernelMemory {
     /// # Panics
     ///
     /// Panics if encounters virtual space exhaustion.
-    pub(super) unsafe fn map_phys_regions(&mut self, phys: &[PhysicalMemRegion], flags: MappingFlags) -> VirtualAddress {
+    pub(super) unsafe fn map_phys_regions(&mut self, phys: &[PhysicalMemRegion], flags: MappingAccessRights) -> VirtualAddress {
         let length = phys.iter().flatten().count() * PAGE_SIZE;
         let va = self.find_virtual_space(length).unwrap();
         self.tables.map_to_from_iterator(phys.iter().flatten(), va, flags);
@@ -121,7 +123,7 @@ impl KernelMemory {
     /// Panics if virtual region is not in KernelLand.
     /// Panics if encounters virtual space exhaustion.
     // todo check va alignment
-    pub(super) unsafe fn map_frame_iterator_to<I>(&mut self, iterator: I, address: VirtualAddress, flags: MappingFlags)
+    pub(super) unsafe fn map_frame_iterator_to<I>(&mut self, iterator: I, address: VirtualAddress, flags: MappingAccessRights)
     where I: Iterator<Item=PhysicalAddress> + Clone
     {
         assert!(KernelLand::contains_region(address,
@@ -139,7 +141,7 @@ impl KernelMemory {
     /// # Panics
     ///
     /// Panics if encounters virtual space exhaustion.
-    pub(super) unsafe fn map_frame_iterator<I>(&mut self, iterator: I, flags: MappingFlags) -> VirtualAddress
+    pub(super) unsafe fn map_frame_iterator<I>(&mut self, iterator: I, flags: MappingAccessRights) -> VirtualAddress
     where I: Iterator<Item=PhysicalAddress> + Clone
     {
         let length = iterator.clone().count() * PAGE_SIZE;
@@ -156,7 +158,7 @@ impl KernelMemory {
     /// Panics if encounters virtual space exhaustion.
     pub fn get_page(&mut self) -> VirtualAddress {
         let pr = FrameAllocator::allocate_frame().unwrap();
-        self.map_phys_region(pr, MappingFlags::k_rw())
+        self.map_phys_region(pr, MappingAccessRights::k_rw())
     }
 
     /// Allocates non-contiguous frames, and map them at the given address.
@@ -168,7 +170,7 @@ impl KernelMemory {
     /// Panics if destination was already mapped.
     /// Panics if `length` is not a multiple of PAGE_SIZE.
     // todo check va alignment
-    pub fn map_allocate_to(&mut self, va: VirtualAddress, length: usize, flags: MappingFlags) {
+    pub fn map_allocate_to(&mut self, va: VirtualAddress, length: usize, flags: MappingAccessRights) {
         assert!(KernelLand::contains_region(va, length));
         assert!(length % PAGE_SIZE == 0, "length must be a multiple of PAGE_SIZE");
         let mut prs = FrameAllocator::allocate_frames_fragmented(length).unwrap();
@@ -190,7 +192,7 @@ impl KernelMemory {
     pub fn get_pages(&mut self, length: usize) -> VirtualAddress {
         assert!(length % PAGE_SIZE == 0, "length must be a multiple of PAGE_SIZE");
         let va = self.find_virtual_space(length).unwrap();
-        self.map_allocate_to(va, length, MappingFlags::k_rw());
+        self.map_allocate_to(va, length, MappingAccessRights::k_rw());
         va
     }
 
@@ -237,7 +239,7 @@ impl KernelMemory {
         self.tables.unmap(address, length, |paddr| {
             let pr = unsafe {
                 // safe, they were only tracked by the page tables
-                PhysicalMemRegion::reconstruct(paddr, PAGE_SIZE);
+                PhysicalMemRegion::reconstruct(paddr, PAGE_SIZE)
             };
             drop(pr)
         });
@@ -281,15 +283,16 @@ impl KernelMemory {
     }
 
     /// Prints the state of the KernelLand by parsing the page tables. Used for debugging purposes.
+    #[allow(clippy::missing_docs_in_private_items)]
     pub fn dump_kernelland_state(&mut self) {
         #[derive(Debug, Clone, Copy)]
         enum State { Present(VirtualAddress, PhysicalAddress), Guarded(VirtualAddress), Available(VirtualAddress) }
         impl State {
             fn get_vaddr(&self) -> VirtualAddress {
-                match self {
-                    &State::Present(addr, _) => addr,
-                    &State::Guarded(addr) => addr,
-                    &State::Available(addr) => addr,
+                match *self {
+                    State::Present(addr, _) => addr,
+                    State::Guarded(addr) => addr,
+                    State::Available(addr) => addr,
                 }
             }
 

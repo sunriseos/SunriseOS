@@ -32,14 +32,20 @@ impl Color {
 }
 
 /// A managed window.
+#[derive(Debug)]
 pub struct Window {
+    /// The framebuffer memory shared with Vi. Drawing to this buffer will take
+    /// effect on the next call to [IBuffer::draw].
     buf: MappedSharedMemory,
+    /// Vi handle for this window.
     handle: IBuffer,
+    /// Width of the window.
     width: usize,
+    /// Height of the window.
     height: usize,
+    /// Bits per pixel for the framebuffer.
     bpp: usize
 }
-
 
 impl Window {
     /// Creates a window in the vi compositor.
@@ -108,9 +114,9 @@ impl Window {
     ///
     /// Panics if offset is invalid
     #[inline]
-    pub fn write_px(&mut self, offset: usize, color: &Color) {
+    pub fn write_px(&mut self, offset: usize, color: Color) {
         unsafe {
-            self.get_buffer()[offset] = *color;
+            self.get_buffer()[offset] = color;
         }
     }
 
@@ -121,7 +127,7 @@ impl Window {
     ///
     /// Panics if coords are invalid
     #[inline]
-    pub fn write_px_at(&mut self, x: usize, y: usize, color: &Color) {
+    pub fn write_px_at(&mut self, x: usize, y: usize, color: Color) {
         let offset = self.get_px_offset(x, y);
         self.write_px(offset, color);
     }

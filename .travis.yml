@@ -20,6 +20,7 @@ script:
 - cargo make iso-release
 - cargo make test
 - cargo make doc-full
+- cargo make clippy-ci
 
 deploy:
 - provider: script

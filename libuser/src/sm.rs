@@ -25,6 +25,7 @@ use crate::error::{KernelError, Error};
 
 /// Main interface of the service manager. Allows registering and retrieving
 /// handles to all the services.
+#[derive(Debug)]
 pub struct IUserInterface(ClientSession);
 
 impl IUserInterface {
@@ -47,6 +48,7 @@ impl IUserInterface {
         let mut buf = [0; 0x100];
 
 		    #[repr(C)] #[derive(Clone, Copy, Default)]
+        #[allow(clippy::missing_docs_in_private_items)]
 		    struct InRaw {
 			      name: u64,
 		    }
@@ -72,6 +74,7 @@ impl IUserInterface {
         let mut buf = [0; 0x100];
 
 		    #[repr(C)] #[derive(Clone, Copy, Default)]
+        #[allow(clippy::missing_docs_in_private_items)]
 		    struct InRaw {
 			      name: u64,
 			      is_light: bool,

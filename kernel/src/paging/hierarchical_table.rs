@@ -3,7 +3,7 @@
 // what the architecture code still has define
 use super::arch::{PAGE_SIZE, ENTRY_COUNT};
 use super::lands::{RecursiveTablesLand, VirtualSpaceLand};
-use super::MappingFlags;
+use super::MappingAccessRights;
 
 use crate::mem::{VirtualAddress, PhysicalAddress};
 use crate::frame_allocator::{PhysicalMemRegion};
@@ -72,7 +72,7 @@ impl<T> PageState<T> {
 pub trait HierarchicalEntry {
 
     /// An entry comports some flags. They are often represented by a structure.
-    type EntryFlagsType: From<MappingFlags>;
+    type EntryFlagsType: From<MappingAccessRights>;
 
     /// Is the entry unused ?
     fn is_unused(&self) -> bool;
@@ -161,7 +161,7 @@ pub trait HierarchicalTable {
     /// # Panics
     ///
     /// Should panic if called on a table which isn't a parent table.
-    fn get_child_table<'a>(&'a mut self, index: usize) -> PageState<SmartHierarchicalTable<'a, Self::ChildTableType>>;
+    fn get_child_table(&mut self, index: usize) -> PageState<SmartHierarchicalTable<Self::ChildTableType>>;
 
     /// Allocates a child page table, zero it and add an entry pointing to it.
     ///
@@ -169,14 +169,14 @@ pub trait HierarchicalTable {
     ///
     /// Should panic if called on a table which isn't a parent table.
     /// Should panic if entry was not available.
-    fn create_child_table<'a>(&'a mut self, index: usize) -> SmartHierarchicalTable<'a, Self::ChildTableType>;
+    fn create_child_table(&mut self, index: usize) -> SmartHierarchicalTable<Self::ChildTableType>;
 
     /// Gets the child page table at given index, or creates it if it does not exist
     ///
     /// # Panics
     ///
     /// Should panic if called on a table which isn't a parent table.
-    fn get_child_table_or_create<'a>(&'a mut self, index: usize) -> PageState<SmartHierarchicalTable<'a, Self::ChildTableType>> {
+    fn get_child_table_or_create(&mut self, index: usize) -> PageState<SmartHierarchicalTable<Self::ChildTableType>> {
         assert!(Self::table_level() >= 1, "get_child_table_or_create() called on non-parent table");
         match self.entries()[index].pointed_frame() {
             PageState::Present(_) => self.get_child_table(index),
@@ -210,6 +210,7 @@ impl PagingCacheFlusher for NoFlush { fn flush_whole_cache() { /* do nothing */ 
 pub struct SmartHierarchicalTable<'a, T: HierarchicalTable>(*mut T, PhantomData<&'a T>);
 
 impl<'a, T: HierarchicalTable> SmartHierarchicalTable<'a, T> {
+    /// Wraps the given pointer in a `SmartHierarchicalTable`.
     pub fn new(inner: *mut T) -> SmartHierarchicalTable<'a, T> {
         SmartHierarchicalTable(inner, PhantomData)
     }
@@ -252,11 +253,12 @@ impl<'a, T: HierarchicalTable> Drop for SmartHierarchicalTable<'a, T> {
 /// * an InactiveHierarchy will want to temporarily map the top level page
 /// * a  PagingOffHierarchy will point to physical memory
 pub trait TableHierarchy {
+    /// The type of the top level table.
     type TopLevelTableType : HierarchicalTable;
 
     /// Gets a reference to the top level table, either through recursive mapping,
     /// or by temporarily mapping it in the currently active page tables.
-    fn get_top_level_table<'a>(&'a mut self) -> SmartHierarchicalTable<'a, Self::TopLevelTableType>;
+    fn get_top_level_table(&mut self) -> SmartHierarchicalTable<Self::TopLevelTableType>;
 
     /// Creates a mapping in the page tables with the given flags.
     ///
@@ -272,7 +274,7 @@ pub trait TableHierarchy {
     fn map_to_from_iterator<I>(&mut self,
                                frames_iterator: I,
                                start_address: VirtualAddress,
-                               flags: MappingFlags)
+                               flags: MappingAccessRights)
     where I: Iterator<Item=PhysicalAddress>
     {
         assert_eq!(start_address.addr() % PAGE_SIZE, 0, "Address is not page aligned");
@@ -282,7 +284,7 @@ pub trait TableHierarchy {
         fn rec_map_to<T, I>(table: &mut SmartHierarchicalTable<'_, T>,
                             frames_iterator: &mut Peekable<I>,
                             start_address: usize,
-                            flags: MappingFlags)
+                            flags: MappingAccessRights)
         where T: HierarchicalTable,
               I: Iterator<Item=PhysicalAddress>
         {
@@ -312,9 +314,9 @@ pub trait TableHierarchy {
             }
         }
 
-        return rec_map_to(&mut self.get_top_level_table(),
+        rec_map_to(&mut self.get_top_level_table(),
                           &mut frames_iterator.peekable(),
-                          start_address.addr(), flags);
+                          start_address.addr(), flags)
     }
 
     /// Creates a span of guard pages
@@ -371,7 +373,7 @@ pub trait TableHierarchy {
             }
         }
 
-        return rec_guard(&mut self.get_top_level_table(), address.addr(), &mut length);
+        rec_guard(&mut self.get_top_level_table(), address.addr(), &mut length)
     }
 
     /// Unmaps a range of virtual address.
@@ -500,6 +502,7 @@ pub trait TableHierarchy {
     /// Panics if  alignment is not page-aligned.
     /// Panics if start_addr > end_addr.
     /// Panics if length is zero.
+    #[allow(clippy::missing_docs_in_private_items)]
     fn find_available_virtual_space_aligned(&mut self,
                                             length: usize,
                                             start_addr: VirtualAddress,
@@ -583,7 +586,7 @@ pub trait TableHierarchy {
                  alignment
         );
 
-        return if hole.len >= length {
+        if hole.len >= length {
             Some(VirtualAddress(hole.start_addr))
         } else {
             None

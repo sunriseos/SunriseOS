@@ -12,6 +12,7 @@ use crate::error::Error;
 
 /// Just an x and a y
 #[derive(Copy, Clone, Debug)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct Pos {
     x: usize,
     y: usize,
@@ -19,18 +20,26 @@ struct Pos {
 
 /// A struct for logging text to the window.
 /// Renders characters from a .ttf font using the font-rs crate
+#[allow(missing_debug_implementations)] // Font does not implement Debug :/ Maybe I could do a PR
 pub struct Terminal {
+    /// Rendering target for this terminal.
     framebuffer: Window,
-    cursor_pos: Pos,        /* Cursor pos, in pixels. Does not account for bpp.
-                               Reprensents the pen position on the baseline. */
+    /// Cursor pos, in pixels. Does not account for bpp. Reprensents the pen
+    /// position on the baseline.
+    cursor_pos: Pos,
+    /// The font in use for this terminal.
     font: Font<'static>,
-    cached_glyphs: HashMap<char, GlyphBitmap>, /* We cache ascii glyphs
-                                                  to avoid rendering them every time */
-    advance_width:  usize, /* Expected to be the same for every glyph since
-                              it should be a monospaced font */
-    linespace: usize,      /* The distance between two baselines */
-    ascent: usize,         /* The maximum ascent  in the font. */
-    descent: usize,        /* The maximum descent in the font. */
+    /// We cache ascii glyphs to avoid rendering them every time.
+    cached_glyphs: HashMap<char, GlyphBitmap>,
+    /// Expected to be the same for every glyph since it should be a monospaced
+    /// font.
+    advance_width:  usize,
+    /// The distance between two baselines.
+    linespace: usize,
+    /// The maximum ascent in the font.
+    ascent: usize,
+    /// The maximum descent in the font.
+    descent: usize,
 }
 
 /// The font we choose to render in
@@ -40,6 +49,7 @@ static FONT:  &'static [u8] = include_bytes!("../fonts/Monaco.ttf");
 const FONT_SIZE: u32 = 10;
 
 /// Window creation requested size.
+#[derive(Debug, Clone, Copy)]
 pub enum WindowSize {
     /// Takes the full screen.
     Fullscreen,
@@ -57,6 +67,11 @@ pub enum WindowSize {
 
 impl Terminal {
     /// Creates a new Window of the requested size for terminal usage.
+    // TODO: Review Terminal::new cast_sign_loss and cast_possible_wrap
+    // BODY: Ping @orycterope. I'm pretty sure they're correct but just want to
+    // BODY: make sure it looks good with you since it's originally your code.
+    #[allow(clippy::cast_sign_loss)]
+    #[allow(clippy::cast_possible_wrap)]
     pub fn new(size: WindowSize) -> Result<Self, Error> {
         let my_font = font::parse(FONT)
             .expect("Failed parsing provided font");
@@ -110,11 +125,14 @@ impl Terminal {
         self.framebuffer.draw()
     }
 
+    /// Move the cursor to the beginning of the current line.
     #[inline]
     fn carriage_return(&mut self) {
         self.cursor_pos.x = 0;
     }
 
+    /// Move the cursor to the beginning of the next line, scrolling the screen
+    /// if necessary.
     #[inline]
     fn line_feed(&mut self) {
         let _ = self.draw();
@@ -127,6 +145,8 @@ impl Terminal {
         self.carriage_return();
     }
 
+    /// Move the cursor to the next position for drawing a character, possibly
+    /// the next line if we need to wrap.
     #[inline]
     fn advance_pos(&mut self) {
         self.cursor_pos.x += self.advance_width;
@@ -136,6 +156,8 @@ impl Terminal {
         }
     }
 
+    /// Move the cursor back to the previous position. If we are already on the
+    /// first character position on this line, do not move.
     fn move_pos_back(&mut self) {
         if self.cursor_pos.x >= self.advance_width {
             self.cursor_pos.x -= self.advance_width;
@@ -152,14 +174,14 @@ impl Terminal {
         assert!(lastline_top_left_corner + linespace_size_in_framebuffer < self.framebuffer.get_buffer().len(), "Window is drunk: {} + {} < {}", lastline_top_left_corner, linespace_size_in_framebuffer, self.framebuffer.get_buffer().len());
         unsafe {
             // memmove in the same slice. Should be safe with the assert above.
-            ::core::ptr::copy(self.framebuffer.get_buffer().as_ptr().offset(linespace_size_in_framebuffer as isize),
+            ::core::ptr::copy(self.framebuffer.get_buffer().as_ptr().add(linespace_size_in_framebuffer),
                               self.framebuffer.get_buffer().as_mut_ptr(),
                               lastline_top_left_corner);
         }
         // Erase last line
         unsafe {
             // memset to 0x00. Should be safe with the assert above
-            ::core::ptr::write_bytes(self.framebuffer.get_buffer().as_mut_ptr().offset(lastline_top_left_corner as isize),
+            ::core::ptr::write_bytes(self.framebuffer.get_buffer().as_mut_ptr().add(lastline_top_left_corner),
                                     0x00,
                                     self.framebuffer.get_buffer().len() - lastline_top_left_corner);
         }
@@ -181,7 +203,7 @@ impl Terminal {
                     let empty_glyph = GlyphBitmap { width: 0, height: 0, top: 0, left: 0, data: Vec::new() };
                     Self::display_glyph_in_box(&empty_glyph, &mut self.framebuffer,
                                                self.advance_width, self.ascent, self.descent,
-                                                &fg, &bg, self.cursor_pos);
+                                                fg, bg, self.cursor_pos);
                 }
                 mychar => {
                     {
@@ -200,7 +222,7 @@ impl Terminal {
                                 });
                             Self::display_glyph_in_box(glyph, &mut self.framebuffer,
                                                        *advance_width, *ascent, *descent,
-                                                       &fg, &bg, *cursor_pos);
+                                                       fg, bg, *cursor_pos);
                         } else {
                             // Simply render the glyph and display it ...
                             let glyph = font.lookup_glyph_id(mychar as u32)
@@ -208,7 +230,7 @@ impl Terminal {
                                 .unwrap_or(GlyphBitmap { width: 0, height: 0, top: 0, left: 0, data: Vec::new() });
                             Self::display_glyph_in_box(&glyph, &mut self.framebuffer,
                                                        *advance_width, *ascent, *descent,
-                                                       &fg, &bg, *cursor_pos);
+                                                       fg, bg, *cursor_pos);
                         }
                     }
                     self.advance_pos();
@@ -217,22 +239,29 @@ impl Terminal {
         }
     }
 
+
     /// Copies a rendered character to the screen, displaying it in a bg colored box
     ///
     /// # Panics
     ///
     /// Panics if pos makes writing the glyph overflow the screen
+    // TODO: Review Terminal::display_glyph_in_box cast_sign_loss and cast_possible_wrap
+    // BODY: Ping @orycterope. I'm pretty sure they're correct but just want to
+    // BODY: make sure it looks good with you since it's originally your code.
+    #[allow(clippy::cast_sign_loss)]
+    #[allow(clippy::cast_possible_wrap)]
+    #[allow(clippy::too_many_arguments)]
     fn display_glyph_in_box(glyph: &GlyphBitmap, framebuffer: &mut Window,
                             box_width: usize, box_ascent: usize, box_descent: usize,
-                            fg: &Color, bg: &Color, pos: Pos) {
+                            fg: Color, bg: Color, pos: Pos) {
 
         /// Blends foreground and background subpixels together
         /// by doing a weighted average of fg and bg
         #[inline]
         fn blend_subpixels(fg: u8, bg: u8, fg_alpha: u8) -> u8 {
             // compute everything u16 to avoid overflows
-            ((   fg as u16 * fg_alpha as u16
-               + bg as u16 * (0xFF - fg_alpha) as u16
+            ((   u16::from(fg) * u16::from(fg_alpha)
+               + u16::from(bg) * u16::from(0xFF - fg_alpha)
              ) / 0xFF // the weight should be (fg_alpha / 0xFF), but we move this division
                       // as final step so we don't loose precision
             ) as u8
@@ -261,11 +290,11 @@ impl Terminal {
                     )
                 } else {
                     // it's oustide the glyph box, just paint it bg color
-                    *bg
+                    bg
                 };
                 framebuffer.write_px_at((pos.x as i32 + x) as usize,
                                              (pos.y as i32 + y) as usize,
-                                             &to_display);
+                                             to_display);
             }
         }
     }

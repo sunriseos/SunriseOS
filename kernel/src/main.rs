@@ -9,14 +9,19 @@
 #![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, allocator_api, alloc, box_syntax, no_more_cas, const_vec_new, range_contains, step_trait, thread_local, nll)]
 #![no_std]
 #![cfg_attr(target_os = "none", no_main)]
-#![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
+#![recursion_limit = "1024"]
+
+// rustc warnings
 #![warn(unused)]
+#![warn(missing_debug_implementations)]
 #![allow(unused_unsafe)]
 #![allow(unreachable_code)]
 #![allow(dead_code)]
 #![cfg_attr(test, allow(unused_imports))]
+
+// rustdoc warnings
+#![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
 #![deny(intra_doc_link_resolution_failure)]
-#![recursion_limit = "1024"]
 
 #[cfg(not(target_os = "none"))]
 extern crate std;
@@ -69,21 +74,58 @@ pub mod checks;
 // Make rust happy about rust_oom being no_mangle...
 pub use crate::heap_allocator::rust_oom;
 
+/// The global heap allocator.
+///
+/// Creation of a Box, Vec, Arc, ... will use its API.
+/// See the [heap_allocator] module for more info.
 #[cfg(not(test))]
 #[global_allocator]
 static ALLOCATOR: heap_allocator::Allocator = heap_allocator::Allocator::new();
 
 use crate::i386::stack;
-use crate::paging::{PAGE_SIZE, MappingFlags};
+use crate::paging::{PAGE_SIZE, MappingAccessRights};
 use crate::mem::VirtualAddress;
 use crate::process::{ProcessStruct, ThreadStruct};
 
+/// Forces a double fault by stack overflowing.
+///
+/// Can be used to manually check the double fault task gate is configured correctly.
+///
+/// Works by purposely creating a KernelStack overflow.
+///
+/// When we reach the top of the stack and attempt to write to the guard page following it, it causes a PageFault Execption.
+///
+/// CPU will attempt to handle the exception, and push some values at `$esp`, which still points in the guard page.
+/// This triggers the DoubleFault exception.
 unsafe fn force_double_fault() {
     loop {
         asm!("push 0" :::: "intel", "volatile");
     }
 }
 
+/// The kernel's `main`.
+///
+/// # State
+///
+/// Called after the arch-specific initialisations are done.
+///
+/// At this point the scheduler is initialized, and we are running as process `init`.
+///
+/// # Goal
+///
+/// Our job is to launch all the Kernel Internal Processes.
+///
+/// These are the minimal set of sysmodules considered essential to system bootup (`filesystem`, `loader`, `sm`, `pm`, `boot`),
+/// which either provide necessary services for loading a process, or may define the list of other processes to launch (`boot`).
+///
+/// We load their elf with a minimal [elf_loader], add them to the schedule queue, and run them as regular userspace processes.
+///
+/// # Afterwards
+///
+/// After this, our job here is done. We mark the `init` process (ourselves) as killed, unschedule, and kernel initialisation is
+/// considered finished.
+///
+/// From now on, the kernel's only job will be to respond to IRQs and serve syscalls.
 fn main() {
     info!("Loading all the init processes");
     for module in i386::multiboot::get_boot_information().module_tags().skip(1) {
@@ -96,9 +138,9 @@ fn main() {
                 let ep = elf_loader::load_builtin(&mut pmemlock, &mapped_module);
 
                 let stack = pmemlock.find_available_space(5 * PAGE_SIZE)
-                    .expect(&format!("Cannot create a stack for process {:?}", proc));
+                    .unwrap_or_else(|_| panic!("Cannot create a stack for process {:?}", proc));
                 pmemlock.guard(stack, PAGE_SIZE).unwrap();
-                pmemlock.create_regular_mapping(stack + PAGE_SIZE, 4 * PAGE_SIZE, MappingFlags::u_rw()).unwrap();
+                pmemlock.create_regular_mapping(stack + PAGE_SIZE, 4 * PAGE_SIZE, MappingAccessRights::u_rw()).unwrap();
 
                 (VirtualAddress(ep), stack + 5 * PAGE_SIZE)
         };
@@ -275,7 +317,7 @@ unsafe fn do_panic(msg: core::fmt::Arguments<'_>, stackdump_source: Option<stack
     if let Some(sds) = stackdump_source {
         unsafe {
             // this is unsafe, caller must check safety
-            crate::stack::dump_stack(sds, elf_and_st)
+            crate::stack::dump_stack(&sds, elf_and_st)
         }
     } else {
         crate::stack::KernelStack::dump_current_stack(elf_and_st)

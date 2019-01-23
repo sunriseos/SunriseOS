@@ -28,7 +28,7 @@
 
 use ::core::mem::size_of;
 use crate::paging::lands::{VirtualSpaceLand, UserLand, KernelLand};
-use crate::paging::{PAGE_SIZE, process_memory::QueryMemory, MappingFlags, PageState, kernel_memory::get_kernel_memory};
+use crate::paging::{PAGE_SIZE, process_memory::QueryMemory, MappingAccessRights, PageState, kernel_memory::get_kernel_memory};
 use crate::frame_allocator::{FrameAllocator, FrameAllocatorTrait};
 use crate::mem::VirtualAddress;
 use crate::error::KernelError;
@@ -43,12 +43,15 @@ pub const STACK_SIZE: usize            = 4;
 pub const STACK_SIZE_WITH_GUARD: usize = STACK_SIZE + 1;
 
 /// The alignment of the stack. ceil(log2(STACK_SIZE_WITH_GUARD * PAGE_SIZE))
-const STACK_ALIGNEMENT: usize = 15;
+const STACK_ALIGNMENT: usize = 15;
 
-/// A structure representing a kernel stack
+/// A structure representing a kernel stack.
 #[derive(Debug)]
 pub struct KernelStack {
-    stack_address: VirtualAddress // This falls in the page guard
+    /// The aligned address at the beginning of the stack.
+    ///
+    /// It falls in the page guard.
+    stack_address: VirtualAddress
 }
 
 impl KernelStack {
@@ -56,10 +59,10 @@ impl KernelStack {
     pub fn allocate_stack() -> Result<KernelStack, KernelError> {
         let mut memory = get_kernel_memory();
         let va = memory.find_virtual_space_aligned(STACK_SIZE_WITH_GUARD * PAGE_SIZE,
-                                                   2usize.pow(STACK_ALIGNEMENT as u32))?;
+                                                   2usize.pow(STACK_ALIGNMENT as u32))?;
         let region = FrameAllocator::allocate_region(STACK_SIZE * PAGE_SIZE)?;
 
-        memory.map_phys_region_to(region, va + PAGE_SIZE, MappingFlags::k_rw());
+        memory.map_phys_region_to(region, va + PAGE_SIZE, MappingAccessRights::k_rw());
         memory.guard(va, PAGE_SIZE);
 
         let mut me = KernelStack { stack_address: va };
@@ -70,20 +73,30 @@ impl KernelStack {
         Ok(me)
     }
 
-    fn get_stack_bottom(esp: usize) -> usize {
-        esp & (0xFFFFFFFF << STACK_ALIGNEMENT) // 0x....0000
+    /// Aligns down a pointer to what would be the beginning of the stack,
+    /// by `and`ing with [STACK_ALIGNMENT].
+    ///
+    /// This is the value usually stored in `KernelStack.stack_address`.
+    ///
+    /// Result falls in the page guard.
+    fn align_to_stack_bottom(esp: usize) -> usize {
+        esp & (0xFFFFFFFF << STACK_ALIGNMENT) // 0x....0000
     }
 
-    /// Gets the bottom of the stack by and'ing $esp with STACK_ALIGNMENT
+    /// Gets the bottom of the stack by `and`ing `$esp` with [STACK_ALIGNMENT].
     ///
-    /// extern "C" to make sure it is called with a sane ABI
+    /// This is the value usually stored in `KernelStack.stack_address`.
+    ///
+    /// Result falls in the page guard.
+    ///
+    // extern "C" to make sure it is called with a sane ABI
     extern "C" fn get_current_stack_bottom() -> usize {
         let esp_ptr: usize;
         unsafe { asm!("mov $0, esp" : "=r"(esp_ptr) ::: "intel" ) };
-        Self::get_stack_bottom(esp_ptr)
+        Self::align_to_stack_bottom(esp_ptr)
     }
 
-    /// Retrieves the current stack from $esp
+    /// Retrieves the current stack from `$esp`.
     ///
     /// Should be used only to retrieve the KernelStack that was given to us by the bootstrap.
     ///
@@ -94,17 +107,19 @@ impl KernelStack {
     /// This enables having several mut references pointing to the same underlying memory.
     /// Caller has to make sure no references to the stack exists when calling this function.
     ///
-    /// The safe method of getting the stack is by getting current ProcessStruct, *lock it*,
-    /// and use its pstack.
+    /// The safe method of getting the stack is by getting current [`ProcessStruct`], *lock it*,
+    /// and use its `pstack`.
+    ///
+    /// [`ProcessStruct`]: crate::process::ProcessStruct
     pub unsafe fn get_current_stack() -> KernelStack {
         let stack_bottom = Self::get_current_stack_bottom();
         KernelStack { stack_address: VirtualAddress(stack_bottom) }
     }
 
-    /// We keep 2 poison pointers for fake saved ebp and saved esp at the base of the stack
+    /// We keep 2 poison pointers for fake `saved ebp` and `saved eip` at the base of the stack.
     const STACK_POISON_SIZE: usize = 2 * size_of::<usize>();
 
-    /// Puts two poisons pointers at the base of the stack for the saved ebp and saved eip
+    /// Puts two poisons pointers at the base of the stack for the `saved ebp` and `saved eip`.
     unsafe fn create_poison_pointers(&mut self) {
         let saved_eip: *mut usize = (self.stack_address.addr() + STACK_SIZE_WITH_GUARD * PAGE_SIZE
                                                                - size_of::<usize>()
@@ -115,8 +130,10 @@ impl KernelStack {
     }
 
     /// Get the address of the beginning of usable stack.
-    /// Used for initializing $esp and $ebp of a newborn process
-    /// Points to the last poison pointer, for saved $ebp
+    ///
+    /// Used for initializing `$esp` and `$ebp` of a newborn process.
+    ///
+    /// Points to the last poison pointer, for saved `$ebp`.
     pub fn get_stack_start(&self) -> usize {
          self.stack_address.addr() + STACK_SIZE_WITH_GUARD * PAGE_SIZE
                                    - Self::STACK_POISON_SIZE
@@ -147,7 +164,7 @@ impl KernelStack {
             // safe: the constructed slice will be "under" the current stack top,
             //       it is considered temporarily immutable,
             //       and nobody except our thread has access to it.
-            dump_stack(source, elf_symbols);
+            dump_stack(&source, elf_symbols);
         }
     }
 }
@@ -163,6 +180,7 @@ impl Drop for KernelStack {
 /* ********************************************************************************************** */
 
 /// The minimal information needed to perform a stack dump.
+#[derive(Debug)]
 pub struct StackDumpSource {
     /// The initial top of the stack.
     esp: usize,
@@ -202,7 +220,7 @@ impl StackDumpSource {
 /// function is at work. This will often mean checking that the thread whose stack we're dumping
 /// is stopped and will remain unscheduled at least until this function returns.
 #[allow(unused_must_use)]
-pub unsafe fn dump_stack<'a>(source: StackDumpSource, elf_symbols: Option<(&ElfFile<'a>, &'a [Entry32])>) {
+pub unsafe fn dump_stack<'a>(source: &StackDumpSource, elf_symbols: Option<(&ElfFile<'a>, &'a [Entry32])>) {
     use crate::devices::rs232::SerialLogger;
     use core::fmt::Write;
 
@@ -224,10 +242,10 @@ pub unsafe fn dump_stack<'a>(source: StackDumpSource, elf_symbols: Option<(&ElfF
     fn dump_kernel_stack<'b>(mut esp: usize, ebp: usize, eip: usize, elf: Option<(&ElfFile<'b>, &'b [Entry32])>) {
 
         // check if esp falls in the page_guard of what would be a KernelStack
-        if esp < (KernelStack::get_stack_bottom(esp) + PAGE_SIZE) {
+        if esp < (KernelStack::align_to_stack_bottom(esp) + PAGE_SIZE) {
             // esp has stack overflowed. can we use ebp as esp ?
-            if KernelStack::get_stack_bottom(esp) + PAGE_SIZE <= ebp
-                && ebp < KernelStack::get_stack_bottom(esp) + STACK_SIZE_WITH_GUARD * PAGE_SIZE {
+            if KernelStack::align_to_stack_bottom(esp) + PAGE_SIZE <= ebp
+                && ebp < KernelStack::align_to_stack_bottom(esp) + STACK_SIZE_WITH_GUARD * PAGE_SIZE {
                 writeln!(SerialLogger, "# Stack overflow detected! Using EBP as esp. (esp was {:#x})", esp);
                 esp = ebp;
             } else {
@@ -239,7 +257,7 @@ pub unsafe fn dump_stack<'a>(source: StackDumpSource, elf_symbols: Option<(&ElfF
 
         let mut kmemory = get_kernel_memory();
 
-        let stack_bottom = KernelStack::get_stack_bottom(esp) + PAGE_SIZE;
+        let stack_bottom = KernelStack::align_to_stack_bottom(esp) + PAGE_SIZE;
 
         // Check we have STACK_SIZE pages mapped as readable (at least) from stack_bottom.
         for i in 0..STACK_SIZE {
@@ -256,7 +274,7 @@ pub unsafe fn dump_stack<'a>(source: StackDumpSource, elf_symbols: Option<(&ElfF
         let stack_slice = unsafe { ::core::slice::from_raw_parts(stack_bottom as *const u8,
                                                                  STACK_SIZE * PAGE_SIZE) };
 
-        return dump_stack_from_slice(stack_slice, stack_bottom, esp, ebp, eip, elf);
+        dump_stack_from_slice(stack_slice, stack_bottom, esp, ebp, eip, elf)
     }
 
     /// Takes the mapping `esp` falls into, consider it a stack and attempts to dump it.
@@ -267,7 +285,7 @@ pub unsafe fn dump_stack<'a>(source: StackDumpSource, elf_symbols: Option<(&ElfF
         // does esp point to a mapping ?
         if let Ok(QueryMemory::Used(mapping)) = pmemory.query_memory(VirtualAddress(esp)) {
             // a stack would at least be readable and writable
-            if mapping.flags().contains(MappingFlags::u_rw()) {
+            if mapping.flags().contains(MappingAccessRights::u_rw()) {
                 let stack_slice = unsafe { ::core::slice::from_raw_parts(mapping.address().addr() as *const u8,
                                                                          mapping.length()) };
                 return dump_stack_from_slice(stack_slice, mapping.address().addr(), esp, ebp, eip, elf);
@@ -290,12 +308,13 @@ pub unsafe fn dump_stack<'a>(source: StackDumpSource, elf_symbols: Option<(&ElfF
 ///
 /// The data of every stack frame will be hexdumped.
 #[allow(unused_must_use)]
+#[allow(clippy::cast_ptr_alignment)] // we're x86_32 only
 fn dump_stack_from_slice<'a>(stack: &[u8], orig_address: usize, mut esp: usize, mut ebp: usize, mut eip: usize, elf: Option<(&ElfFile<'a>, &'a [Entry32])>) {
     use crate::devices::rs232::SerialLogger;
     use core::fmt::Write;
     use crate::utils::print_hexdump_as_if_at_addr;
 
-    writeln!(SerialLogger, "# Stack start: {:#010x}, Stack end: {:#010x}", orig_address, orig_address + stack.len());
+    writeln!(SerialLogger, "# Stack start: {:#010x}, Stack end: {:#010x}", orig_address, orig_address + stack.len() - 1);
 
     let mut frame_nb = 0;
     loop {

@@ -6,10 +6,14 @@ pub use kfs_libkern::nr;
 pub use kfs_libkern::{MemoryInfo, MemoryPermissions};
 use crate::error::KernelError;
 
-#[cfg(all(target_arch = "x86", not(test)))]
-global_asm!("
+// Assembly blob can't get documented, but clippy requires it.
+#[allow(clippy::missing_docs_in_private_items)]
+mod syscall_inner {
+    #[cfg(all(target_arch = "x86", not(test)))]
+    global_asm!("
 .intel_syntax noprefix
 .global syscall_inner
+// Call the syscall using arch-specific syscall ABI.
 syscall_inner:
     push ebp
     mov  ebp, esp
@@ -49,8 +53,13 @@ syscall_inner:
     pop ebp
     ret
 ");
+}
 
+/// Register backup structure. The syscall_inner will pop the registers from this
+/// structure before jumping into the kernel, and then update the structure with
+/// the registers set by the syscall.
 #[repr(C)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct Registers {
     eax: usize,
     ebx: usize,
@@ -65,6 +74,7 @@ extern {
     fn syscall_inner(registers: &mut Registers);
 }
 
+/// Generic syscall function.
 unsafe fn syscall(nr: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize, arg5: usize, arg6: usize) -> Result<(usize, usize, usize, usize), KernelError> {
     let mut registers = Registers {
         eax: nr,
@@ -129,14 +139,15 @@ pub fn exit_process() -> ! {
             Ok(_) => (),
             Err(err) => { let _ = output_debug_string(&format!("Failed to exit: {}", err)); },
         }
-        loop {}
+        #[allow(clippy::empty_loop)]
+        loop {} // unreachable, but we can't panic, as panic! calls exit_process
     }
 }
 
 /// Creates a thread in the current process.
-pub fn create_thread(ip: extern fn() -> !, arg: usize, sp: *const u8, _priority: u32, _processor_id: u32) -> Result<Thread, KernelError> {
+pub fn create_thread(ip: extern fn() -> !, arg: usize, sp: *const u8, priority: u32, processor_id: u32) -> Result<Thread, KernelError> {
     unsafe {
-        let (out_handle, ..) = syscall(nr::CreateThread, ip as usize, arg, sp as _, _priority as _, _processor_id as _, 0)?;
+        let (out_handle, ..) = syscall(nr::CreateThread, ip as usize, arg, sp as _, priority as _, processor_id as _, 0)?;
         Ok(Thread(Handle::new(out_handle as _)))
     }
 }
@@ -266,7 +277,7 @@ pub(crate) fn close_handle(handle: u32) -> Result<(), KernelError> {
 ///   to wait on more than 0x40 handles.
 pub fn wait_synchronization(handles: &[HandleRef<'_>], timeout_ns: Option<usize>) -> Result<usize, KernelError> {
     unsafe {
-        let (handleidx, ..) = syscall(nr::WaitSynchronization, handles.as_ptr() as _, handles.len(), timeout_ns.unwrap_or(usize::max_value()), 0, 0, 0)?;
+        let (handleidx, ..) = syscall(nr::WaitSynchronization, handles.as_ptr() as _, handles.len(), timeout_ns.unwrap_or_else(usize::max_value), 0, 0, 0)?;
         Ok(handleidx)
     }
 }
@@ -339,7 +350,7 @@ pub fn reply_and_receive_with_user_buffer(buf: &mut [u8], handles: &[HandleRef<'
         let (idx, ..) = syscall(nr::ReplyAndReceiveWithUserBuffer, buf.as_ptr() as _, buf.len(), handles.as_ptr() as _, handles.len(), match replytarget {
             Some(s) => s.inner.get() as _,
             None => 0
-        }, timeout.unwrap_or(usize::max_value()))?;
+        }, timeout.unwrap_or_else(usize::max_value))?;
         Ok(idx)
     }
 }

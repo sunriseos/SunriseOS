@@ -18,8 +18,6 @@ use crate::error::UserspaceError;
 use crate::process::ThreadStruct;
 use crate::scheduler;
 
-// TODO: maybe we should use the libcore's task:: stuff...
-
 /// A waitable item.
 ///
 /// There are essentially two kinds of Waitables: user-signaled and IRQ-backed.
@@ -135,24 +133,27 @@ where
 // TODO: Allow configuring edge vs level triggering.
 #[derive(Debug)]
 pub struct IRQEvent {
+    /// The global state of the IRQ this event is listening on.
+    /// Contains the IRQ trigger count.
     state: &'static IRQState,
+    /// Acknowledgement counter for this IRQEvent instance. Each time we get
+    /// signaled, this counter is incremented until it matches the counter in
+    /// state.
     ack: AtomicUsize,
 }
 
 impl Waitable for IRQEvent {
     fn is_signaled(&self) -> bool {
-        if self.ack.fetch_update(|x| {
+        self.ack.fetch_update(|x| {
             if x < self.state.counter.load(Ordering::SeqCst) {
                 // TODO: If level-triggered, set this to the counter.
                 Some(x + 1)
             } else {
                 None
             }
-        }, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
-            true
-        } else {
-            false
-        }
+        }, Ordering::SeqCst, Ordering::SeqCst)
+
+        .is_ok()
     }
 
     fn register(&self) {
@@ -184,14 +185,23 @@ pub fn wait_event(irq: usize) -> IRQEvent {
     }
 }
 
+/// Global state of an IRQ.
+///
+/// Counts the number of times this IRQ was triggered from kernel boot.
 #[derive(Debug)]
 struct IRQState {
+    /// The irq number this state represents. Only used for debug logs.
     irqnum: usize,
+    /// The number of time this IRQ was triggered from kernel boot.
     counter: AtomicUsize,
+    /// List of processes waiting on this IRQ. When this IRQ is triggered, all
+    /// those processes will be rescheduled.
     waiting_processes: SpinLockIRQ<Vec<Arc<ThreadStruct>>>
 }
 
 impl IRQState {
+    /// Create a new IRQState for the given IRQ number, with the counter set to
+    /// 0.
     pub const fn new(irqnum: usize) -> IRQState {
         IRQState {
             irqnum,
@@ -201,6 +211,7 @@ impl IRQState {
     }
 }
 
+/// Global state for all the IRQ handled by the PIC.
 static IRQ_STATES: [IRQState; 16] = [
     IRQState::new(20), IRQState::new(21), IRQState::new(22), IRQState::new(23),
     IRQState::new(24), IRQState::new(25), IRQState::new(26), IRQState::new(27),

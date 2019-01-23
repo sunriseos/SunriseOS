@@ -12,26 +12,28 @@
 //!
 //! This module covers the second case.
 //!
-//! The remapping is represented by an CrossProcessMapping structure. It is created from a reference
+//! The remapping is represented by a [`CrossProcessMapping`] structure. It is created from a reference
 //! to the mapping being mirrored, and the KernelLand address where it will be remapped.
 //! When this struct is dropped, the frames are unmap'd from KernelLand.
 //!
-//! A CrossProcessMapping is temporary by nature, and has the same lifetime as the reference to the
-//! mapping it remaps, which is chained to the lifetime of the lock protecting ProcessMemory.
+//! A `CrossProcessMapping` is temporary by nature, and has the same lifetime as the reference to the
+//! mapping it remaps, which is chained to the lifetime of the lock protecting [`ProcessMemory`].
 //!
-//! Because of this, a CrossProcessMapping cannot outlive the ProcessMemory lock guard held by the
+//! Because of this, a `CrossProcessMapping` cannot outlive the `ProcessMemory` lock guard held by the
 //! function that created it. This ensures that:
 //!
-//! * All CrossProcessMappings will be unmapped before returning to UserSpace.
-//! * Another thread cannot make any modification to a ProcessMemory while a CrossProcessMapping
-//!   exists for this ProcessMemory.
+//! * All `CrossProcessMapping`s will be unmapped before returning to UserSpace.
+//! * Another thread cannot make any modification to a `ProcessMemory` while a `CrossProcessMapping`
+//!   exists for this `ProcessMemory`.
 //! * The UserLand side of the mapping cannot be deleted while it is still being mirrored,
-//!   as this would require a mutable borrow of the ProcessMemory lock,
-//!   and it is currently (constly) borrowed by the CrossProcessMapping.
+//!   as this would require a mutable borrow of the `ProcessMemory` lock,
+//!   and it is currently (constly) borrowed by the `CrossProcessMapping`.
 //!
+//! [`CrossProcessMapping`]: self::CrossProcessMapping<'a>
+//! [`ProcessMemory`]: crate::paging::process_memory::ProcessMemory
 
 use crate::mem::VirtualAddress;
-use super::{PAGE_SIZE, MappingFlags};
+use super::{PAGE_SIZE, MappingAccessRights};
 use super::mapping::{Mapping, MappingType};
 use super::kernel_memory::get_kernel_memory;
 use super::error::MmError;
@@ -40,25 +42,32 @@ use failure::Backtrace;
 use crate::error::KernelError;
 
 /// A struct representing a UserLand mapping temporarily mirrored in KernelSpace.
+#[derive(Debug)]
 pub struct CrossProcessMapping<'a> {
+    /// The KernelLand address it was remapped to. Has the desired offset.
     kernel_address: VirtualAddress,
+    /// Stores the desired length.
     len: usize,
+    /// The mapping we remapped from.
+    ///
+    /// Note that a `CrossProcessMapping` has the same lifetime as the mapping it remaps.
     mapping: &'a Mapping,
 }
 
+#[allow(clippy::len_without_is_empty)] // len *cannot* be zero
 impl<'a> CrossProcessMapping<'a> {
-    /// Creates a CrossProcessMapping.
+    /// Creates a `CrossProcessMapping`.
     ///
     /// Temporarily remaps a subsection of the mapping in KernelLand.
     ///
     /// # Error
     ///
-    /// Returns an Error if the mapping is Available/Guarded/SystemReserved, as there would be
+    /// * Error if the mapping is Available/Guarded/SystemReserved, as there would be
     /// no point to remap it, and dereferencing the pointer would cause the kernel to page-fault.
-    /// Returns an Error if `offset` + `len` > `mapping` length.
-    /// Returns an Error if `offset` + `len` would overflow.
+    /// * Error if `offset` + `len` > `mapping` length.
+    /// * Error if `offset` + `len` would overflow.
     // todo: should be offset + (len - 1), but need to check that it wouldn't overflow in our function
-    /// Returns an Error if `len` is 0.
+    /// * Error if `len` is 0.
     pub fn mirror_mapping(mapping: &Mapping, offset: usize, len: usize) -> Result<CrossProcessMapping<'_>, KernelError> {
         check_nonzero_length(len)?;
         if add_or_error(offset, len)? > mapping.length() {
@@ -79,7 +88,7 @@ impl<'a> CrossProcessMapping<'a> {
             .take((map_end - map_start) / PAGE_SIZE);
         let kernel_map_start = unsafe {
             // safe, the frames won't be dropped, they still are tracked by the userspace mapping.
-            get_kernel_memory().map_frame_iterator(frames_iterator, MappingFlags::k_rw())
+            get_kernel_memory().map_frame_iterator(frames_iterator, MappingAccessRights::k_rw())
         };
         Ok(CrossProcessMapping {
             kernel_address: kernel_map_start + (offset % PAGE_SIZE),

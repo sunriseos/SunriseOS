@@ -7,7 +7,16 @@
 #![feature(alloc, const_vec_new, const_let)]
 #![no_std]
 
-#![warn(missing_docs)]
+// rustc warnings
+#![warn(unused)]
+#![warn(missing_debug_implementations)]
+#![allow(unused_unsafe)]
+#![allow(unreachable_code)]
+#![allow(dead_code)]
+#![cfg_attr(test, allow(unused_imports))]
+
+// rustdoc warnings
+#![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
 #![deny(intra_doc_link_resolution_failure)]
 
 #[macro_use]
@@ -35,7 +44,7 @@ use crate::libuser::syscalls::MemoryPermissions;
 use kfs_libutils::align_up;
 
 /// Entry point interface.
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct ViInterface;
 
 object! {
@@ -104,6 +113,12 @@ fn get_intersect((atop, aleft, awidth, aheight): (u32, u32, u32, u32), (btop, bl
 }
 
 /// Draw a portion of a buffer onto the framebuffer.
+///
+/// # Panics
+///
+/// Panics if buf.width * buf.height * bpp (4) >= 2^sizeof(usize).
+#[allow(clippy::cast_sign_loss)] // Code panics when shit hits the fan
+#[allow(clippy::cast_possible_wrap)]
 fn draw(buf: &Buffer, framebuffer: &mut Framebuffer<'_>, top: u32, left: u32, width: u32, height: u32) {
     unsafe {
         // TODO: Safety of the vi::draw IPC method
@@ -121,6 +136,7 @@ fn draw(buf: &Buffer, framebuffer: &mut Framebuffer<'_>, top: u32, left: u32, wi
             while curtop < top + height {
                 let mut curleft = left;
                 while curleft < left + width {
+                    // This overflows when buf.width * buf.height * 4 >= sizeof(usize)
                     let dataidx = (((curtop as i32 - buf.top) as u32 * width + (curleft as i32 - buf.left) as u32) * 4) as usize;
                     let fbidx = framebuffer.get_px_offset(curleft as usize, curtop as usize) as usize;
                     // TODO: Vi: Implement alpha blending
@@ -138,10 +154,16 @@ fn draw(buf: &Buffer, framebuffer: &mut Framebuffer<'_>, top: u32, left: u32, wi
     }
 }
 
-/// See Buffer::get_real_bounds.
+/// See [Buffer::get_real_bounds].
+///
+/// Panics if width or height are >= i32::max_value()
+#[allow(clippy::cast_sign_loss)] // max(x, 0) is always u32
+#[allow(clippy::cast_possible_wrap)] // Protected by the assert
 fn get_real_bounds((top, left, width, height): (i32, i32, u32, u32), framebuffer_width: u32, framebuffer_height: u32) -> (u32, u32, u32, u32) {
     let dtop = min(max(top, 0) as u32, framebuffer_height);
     let dleft = min(max(left, 0) as u32, framebuffer_width);
+    assert!(width < i32::max_value() as u32);
+    assert!(height < i32::max_value() as u32);
     let dwidth = min(max(left + width as i32, 0) as u32, framebuffer_width) - dleft;
     let dheight = min(max(top + height as i32, 0) as u32, framebuffer_height) - dtop;
     (dtop, dleft, dwidth, dheight)
@@ -149,6 +171,7 @@ fn get_real_bounds((top, left, width, height): (i32, i32, u32, u32), framebuffer
 
 /// Internal representation of a window.
 #[derive(Debug)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct Buffer {
     top: i32,
     left: i32,
@@ -170,7 +193,9 @@ impl Buffer {
 }
 
 /// IPC Window object
+#[derive(Debug)]
 struct IBuffer {
+    /// The Buffer linked with this window object instance.
     buffer: Arc<Buffer>,
 }
 

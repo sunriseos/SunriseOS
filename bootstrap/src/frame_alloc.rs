@@ -229,7 +229,7 @@ impl FrameAllocator {
 
     /// Panics if the frames bitmap was not initialized
     fn check_initialized(bitmap: &AllocatorBitmap) {
-        if bitmap.initialized == false {
+        if !bitmap.initialized {
             panic!("The frame allocator was not initialized");
         }
     }
@@ -243,7 +243,7 @@ impl FrameAllocator {
     fn mark_area_reserved(bitmap: &mut [u8],
                           start_addr: usize,
                           end_addr: usize) {
-        writeln!(Serial, "Setting {:#010x}..{:#010x} to reserved", round_to_page(start_addr), round_to_page_upper(end_addr));
+        let _ = writeln!(Serial, "Setting {:#010x}..{:#010x} to reserved", round_to_page(start_addr), round_to_page_upper(end_addr));
         bitmap.set_bits_area(
                 addr_to_frame(round_to_page(start_addr))
                     ..
@@ -259,7 +259,7 @@ impl FrameAllocator {
     fn mark_area_free(bitmap: &mut [u8],
                       start_addr: usize,
                       end_addr: usize) {
-        writeln!(Serial, "Setting {:#010x}..{:#010x} to available", round_to_page(start_addr), round_to_page_upper(end_addr));
+        let _ = writeln!(Serial, "Setting {:#010x}..{:#010x} to available", round_to_page(start_addr), round_to_page_upper(end_addr));
         bitmap.set_bits_area(
                 addr_to_frame(round_to_page_upper(start_addr))
                     ..

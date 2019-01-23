@@ -18,11 +18,12 @@ use core::slice;
 use xmas_elf::ElfFile;
 use xmas_elf::program::{ProgramHeader, Type::Load, SegmentData};
 use crate::mem::{VirtualAddress, PhysicalAddress};
-use crate::paging::{PAGE_SIZE, MappingFlags, process_memory::ProcessMemory, kernel_memory::get_kernel_memory};
+use crate::paging::{PAGE_SIZE, MappingAccessRights, process_memory::ProcessMemory, kernel_memory::get_kernel_memory};
 use crate::frame_allocator::PhysicalMemRegion;
 use crate::utils::{self, align_up};
 
 /// Represents a grub module once mapped in kernel memory
+#[derive(Debug)]
 pub struct MappedGrubModule<'a> {
     /// The address of the mapping, in KernelLand.
     pub mapping_addr: VirtualAddress,
@@ -34,6 +35,9 @@ pub struct MappedGrubModule<'a> {
     pub elf: Result<ElfFile<'a>, &'static str>
 }
 
+// TODO: map_grub_module panic
+// BODY: map_grub_module panics if virtual space is exhausted,
+// BODY: but should return an error instead, as it is used in the panic handler itself.
 /// Maps a grub module, which already lives in reserved physical memory, into the KernelLand.
 pub fn map_grub_module(module: &ModuleTag) -> MappedGrubModule<'_> {
     let start_address_aligned = PhysicalAddress(utils::align_down(module.start_address() as usize, PAGE_SIZE));
@@ -43,13 +47,13 @@ pub fn map_grub_module(module: &ModuleTag) -> MappedGrubModule<'_> {
     let mapping_addr = {
         let mut page_table = get_kernel_memory();
         let vaddr = page_table.find_virtual_space(module_len_aligned)
-            .expect(&format!("Unable to find available memory for module {}", module.name()));
+            .unwrap_or_else(|_| panic!("Unable to find available memory for module {}", module.name()));
 
         let module_phys_location = unsafe {
             // safe, they were not tracked before
             PhysicalMemRegion::reconstruct(start_address_aligned, module_len_aligned)
         };
-        page_table.map_phys_region_to(module_phys_location, vaddr, MappingFlags::k_r());
+        page_table.map_phys_region_to(module_phys_location, vaddr, MappingAccessRights::k_r());
 
         vaddr
     };
@@ -82,19 +86,11 @@ impl<'a> Drop for MappedGrubModule<'a> {
 
 /// Gets the desired kernel access controls for a process based on the
 /// .kernel_caps section in its elf
-pub fn get_kacs<'a>(module: &'a MappedGrubModule<'_>) -> Option<&'a [u32]> {
+pub fn get_kacs<'a>(module: &'a MappedGrubModule<'_>) -> Option<&'a [u8]> {
     let elf = module.elf.as_ref().expect("Failed parsing multiboot module as elf");
 
-    if let Some(section) = elf.find_section_by_name(".kernel_caps") {
-        unsafe {
-            // Safety: FOR FUCK'S SAKE. When will rust get a function to safely
-            // cast between array of integers of different sizes >_>.
-            let section_data = section.raw_data(&elf);
-            Some(core::slice::from_raw_parts(section_data.as_ptr() as *const u32, section_data.len() / 4))
-        }
-    } else {
-        None
-    }
+    elf.find_section_by_name(".kernel_caps")
+        .map(|section| section.raw_data(&elf))
 }
 
 /// Loads the given kernel built-in into the given page table.
@@ -106,7 +102,7 @@ pub fn load_builtin(process_memory: &mut ProcessMemory, module: &MappedGrubModul
     for ph in elf.program_iter().filter(|ph|
         ph.get_type().expect("Failed to get type of elf program header") == Load)
     {
-        load_segment(process_memory, &ph, &elf);
+        load_segment(process_memory, ph, &elf);
     }
 
     // return the entry point
@@ -119,20 +115,21 @@ pub fn load_builtin(process_memory: &mut ProcessMemory, module: &MappedGrubModul
 /// Loads an elf segment by coping file_size bytes to the right address,
 /// and filling remaining with 0s.
 /// This is used by NOBITS sections (.bss), this way we initialize them to 0.
-fn load_segment(process_memory: &mut ProcessMemory, segment: &ProgramHeader<'_>, elf_file: &ElfFile<'_>) {
+#[allow(clippy::match_bool)] // more readable
+fn load_segment(process_memory: &mut ProcessMemory, segment: ProgramHeader<'_>, elf_file: &ElfFile) {
     // Map the segment memory in KernelLand
     let mem_size_total = align_up(segment.mem_size() as usize, PAGE_SIZE);
 
     // Map as readonly if specified
-    let mut flags = MappingFlags::USER_ACCESSIBLE;
+    let mut flags = MappingAccessRights::USER_ACCESSIBLE;
     if segment.flags().is_read() {
-        flags |= MappingFlags::READABLE
+        flags |= MappingAccessRights::READABLE
     };
     if segment.flags().is_write() {
-        flags |= MappingFlags::WRITABLE
+        flags |= MappingAccessRights::WRITABLE
     };
     if segment.flags().is_execute() {
-        flags |= MappingFlags::EXECUTABLE
+        flags |= MappingAccessRights::EXECUTABLE
     }
 
     // Create the mapping in UserLand

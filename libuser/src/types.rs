@@ -54,8 +54,11 @@ impl Drop for Handle {
 /// the handle, and without an expensive conversion from an array of pointers to
 /// an array of handles.
 #[repr(transparent)]
+#[derive(Debug)]
 pub struct HandleRef<'a> {
+    /// The underlying handle number.
     pub(crate) inner: NonZeroU32,
+    /// The real handle this reference is tied to.
     lifetime: PhantomData<&'a Handle>
 }
 
@@ -253,12 +256,14 @@ impl SharedMemory {
 /// When dropped, the memory region will be unmapped, and the SharedMemory handle
 /// associated with it will be closed.
 #[derive(Debug)]
+#[allow(clippy::missing_docs_in_private_items)]
 pub struct MappedSharedMemory {
     handle: SharedMemory,
     addr: usize,
     size: usize
 }
 
+#[allow(clippy::len_without_is_empty)] // len cannot be zero.
 impl MappedSharedMemory {
     /// Get the underlying shared memory as a byte slice.
     ///
@@ -284,7 +289,7 @@ impl MappedSharedMemory {
     /// unless the application has a way to synchronize access.
     ///
     /// [`as_mut_ptr`]: MappedSharedMemory::as_mut_ptr
-    pub unsafe fn get_mut(&self) -> &mut [u8] {
+    pub unsafe fn get_mut(&mut self) -> &mut [u8] {
         ::core::slice::from_raw_parts_mut(self.addr as *mut u8, self.size)
     }
 

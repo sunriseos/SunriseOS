@@ -39,12 +39,13 @@ use core::marker::PhantomData;
 use alloc::prelude::*;
 use spin::Mutex;
 use core::ops::{Deref, DerefMut, Index};
+use core::fmt::{self, Debug};
 use crate::error::Error;
 
 /// A handle to a waitable object.
-pub trait IWaitable {
+pub trait IWaitable: Debug {
     /// Gets the handleref for use in the `wait_synchronization` call.
-    fn get_handle<'a>(&'a self) -> HandleRef<'a>;
+    fn get_handle(&self) -> HandleRef<'_>;
     /// Function the manager calls when this object gets signaled.
     ///
     /// Takes the manager as a parameter, allowing the handler to add new handles
@@ -57,7 +58,9 @@ pub trait IWaitable {
 }
 
 /// The event loop manager. Waits on the waitable objects added to it.
+#[derive(Debug, Default)]
 pub struct WaitableManager {
+    /// Vector of items to add to the waitable list on the next loop.
     to_add_waitables: Mutex<Vec<Box<dyn IWaitable>>>
 }
 
@@ -115,7 +118,10 @@ pub trait Object {
     fn dispatch(&mut self, manager: &WaitableManager, cmdid: u32, buf: &mut [u8]) -> Result<(), Error>;
 }
 
+/// Wrapper struct that forces the alignment to 0x10. Somewhat necessary for the
+/// IPC command buffer.
 #[repr(C, align(16))]
+#[derive(Debug)]
 struct Align16<T>(T);
 impl<T> Deref for Align16<T> {
     type Target = T;
@@ -139,11 +145,24 @@ impl<T, Idx> Index<Idx> for Align16<T> where T: Index<Idx> {
 /// A wrapper around an Object backed by an IPC Session that implements the
 /// IWaitable trait.
 pub struct SessionWrapper<T: Object> {
+    /// Kernel Handle backing this object.
     handle: ServerSession,
+    /// Object instance.
     object: T,
 
-    // Ensure 16 bytes of alignment so the raw data is properly aligned.
+    /// Command buffer for this session.
+    /// Ensure 16 bytes of alignment so the raw data is properly aligned.
     buf: Align16<[u8; 0x100]>
+}
+
+impl<T: Object + Debug> Debug for SessionWrapper<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("SessionWrapper")
+            .field("handle", &self.handle)
+            .field("object", &self.object)
+            .field("buf", &&self.buf[..])
+            .finish()
+    }
 }
 
 impl<T: Object> SessionWrapper<T> {
@@ -158,8 +177,8 @@ impl<T: Object> SessionWrapper<T> {
     }
 }
 
-impl<T: Object> IWaitable for SessionWrapper<T> {
-    fn get_handle<'a>(&'a self) -> HandleRef<'a> {
+impl<T: Object + Debug> IWaitable for SessionWrapper<T> {
+    fn get_handle(&self) -> HandleRef<'_> {
         self.handle.0.as_ref()
     }
 
@@ -182,13 +201,24 @@ impl<T: Object> IWaitable for SessionWrapper<T> {
 /// A wrapper around a Server Port that implements the IWaitable trait. Waits for
 /// connection requests, and creates a new SessionWrapper around the incoming
 /// connections, which gets registered on the WaitableManager.
-pub struct PortHandler<T: Object + Default> {
+pub struct PortHandler<T: Object + Default + Debug> {
+    /// The kernel object backing this Port Handler.
     handle: ServerPort,
+    /// Type of the Object this port creates.
     phantom: PhantomData<T>
 }
 
-impl<T: Object + Default + 'static> IWaitable for PortHandler<T> {
-    fn get_handle<'a>(&'a self) -> HandleRef<'a> {
+impl<T: Object + Default + Debug> Debug for PortHandler<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("PortHandler")
+            .field("handle", &self.handle)
+            .field("phantom", &self.phantom)
+            .finish()
+    }
+}
+
+impl<T: Object + Default + Debug + 'static> IWaitable for PortHandler<T> {
+    fn get_handle(&self) -> HandleRef<'_> {
         self.handle.0.as_ref()
     }
 
@@ -203,17 +233,18 @@ impl<T: Object + Default + 'static> IWaitable for PortHandler<T> {
     }
 }
 
+/// Encode an 8-character service string into an u64
 fn encode_bytes(s: &str) -> u64 {
     assert!(s.len() < 8);
     let s = s.as_bytes();
     0
-        | (*s.get(0).unwrap_or(&0) as u64) << 00 | (*s.get(1).unwrap_or(&0) as u64) << 08
-        | (*s.get(2).unwrap_or(&0) as u64) << 16 | (*s.get(3).unwrap_or(&0) as u64) << 24
-        | (*s.get(4).unwrap_or(&0) as u64) << 32 | (*s.get(5).unwrap_or(&0) as u64) << 40
-        | (*s.get(6).unwrap_or(&0) as u64) << 48 | (*s.get(7).unwrap_or(&0) as u64) << 56
+        | (u64::from(*s.get(0).unwrap_or(&0))) << 00 | (u64::from(*s.get(1).unwrap_or(&0))) <<  8
+        | (u64::from(*s.get(2).unwrap_or(&0))) << 16 | (u64::from(*s.get(3).unwrap_or(&0))) << 24
+        | (u64::from(*s.get(4).unwrap_or(&0))) << 32 | (u64::from(*s.get(5).unwrap_or(&0))) << 40
+        | (u64::from(*s.get(6).unwrap_or(&0))) << 48 | (u64::from(*s.get(7).unwrap_or(&0))) << 56
 }
 
-impl<T: Object + Default> PortHandler<T> {
+impl<T: Object + Default + Debug> PortHandler<T> {
     /// Registers a new PortHandler of the given name to the sm: service.
     pub fn new(server_name: &str) -> Result<PortHandler<T>, Error> {
         use crate::sm::IUserInterface;

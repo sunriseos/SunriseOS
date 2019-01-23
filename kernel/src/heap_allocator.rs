@@ -7,15 +7,17 @@ use crate::sync::{SpinLock, Once};
 use core::ops::Deref;
 use core::ptr::NonNull;
 use linked_list_allocator::{Heap, align_up};
-use crate::paging::{PAGE_SIZE, MappingFlags, kernel_memory::get_kernel_memory};
+use crate::paging::{PAGE_SIZE, MappingAccessRights, kernel_memory::get_kernel_memory};
 use crate::frame_allocator::{FrameAllocator, FrameAllocatorTrait};
 use crate::mem::VirtualAddress;
 
 /// Simple wrapper around linked_list_allocator, growing heap by allocating pages
 /// with the frame allocator as necessary.
+#[allow(missing_debug_implementations)] // Heap does not implement Debug :/
 pub struct Allocator(Once<SpinLock<Heap>>);
 
 // 512MB. Should be a multiple of PAGE_SIZE.
+/// Maximum size of our Kernel Heap.
 const RESERVED_HEAP_SIZE : usize = 512 * 1024 * 1024;
 
 impl Allocator {
@@ -35,7 +37,7 @@ impl Allocator {
                 .expect("Cannot allocate physical memory for heap expansion");
             let mut active_pages = get_kernel_memory();
             active_pages.unmap(VirtualAddress(new_page), PAGE_SIZE);
-            active_pages.map_phys_region_to(frame, VirtualAddress(new_page), MappingFlags::k_rw());
+            active_pages.map_phys_region_to(frame, VirtualAddress(new_page), MappingAccessRights::k_rw());
         }
         unsafe {
             // Safety: We just allocated the area.
@@ -43,6 +45,7 @@ impl Allocator {
         }
     }
 
+    /// Create a new Heap of `RESERVED_HEAP_SIZE` bytes.
     fn init() -> SpinLock<Heap> {
         let mut active_pages = get_kernel_memory();
         // Reserve 512MB of virtual memory for heap space. Don't actually allocate it.
@@ -51,7 +54,7 @@ impl Allocator {
         // map only the first page
         let frame = FrameAllocator::allocate_frame()
             .expect("Cannot allocate first frame of heap");
-        active_pages.map_phys_region_to(frame, heap_space, MappingFlags::k_rw());
+        active_pages.map_phys_region_to(frame, heap_space, MappingAccessRights::k_rw());
         // guard the rest
         active_pages.guard(heap_space + PAGE_SIZE, RESERVED_HEAP_SIZE - PAGE_SIZE);
         info!("Reserving {} pages at {:#010x}", RESERVED_HEAP_SIZE / PAGE_SIZE - 1, heap_space.addr() + PAGE_SIZE);
@@ -87,7 +90,7 @@ unsafe impl<'a> GlobalAlloc for Allocator {
                 self.0.call_once(Self::init).lock().allocate_first_fit(layout)
             }
             _ => allocation
-        }.ok().map_or(0 as *mut u8, |allocation| allocation.as_ptr());
+        }.ok().map_or(::core::ptr::null_mut(), |allocation| allocation.as_ptr());
 
         debug!("ALLOC  {:#010x?}, size {:#x}", alloc, layout.size());
         alloc

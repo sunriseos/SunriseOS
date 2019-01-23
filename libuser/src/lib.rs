@@ -3,11 +3,19 @@
 //! Provides an allocator, various lang items.
 
 #![no_std]
-#![warn(missing_docs)]
-#![deny(intra_doc_link_resolution_failure)]
-#![allow(unused_unsafe)]
 #![feature(global_asm, asm, start, lang_items, core_intrinsics, const_fn, alloc)]
 
+// rustc warnings
+#![warn(unused)]
+#![warn(missing_debug_implementations)]
+#![allow(unused_unsafe)]
+#![allow(unreachable_code)]
+#![allow(dead_code)]
+#![cfg_attr(test, allow(unused_imports))]
+
+// rustdoc warnings
+#![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
+#![deny(intra_doc_link_resolution_failure)]
 
 #[macro_use]
 extern crate alloc;
@@ -50,6 +58,8 @@ use crate::error::{Error, LibuserError};
 // BODY: `#[cfg(not(test))]` still compiles this item with cargo test,
 // BODY: but `#[cfg(target_os = "none")] does not. I think this is a bug,
 // BODY: we should report it.
+/// Global allocator. Every implicit allocation in the rust liballoc library (for
+/// instance for Vecs, Arcs, etc...) are allocated with this allocator.
 #[cfg(target_os = "none")]
 #[global_allocator]
 static ALLOCATOR: allocator::Allocator = allocator::Allocator::new();
@@ -81,6 +91,12 @@ pub fn find_free_address(size: usize, align: usize) -> Result<usize, Error> {
         addr = meminfo.baseaddr.checked_add(meminfo.size).ok_or(LibuserError::AddressSpaceExhausted)?;
     }
 }
+
+// Runtime functions
+//
+// Functions beyond this lines are required by the rust compiler when building
+// for no_std. Care should be exercised when changing them, as lang items are
+// extremely picky about how their types or implementation.
 
 /// The exception handling personality function for use in the bootstrap.
 ///
@@ -136,9 +152,19 @@ pub unsafe extern fn start() -> ! {
     syscalls::exit_process();
 }
 
+/// A trait for implementing arbitrary return types in the `main` function.
+///
+/// The c-main function only supports to return integers as return type.
+/// So, every type implementing the `Termination` trait has to be converted
+/// to an integer.
+///
+/// The default implementations are returning 0 to indicate a successful
+/// execution. In case of a failure, 1 is returned.
 #[cfg(target_os = "none")]
 #[lang = "termination"]
 trait Termination {
+    /// Is called to get the representation of the value as status code.
+    /// This status code is returned to the operating system.
     fn report(self) -> i32;
 }
 
@@ -150,6 +176,7 @@ impl Termination for () {
 
 #[cfg(target_os = "none")]
 #[lang = "start"]
+#[allow(clippy::unit_arg)]
 fn main<T: Termination>(main: fn(), _argc: isize, _argv: *const *const u8) -> isize {
     main().report() as isize
 }

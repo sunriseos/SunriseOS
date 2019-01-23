@@ -1,7 +1,6 @@
 //! Physical and Virtual address wrappers
 
 use core::fmt::{Formatter, Error, Display, Debug, LowerHex};
-use crate::paging::PAGE_SIZE;
 use crate::frame_alloc::{round_to_page, round_to_page_upper};
 
 /// Represents a Physical address
@@ -18,12 +17,12 @@ pub struct VirtualAddress(pub usize);
 
 impl VirtualAddress  {
     /// Gets the address as a `usize`.
-    pub fn addr(&self) -> usize { self.0 }
+    pub fn addr(self) -> usize { self.0 }
 }
 
 impl PhysicalAddress {
     /// Gets the address as a `usize`.
-    pub fn addr(&self) -> usize { self.0 }
+    pub fn addr(self) -> usize { self.0 }
 }
 
 impl ::core::ops::Add<usize> for VirtualAddress {

@@ -8,6 +8,7 @@ use core::slice;
 /// A rgb color
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
+#[allow(clippy::missing_docs_in_private_items)]
 pub struct VBEColor {
     b: u8,
     g: u8,
@@ -17,15 +18,21 @@ pub struct VBEColor {
 
 /// Some colors for the vbe
 impl VBEColor {
+    /// Creates a VBEColor from the given red/green/blue component. Alpha is set
+    /// to 0.
     pub const fn rgb(r: u8, g: u8, b: u8) -> VBEColor {
         VBEColor {r, g, b, a: 0 }
     }
 }
 
+/// A wrapper around a linear framebuffer. The framebuffer is usually acquired
+/// through the [map_framebuffer](syscalls::map_framebuffer) syscall.
+#[allow(clippy::missing_docs_in_private_items)]
 pub struct Framebuffer<'a> {
     buf: &'a mut [VBEColor],
     width: usize,
     height: usize,
+    /// Bits-per-pixel. Usually 8.
     bpp: usize
 }
 
@@ -98,8 +105,8 @@ impl<'a> Framebuffer<'a> {
     ///
     /// Panics if offset is invalid
     #[inline]
-    pub fn write_px(&mut self, offset: usize, color: &VBEColor) {
-        self.buf[offset] = *color;
+    pub fn write_px(&mut self, offset: usize, color: VBEColor) {
+        self.buf[offset] = color;
     }
 
     /// Writes a pixel in the framebuffer respecting the bgr pattern
@@ -109,7 +116,7 @@ impl<'a> Framebuffer<'a> {
     ///
     /// Panics if coords are invalid
     #[inline]
-    pub fn write_px_at(&mut self, x: usize, y: usize, color: &VBEColor) {
+    pub fn write_px_at(&mut self, x: usize, y: usize, color: VBEColor) {
         let offset = self.get_px_offset(x, y);
         self.write_px(offset, color);
     }
@@ -133,7 +140,7 @@ impl<'a> Framebuffer<'a> {
     pub fn clear_at(&mut self, x: usize, y: usize, width: usize, height: usize) {
         for y in y..y + height {
             for x in x..x + width {
-                self.write_px_at(x, y, &VBEColor::rgb(0, 0, 0));
+                self.write_px_at(x, y, VBEColor::rgb(0, 0, 0));
             }
         }
     }

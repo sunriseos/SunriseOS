@@ -64,7 +64,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 const OSCILLATOR_FREQ: usize = 1193182;
 
 /// The frequency of channel 0 irqs, in hertz.
-/// One every 10 millisecond
+/// One every 10 millisecond.
 pub const CHAN_0_FREQUENCY: usize = 100;
 
 /// The channel 0 reset value
@@ -73,21 +73,28 @@ const CHAN_0_DIVISOR: u16 = (OSCILLATOR_FREQ / CHAN_0_FREQUENCY) as u16;
 lazy_static! {
     /// The mutex wrapping the ports
     static ref PIT_PORTS: SpinLock<PITPorts> = SpinLock::new(PITPorts {
+        /// Port 0x40, PIT's Channel 0.
         port_chan_0: Pio::new(0x40),
+        /// Port 0x42, PIT's Channel 2.
         port_chan_2: Pio::new(0x42),
+        /// Port 0x43, PIT's Mode/Command register.
         port_cmd:    Pio::new(0x43),
+        /// Port 0x61, reads as a [Port61Flags].
         port_61:     Pio::new(0x61)
     });
 }
 
-/// Used internally to select which channel to apply operations to
+/// Used internally to select which channel to apply operations to.
+#[derive(Debug, Clone, Copy)]
 enum ChannelSelector {
+    /// Operation should apply to Channel 0.
     Channel0,
+    /// Operation should apply to Channel 2.
     Channel2
 }
 
 bitflags! {
-    /// The port 0x61 flags we use
+    /// The port 0x61 flags we use.
     struct Port61Flags: u8 {
         const SPKR_CONTROL = 1 << 1;
         const OUT2_STATUS  = 1 << 5;
@@ -103,6 +110,7 @@ bitflags! {
 }
 
 /// We put the PIT ports in a structure to have them under a single mutex
+#[allow(clippy::missing_docs_in_private_items)]
 struct PITPorts {
     port_chan_0: Pio<u8>,
     port_chan_2: Pio<u8>,
@@ -126,12 +134,13 @@ impl PITPorts {
 
 /// Channel 2
 struct PITChannel2<'ports> {
+    /// A reference to the PITPorts structure.
     ports: &'ports mut PITPorts
 }
 
 impl<'ports> PITChannel2<'ports> {
 
-    /// Sets mode #0 for channel 2
+    /// Sets mode #0 for Channel 2.
     fn init(ports: &mut PITPorts) -> PITChannel2<'_> {
         ports.port_cmd.write(
             0b10110000 // channel 2, lobyte/hibyte, interrupt on terminal count
@@ -192,10 +201,14 @@ pub fn spin_wait_ms(ms: usize) {
     chan2.spin_wait_ms(ms);
 }
 
+/// A stream of event that trigger every `ms` amount of milliseconds, by counting Channel 0 interruptions.
 #[derive(Debug)]
 struct WaitFor {
+    /// Approximation of number of ms spent between triggers.
     every_ms: usize,
+    /// The IRQ that we wait on (IRQ #0).
     parent_event: IRQEvent,
+    /// Number of IRQ #0 triggers to wait for. Derived from `.every_ms`. This is the exact time amout that is used.
     spins_needed: AtomicUsize
 }
 
@@ -219,7 +232,7 @@ impl Waitable for WaitFor {
     }
 }
 
-/// Returns a stream of event that trigger every `ms` amount of milliseconds
+/// Returns a stream of event that trigger every `ms` amount of milliseconds.
 pub fn wait_ms(ms: usize) -> impl Waitable {
     WaitFor {
         every_ms: ms,
@@ -228,7 +241,7 @@ pub fn wait_ms(ms: usize) -> impl Waitable {
     }
 }
 
-/// Initialize the channel 0 to send recurring irqs
+/// Initialize the channel 0 to send recurring irqs.
 pub unsafe fn init_channel_0() {
     let mut ports = PIT_PORTS.lock();
     ports.port_cmd.write(

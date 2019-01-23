@@ -18,6 +18,7 @@ use super::mapping::Mapping;
 /// and instead consider holes as Available mappings.
 #[derive(Debug)]
 pub struct UserspaceBookkeeping {
+    /// The list of mappings of this process.
     mappings: BTreeMap<VirtualAddress, Mapping>
 }
 
@@ -26,13 +27,15 @@ pub struct UserspaceBookkeeping {
 #[derive(Debug)]
 #[allow(missing_docs)]
 pub enum QueryMemory<'a> {
+    /// The address fell in an available range.
     Available(Mapping),
+    /// The address fell in an existing mapping.
     Used(&'a Mapping)
 }
 
 impl<'a> QueryMemory<'a> {
     /// Returns a reference to the underlying mapping.
-    pub fn as_ref(&self) -> &Mapping {
+    pub fn mapping(&self) -> &Mapping {
         match self {
             QueryMemory::Available(mem) => mem,
             QueryMemory::Used(mem) => mem,

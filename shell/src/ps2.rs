@@ -1,3 +1,19 @@
+//! PS/2 Keyboard Driver
+//!
+//! Allows interacting with an IBM/PC PS/2 Driver. Requires next to no
+//! configuration: the user can just call the functions in this module right
+//! away.
+//!
+//! # Required Capabilities
+//!
+//! - SVC create_interrupt_event
+//! - SVC wait_synchronization
+//! - IOPort 60
+//! - IOPort 64
+//! - IRQ 1
+
+#![allow(clippy::match_bool)] // more readable
+
 use crate::io::{Io, Pio};
 use core::sync::atomic::{AtomicBool, Ordering::SeqCst};
 use alloc::string::String;
@@ -6,17 +22,27 @@ use crate::libuser::types::ReadableEvent;
 use crate::libuser::terminal::Terminal;
 use core::fmt::Write;
 
+/// PS2 keyboard state.
 struct PS2 {
+    /// Status Register address
     status_port: Pio<u8>,
+    /// Data Register address
     data_port: Pio<u8>,
+    /// IRQEvent for the PS/2 keyboard. Triggered each time the user presses a
+    /// key.
     event: ReadableEvent,
+    /// Flips when the user has toggled the caps lock key. When set to true, all
+    /// letters are returned in uppercase.
     is_capslocked:  AtomicBool,
+    /// Set to true if the user is currently holding the shift key. When set to
+    /// true, all letters are returned in uppercase.
     is_shift:       AtomicBool
 }
 
 /// A non-control key
 /// (lowercase_ascii, uppercase_ascii)
 #[derive(Copy, Clone, Debug)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct LetterKey {
     lower_case: char,
     upper_case: char
@@ -28,6 +54,7 @@ struct ControlKey(&'static str);
 
 /// A key is either a letter key, a control key, or not attributed
 #[derive(Copy, Clone, Debug)]
+#[allow(clippy::missing_docs_in_private_items)]
 enum Key {
     Letter(LetterKey),
     Control(ControlKey),
@@ -35,10 +62,13 @@ enum Key {
 }
 
 impl Key {
+    /// Create a control key with the given human-readable name.
     const fn ctrl(s: &'static str) -> Key {
         Control(ControlKey(s))
     }
 
+    /// Create a unicode key with the given lowercase and uppercase
+    /// representations.
     const fn letter(l: char, u: char) -> Key {
         Letter(LetterKey {lower_case: l, upper_case: u})
     }
@@ -46,6 +76,8 @@ impl Key {
 
 use self::Key::*;
 
+/// State of a key on the keyboard.
+#[allow(clippy::missing_docs_in_private_items)]
 enum State {
     Pressed,
     Released
@@ -54,6 +86,7 @@ enum State {
 use self::State::*;
 
 /// A KeyEvent is the combination of a key and its state
+#[allow(clippy::missing_docs_in_private_items)]
 struct KeyEvent {
     key: Key,
     state: State,
@@ -62,7 +95,8 @@ struct KeyEvent {
 impl KeyEvent {
 
     /// Reads one or more bytes from the port until it matches a known scancode sequence
-    fn read_key_event(port: &Pio<u8>) -> KeyEvent {
+    #[allow(clippy::cyclomatic_complexity)] // sorry clippy, but you don't how terrible ps2 scancodes are.
+    fn read_key_event(port: Pio<u8>) -> KeyEvent {
         let scancode = port.read();
         let mut state = Pressed;
 
@@ -282,16 +316,20 @@ impl PS2 {
         }
     }
 
+    /// Waits for a single key press, and return its unicode representation.
+    ///
+    /// Key presses are bufferized: if nobody is calling read_key when the user
+    /// presses a key, it will be kept in a buffer until read_key is called.
     fn read_key(&self) -> char {
         loop {
             let status = self.status_port.read();
             if status & 0x01 != 0 {
-                let key = KeyEvent::read_key_event(&self.data_port);
+                let key = KeyEvent::read_key_event(self.data_port);
                 match key {
                     KeyEvent {key: Key::Control(k), state: s               } => { self.handle_control_key(k, s); },
                     KeyEvent {key: Key::Letter(l),  state: State::Pressed  } => { return self.key_to_letter(l) },
                     KeyEvent {key: Key::Letter(_),  state: State::Released } => { /* ignore released letters */ },
-                    KeyEvent {key: Key::Empty,      state: _               } => { /* ignore unknown keys */ },
+                    KeyEvent {key: Key::Empty,      ..                     } => { /* ignore unknown keys */ },
                 }
             } else {
                 let _ = syscalls::wait_synchronization(&[self.event.0.as_ref()], None);
@@ -299,11 +337,13 @@ impl PS2 {
         }
     }
 
+    /// If a key press is pending, return its unicode representation. This can be
+    /// used to implement poll-based or asynchronous reading from keyboard.
     fn try_read_key(&self) -> Option<char> {
         loop {
             let status = self.status_port.read();
             if status & 0x01 != 0 {
-                let key = KeyEvent::read_key_event(&self.data_port);
+                let key = KeyEvent::read_key_event(self.data_port);
                 match key {
                     KeyEvent {key: Key::Control(k), state: s               } => self.handle_control_key(k, s),
                     KeyEvent {key: Key::Letter(l),  state: State::Pressed  } => return Some(self.key_to_letter(l)),
@@ -315,12 +355,16 @@ impl PS2 {
         }
     }
 
+    /// Get a ReadableEvent for the PS2 IRQ. Waiting on this event will wait until
+    /// a keypress is detected. Note that once this event is triggered, it won't
+    /// trigger again until [read_key] or [try_read_key] is called.
     fn event_irq(&self) -> &ReadableEvent {
         &self.event
     }
 }
 
 lazy_static! {
+    /// Primary PS2 controller instance on a classical IBM/PC architecture.
     static ref PRIMARY_PS2 : PS2 = PS2 {
         status_port: Pio::<u8>::new(0x64),
         data_port: Pio::<u8>::new(0x60),
@@ -330,14 +374,22 @@ lazy_static! {
     };
 }
 
+/// Waits for a single key press, and return its unicode representation.
+///
+/// Key presses are bufferized: if nobody is calling read_key when the user
+/// presses a key, it will be kept in a buffer until read_key is called.
 pub fn read_key() -> char {
     PRIMARY_PS2.read_key()
 }
 
+/// If a key press is pending, return its unicode representation. This can be
+/// used to implement poll-based or asynchronous reading from keyboard.
 pub fn try_read_key() -> Option<char> {
     PRIMARY_PS2.try_read_key()
 }
 
+/// Read key presses until a \n is detected, and return the string
+/// (excluding \n).
 pub fn get_next_line(logger: &mut Terminal) -> String {
     let mut ret = String::from("");
     loop {
@@ -354,6 +406,9 @@ pub fn get_next_line(logger: &mut Terminal) -> String {
     }
 }
 
+/// Get a ReadableEvent for the PS2 IRQ. Waiting on this event will wait until
+/// a keypress is detected. Note that once this event is triggered, it won't
+/// trigger again until [read_key] or [try_read_key] is called.
 #[allow(dead_code)]
 pub fn get_waitable() -> &'static ReadableEvent {
     PRIMARY_PS2.event_irq()
