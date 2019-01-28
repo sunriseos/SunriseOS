@@ -17,7 +17,7 @@ before_install:
 
 script:
 - cargo make iso
-- cargo make iso-release
+- cargo make iso --profile production
 - cargo make test
 - cargo make doc-full
 - cargo make clippy-ci
