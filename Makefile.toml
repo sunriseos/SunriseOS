@@ -5,6 +5,14 @@ skip_core_tasks = true
 RUST_TARGET_PATH = "${PWD}"
 GDB_PORT = { script = ["echo ${GDB_PORT:-9090}"] }
 VNC_PORT = { script = ["echo ${VNC_PORT:-:0}"] }
+TARGET = { script = ["echo ${TARGET:-i386-unknown-none}"] }
+TARGET_PATH = "${TARGET}/debug"
+# TODO: Find better work around cargo build not accepting empty arguments
+RELEASE_FLAG = "--message-format=human"
+
+[env.production]
+TARGET_PATH = "${TARGET}/release"
+RELEASE_FLAG = "--release"
 
 [tasks.bootstrap-linker]
 workspace = false
@@ -26,111 +34,57 @@ install_crate = { crate_name = "mkisofs-rs", binary = "mkisofs-rs", test_arg = "
 
 [tasks.bootstrap]
 workspace = false
-description = "Compiles the i386 bootstrap for debug"
+description = "Compiles the i386 bootstrap"
 dependencies = ["bootstrap-linker", "install-rust-src"]
 command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-bootstrap" ]
-
-[tasks.bootstrap-release]
-workspace = false
-description = "Compiles the i386 bootstrap for release"
-dependencies = ["bootstrap-linker", "install-rust-src"]
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-bootstrap", "--release" ]
+args = ["xbuild", "--target=${TARGET}", "--package=kfs-bootstrap", "${RELEASE_FLAG}"]
 
 [tasks.kernel]
 workspace = false
-description = "Compiles the kernel for debug"
+description = "Compiles the kernel"
 dependencies = ["kernel-linker", "install-rust-src"]
 command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-kernel", "-Z", "package-features", "--features=panic-on-exception"]
-
-[tasks.kernel-release]
-workspace = false
-description = "Compiles the kernel for release"
-dependencies = ["kernel-linker", "install-rust-src"]
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-kernel", "--release" ]
+args = ["xbuild", "--target=${TARGET}", "--package=kfs-kernel", "-Z", "package-features", "--features=panic-on-exception", "${RELEASE_FLAG}"]
 
 [tasks.vi]
 workspace = false
 description = "Compiles kfs-vi"
 dependencies = ["userspace-linker", "install-rust-src"]
 command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-vi"]
-
-[tasks.vi-release]
-workspace = false
-description = "Compiles kfs-vi"
-dependencies = ["userspace-linker", "install-rust-src"]
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-vi", "--release"]
+args = ["xbuild", "--target=${TARGET}", "--package=kfs-vi", "${RELEASE_FLAG}"]
 
 [tasks.sm]
 workspace = false
 description = "Compiles kfs-sm"
 dependencies = ["userspace-linker", "install-rust-src"]
 command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-sm"]
-
-[tasks.sm-release]
-workspace = false
-description = "Compiles kfs-sm"
-dependencies = ["userspace-linker", "install-rust-src"]
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-sm", "--release"]
+args = ["xbuild", "--target=${TARGET}", "--package=kfs-sm", "${RELEASE_FLAG}"]
 
 [tasks.shell]
 workspace = false
 description = "Compiles kfs-shell"
 dependencies = ["userspace-linker", "install-rust-src"]
 command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-shell"]
-
-[tasks.shell-release]
-workspace = false
-description = "Compiles kfs-shell"
-dependencies = ["userspace-linker", "install-rust-src"]
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-shell", "--release"]
+args = ["xbuild", "--target=${TARGET}", "--package=kfs-shell", "${RELEASE_FLAG}"]
 
 [tasks.clock]
 workspace = false
 description = "Compiles kfs-clock"
 dependencies = ["userspace-linker", "install-rust-src"]
 command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-clock"]
-
-[tasks.clock-release]
-workspace = false
-description = "Compiles kfs-clock"
-dependencies = ["userspace-linker", "install-rust-src"]
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-clock", "--release"]
+args = ["xbuild", "--target=${TARGET}", "--package=kfs-clock", "${RELEASE_FLAG}"]
 
 [tasks.ahci]
 workspace = false
 description = "Compiles kfs-ahci"
 dependencies = ["userspace-linker", "install-rust-src"]
 command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-ahci"]
-
-[tasks.ahci-release]
-workspace = false
-description = "Compiles kfs-ahci"
-dependencies = ["userspace-linker", "install-rust-src"]
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-ahci", "--release"]
+args = ["xbuild", "--target=${TARGET}", "--package=kfs-ahci", "${RELEASE_FLAG}"]
 
 [tasks.userspace]
 workspace = false
 description = "Compiles userspace apps"
 dependencies = ["shell", "clock", "sm", "vi", "ahci"]
-
-[tasks.userspace-release]
-workspace = false
-description = "Compiles userspace apps"
-dependencies = ["shell-release", "clock-release", "sm-release", "vi-release", "ahci-release"]
 
 [tasks.iso]
 workspace = false
@@ -138,30 +92,13 @@ description = "Creates a bootable ISO containing the kernel and grub."
 dependencies = ["bootstrap", "kernel", "userspace", "install-mkisofs-rs"]
 script = [
 '''
-cp target/i386-unknown-none/debug/kfs-bootstrap isofiles/boot/
-cp target/i386-unknown-none/debug/kfs-kernel    isofiles/boot/
-cp target/i386-unknown-none/debug/kfs-shell     isofiles/boot/
-cp target/i386-unknown-none/debug/kfs-clock     isofiles/boot/
-cp target/i386-unknown-none/debug/kfs-sm        isofiles/boot/
-cp target/i386-unknown-none/debug/kfs-vi        isofiles/boot/
-cp target/i386-unknown-none/debug/kfs-ahci      isofiles/boot/
-mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
-'''
-]
-
-[tasks.iso-release]
-workspace = false
-description = "Creates a bootable ISO containing the kernel and grub."
-dependencies = ["bootstrap-release", "kernel-release", "userspace-release", "install-mkisofs-rs"]
-script = [
-'''
-cp target/i386-unknown-none/release/kfs-bootstrap isofiles/boot/
-cp target/i386-unknown-none/release/kfs-kernel    isofiles/boot/
-cp target/i386-unknown-none/release/kfs-shell     isofiles/boot/
-cp target/i386-unknown-none/release/kfs-clock     isofiles/boot/
-cp target/i386-unknown-none/release/kfs-sm        isofiles/boot/
-cp target/i386-unknown-none/release/kfs-vi        isofiles/boot/
-cp target/i386-unknown-none/release/kfs-ahci      isofiles/boot/
+cp target/${TARGET_PATH}/kfs-bootstrap isofiles/boot/
+cp target/${TARGET_PATH}/kfs-kernel    isofiles/boot/
+cp target/${TARGET_PATH}/kfs-shell     isofiles/boot/
+cp target/${TARGET_PATH}/kfs-clock     isofiles/boot/
+cp target/${TARGET_PATH}/kfs-sm        isofiles/boot/
+cp target/${TARGET_PATH}/kfs-vi        isofiles/boot/
+cp target/${TARGET_PATH}/kfs-ahci      isofiles/boot/
 mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
 '''
 ]
@@ -169,7 +106,7 @@ mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltori
 [tasks.qemu]
 workspace = false
 description = "Runs the bootable ISO in qemu."
-dependencies = ["iso-release"]
+dependencies = ["iso"]
 command = "qemu-system-i386"
 args = ["-cdrom", "os.iso", "-serial", "stdio", "-vnc", "${VNC_PORT}", "-no-reboot", "-enable-kvm"]
 
@@ -185,14 +122,14 @@ workspace = false
 description = "Generate the project's documentation"
 env = { "RUSTFLAGS" = "--sysroot=${PWD}/target/sysroot",  "RUSTDOCFLAGS" = "--sysroot=${PWD}/target/sysroot"}
 command = "cargo"
-args = ["doc", "--target=i386-unknown-none", "--no-deps" ]
+args = ["doc", "--target=${TARGET}", "--no-deps" ]
 
 [tasks.doc-full]
 workspace = false
 description = "Generate the project's documentation, including private items"
 env = { "RUSTFLAGS" = "--sysroot=${PWD}/target/sysroot",  "RUSTDOCFLAGS" = "--sysroot=${PWD}/target/sysroot -Z unstable-options --enable-index-page"}
 command = "cargo"
-args = ["doc", "--target=i386-unknown-none", "--no-deps", "--document-private-items"]
+args = ["doc", "--target=${TARGET}", "--no-deps", "--document-private-items"]
 
 [tasks.deploy-doc]
 workspace = false
@@ -200,7 +137,7 @@ install_crate = { crate_name = "cargo-travis", binary = "cargo", test_arg = "doc
 install_crate_args = ["--git", "https://github.com/roblabla/cargo-travis", "--rev", "doc-upload-target"]
 description = "Upload this project's documentation on github pages. Should only run on CI."
 command = "cargo"
-args = ["doc-upload", "--target=i386-unknown-none", "--clobber-index"]
+args = ["doc-upload", "--target=${TARGET}", "--clobber-index"]
 
 [tasks.test]
 workspace = false
@@ -214,7 +151,7 @@ dependencies = ["install-rust-src"]
 install_crate = { rustup_component_name = "clippy" }
 description = "Run clippy"
 command = "cargo"
-args = ["xclippy", "--target=i386-unknown-none", "--",
+args = ["xclippy", "--target=${TARGET}", "--",
 	"-A", "clippy::redundant_field_names",
 	"-A", "clippy::unreadable_literal",
 	"-A", "clippy::identity_op",
@@ -238,7 +175,7 @@ dependencies = ["install-rust-src"]
 install_crate = { rustup_component_name = "clippy" }
 description = "Run clippy"
 command = "cargo"
-args = ["xclippy", "--target=i386-unknown-none", "--",
+args = ["xclippy", "--target=${TARGET}", "--",
 	"-A", "clippy::redundant_field_names",
 	"-A", "clippy::unreadable_literal",
 	"-A", "clippy::identity_op",
