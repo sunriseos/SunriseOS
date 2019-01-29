@@ -3,7 +3,7 @@
 use core::fmt::{Display, Write, Error, Formatter};
 use crate::sync::{Once, SpinLock};
 use crate::io::Io;
-use crate::i386::pio::Pio;
+use crate::arch::i386::pio::Pio;
 
 /// The base IO port of a COM
 #[derive(Debug, Copy, Clone)]

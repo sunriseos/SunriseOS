@@ -1,7 +1,7 @@
 //! Process
 
 use crate::stack::KernelStack;
-use crate::i386::process_switch::*;
+use crate::arch::i386::process_switch::*;
 use crate::paging::process_memory::ProcessMemory;
 use alloc::boxed::Box;
 use alloc::sync::{Arc, Weak};

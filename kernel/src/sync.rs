@@ -8,7 +8,7 @@ use core::fmt;
 use core::mem::ManuallyDrop;
 use core::ops::{Deref, DerefMut};
 pub use self::spin::{Mutex as SpinLock, MutexGuard as SpinLockGuard};
-use crate::i386::instructions::interrupts::*;
+use crate::arch::{enable_interrupts as arch_enable_interrupts, disable_interrupts as arch_disable_interrupts};
 use core::sync::atomic::{AtomicBool, Ordering};
 use crate::scheduler;
 
@@ -24,7 +24,7 @@ fn enable_interrupts() {
     if !INTERRUPT_DISARM.load(Ordering::SeqCst) {
         if let Some(thread) = scheduler::try_get_current_thread() {
             if thread.int_disable_counter.fetch_sub(1, Ordering::SeqCst) == 1 {
-                unsafe { sti() }
+                unsafe { arch_enable_interrupts() }
             }
         } else {
             // TODO: Safety???
@@ -40,7 +40,7 @@ fn disable_interrupts() {
     if !INTERRUPT_DISARM.load(Ordering::SeqCst) {
         if let Some(thread) = scheduler::try_get_current_thread() {
             if thread.int_disable_counter.fetch_add(1, Ordering::SeqCst) == 0 {
-                unsafe { cli() }
+                unsafe { arch_disable_interrupts() }
             }
         } else {
             // TODO: Safety???
@@ -64,7 +64,7 @@ static INTERRUPT_DISARM: AtomicBool = AtomicBool::new(false);
 /// Simply sets [INTERRUPT_DISARM].
 pub unsafe fn permanently_disable_interrupts() {
     INTERRUPT_DISARM.store(true, Ordering::SeqCst);
-    unsafe { cli() }
+    unsafe { arch_disable_interrupts() }
 }
 
 /// SpinLock that disables IRQ.

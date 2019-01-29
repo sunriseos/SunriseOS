@@ -5,12 +5,12 @@
 //! Feature `panic-on-exception` makes the kernel stop and panic when a thread generates
 //! an exception. This is useful for debugging.
 
-use crate::i386::structures::idt::{ExceptionStackFrame, PageFaultErrorCode, Idt};
-use crate::i386::instructions::interrupts::sti;
+use crate::arch::i386::structures::idt::{ExceptionStackFrame, PageFaultErrorCode, Idt};
+use crate::arch::i386::instructions::interrupts::sti;
 use crate::mem::VirtualAddress;
 use crate::paging::kernel_memory::get_kernel_memory;
-use crate::i386::{TssStruct, PrivilegeLevel};
-use crate::i386::gdt;
+use crate::arch::i386::{TssStruct, PrivilegeLevel};
+use crate::arch::i386::gdt;
 use crate::scheduler::get_current_thread;
 use crate::process::{ProcessStruct, ThreadState};
 use crate::sync::SpinLockIRQ;

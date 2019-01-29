@@ -49,13 +49,11 @@ use core::fmt::Write;
 use alloc::prelude::*;
 use crate::utils::io;
 
+pub mod arch;
 pub mod paging;
 pub mod event;
 pub mod error;
 pub mod log_impl;
-#[cfg(any(target_arch = "x86", test))]
-#[macro_use]
-pub mod i386;
 pub mod interrupts;
 pub mod frame_allocator;
 
@@ -82,7 +80,7 @@ pub use crate::heap_allocator::rust_oom;
 #[global_allocator]
 static ALLOCATOR: heap_allocator::Allocator = heap_allocator::Allocator::new();
 
-use crate::i386::stack;
+use crate::arch::i386::stack;
 use crate::paging::{PAGE_SIZE, MappingAccessRights};
 use crate::mem::VirtualAddress;
 use crate::process::{ProcessStruct, ThreadStruct};
@@ -128,7 +126,7 @@ unsafe fn force_double_fault() {
 /// From now on, the kernel's only job will be to respond to IRQs and serve syscalls.
 fn main() {
     info!("Loading all the init processes");
-    for module in i386::multiboot::get_boot_information().module_tags().skip(1) {
+    for module in crate::arch::i386::multiboot::get_boot_information().module_tags().skip(1) {
         info!("Loading {}", module.name());
         let mapped_module = elf_loader::map_grub_module(module);
         let proc = ProcessStruct::new(String::from(module.name()), elf_loader::get_kacs(&mapped_module)).unwrap();
@@ -212,10 +210,10 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 
     // Set up (read: inhibit) the GDT.
     info!("Initializing gdt...");
-    i386::gdt::init_gdt();
+    crate::arch::i386::gdt::init_gdt();
     info!("Gdt initialized");
 
-    i386::multiboot::init(boot_info);
+    crate::arch::i386::multiboot::init(boot_info);
 
     log_impl::init();
 
@@ -290,7 +288,7 @@ unsafe fn do_panic(msg: core::fmt::Arguments<'_>, stackdump_source: Option<stack
     use xmas_elf::ElfFile;
     use crate::elf_loader::MappedGrubModule;
 
-    let mapped_kernel_elf = i386::multiboot::try_get_boot_information()
+    let mapped_kernel_elf = crate::arch::i386::multiboot::try_get_boot_information()
         .and_then(|info| info.module_tags().nth(0))
         .and_then(|module| Some(elf_loader::map_grub_module(module)));
 

@@ -28,7 +28,7 @@ pub mod instructions {
     pub mod tables {
         //! Instructions for loading descriptor tables (GDT, IDT, etc.).
 
-        use crate::i386::structures::gdt::SegmentSelector;
+        use crate::arch::i386::structures::gdt::SegmentSelector;
 
         /// A struct describing a pointer to a descriptor table (GDT / IDT).
         /// This is in a format suitable for giving to 'lgdt' or 'lidt'.
@@ -81,7 +81,7 @@ pub mod instructions {
     pub mod segmentation {
         //! Provides functions to read and write segment registers.
 
-        use crate::i386::structures::gdt::SegmentSelector;
+        use crate::arch::i386::structures::gdt::SegmentSelector;
 
         /// Reload code segment register.
         /// Note this is special since we can not directly move
@@ -147,7 +147,7 @@ pub mod instructions {
 
         /// Returns whether interrupts are enabled.
         pub fn are_enabled() -> bool {
-            use crate::i386::registers::eflags::{self, EFlags};
+            use crate::arch::i386::registers::eflags::{self, EFlags};
 
             eflags::read().contains(EFlags::INTERRUPT_FLAG)
         }
@@ -441,4 +441,18 @@ impl DerefMut for AlignedTssStruct {
     fn deref_mut(&mut self) -> &mut TssStruct {
         &mut self.0
     }
+}
+
+// START ARCH API HERE
+/// Enable interruptions. After calling this function, hardware should call
+/// [crate::event::dispatch_event] whenever it receives an interruption.
+pub unsafe fn enable_interrupts() {
+    instructions::interrupts::sti();
+}
+
+/// Disable interruptions. After calling this function, no hardware should call
+/// [crate::event::dispatch_event]. Interruptions should be queued until either
+/// [enable_interrupts] is called or a process switch is performed.
+pub unsafe fn disable_interrupts() {
+    instructions::interrupts::cli();
 }
