@@ -7,7 +7,7 @@
 //! defined in the event module. It is expected that these pointer will then be
 //! inserted in an architecture-specific interrupt table (such as i386's IDT).
 
-use crate::i386::structures::idt::ExceptionStackFrame;
+use crate::arch::i386::structures::idt::ExceptionStackFrame;
 use crate::devices::pic;
 
 #[allow(clippy::missing_docs_in_private_items)]

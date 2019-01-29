@@ -1,7 +1,7 @@
 //! Types for the Global Descriptor Table and segment selectors.
 
 use core::fmt;
-use crate::i386::PrivilegeLevel;
+use crate::arch::i386::PrivilegeLevel;
 use bit_field::BitField;
 
 /// Specifies which element to load into a segment from

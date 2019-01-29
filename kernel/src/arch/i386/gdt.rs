@@ -12,10 +12,10 @@ use core::ops::{Deref, DerefMut};
 use core::slice;
 use core::fmt;
 
-use crate::i386::{PrivilegeLevel, TssStruct};
-use crate::i386::structures::gdt::SegmentSelector;
-use crate::i386::instructions::tables::{lgdt, sgdt, DescriptorTablePointer};
-use crate::i386::instructions::segmentation::*;
+use crate::arch::i386::{PrivilegeLevel, TssStruct};
+use crate::arch::i386::structures::gdt::SegmentSelector;
+use crate::arch::i386::instructions::tables::{lgdt, sgdt, DescriptorTablePointer};
+use crate::arch::i386::instructions::segmentation::*;
 
 use crate::paging::PAGE_SIZE;
 use crate::paging::{MappingAccessRights, kernel_memory::get_kernel_memory};
@@ -39,7 +39,7 @@ static GLOBAL_LDT: Once<DescriptorTable> = Once::new();
 /// This function should only be called once. Further calls will be silently
 /// ignored.
 pub fn init_gdt() {
-    use crate::i386::instructions::tables::{lldt, ltr};
+    use crate::arch::i386::instructions::tables::{lldt, ltr};
 
     let ldt = GLOBAL_LDT.call_once(DescriptorTable::new);
 

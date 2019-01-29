@@ -54,7 +54,7 @@
 
 use crate::sync::SpinLock;
 use crate::io::Io;
-use crate::i386::pio::Pio;
+use crate::arch::i386::pio::Pio;
 use crate::event::{self, IRQEvent, Waitable};
 use crate::utils::div_ceil;
 

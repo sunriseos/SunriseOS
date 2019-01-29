@@ -3,7 +3,7 @@
 //! Only handles the usual case of two PICs in a cascading setup, where the
 //! SLAVE is setup to cascade to the line 2 of the MASTER.
 
-use crate::i386::pio::Pio;
+use crate::arch::i386::pio::Pio;
 use crate::io::Io;
 use crate::sync::{Once, SpinLockIRQ};
 

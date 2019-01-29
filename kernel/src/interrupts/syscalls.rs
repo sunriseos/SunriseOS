@@ -1,6 +1,6 @@
 //! Syscall implementations
 
-use crate::i386;
+use crate::arch::i386;
 use crate::mem::{VirtualAddress, PhysicalAddress};
 use crate::mem::{UserSpacePtr, UserSpacePtrMut};
 use crate::paging::{MappingAccessRights, mapping::MappingType};

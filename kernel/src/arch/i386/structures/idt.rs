@@ -14,12 +14,12 @@ use core::marker::PhantomData;
 use core::mem;
 use core::ops::{Index, IndexMut};
 use bit_field::BitField;
-use crate::i386::{AlignedTssStruct, TssStruct, PrivilegeLevel};
+use crate::arch::i386::{AlignedTssStruct, TssStruct, PrivilegeLevel};
 use crate::mem::VirtualAddress;
 use crate::paging::{PAGE_SIZE, kernel_memory::get_kernel_memory};
 use alloc::boxed::Box;
-use crate::i386::gdt;
-use crate::i386::structures::gdt::SegmentSelector;
+use crate::arch::i386::gdt;
+use crate::arch::i386::structures::gdt::SegmentSelector;
 
 /// An Interrupt Descriptor Table with 256 entries.
 ///
@@ -427,7 +427,7 @@ impl Idt {
 
     /// Loads the IDT in the CPU using the `lidt` command.
     pub fn load(&'static self) {
-        use crate::i386::instructions::tables::{lidt, DescriptorTablePointer};
+        use crate::arch::i386::instructions::tables::{lidt, DescriptorTablePointer};
         use core::mem::size_of;
 
         let ptr = DescriptorTablePointer {
@@ -576,7 +576,7 @@ impl<F> IdtEntry<F> {
     /// The function returns a mutable reference to the entry's options that allows
     /// further customization.
     pub unsafe fn set_interrupt_gate_addr(&mut self, addr: u32) -> &mut EntryOptions {
-        use crate::i386::instructions::segmentation;
+        use crate::arch::i386::instructions::segmentation;
 
         self.pointer_low = addr as u16;
         self.pointer_high = (addr >> 16) as u16;
@@ -652,7 +652,7 @@ impl_set_handler_fn!(PageFaultHandlerFunc);
 ///
 /// Technically, this represents a subset of [SystemDescriptorTypes].
 ///
-/// [SystemDescriptorTypes]: crate::i386::gdt::SystemDescriptorTypes
+/// [SystemDescriptorTypes]: crate::arch::i386::gdt::SystemDescriptorTypes
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
 #[allow(clippy::missing_docs_in_private_items)]

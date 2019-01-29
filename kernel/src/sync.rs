@@ -8,7 +8,7 @@ use core::fmt;
 use core::mem::ManuallyDrop;
 use core::ops::{Deref, DerefMut};
 pub use self::spin::{Mutex as SpinLock, MutexGuard as SpinLockGuard};
-use crate::i386::instructions::interrupts;
+use crate::arch::{enable_interrupts as arch_enable_interrupts, disable_interrupts as arch_disable_interrupts};
 use core::sync::atomic::{AtomicBool, Ordering};
 
 /// Placeholder for future Mutex implementation.
@@ -31,7 +31,7 @@ static INTERRUPT_DISARM: AtomicBool = AtomicBool::new(false);
 /// Simply sets [INTERRUPT_DISARM].
 pub unsafe fn permanently_disable_interrupts() {
     INTERRUPT_DISARM.store(true, Ordering::SeqCst);
-    unsafe { interrupts::cli() }
+    unsafe { arch_disable_interrupts(); }
 }
 
 /// SpinLock that disables IRQ.
@@ -91,11 +91,9 @@ impl<T: ?Sized> SpinLockIRQ<T> {
             let internalguard = self.internal.lock();
             SpinLockIRQGuard(ManuallyDrop::new(internalguard), false)
         } else {
-            // Save current interrupt state.
-            let saved_intpt_flag = interrupts::are_enabled();
+            // Save current interrupt state and disable interruptions.
+            let saved_intpt_flag = unsafe { arch_disable_interrupts() };
 
-            // Disable interruptions
-            unsafe { interrupts::cli(); }
 
             let internalguard = self.internal.lock();
             SpinLockIRQGuard(ManuallyDrop::new(internalguard), saved_intpt_flag)
@@ -108,11 +106,8 @@ impl<T: ?Sized> SpinLockIRQ<T> {
             self.internal.try_lock()
                 .map(|v| SpinLockIRQGuard(ManuallyDrop::new(v), false))
         } else {
-            // Save current interrupt state.
-            let saved_intpt_flag = interrupts::are_enabled();
-
-            // Disable interruptions
-            unsafe { interrupts::cli(); }
+            // Save current interrupt state and disable interruptions.
+            let saved_intpt_flag = unsafe { arch_disable_interrupts() };
 
             // Lock spinlock
             let internalguard = self.internal.try_lock();
@@ -123,7 +118,7 @@ impl<T: ?Sized> SpinLockIRQ<T> {
             } else {
                 // Else, restore interrupt state
                 if saved_intpt_flag {
-                    unsafe { interrupts::sti(); }
+                    unsafe { arch_enable_interrupts() };
                 }
                 None
             }
@@ -161,7 +156,7 @@ impl<'a, T: ?Sized + 'a> Drop for SpinLockIRQGuard<'a, T> {
 
         // Restore irq
         if self.1 {
-            unsafe { interrupts::sti(); }
+            unsafe { arch_enable_interrupts(); }
         }
 
         // TODO: Enable preempt

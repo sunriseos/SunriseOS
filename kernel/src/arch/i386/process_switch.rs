@@ -3,10 +3,10 @@
 //! This modules describe low-level functions and structures needed to perform a process switch
 
 use crate::process::ThreadStruct;
-use crate::i386::gdt;
+use crate::arch::i386::gdt;
 use alloc::sync::Arc;
 use core::mem::size_of;
-use crate::i386::TssStruct;
+use crate::arch::i386::TssStruct;
 
 /// The hardware context of a paused thread. It contains just enough registers to get the thread
 /// running again.

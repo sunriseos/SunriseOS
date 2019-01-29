@@ -5,7 +5,7 @@ mod filter;
 use log::{self, Log, Metadata, Record, LevelFilter};
 use crate::devices::rs232::SerialLogger;
 use core::fmt::Write;
-use crate::i386::multiboot::get_boot_information;
+use crate::arch::i386::multiboot::get_boot_information;
 use crate::sync::{RwLock, Once};
 use crate::scheduler;
 
