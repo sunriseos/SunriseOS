@@ -455,3 +455,20 @@ pub unsafe fn disable_interrupts() {
     instructions::interrupts::cli();
     backup
 }
+
+/// See [arch::stub::get_cmdline]
+pub fn get_cmdline() -> &'static str {
+    if let Some(cmdlinetag) = multiboot::get_boot_information().command_line_tag() {
+        cmdlinetag.command_line()
+    } else {
+        "debug"
+    }
+}
+
+/// See [arch::stub::get_logger]
+///
+/// On i386, we return the RS232 SerialLogger.
+pub fn get_logger() -> impl core::fmt::Write {
+    use crate::devices::rs232::SerialLogger;
+    SerialLogger
+}

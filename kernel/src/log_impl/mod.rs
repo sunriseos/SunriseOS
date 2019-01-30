@@ -3,9 +3,9 @@
 mod filter;
 
 use log::{self, Log, Metadata, Record, LevelFilter};
-use crate::devices::rs232::SerialLogger;
+use crate::arch::get_logger;
 use core::fmt::Write;
-use crate::arch::i386::multiboot::get_boot_information;
+use crate::arch::get_cmdline;
 use crate::sync::{RwLock, Once};
 use crate::scheduler;
 
@@ -22,9 +22,9 @@ impl Log for Logger {
     fn log(&self, record: &Record<'_>) {
         if self.filter.read().matches(record) {
             if let Some(thread) = scheduler::try_get_current_thread() {
-                writeln!(SerialLogger, "[{}] - {} - {} - {}", record.level(), record.target(), thread.process.name, record.args());
+                writeln!(get_logger(), "[{}] - {} - {} - {}", record.level(), record.target(), thread.process.name, record.args());
             } else {
-                writeln!(SerialLogger, "[{}] - {} - {}", record.level(), record.target(), record.args());
+                writeln!(get_logger(), "[{}] - {} - {}", record.level(), record.target(), record.args());
             }
         }
     }
@@ -48,7 +48,6 @@ pub fn early_init() {
 /// Reinitializes the logger using the cmdline. This requires the heap.
 pub fn init() {
     let logger = LOGGER.r#try().expect("early_init to be called before init");
-    let cmdline = get_boot_information().command_line_tag().unwrap().command_line();
-    let newfilter = filter::Builder::new().parse(cmdline).build();
+    let newfilter = filter::Builder::new().parse(get_cmdline()).build();
     *logger.filter.write() = newfilter;
 }
