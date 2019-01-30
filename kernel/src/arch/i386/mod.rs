@@ -7,6 +7,7 @@
 use alloc::boxed::Box;
 use core::ops::{Deref, DerefMut};
 
+pub mod interrupts;
 #[macro_use]
 pub mod registers;
 pub mod stack;

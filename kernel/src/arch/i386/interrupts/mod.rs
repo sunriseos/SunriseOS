@@ -12,32 +12,16 @@ use crate::paging::kernel_memory::get_kernel_memory;
 use crate::arch::i386::{TssStruct, PrivilegeLevel};
 use crate::arch::i386::gdt;
 use crate::scheduler::get_current_thread;
-use crate::process::{ProcessStruct, ThreadState};
-use crate::sync::SpinLockIRQ;
-use core::sync::atomic::Ordering;
+use crate::process::ProcessStruct;
 
 use core::fmt::Arguments;
 use crate::sync::SpinLock;
 use crate::devices::pic;
 use crate::scheduler;
+use crate::syscalls;
+use crate::utils::check_thread_killed;
 
 mod irq;
-mod syscalls;
-
-/// Checks if our thread was killed, in which case unschedule ourselves.
-///
-/// # Note
-///
-/// As this function will be the last that will be called by a thread before dying,
-/// caller must make sure all of its scope variables are ok to be leaked.
-pub fn check_thread_killed() {
-    if scheduler::get_current_thread().state.load(Ordering::SeqCst) == ThreadState::Killed {
-        let lock = SpinLockIRQ::new(());
-        loop { // in case of spurious wakeups
-            let _ = scheduler::unschedule(&lock, lock.lock());
-        }
-    }
-}
 
 /// Panics with an informative message.
 fn panic_on_exception(exception_string: Arguments<'_>, exception_stack_frame: &ExceptionStackFrame) -> ! {

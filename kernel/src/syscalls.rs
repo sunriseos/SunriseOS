@@ -14,7 +14,7 @@ use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use crate::ipc;
-use super::check_thread_killed;
+use crate::utils::check_thread_killed;
 use crate::error::UserspaceError;
 use kfs_libkern::{nr, SYSCALL_NAMES, MemoryInfo, MemoryAttributes, MemoryPermissions};
 use bit_field::BitArray;

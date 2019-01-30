@@ -54,9 +54,8 @@ pub mod paging;
 pub mod event;
 pub mod error;
 pub mod log_impl;
-pub mod interrupts;
 pub mod frame_allocator;
-
+pub mod syscalls;
 pub mod heap_allocator;
 pub mod devices;
 pub mod sync;
@@ -221,7 +220,7 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     info!("Initialized PIT");
 
     info!("Enabling interrupts");
-    unsafe { interrupts::init(); }
+    unsafe { arch::i386::interrupts::init(); }
 
     //info!("Disable timer interrupt");
     //devices::pic::get().mask(0);
