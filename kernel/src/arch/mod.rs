@@ -6,10 +6,19 @@
 //! As such, it is required to gate access to those APIs behind a `cfg`, to avoid
 //! breaking builds on other architectures.
 
-#[cfg(target_arch = "x86")]
-pub mod i386;
-#[cfg(target_arch = "x86")]
-use self::i386 as arch;
+use cfg_if::cfg_if;
+
+// Unconditionally include stub for documentation purposes.
+pub mod stub;
+
+cfg_if! {
+    if #[cfg(target_arch = "x86")] {
+        pub mod i386;
+        use self::i386 as arch;
+    } else {
+        use self::stub as arch;
+    }
+}
 
 // Reexport public API
 pub use self::arch::{enable_interrupts, disable_interrupts};
