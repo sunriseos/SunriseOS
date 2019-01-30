@@ -21,4 +21,6 @@ cfg_if! {
 }
 
 // Reexport public API
-pub use self::arch::{enable_interrupts, disable_interrupts};
+pub use self::arch::{
+    enable_interrupts, disable_interrupts, get_cmdline, get_logger
+};
