@@ -15,7 +15,6 @@
 use super::{PhysicalMemRegion, FrameAllocatorTrait, FrameAllocatorTraitPrivate};
 
 use crate::paging::PAGE_SIZE;
-use multiboot2::BootInformation;
 use crate::sync::SpinLock;
 use alloc::vec::Vec;
 use crate::utils::{check_aligned, check_nonzero_length};
@@ -302,7 +301,8 @@ impl FrameAllocatorTrait for FrameAllocator {
 /// Initialize the [FrameAllocator] by parsing the multiboot information
 /// and marking some memory areas as unusable
 #[cfg(not(test))]
-pub fn init(boot_info: &BootInformation) {
+pub fn init() {
+    let boot_info = crate::arch::i386::multiboot::get_boot_information();
     let mut allocator = FRAME_ALLOCATOR.lock();
 
     let memory_map_tag = boot_info.memory_map_tag()

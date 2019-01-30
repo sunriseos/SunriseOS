@@ -456,12 +456,16 @@ pub unsafe fn disable_interrupts() {
 }
 
 /// See [arch::stub::get_cmdline]
+///
+/// On i386, it will return the cmdline from the multiboot information. Before
+/// multiboot is properly initialized, or if the commandline tag is missing from
+/// the multiboot information structure, it will return the default value
+/// "debug".
 pub fn get_cmdline() -> &'static str {
-    if let Some(cmdlinetag) = multiboot::get_boot_information().command_line_tag() {
-        cmdlinetag.command_line()
-    } else {
-        "debug"
-    }
+    multiboot::try_get_boot_information()
+        .and_then(|v| v.command_line_tag())
+        .map(|v| v.command_line())
+        .unwrap_or("debug")
 }
 
 /// See [arch::stub::get_logger]
@@ -470,4 +474,83 @@ pub fn get_cmdline() -> &'static str {
 pub fn get_logger() -> impl core::fmt::Write {
     use crate::devices::rs232::SerialLogger;
     SerialLogger
+}
+
+/// The entry point of our kernel.
+///
+/// This function is jump'd into from the bootstrap code, which:
+///
+/// * enabled paging,
+/// * gave us a valid KernelStack,
+/// * mapped grub's multiboot information structure in KernelLand (its address in $ebx),
+///
+/// What we do is just bzero the .bss, and call a rust function, passing it the content of $ebx.
+#[cfg(target_os = "none")]
+#[no_mangle]
+pub unsafe extern fn start() -> ! {
+    asm!("
+        // Memset the bss. Hopefully memset doesn't actually use the bss...
+        mov eax, BSS_END
+        sub eax, BSS_START
+        push eax
+        push 0
+        push BSS_START
+        call memset
+        add esp, 12
+
+        // Save multiboot infos addr present in ebx
+        push ebx
+        call $0" : : "i"(common_start as *const u8) : : "intel", "volatile");
+    core::intrinsics::unreachable()
+}
+
+/// CRT0 starts here.
+///
+/// This function takes care of initializing the kernel, before calling the main function.
+#[cfg(target_os = "none")]
+extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
+    use crate::devices::rs232::{SerialAttributes, SerialColor};
+    use crate::arch::get_logger;
+    use core::fmt::Write;
+
+    crate::log_impl::early_init();
+
+    // Say hello to the world
+    let _ = writeln!(get_logger(), "\n# Welcome to {}KFS{}!\n",
+        SerialAttributes::fg(SerialColor::LightCyan),
+        SerialAttributes::default());
+
+    // Parse the multiboot infos
+    info!("Parsing multiboot informations");
+    let boot_info = unsafe { multiboot2::load(multiboot_info_addr) };
+    crate::arch::i386::multiboot::init(boot_info);
+
+    // Setup frame allocator
+    info!("Initializing frame allocator");
+    crate::frame_allocator::init();
+
+    // Set up (read: inhibit) the GDT.
+    info!("Initializing gdt...");
+    crate::arch::i386::gdt::init_gdt();
+
+    crate::log_impl::init();
+
+    info!("Initializing PIT");
+    unsafe { crate::devices::pit::init_channel_0() };
+
+    info!("Enabling interrupts");
+    unsafe { interrupts::init(); }
+
+    info!("Becoming the first process");
+    unsafe { crate::scheduler::create_first_process() };
+
+    info!("Calling main()");
+
+    crate::main();
+    // Die !
+    // We shouldn't reach this...
+    loop {
+        #[cfg(target_os = "none")]
+        unsafe { asm!("HLT"); }
+    }
 }
