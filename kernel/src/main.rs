@@ -130,7 +130,8 @@ fn main() {
     info!("Loading all the init processes");
     for module in i386::multiboot::get_boot_information().module_tags().skip(1) {
         info!("Loading {}", module.name());
-        let mapped_module = elf_loader::map_grub_module(module);
+        let mapped_module = elf_loader::map_grub_module(module)
+            .unwrap_or_else(|_| panic!("Unable to find available memory for module {}", module.name()));
         let proc = ProcessStruct::new(String::from(module.name()), elf_loader::get_kacs(&mapped_module)).unwrap();
         let (ep, sp) = {
                 let mut pmemlock = proc.pmemory.lock();
@@ -292,7 +293,7 @@ unsafe fn do_panic(msg: core::fmt::Arguments<'_>, stackdump_source: Option<stack
 
     let mapped_kernel_elf = i386::multiboot::try_get_boot_information()
         .and_then(|info| info.module_tags().nth(0))
-        .and_then(|module| Some(elf_loader::map_grub_module(module)));
+        .and_then(|module| elf_loader::map_grub_module(module).ok());
 
     /// Gets the symbol table of a mapped module.
     fn get_symbols<'a>(mapped_kernel_elf: &'a Option<MappedGrubModule<'_>>) -> Option<(&'a ElfFile<'a>, &'a[Entry32])> {
