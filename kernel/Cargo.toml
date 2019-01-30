@@ -32,6 +32,7 @@ rustc-demangle = "0.1"
 failure = { version = "0.1", default-features = false, features = ["derive"] }
 bitfield = "0.13"
 mashup = "0.1.9"
+cfg-if = "0.1"
 
 [dependencies.smallvec]
 default-features = false

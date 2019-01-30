@@ -444,17 +444,13 @@ impl DerefMut for AlignedTssStruct {
 }
 
 // START ARCH API HERE
-/// Enable interruptions. After calling this function, hardware should call
-/// [crate::event::dispatch_event] whenever it receives an interruption.
+/// See [arch::stub::enable_interrupts]
 pub unsafe fn enable_interrupts() {
     instructions::interrupts::sti();
 }
 
-/// Disable interruptions, returning true if they were previously enabled, or
-/// false if they were already disabled. After calling this function, no hardware
-/// should call [crate::event::dispatch_event]. Interruptions should be queued
-/// until either [enable_interrupts] is called or a process switch is performed.
-pub unsafe fn disable_interrupts() -> bool {
+/// See [arch::stub::disable_interrupts]
+pub unsafe fn disable_interrupts() {
     let backup = instructions::interrupts::are_enabled();
     instructions::interrupts::cli();
     backup
