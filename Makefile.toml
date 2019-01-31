@@ -178,7 +178,7 @@ workspace = false
 description = "Runs the bootable ISO in qemu with gdb support"
 dependencies = ["iso"]
 command = "qemu-system-i386"
-args = ["-cdrom", "os.iso", "-serial", "stdio", "-vnc", "${VNC_PORT}", "-no-reboot", "-gdb", "tcp::${GDB_PORT}", "-S", "-d", "int,cpu_reset"]
+args = ["-cdrom", "os.iso", "-serial", "stdio", "-vnc", "${VNC_PORT}", "-no-reboot", "-gdb", "tcp::${GDB_PORT}", "-S", "-d", "cpu_reset"]
 
 [tasks.doc]
 workspace = false
