@@ -476,6 +476,12 @@ pub fn get_logger() -> impl core::fmt::Write {
     SerialLogger
 }
 
+/// See [arch::stub::force_logger_unlock]
+pub unsafe fn force_logger_unlock() {
+    use crate::devices::rs232::SerialLogger;
+    SerialLogger.force_unlock();
+}
+
 /// The entry point of our kernel.
 ///
 /// This function is jump'd into from the bootstrap code, which:
