@@ -283,7 +283,7 @@ pub unsafe fn dump_stack<'a>(source: &StackDumpSource, elf_symbols: Option<(&Elf
         let pmemory = process.pmemory.lock();
 
         // does esp point to a mapping ?
-        if let Ok(QueryMemory::Used(mapping)) = pmemory.query_memory(VirtualAddress(esp)) {
+        if let QueryMemory::Used(mapping) = pmemory.query_memory(VirtualAddress(esp)) {
             // a stack would at least be readable and writable
             if mapping.flags().contains(MappingAccessRights::u_rw()) {
                 let stack_slice = unsafe { ::core::slice::from_raw_parts(mapping.address().addr() as *const u8,

@@ -413,7 +413,7 @@ fn unmap_shared_memory(handle: u32, addr: usize, size: usize) -> Result<(), User
     let addr = VirtualAddress(addr);
     let mut memlock = curproc.pmemory.lock();
     {
-        let qmem = memlock.query_memory(addr)?;
+        let qmem = memlock.query_memory(addr);
         let mapping = qmem.mapping();
 
         // Check that the given addr/size covers the full mapping.
@@ -447,7 +447,7 @@ fn unmap_shared_memory(handle: u32, addr: usize, size: usize) -> Result<(), User
 fn query_memory(mut meminfo: UserSpacePtrMut<MemoryInfo>, _unk: usize, addr: usize) -> Result<usize, UserspaceError> {
     let curproc = scheduler::get_current_process();
     let memlock = curproc.pmemory.lock();
-    let qmem = memlock.query_memory(VirtualAddress(addr))?;
+    let qmem = memlock.query_memory(VirtualAddress(addr));
     let mapping = qmem.mapping();
     *meminfo = MemoryInfo {
         baseaddr: mapping.address().addr(),

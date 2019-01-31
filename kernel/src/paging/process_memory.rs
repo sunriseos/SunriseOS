@@ -311,14 +311,9 @@ impl ProcessMemory {
         Ok(mapping)
     }
 
-    /// Reads the state of the mapping at a given address
-    ///
-    /// # Error
-    ///
-    /// Returns a KernelError if address does not fall in UserLand.
-    pub fn query_memory(&self, address: VirtualAddress) -> Result<QueryMemory<'_>, KernelError> {
-        UserLand::check_contains_address(address)?;
-        Ok(self.userspace_bookkeping.mapping_at(address))
+    /// Reads the state of the mapping at a given address.
+    pub fn query_memory(&self, address: VirtualAddress) -> QueryMemory<'_> {
+        self.userspace_bookkeping.mapping_at(address)
     }
 
     /// Shrink the mapping at `address` to `new_size`.
