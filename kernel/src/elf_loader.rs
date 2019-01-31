@@ -21,6 +21,7 @@ use crate::mem::{VirtualAddress, PhysicalAddress};
 use crate::paging::{PAGE_SIZE, MappingAccessRights, process_memory::ProcessMemory, kernel_memory::get_kernel_memory};
 use crate::frame_allocator::PhysicalMemRegion;
 use crate::utils::{self, align_up};
+use crate::error::KernelError;
 
 /// Represents a grub module once mapped in kernel memory
 #[derive(Debug)]
@@ -35,19 +36,19 @@ pub struct MappedGrubModule<'a> {
     pub elf: Result<ElfFile<'a>, &'static str>
 }
 
-// TODO: map_grub_module panic
-// BODY: map_grub_module panics if virtual space is exhausted,
-// BODY: but should return an error instead, as it is used in the panic handler itself.
 /// Maps a grub module, which already lives in reserved physical memory, into the KernelLand.
-pub fn map_grub_module(module: &ModuleTag) -> MappedGrubModule<'_> {
+///
+/// # Error:
+/// 
+/// * VirtualMemoryExhaustion: cannot find virtual memory where to map it.
+pub fn map_grub_module(module: &ModuleTag) -> Result<MappedGrubModule<'_>, KernelError> {
     let start_address_aligned = PhysicalAddress(utils::align_down(module.start_address() as usize, PAGE_SIZE));
     // Use start_address_aligned to calculate the number of pages, to avoid an off-by-one.
     let module_len_aligned = utils::align_up(module.end_address() as usize - start_address_aligned.addr(), PAGE_SIZE);
 
     let mapping_addr = {
         let mut page_table = get_kernel_memory();
-        let vaddr = page_table.find_virtual_space(module_len_aligned)
-            .unwrap_or_else(|_| panic!("Unable to find available memory for module {}", module.name()));
+        let vaddr = page_table.find_virtual_space(module_len_aligned)?;
 
         let module_phys_location = unsafe {
             // safe, they were not tracked before
@@ -67,12 +68,12 @@ pub fn map_grub_module(module: &ModuleTag) -> MappedGrubModule<'_> {
         slice::from_raw_parts(start.addr() as *const u8, len)
     });
 
-    MappedGrubModule {
+    Ok(MappedGrubModule {
         mapping_addr,
         start,
         len,
         elf
-    }
+    })
 }
 
 impl<'a> Drop for MappedGrubModule<'a> {
