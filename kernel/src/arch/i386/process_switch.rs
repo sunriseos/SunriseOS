@@ -191,7 +191,7 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
 
 /// Prepares the thread for its first schedule by writing default values at the start of the
 /// stack that will be loaded in the registers in schedule-in.
-/// See process_switch() documentation for more details.
+/// See [arch::stub::prepare_for_first_schedule] and [process_switch] documentation for more details.
 ///
 /// # Safety
 ///

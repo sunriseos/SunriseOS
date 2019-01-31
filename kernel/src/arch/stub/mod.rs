@@ -5,6 +5,9 @@
 //! implementation of the arch-specific component, and to provide the test builds
 //! with a simple implementation.
 
+use alloc::sync::Arc;
+use crate::process::ThreadStruct;
+
 /// Enable interruptions. After calling this function, hardware should call
 /// [crate::event::dispatch_event] whenever it receives an interruption.
 pub unsafe fn enable_interrupts() {
@@ -48,4 +51,29 @@ pub fn get_logger() -> impl core::fmt::Write {
 /// returned by [get_logger]. This is only used by the panic handling, to ensure
 /// we don't deadlock if we panic'd in the logging implementation.
 pub unsafe fn force_logger_unlock() {
+}
+
+/// The hardware context of a paused thread. It contains just enough registers to get the thread
+/// running again.
+///
+/// All other registers are to be saved on the thread's kernel stack before scheduling,
+/// and restored right after re-schedule.
+///
+/// Stored in the ThreadStruct of every thread.
+#[derive(Debug, Default)]
+pub struct ThreadHardwareContext;
+
+pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_current: Arc<ThreadStruct>) -> Arc<ThreadStruct> {
+    unimplemented!("Can't process switch on stub architecture")
+}
+
+/// Prepares the thread for its first schedule, prepopulating the hwcontext and
+/// setting up the necessary environment for [process_switch] to work correctly.
+/// This can involve pushing values on the stack, setting specific registers,
+/// etc... See [process_switch] documentation for more details.
+///
+/// # Safety
+///
+/// UB if called on a thread after it was scheduled for the first time.
+pub unsafe fn prepare_for_first_schedule(t: &ThreadStruct, entrypoint: usize, userspace_stack: usize) {
 }

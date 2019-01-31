@@ -560,3 +560,5 @@ extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
         unsafe { asm!("HLT"); }
     }
 }
+
+pub use process_switch::{ThreadHardwareContext, process_switch, prepare_for_first_schedule};
