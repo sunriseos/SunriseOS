@@ -179,18 +179,17 @@ fn main() {
 ///
 /// [dump_stack]: crate::stack::dump_stack
 unsafe fn do_panic(msg: core::fmt::Arguments<'_>, stackdump_source: Option<stack::StackDumpSource>) -> ! {
+    use crate::arch::{get_logger, force_logger_unlock};
 
     // Disable interrupts forever!
     unsafe { sync::permanently_disable_interrupts(); }
     // Don't deadlock in the logger
-    unsafe { SerialLogger.force_unlock(); }
+    unsafe { force_logger_unlock(); }
 
     //todo: force unlock the KernelMemory lock
     //      and also the process memory lock for userspace stack dumping (only if panic-on-excetpion ?).
 
-    use crate::devices::rs232::SerialLogger;
-
-    let _ = writeln!(SerialLogger, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\
+    let _ = writeln!(get_logger(), "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\
                                     ! Panic! at the disco\n\
                                     ! {}\n\
                                     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
@@ -223,7 +222,7 @@ unsafe fn do_panic(msg: core::fmt::Arguments<'_>, stackdump_source: Option<stack
     let elf_and_st = get_symbols(&mapped_kernel_elf);
 
     if elf_and_st.is_none() {
-        let _ = writeln!(SerialLogger, "Panic handler: Failed to get kernel elf symbols");
+        let _ = writeln!(get_logger(), "Panic handler: Failed to get kernel elf symbols");
     }
 
     // Then print the stack
@@ -236,9 +235,9 @@ unsafe fn do_panic(msg: core::fmt::Arguments<'_>, stackdump_source: Option<stack
         crate::stack::KernelStack::dump_current_stack(elf_and_st)
     }
 
-    let _ = writeln!(SerialLogger, "Thread : {:#x?}", scheduler::try_get_current_thread());
+    let _ = writeln!(get_logger(), "Thread : {:#x?}", scheduler::try_get_current_thread());
 
-    let _ = writeln!(SerialLogger, "!!!!!!!!!!!!!!!END PANIC!!!!!!!!!!!!!!");
+    let _ = writeln!(get_logger(), "!!!!!!!!!!!!!!!END PANIC!!!!!!!!!!!!!!");
 
     loop { unsafe { asm!("HLT"); } }
 }

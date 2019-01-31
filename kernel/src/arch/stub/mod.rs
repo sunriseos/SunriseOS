@@ -45,3 +45,9 @@ pub fn get_logger() -> impl core::fmt::Write {
     }
     EmptyLogger
 }
+
+/// Force unlocks any mutex that might be locking the Write implementation
+/// returned by [get_logger]. This is only used by the panic handling, to ensure
+/// we don't deadlock if we panic'd in the logging implementation.
+pub unsafe fn force_logger_unlock() {
+}

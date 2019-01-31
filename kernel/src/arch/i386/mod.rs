@@ -558,3 +558,9 @@ pub fn get_logger() -> impl core::fmt::Write {
     use crate::devices::rs232::SerialLogger;
     SerialLogger
 }
+
+/// See [arch::stub::force_logger_unlock]
+pub unsafe fn force_logger_unlock() {
+    use crate::devices::rs232::SerialLogger;
+    SerialLogger.force_unlock();
+}
