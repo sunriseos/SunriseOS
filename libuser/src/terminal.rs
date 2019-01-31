@@ -67,9 +67,6 @@ pub enum WindowSize {
 
 impl Terminal {
     /// Creates a new Window of the requested size for terminal usage.
-    // TODO: Review Terminal::new cast_sign_loss and cast_possible_wrap
-    // BODY: Ping @orycterope. I'm pretty sure they're correct but just want to
-    // BODY: make sure it looks good with you since it's originally your code.
     #[allow(clippy::cast_sign_loss)]
     #[allow(clippy::cast_possible_wrap)]
     pub fn new(size: WindowSize) -> Result<Self, Error> {
@@ -245,9 +242,6 @@ impl Terminal {
     /// # Panics
     ///
     /// Panics if pos makes writing the glyph overflow the screen
-    // TODO: Review Terminal::display_glyph_in_box cast_sign_loss and cast_possible_wrap
-    // BODY: Ping @orycterope. I'm pretty sure they're correct but just want to
-    // BODY: make sure it looks good with you since it's originally your code.
     #[allow(clippy::cast_sign_loss)]
     #[allow(clippy::cast_possible_wrap)]
     #[allow(clippy::too_many_arguments)]
