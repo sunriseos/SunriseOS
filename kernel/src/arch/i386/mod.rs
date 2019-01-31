@@ -564,3 +564,5 @@ pub unsafe fn force_logger_unlock() {
     use crate::devices::rs232::SerialLogger;
     SerialLogger.force_unlock();
 }
+
+pub use self::process_switch::{ThreadHardwareContext, process_switch, prepare_for_first_schedule};

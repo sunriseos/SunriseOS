@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 use core::mem;
 
 use crate::process::{ProcessStruct, ThreadStruct, ThreadState};
-use crate::arch::i386::process_switch::process_switch;
+use crate::arch::process_switch;
 use crate::sync::{Lock, SpinLockIRQ, SpinLockIRQGuard};
 use core::sync::atomic::Ordering;
 use crate::error::{UserspaceError};
@@ -311,7 +311,7 @@ pub fn scheduler_first_schedule<F: FnOnce()>(current_thread: Arc<ThreadStruct>, 
 
     unsafe {
         // this is a new process, no SpinLockIRQ is held
-        crate::arch::i386::instructions::interrupts::sti();
+        crate::arch::enable_interrupts();
     }
 
     jump_to_entrypoint()
