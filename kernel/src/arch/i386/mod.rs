@@ -444,43 +444,7 @@ impl DerefMut for AlignedTssStruct {
     }
 }
 
-// START ARCH API HERE
-/// See [arch::stub::enable_interrupts]
-pub unsafe fn enable_interrupts() {
-    instructions::interrupts::sti();
-}
-
-/// See [arch::stub::disable_interrupts]
-pub unsafe fn disable_interrupts() {
-    instructions::interrupts::cli();
-}
-
-/// See [arch::stub::get_cmdline]
-///
-/// On i386, it will return the cmdline from the multiboot information. Before
-/// multiboot is properly initialized, or if the commandline tag is missing from
-/// the multiboot information structure, it will return the default value
-/// "debug".
-pub fn get_cmdline() -> &'static str {
-    multiboot::try_get_boot_information()
-        .and_then(|v| v.command_line_tag())
-        .map(|v| v.command_line())
-        .unwrap_or("debug")
-}
-
-/// See [arch::stub::get_logger]
-///
-/// On i386, we return the RS232 SerialLogger.
-pub fn get_logger() -> impl core::fmt::Write {
-    use crate::devices::rs232::SerialLogger;
-    SerialLogger
-}
-
-/// See [arch::stub::force_logger_unlock]
-pub unsafe fn force_logger_unlock() {
-    use crate::devices::rs232::SerialLogger;
-    SerialLogger.force_unlock();
-}
+// CRT0 here
 
 /// The entry point of our kernel.
 ///
@@ -559,6 +523,44 @@ extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
         #[cfg(target_os = "none")]
         unsafe { asm!("HLT"); }
     }
+}
+
+// START ARCH API HERE
+/// See [arch::stub::enable_interrupts]
+pub unsafe fn enable_interrupts() {
+    instructions::interrupts::sti();
+}
+
+/// See [arch::stub::disable_interrupts]
+pub unsafe fn disable_interrupts() {
+    instructions::interrupts::cli();
+}
+
+/// See [arch::stub::get_cmdline]
+///
+/// On i386, it will return the cmdline from the multiboot information. Before
+/// multiboot is properly initialized, or if the commandline tag is missing from
+/// the multiboot information structure, it will return the default value
+/// "debug".
+pub fn get_cmdline() -> &'static str {
+    multiboot::try_get_boot_information()
+        .and_then(|v| v.command_line_tag())
+        .map(|v| v.command_line())
+        .unwrap_or("debug")
+}
+
+/// See [arch::stub::get_logger]
+///
+/// On i386, we return the RS232 SerialLogger.
+pub fn get_logger() -> impl core::fmt::Write {
+    use crate::devices::rs232::SerialLogger;
+    SerialLogger
+}
+
+/// See [arch::stub::force_logger_unlock]
+pub unsafe fn force_logger_unlock() {
+    use crate::devices::rs232::SerialLogger;
+    SerialLogger.force_unlock();
 }
 
 pub use process_switch::{ThreadHardwareContext, process_switch, prepare_for_first_schedule};
