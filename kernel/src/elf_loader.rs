@@ -13,7 +13,6 @@
 //! the built-ins to the kernel, and load them with a primitive ELF loader. This loader
 //! does not do any dynamic loading or provide ASLR (though that is up for change)
 
-use multiboot2::ModuleTag;
 use core::slice;
 use xmas_elf::ElfFile;
 use xmas_elf::program::{ProgramHeader, Type::Load, SegmentData};
@@ -22,9 +21,22 @@ use crate::paging::{PAGE_SIZE, MappingAccessRights, process_memory::ProcessMemor
 use crate::frame_allocator::PhysicalMemRegion;
 use crate::utils::{self, align_up};
 
-/// Represents a grub module once mapped in kernel memory
+/// Abstract representation of a Kernel Internal Process (KIP). Depending on the
+/// platform, KIPs may be passed through different mechanism. For instance, on
+/// IBM/PCs, they might be passed as GRUB modules, whereas on the Jetson TX1, it
+/// might be passed as an INI1. This trait abstracts over those differences.
+pub trait Module {
+    /// Physical address defining the start of the KIP.
+    fn start_address(&self) -> PhysicalAddress;
+    /// Physical address defining the end of the KIP.
+    fn end_address(&self) -> PhysicalAddress;
+    /// Name of the KIP. Used as a process name.
+    fn name(&self) -> &str;
+}
+
+/// Represents a [Module] once mapped in kernel memory
 #[derive(Debug)]
-pub struct MappedGrubModule<'a> {
+pub struct MappedModule<'a> {
     /// The address of the mapping, in KernelLand.
     pub mapping_addr: VirtualAddress,
     /// The start of the module in the mapping, if it was not page aligned.
@@ -39,10 +51,10 @@ pub struct MappedGrubModule<'a> {
 // BODY: map_grub_module panics if virtual space is exhausted,
 // BODY: but should return an error instead, as it is used in the panic handler itself.
 /// Maps a grub module, which already lives in reserved physical memory, into the KernelLand.
-pub fn map_grub_module(module: &ModuleTag) -> MappedGrubModule<'_> {
-    let start_address_aligned = PhysicalAddress(utils::align_down(module.start_address() as usize, PAGE_SIZE));
+pub fn map_module(module: &impl Module) -> MappedModule<'_> {
+    let start_address_aligned = module.start_address().floor();
     // Use start_address_aligned to calculate the number of pages, to avoid an off-by-one.
-    let module_len_aligned = utils::align_up(module.end_address() as usize - start_address_aligned.addr(), PAGE_SIZE);
+    let module_len_aligned = utils::align_up(module.end_address().addr() - start_address_aligned.addr(), PAGE_SIZE);
 
     let mapping_addr = {
         let mut page_table = get_kernel_memory();
@@ -59,15 +71,15 @@ pub fn map_grub_module(module: &ModuleTag) -> MappedGrubModule<'_> {
     };
 
     // the module offset in the mapping
-    let start = mapping_addr + (module.start_address() as usize % PAGE_SIZE);
-    let len = module.end_address() as usize - module.start_address() as usize;
+    let start = mapping_addr + (start_address_aligned - module.start_address());
+    let len = module.end_address() - module.start_address();
 
     // try parsing it as an elf
     let elf = ElfFile::new(unsafe {
         slice::from_raw_parts(start.addr() as *const u8, len)
     });
 
-    MappedGrubModule {
+    MappedModule {
         mapping_addr,
         start,
         len,
@@ -75,7 +87,7 @@ pub fn map_grub_module(module: &ModuleTag) -> MappedGrubModule<'_> {
     }
 }
 
-impl<'a> Drop for MappedGrubModule<'a> {
+impl<'a> Drop for MappedModule<'a> {
     /// Unmap the module, but do not deallocate physical memory
     fn drop(&mut self) {
         get_kernel_memory().unmap_no_dealloc( self.mapping_addr,
@@ -86,7 +98,7 @@ impl<'a> Drop for MappedGrubModule<'a> {
 
 /// Gets the desired kernel access controls for a process based on the
 /// .kernel_caps section in its elf
-pub fn get_kacs<'a>(module: &'a MappedGrubModule<'_>) -> Option<&'a [u8]> {
+pub fn get_kacs<'a>(module: &'a MappedModule<'_>) -> Option<&'a [u8]> {
     let elf = module.elf.as_ref().expect("Failed parsing multiboot module as elf");
 
     elf.find_section_by_name(".kernel_caps")
@@ -95,7 +107,7 @@ pub fn get_kacs<'a>(module: &'a MappedGrubModule<'_>) -> Option<&'a [u8]> {
 
 /// Loads the given kernel built-in into the given page table.
 /// Returns address of entry point
-pub fn load_builtin(process_memory: &mut ProcessMemory, module: &MappedGrubModule<'_>) -> usize {
+pub fn load_builtin(process_memory: &mut ProcessMemory, module: &MappedModule<'_>) -> usize {
     let elf = module.elf.as_ref().expect("Failed parsing multiboot module as elf");
 
     // load all segments into the page_table we had above
