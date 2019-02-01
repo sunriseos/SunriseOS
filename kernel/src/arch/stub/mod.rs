@@ -68,7 +68,7 @@ pub unsafe fn force_logger_unlock() {
 #[derive(Debug, Default)]
 pub struct ThreadHardwareContext;
 
-pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_current: Arc<ThreadStruct>) -> Arc<ThreadStruct> {
+pub unsafe extern "C" fn process_switch(_thread_b: Arc<ThreadStruct>, _thread_current: Arc<ThreadStruct>) -> Arc<ThreadStruct> {
     unimplemented!("Can't process switch on stub architecture")
 }
 
@@ -80,7 +80,7 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
 /// # Safety
 ///
 /// UB if called on a thread after it was scheduled for the first time.
-pub unsafe fn prepare_for_first_schedule(t: &ThreadStruct, entrypoint: usize, userspace_stack: usize) {
+pub unsafe fn prepare_for_first_schedule(_t: &ThreadStruct, _entrypoint: usize, _userspace_stack: usize) {
 }
 
 /// Get a list of Kernel Internal Processes to load. These are processes
