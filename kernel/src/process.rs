@@ -1,6 +1,6 @@
 //! Process
 
-use crate::stack::KernelStack;
+use crate::arch::KernelStack;
 use crate::arch::{ThreadHardwareContext, prepare_for_first_schedule};
 use crate::paging::process_memory::ProcessMemory;
 use alloc::boxed::Box;

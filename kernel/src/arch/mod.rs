@@ -26,5 +26,7 @@ pub use self::arch::{
     force_logger_unlock, ThreadHardwareContext, process_switch,
     prepare_for_first_schedule,
 
+    KernelStack, StackDumpSource, dump_stack,
+
     get_modules
 };

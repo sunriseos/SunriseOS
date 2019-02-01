@@ -79,7 +79,7 @@ pub use crate::heap_allocator::rust_oom;
 #[global_allocator]
 static ALLOCATOR: heap_allocator::Allocator = heap_allocator::Allocator::new();
 
-use crate::arch::i386::stack;
+use crate::arch::{StackDumpSource, KernelStack, dump_stack};
 use crate::paging::{PAGE_SIZE, MappingAccessRights};
 use crate::mem::VirtualAddress;
 use crate::process::{ProcessStruct, ThreadStruct};
@@ -177,8 +177,8 @@ fn main() {
 ///
 /// Note that if `None` is passed, this function is safe.
 ///
-/// [dump_stack]: crate::stack::dump_stack
-unsafe fn do_panic(msg: core::fmt::Arguments<'_>, stackdump_source: Option<stack::StackDumpSource>) -> ! {
+/// [dump_stack]: crate::arch::stub::dump_stack
+unsafe fn do_panic(msg: core::fmt::Arguments<'_>, stackdump_source: Option<StackDumpSource>) -> ! {
     use crate::arch::{get_logger, force_logger_unlock};
 
     // Disable interrupts forever!
@@ -231,10 +231,10 @@ unsafe fn do_panic(msg: core::fmt::Arguments<'_>, stackdump_source: Option<stack
     if let Some(sds) = stackdump_source {
         unsafe {
             // this is unsafe, caller must check safety
-            crate::stack::dump_stack(&sds, elf_and_st)
+            dump_stack(&sds, elf_and_st)
         }
     } else {
-        crate::stack::KernelStack::dump_current_stack(elf_and_st)
+        KernelStack::dump_current_stack(elf_and_st)
     }
 
     let _ = writeln!(get_logger(), "Thread : {:#x?}", scheduler::try_get_current_thread());

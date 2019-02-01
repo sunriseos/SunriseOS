@@ -587,3 +587,4 @@ pub fn get_modules() -> impl Iterator<Item = impl crate::elf_loader::Module> {
 }
 
 pub use self::process_switch::{ThreadHardwareContext, process_switch, prepare_for_first_schedule};
+pub use self::stack::{KernelStack, StackDumpSource, dump_stack};

@@ -6,9 +6,12 @@
 //! with a simple implementation.
 
 use alloc::sync::Arc;
+use xmas_elf::ElfFile;
+use xmas_elf::symbol_table::Entry32;
 
 use crate::mem::PhysicalAddress;
 use crate::process::ThreadStruct;
+use crate::error::KernelError;
 
 /// Enable interruptions. After calling this function, hardware should call
 /// [crate::event::dispatch_event] whenever it receives an interruption.
@@ -102,4 +105,64 @@ pub fn get_modules() -> impl Iterator<Item = impl crate::elf_loader::Module> {
         }
     }
     core::iter::empty::<EmptyModule>()
+}
+
+/// A structure representing a kernel stack. Allows abstracting away allocation
+/// and dumping of the Kernel Stack.
+///
+/// A KernelStack is switched to when the kernel needs to handle an interrupt or
+/// exception while userspace is executing. To avoid leaking kernel memory to
+/// userspace, the stack is switched to the KernelStack.
+#[derive(Debug)]
+pub struct KernelStack;
+
+impl KernelStack {
+    /// Allocate a new KernelStack for a new [ThreadStruct]. This is used by
+    /// [ThreadStruct::new] to create the new KernelStack associated with this
+    /// thread.
+    pub fn allocate_stack() -> Result<KernelStack, KernelError> {
+        unimplemented!()
+    }
+
+    /// Get the current kernel stack. Used by [ThreadStruct::create_first_thread]
+    /// to create the first thread's KernelStack.
+    ///
+    /// # Safety
+    ///
+    /// Unsafe because it creates duplicates of the stack structure,
+    /// whose only owner should be the ProcessStruct it belongs to.
+    /// This enables having several mut references pointing to the same underlying memory.
+    /// Caller has to make sure no references to the stack exists when calling this function.
+    ///
+    /// The safe method of getting the stack is by getting current [`ProcessStruct`], *lock it*,
+    /// and use its `pstack`.
+    ///
+    /// [ThreadStruct::create_first_thread]: crate::process::ThreadStruct::create_first_thread
+    pub unsafe fn get_current_stack() -> KernelStack {
+        unimplemented!()
+    }
+
+    /// Dumps the stack, displaying it in a frame-by-frame format.
+    ///
+    /// It can accepts an elf symbols which will be used to enhance the stack dump.
+    pub fn dump_current_stack<'a>(_elf_symbols: Option<(&ElfFile<'a>, &'a [Entry32])>) {
+    }
+}
+
+/// A structure representing the CPU stack state at a given execution point. From
+/// this state, we can generate a meaningful stack trace.
+pub struct StackDumpSource;
+
+/// Dumps the stack from the given information, displaying it in a frame-by-frame
+/// format.
+///
+/// # Safety
+///
+/// This function checks whether the stack is properly mapped before attempting to access it.
+/// It then creates a &[u8] from what could be a shared resource.
+///
+/// The caller must make sure the mapping pointed to by `source` cannot be modified while this
+/// function is at work. This will often mean checking that the thread whose stack we're dumping
+/// is stopped and will remain unscheduled at least until this function returns.
+pub unsafe fn dump_stack<'a>(_source: &StackDumpSource, _elf_symbols: Option<(&ElfFile<'a>, &'a [Entry32])>) {
 }
