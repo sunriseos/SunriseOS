@@ -563,4 +563,4 @@ pub unsafe fn force_logger_unlock() {
     SerialLogger.force_unlock();
 }
 
-pub use process_switch::{ThreadHardwareContext, process_switch, prepare_for_first_schedule};
+pub use self::process_switch::{ThreadHardwareContext, process_switch, prepare_for_first_schedule};
