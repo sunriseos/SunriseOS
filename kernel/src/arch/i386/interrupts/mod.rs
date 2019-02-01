@@ -166,7 +166,7 @@ fn double_fault_handler() {
                     tss_main.eip, tss_main.cr3,
                     tss_main.eax, tss_main.ebx, tss_main.ecx, tss_main.edx,
                     tss_main.esi, tss_main.edi, tss_main.esp, tss_main.ebp),
-                Some(crate::stack::StackDumpSource::new(
+                Some(super::stack::StackDumpSource::new(
                     tss_main.esp as usize, tss_main.ebp as usize, tss_main.eip as usize
                     )));
         } else {
