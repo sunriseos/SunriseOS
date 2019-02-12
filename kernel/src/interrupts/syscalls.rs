@@ -15,7 +15,8 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use crate::ipc;
 use super::check_thread_killed;
-use crate::error::UserspaceError;
+use crate::error::{UserspaceError, KernelError};
+use failure::Backtrace;
 use kfs_libkern::{nr, SYSCALL_NAMES, MemoryInfo, MemoryAttributes, MemoryPermissions};
 use bit_field::BitArray;
 
@@ -97,6 +98,39 @@ fn create_interrupt_event(irq_num: usize, _flag: u32) -> Result<usize, Userspace
     }
     let hnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ReadableEvent(Box::new(event::wait_event(irq_num)))));
     Ok(hnd as _)
+}
+
+/// Gets the physical region a given virtual address maps.
+///
+/// This syscall is mostly used for DMAs, where the physical address of a buffer needs to be known
+/// by userspace.
+///
+/// # Return
+///
+/// 0. The start address of the physical region.
+/// 1. 0x00000000 (On Horizon it contains the KernelSpace virtual address of this mapping,
+///    but I don't see any use for it).
+/// 2. The length of the physical region.
+///
+/// # Error
+///
+/// - InvalidAddress: This address does not map physical memory.
+fn query_physical_address(virtual_address: usize) -> Result<(usize, usize, usize), UserspaceError> {
+    let virtual_address = VirtualAddress(virtual_address);
+    let proc = scheduler::get_current_process();
+    let mem = proc.pmemory.lock();
+    let mapping = mem.query_memory(virtual_address);
+    let frames = match mapping.mapping().mtype_ref() {
+        MappingType::Regular(regions) => regions,
+        MappingType::Shared(arc_regions) => arc_regions.as_ref(),
+        MappingType::Available | MappingType::Guarded | MappingType::SystemReserved =>
+            return Err(KernelError::InvalidAddress { address: virtual_address, length: 1, backtrace: Backtrace::new() }.into()),
+    };
+    let offset = virtual_address - mapping.mapping().address();
+    let mut i = 0;
+    let pos = frames.iter().position(|region| { i += region.size(); i > offset })
+        .expect("Mapping region count is corrupted");
+    Ok((frames[pos].address().addr(), 0x00000000, frames[pos].size()))
 }
 
 /// Waits for one of the handles to signal an event.
@@ -631,6 +665,7 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
         (true, nr::ReplyAndReceiveWithUserBuffer) => registers.apply1(reply_and_receive_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), UserSpacePtr::from_raw_parts(x2 as _, x3), x4 as _, x5)),
         (true, nr::CreateSharedMemory) => registers.apply1(create_shared_memory(x0 as _, x1 as _, x2 as _)),
         (true, nr::CreateInterruptEvent) => registers.apply1(create_interrupt_event(x0, x1 as u32)),
+        (true, nr::QueryPhysicalAddress) => registers.apply3(query_physical_address(x0 as _)),
         (true, nr::CreatePort) => registers.apply2(create_port(x0 as _, x1 != 0, UserSpacePtr(x2 as _))),
         (true, nr::ManageNamedPort) => registers.apply1(manage_named_port(UserSpacePtr(x0 as _), x1 as _)),
         (true, nr::ConnectToPort) => registers.apply1(connect_to_port(x0 as _)),

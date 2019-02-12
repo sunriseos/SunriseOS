@@ -46,6 +46,7 @@ capabilities!(CAPABILITIES = Capabilities {
         kfs_libuser::syscalls::nr::UnmapSharedMemory,
         kfs_libuser::syscalls::nr::ConnectToNamedPort,
         kfs_libuser::syscalls::nr::CreateInterruptEvent,
+        kfs_libuser::syscalls::nr::QueryPhysicalAddress,
     ],
     raw_caps: [
         kfs_libuser::caps::ioport(pci::CONFIG_ADDRESS + 0), kfs_libuser::caps::ioport(pci::CONFIG_ADDRESS + 1), kfs_libuser::caps::ioport(pci::CONFIG_ADDRESS + 2), kfs_libuser::caps::ioport(pci::CONFIG_ADDRESS + 3),

@@ -365,6 +365,28 @@ pub fn create_interrupt_event(irqnum: usize, flag: u32) -> Result<ReadableEvent,
     }
 }
 
+/// Gets the physical region a given virtual address maps.
+///
+/// This syscall is mostly used for DMAs, where the physical address of a buffer needs to be known
+/// by userspace.
+///
+/// # Return
+///
+/// 0. The start address of the physical region.
+/// 1. 0x00000000 (On Horizon it contains the KernelSpace virtual address of this mapping,
+///    but I don't see any use for it).
+/// 2. The length of the physical region.
+///
+/// # Error
+///
+/// - InvalidAddress: This address does not map physical memory.
+pub fn query_physical_address(virtual_address: usize) -> Result<(usize, usize, usize), KernelError> {
+    unsafe {
+        let (phys_addr, kernel_addr, phys_len, ..) = syscall(nr::QueryPhysicalAddress, virtual_address, 0, 0, 0, 0, 0)?;
+        Ok((phys_addr, kernel_addr, phys_len))
+    }
+}
+
 /// Creates an anonymous port.
 pub fn create_port(max_sessions: u32, is_light: bool, name_ptr: &str) -> Result<(ClientPort, ServerPort), KernelError> {
     unsafe {
