@@ -10,7 +10,7 @@ use super::super::super::lands::{KernelLand, UserLand, VirtualSpaceLand};
 use super::super::super::kernel_memory::get_kernel_memory;
 use super::super::super::MappingAccessRights;
 use crate::mem::{VirtualAddress, PhysicalAddress};
-use crate::frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
+use crate::frame_allocator::{PhysicalMemRegion, FrameAllocator};
 use core::fmt::{Debug, Formatter, Error};
 
 /// When paging is on, accessing this address loops back to the directory itself thanks to

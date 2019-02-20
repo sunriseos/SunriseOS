@@ -29,7 +29,7 @@
 use ::core::mem::size_of;
 use crate::paging::lands::{VirtualSpaceLand, UserLand, KernelLand};
 use crate::paging::{PAGE_SIZE, process_memory::QueryMemory, MappingAccessRights, PageState, kernel_memory::get_kernel_memory};
-use crate::frame_allocator::{FrameAllocator, FrameAllocatorTrait};
+use crate::frame_allocator::FrameAllocator;
 use crate::mem::VirtualAddress;
 use crate::error::KernelError;
 use xmas_elf::ElfFile;

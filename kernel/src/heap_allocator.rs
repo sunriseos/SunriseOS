@@ -8,7 +8,7 @@ use core::ops::Deref;
 use core::ptr::NonNull;
 use linked_list_allocator::{Heap, align_up};
 use crate::paging::{PAGE_SIZE, MappingAccessRights, kernel_memory::get_kernel_memory};
-use crate::frame_allocator::{FrameAllocator, FrameAllocatorTrait};
+use crate::frame_allocator::FrameAllocator;
 use crate::mem::VirtualAddress;
 
 /// Simple wrapper around linked_list_allocator, growing heap by allocating pages

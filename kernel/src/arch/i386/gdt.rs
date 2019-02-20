@@ -19,7 +19,7 @@ use crate::arch::i386::instructions::segmentation::*;
 
 use crate::paging::PAGE_SIZE;
 use crate::paging::{MappingAccessRights, kernel_memory::get_kernel_memory};
-use crate::frame_allocator::{FrameAllocator, FrameAllocatorTrait};
+use crate::frame_allocator::FrameAllocator;
 use crate::mem::VirtualAddress;
 use alloc::vec::Vec;
 use crate::utils::align_up;

@@ -176,6 +176,12 @@ impl VirtualAddress {
 
     /// Rounds up PAGE_SIZE.
     pub fn ceil(self) -> VirtualAddress { VirtualAddress(round_to_page_upper(self.0)) }
+
+    /// Wrapping (modular) addition. Computes self + rhs, wrapping around at the boundary of the type.
+    pub fn wrapping_add(self, rhs: usize) -> VirtualAddress { VirtualAddress(self.0.wrapping_add(rhs)) }
+
+    /// Wrapping (modular) substraction. Computes self - rhs, wrapping around at the boundary of the type.
+    pub fn wrapping_sub(self, rhs: usize) -> VirtualAddress { VirtualAddress(self.0.wrapping_sub(rhs)) }
 }
 
 impl core::iter::Step for PhysicalAddress {

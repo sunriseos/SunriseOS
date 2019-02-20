@@ -3,7 +3,7 @@
 use crate::mem::{VirtualAddress, PhysicalAddress};
 use crate::mem::{UserSpacePtr, UserSpacePtrMut};
 use crate::paging::{MappingAccessRights, mapping::MappingType};
-use crate::frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
+use crate::frame_allocator::{PhysicalMemRegion, FrameAllocator};
 use crate::process::{Handle, ThreadStruct, ProcessStruct};
 use crate::event::{self, Waitable};
 use crate::scheduler::{self, get_current_thread, get_current_process};
