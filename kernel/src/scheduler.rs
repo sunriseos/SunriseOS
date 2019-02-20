@@ -244,9 +244,8 @@ where
                 drop(queue);
                 // Temporarily revive interrupts for hlt.
                 drop(interrupt_lock);
-                unsafe {
-                    crate::arch::i386::instructions::interrupts::hlt();
-                }
+
+                crate::arch::wait_for_interrupt();
 
                 // Kill interrupts again.
                 interrupt_lock = interrupt_manager.lock();

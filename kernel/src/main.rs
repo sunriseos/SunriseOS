@@ -241,7 +241,9 @@ unsafe fn do_panic(msg: core::fmt::Arguments<'_>, stackdump_source: Option<Stack
 
     let _ = writeln!(get_logger(), "!!!!!!!!!!!!!!!END PANIC!!!!!!!!!!!!!!");
 
-    loop { unsafe { asm!("HLT"); } }
+    loop {
+        arch::wait_for_interrupt();
+    }
 }
 
 /// Function called on `panic!` invocation.

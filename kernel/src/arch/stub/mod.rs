@@ -166,3 +166,11 @@ pub struct StackDumpSource;
 /// is stopped and will remain unscheduled at least until this function returns.
 pub unsafe fn dump_stack<'a>(_source: &StackDumpSource, _elf_symbols: Option<(&ElfFile<'a>, &'a [Entry32])>) {
 }
+
+/// Puts the CPU in a paused state until an interrupt wakes it up.
+pub fn wait_for_interrupt() {
+}
+
+pub fn get_available_memory_regions() -> impl Iterator<Item = super::MemRegion> {
+    core::iter::empty::<super::MemRegion>()
+}

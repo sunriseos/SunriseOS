@@ -10,12 +10,6 @@
 use crate::arch::i386::structures::idt::ExceptionStackFrame;
 use crate::devices::pic;
 
-#[allow(clippy::missing_docs_in_private_items)]
-extern "x86-interrupt" fn timer_handler(_stack_frame: &mut ExceptionStackFrame) {
-    // TODO: Feed the timer handler into a kernel preemption handler.
-    pic::get().acknowledge(0);
-}
-
 macro_rules! irq_handler {
     ($irq:expr, $name:ident) => {{
         #[allow(clippy::missing_docs_in_private_items)]

@@ -47,15 +47,20 @@ impl Allocator {
 
     /// Create a new Heap of `RESERVED_HEAP_SIZE` bytes.
     fn init() -> SpinLock<Heap> {
+        info!("Getting kernel memory");
         let mut active_pages = get_kernel_memory();
         // Reserve 512MB of virtual memory for heap space. Don't actually allocate it.
+        info!("Reserving heap");
         let heap_space = active_pages.find_virtual_space(RESERVED_HEAP_SIZE)
             .expect("Kernel should have 512MB of virtual memory");
         // map only the first page
+        info!("Allocating a frame");
         let frame = FrameAllocator::allocate_frame()
             .expect("Cannot allocate first frame of heap");
+        info!("Mapping allocated frame {:?}", frame);
         active_pages.map_phys_region_to(frame, heap_space, MappingAccessRights::k_rw());
         // guard the rest
+        info!("Guarding the rest");
         active_pages.guard(heap_space + PAGE_SIZE, RESERVED_HEAP_SIZE - PAGE_SIZE);
         info!("Reserving {} pages at {:#010x}", RESERVED_HEAP_SIZE / PAGE_SIZE - 1, heap_space.addr() + PAGE_SIZE);
         unsafe {

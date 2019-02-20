@@ -586,5 +586,24 @@ pub fn get_modules() -> impl Iterator<Item = impl crate::elf_loader::Module> {
         .flatten()
 }
 
+/// See [arch::stub::wait_for_interrupt]
+pub fn wait_for_interrupt() {
+    unsafe {
+        instructions::interrupts::hlt()
+    }
+}
+
+pub fn get_available_memory_regions() -> impl Iterator<Item = super::MemRegion> {
+    let boot_info = multiboot::get_boot_information();
+    let memory_map_tag = boot_info.memory_map_tag()
+        .expect("GRUB, you're drunk. Give us our memory_map_tag.");
+
+    memory_map_tag.memory_areas()
+        .map(|v| super::MemRegion {
+            addr: v.start_address(),
+            page_count: v.end_address() - v.start_address() / 4096
+        })
+}
+
 pub use self::process_switch::{ThreadHardwareContext, process_switch, prepare_for_first_schedule};
 pub use self::stack::{KernelStack, StackDumpSource, dump_stack};

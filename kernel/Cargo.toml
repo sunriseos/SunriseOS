@@ -33,6 +33,15 @@ failure = { version = "0.1", default-features = false, features = ["derive"] }
 bitfield = "0.13"
 mashup = "0.1.9"
 cfg-if = "0.1"
+generic-array = "0.12"
+
+[dependencies.intrusive-collections]
+default-features = false
+version = "0.7"
+
+[dependencies.arrayvec]
+default-features = false
+version = "0.4.10"
 
 [dependencies.smallvec]
 default-features = false

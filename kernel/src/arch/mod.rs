@@ -28,5 +28,16 @@ pub use self::arch::{
 
     KernelStack, StackDumpSource, dump_stack,
 
-    get_modules
+    get_modules,
+
+    wait_for_interrupt,
+
+    get_available_memory_regions,
 };
+
+
+#[derive(Debug)]
+struct MemRegion {
+    addr: u64,
+    page_count: u64
+}

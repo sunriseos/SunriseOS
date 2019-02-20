@@ -37,7 +37,7 @@ static LOGGER: Once<Logger> = Once::new();
 /// Initializes the Logger in a heapless environment.
 pub fn early_init() {
     let filter = filter::Builder::new()
-        .filter(None, LevelFilter::Info)
+        .filter(None, LevelFilter::Trace)
         .build();
     log::set_logger(LOGGER.call_once(|| Logger { filter: RwLock::new(filter) } ))
         .expect("log_impl::init to be called before logger is initialized");

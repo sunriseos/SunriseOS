@@ -412,10 +412,13 @@ pub unsafe fn init() {
     pic::init();
 
     {
+        info!("Getting page");
         let page = get_kernel_memory().get_page();
         let idt = page.addr() as *mut u8 as *mut Idt;
         unsafe {
+            info!("Initializing page {:?}", page);
             (*idt).init();
+            info!("Setting exceptions {:p}", idt);
             (*idt).divide_by_zero.set_handler_fn(divide_by_zero_handler);
             (*idt).debug.set_handler_fn(debug_handler);
             (*idt).non_maskable_interrupt.set_handler_fn(non_maskable_interrupt_handler);
@@ -424,7 +427,9 @@ pub unsafe fn init() {
             (*idt).bound_range_exceeded.set_handler_fn(bound_range_exceeded_handler);
             (*idt).invalid_opcode.set_handler_fn(invalid_opcode_handler);
             (*idt).device_not_available.set_handler_fn(device_not_available_handler);
+            info!("Setting double fault handler {:p}", idt);
             (*idt).double_fault.set_handler_task_gate_addr(double_fault_handler as u32);
+            info!("Setting rest of exceptions {:p}", idt);
             // coprocessor_segment_overrun
             (*idt).invalid_tss.set_handler_fn(invalid_tss_handler);
             (*idt).segment_not_present.set_handler_fn(segment_not_present_handler);
@@ -438,17 +443,21 @@ pub unsafe fn init() {
             (*idt).virtualization.set_handler_fn(virtualization_handler);
             (*idt).security_exception.set_handler_fn(security_exception_handler);
 
+            info!("Setting IRQ handlers");
             for (i, handler) in irq::IRQ_HANDLERS.iter().enumerate() {
                 (*idt).interrupts[i].set_handler_fn(*handler);
             }
 
             // Add entry for syscalls
+            info!("Setting syscall handler");
             let syscall_int = (*idt)[0x80].set_interrupt_gate_addr(syscall_handler as u32);
             syscall_int.set_privilege_level(PrivilegeLevel::Ring3);
             syscall_int.disable_interrupts(false);
         }
+        info!("Setting IDT global");
         let mut lock = IDT.lock();
         *lock = Some(page);
+        info!("Loading IDT");
         (*idt).load();
     }
 
