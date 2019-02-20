@@ -2,7 +2,7 @@
 //!
 //! A [PhysicalMemRegion] is a span of consecutive physical frames.
 
-use super::{FrameAllocator, FrameAllocatorTraitPrivate};
+use super::FrameAllocator;
 use crate::paging::PAGE_SIZE;
 use crate::mem::PhysicalAddress;
 use crate::utils::{align_down, div_ceil, check_aligned, Splittable};
@@ -209,11 +209,12 @@ impl Splittable for Vec<PhysicalMemRegion> {
 
 #[cfg(test)]
 mod test {
-    use super::super::{FrameAllocator, FrameAllocatorTrait};
+    use super::super::{FrameAllocator, FRAME_ALLOCATOR};
     use super::{PhysicalMemRegion, PhysicalMemRegionIter};
     use crate::utils::Splittable;
     use crate::mem::PhysicalAddress;
     use crate::paging::PAGE_SIZE;
+    use core::sync::atomic::Ordering;
 
     #[test]
     #[should_panic]
@@ -226,8 +227,7 @@ mod test {
     fn on_fixed_mmio_rounds_unaligned() {
         let _f = crate::frame_allocator::init();
         // reserve them so we don't panic
-        crate::frame_allocator::mark_frame_bootstrap_allocated(PhysicalAddress(0));
-        crate::frame_allocator::mark_frame_bootstrap_allocated(PhysicalAddress(PAGE_SIZE));
+        FRAME_ALLOCATOR.mark_area_reserved(0, 0x1FFF);
 
         let region = unsafe { PhysicalMemRegion::on_fixed_mmio(PhysicalAddress(0x00000007), PAGE_SIZE + 1) };
         assert_eq!(region.start_addr, 0);
