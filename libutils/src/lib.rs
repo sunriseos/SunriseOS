@@ -21,7 +21,7 @@
 
 
 use num_traits::Num;
-use core::ops::{Not, BitAnd};
+use core::ops::{Not, BitAnd, Bound, RangeBounds};
 use core::fmt::Write;
 
 pub mod io;
@@ -148,18 +148,55 @@ pub fn print_hexdump_as_if_at_addr<T: Write>(f: &mut T, mem: &[u8], display_addr
     }
 }
 
-/// Extension of the [BitField] trait, that adds the `set_bits_area` function.
+/// Extension of the [BitArray] trait, that adds the `set_bits_area` function.
 ///
 /// [BitField]: ::bit_field::BitField
 pub trait BitArrayExt<U: ::bit_field::BitField>: ::bit_field::BitArray<U> {
     /// Sets a range of bits to `value` in the BitField.
-    fn set_bits_area(&mut self, range: ::core::ops::Range<usize>, value: bool) {
-        for i in range {
+    fn set_bits_area<T: RangeBounds<usize>>(&mut self, range: T, value: bool) {
+        let start = match range.start_bound() {
+            Bound::Unbounded => 0,
+            Bound::Included(b) => *b,
+            Bound::Excluded(_b) => unreachable!("Excluded in start_bound"),
+        };
+        let end = match range.end_bound() {
+            Bound::Unbounded => self.bit_length() - 1,
+            Bound::Included(b) => *b,
+            // If 0 is excluded, then the range is empty
+            Bound::Excluded(0) => return,
+            Bound::Excluded(b) => *b - 1,
+        };
+        for i in start..=end {
             self.set_bit(i, value);
         }
     }
 }
 
+/// Extension of the [BitField] trait, that adds the `set_bits_area` function.
+///
+/// [BitField]: ::bit_field::BitField
+pub trait BitFieldExt: ::bit_field::BitField {
+    /// Sets a range of bits to `value` in the BitField.
+    fn set_bits_area<T: RangeBounds<usize>>(&mut self, range: T, value: bool) {
+        let start = match range.start_bound() {
+            Bound::Unbounded => 0,
+            Bound::Included(b) => *b,
+            Bound::Excluded(_b) => unreachable!("Excluded in start_bound"),
+        };
+        let end = match range.end_bound() {
+            Bound::Unbounded => Self::bit_length() - 1,
+            Bound::Included(b) => *b,
+            // If 0 is excluded, then the range is empty
+            Bound::Excluded(0) => return,
+            Bound::Excluded(b) => *b - 1,
+        };
+        for i in start..=end {
+            self.set_bit(i, value);
+        }
+    }
+}
+
+impl<T: ?Sized> BitFieldExt for T where T: bit_field::BitField {}
 impl<T: ?Sized, U: ::bit_field::BitField> BitArrayExt<U> for T where T: ::bit_field::BitArray<U> {}
 
 // We could have made a generic implementation of this two functions working for either 1 or 0,
@@ -226,3 +263,67 @@ pub fn bit_array_first_count_one(bitarray: &[u8], count: usize) -> Option<usize>
     None
 }
 
+#[cfg(test)]
+mod test {
+    use crate::BitArrayExt;
+
+    #[test]
+    fn test_set_bits_area_array_unbounded() {
+        let mut arr = [0u32; 4];
+
+        arr.set_bits_area(.., true);
+        assert_eq!(arr, [0xFFFFFFFF; 4]);
+
+        arr.set_bits_area(.., false);
+        assert_eq!(arr, [0; 4]);
+    }
+
+    #[test]
+    fn test_set_bits_area_array_bounded() {
+        let mut arr = [0u32; 4];
+
+        arr.set_bits_area(0..4, true);
+        assert_eq!(arr, [0xF, 0, 0, 0]);
+
+        arr.set_bits_area(32..33, true);
+        assert_eq!(arr, [0xF, 1, 0, 0]);
+
+        let bit_len = arr.len() * core::mem::size_of::<u32>() * 8;
+        arr.set_bits_area(bit_len - 1..bit_len, true);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_set_bits_area_array_bounded_panics_oob() {
+        let mut arr = [0u32; 4];
+        let bit_len = arr.len() * core::mem::size_of::<u32>() * 8;
+        arr.set_bits_area(bit_len..bit_len + 1, true);
+    }
+
+    #[test]
+    fn test_set_bits_area_array_left_right_bounds() {
+        let mut arr = [0u32; 4];
+
+        // check right-bounded
+        // check setting last bit
+        let len = arr.len();
+        arr.set_bits_area(..len * core::mem::size_of::<u32>() * 8, true);
+        assert_eq!(arr, [0xFFFFFFFF; 4]);
+
+        // check left-bounded
+        arr.set_bits_area(len * core::mem::size_of::<u32>() * 8 - 1.., false);
+        assert_eq!(arr, [0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0x7FFFFFFF]);
+    }
+
+    #[test]
+    fn test_set_bits_area_array_inclusive() {
+        let mut arr = [0u32; 4];
+
+        arr.set_bits_area(0..=0, true);
+        assert_eq!(arr, [1, 0, 0, 0]);
+
+        let bit_len = arr.len() * core::mem::size_of::<u32>() * 8;
+        arr.set_bits_area(bit_len - 1..=bit_len - 1, true);
+        assert_eq!(arr, [1, 0, 0, 0x80000000]);
+    }
+}
