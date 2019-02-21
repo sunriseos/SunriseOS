@@ -8,51 +8,18 @@ use core::fmt;
 use core::mem::ManuallyDrop;
 use core::ops::{Deref, DerefMut};
 pub use self::spin::{Mutex as SpinLock, MutexGuard as SpinLockGuard};
-use crate::i386::instructions::interrupts::*;
+use crate::i386::instructions::interrupts;
 use core::sync::atomic::{AtomicBool, Ordering};
-use crate::scheduler;
 
 /// Placeholder for future Mutex implementation.
 pub type Mutex<T> = SpinLock<T>;
 /// Placeholder for future Mutex implementation.
 pub type MutexGuard<'a, T> = SpinLockGuard<'a, T>;
 
-/// Decrement the interrupt disable counter.
-///
-/// Look at documentation for ProcessStruct::pint_disable_counter to know more.
-fn enable_interrupts() {
-    if !INTERRUPT_DISARM.load(Ordering::SeqCst) {
-        if let Some(thread) = scheduler::try_get_current_thread() {
-            if thread.int_disable_counter.fetch_sub(1, Ordering::SeqCst) == 1 {
-                unsafe { sti() }
-            }
-        } else {
-            // TODO: Safety???
-            // don't do anything.
-        }
-    }
-}
-
-/// Increment the interrupt disable counter.
-///
-/// Look at documentation for INTERRUPT_DISABLE_COUNTER to know more.
-fn disable_interrupts() {
-    if !INTERRUPT_DISARM.load(Ordering::SeqCst) {
-        if let Some(thread) = scheduler::try_get_current_thread() {
-            if thread.int_disable_counter.fetch_add(1, Ordering::SeqCst) == 0 {
-                unsafe { cli() }
-            }
-        } else {
-            // TODO: Safety???
-            // don't do anything.
-        }
-    }
-}
-
 /// Boolean to [permanently_disable_interrupts].
 ///
-/// If this bool is set, all [enable_interrupts] and [disable_interrupts] calls are ignored,
-/// and system is put in an unrecoverable state.
+/// If this bool is set, all attempts to enable interrupts through a SpinLockIRQ
+/// are ignored, leaving the system in an unrecoverable state.
 ///
 /// This is used by kernel panic handlers.
 static INTERRUPT_DISARM: AtomicBool = AtomicBool::new(false);
@@ -64,7 +31,7 @@ static INTERRUPT_DISARM: AtomicBool = AtomicBool::new(false);
 /// Simply sets [INTERRUPT_DISARM].
 pub unsafe fn permanently_disable_interrupts() {
     INTERRUPT_DISARM.store(true, Ordering::SeqCst);
-    unsafe { cli() }
+    unsafe { interrupts::cli() }
 }
 
 /// SpinLock that disables IRQ.
@@ -77,12 +44,27 @@ pub unsafe fn permanently_disable_interrupts() {
 /// - `lock` behaves like a `spinlock_irqsave`. It returns a guard.
 /// - Dropping the guard behaves like `spinlock_irqrestore`
 ///
-/// This means that locking a spinlock disables interrupts until all spinlocks
-/// have been dropped.
+/// This means that locking a spinlock disables interrupts until all spinlock
+/// guards have been dropped.
 ///
-/// Note that it is allowed to lock/unlock the locks in a different order. It uses
-/// a global counter to disable/enable interrupts. View INTERRUPT_DISABLE_COUNTER
-/// documentation for more information.
+/// A note on reordering: reordering lock drops is prohibited and doing so will
+/// result in UB.
+//
+// TODO: Find sane design for SpinLockIRQ safety
+// BODY: Currently, SpinLockIRQ API is unsound. If the guards are dropped in
+// BODY: the wrong order, it may cause IF to be reset too early.
+// BODY:
+// BODY: Ideally, we would need a way to prevent the guard variable to be
+// BODY: reassigned. AKA: prevent moving. Note that this is different from what
+// BODY: the Pin API solves. The Pin API is about locking a variable in one
+// BODY: memory location, but its binding may still be moved and dropped.
+// BODY: Unfortunately, Rust does not have a way to express that a value cannot
+// BODY: be reassigned.
+// BODY:
+// BODY: Another possibility would be to switch to a callback API. This would
+// BODY: solve the problem, but the scheduler would be unable to consume such
+// BODY: locks. Maybe we could have an unsafe "scheduler_relock" function that
+// BODY: may only be called from the scheduler?
 pub struct SpinLockIRQ<T: ?Sized> {
     /// SpinLock we wrap.
     internal: SpinLock<T>
@@ -104,32 +86,45 @@ impl<T> SpinLockIRQ<T> {
 
 impl<T: ?Sized> SpinLockIRQ<T> {
     /// Disables interrupts and locks the mutex.
-    pub fn lock(&self) -> SpinLockIRQGuard<'_, T> {
-        // Disable irqs
-        unsafe { disable_interrupts(); }
+    pub fn lock(&self) -> SpinLockIRQGuard<T> {
+        if INTERRUPT_DISARM.load(Ordering::SeqCst) {
+            let internalguard = self.internal.lock();
+            SpinLockIRQGuard(ManuallyDrop::new(internalguard), false)
+        } else {
+            // Save current interrupt state.
+            let saved_intpt_flag = interrupts::are_enabled();
 
-        // TODO: Disable preemption.
-        // TODO: Spin acquire
+            // Disable interruptions
+            unsafe { interrupts::cli(); }
 
-        // lock
-        let internalguard = self.internal.lock();
-        SpinLockIRQGuard(ManuallyDrop::new(internalguard))
+            let internalguard = self.internal.lock();
+            SpinLockIRQGuard(ManuallyDrop::new(internalguard), saved_intpt_flag)
+        }
     }
 
     /// Disables interrupts and locks the mutex.
-    pub fn try_lock(&self) -> Option<SpinLockIRQGuard<'_, T>> {
-        // Disable irqs
-        unsafe { disable_interrupts(); }
+    pub fn try_lock(&self) -> Option<SpinLockIRQGuard<T>> {
+        if INTERRUPT_DISARM.load(Ordering::SeqCst) {
+            self.internal.try_lock()
+                .map(|v| SpinLockIRQGuard(ManuallyDrop::new(v), false))
+        } else {
+            // Save current interrupt state.
+            let saved_intpt_flag = interrupts::are_enabled();
 
-        // TODO: Disable preemption.
-        // TODO: Spin acquire
+            // Disable interruptions
+            unsafe { interrupts::cli(); }
 
-        // lock
-        match self.internal.try_lock() {
-            Some(internalguard) => Some(SpinLockIRQGuard(ManuallyDrop::new(internalguard))),
-            None => {
-                // We couldn't lock. Restore irqs and return None
-                unsafe { enable_interrupts(); }
+            // Lock spinlock
+            let internalguard = self.internal.try_lock();
+
+            if let Some(internalguard) = internalguard {
+                // if lock is successful, return guard.
+                Some(SpinLockIRQGuard(ManuallyDrop::new(internalguard), saved_intpt_flag))
+            } else {
+                // Else, restore interrupt state
+                if saved_intpt_flag {
+                    unsafe { interrupts::sti(); }
+                }
                 None
             }
         }
@@ -143,20 +138,20 @@ impl<T: ?Sized> SpinLockIRQ<T> {
 
 impl<T: fmt::Debug> fmt::Debug for SpinLockIRQ<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.try_lock() {
-            Some(d) => {
-                write!(f, "SpinLockIRQ {{ data: ")?;
-                d.fmt(f)?;
-                write!(f, "}}")
-            },
-            None => write!(f, "SpinLockIRQ {{ <locked> }}")
+        if let Some(v) = self.try_lock() {
+            f.debug_struct("SpinLockIRQ")
+                .field("data", &v)
+                .finish()
+        } else {
+            write!(f, "SpinLockIRQ {{ <locked> }}")
         }
     }
 }
 
+
 /// The SpinLockIrq lock guard.
 #[derive(Debug)]
-pub struct SpinLockIRQGuard<'a, T: ?Sized>(ManuallyDrop<SpinLockGuard<'a, T>>);
+pub struct SpinLockIRQGuard<'a, T: ?Sized>(ManuallyDrop<SpinLockGuard<'a, T>>, bool);
 
 impl<'a, T: ?Sized + 'a> Drop for SpinLockIRQGuard<'a, T> {
     fn drop(&mut self) {
@@ -165,7 +160,9 @@ impl<'a, T: ?Sized + 'a> Drop for SpinLockIRQGuard<'a, T> {
         unsafe { ManuallyDrop::drop(&mut self.0); }
 
         // Restore irq
-        unsafe { enable_interrupts(); }
+        if self.1 {
+            unsafe { interrupts::sti(); }
+        }
 
         // TODO: Enable preempt
     }
