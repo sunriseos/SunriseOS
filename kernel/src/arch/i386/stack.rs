@@ -29,7 +29,7 @@
 use ::core::mem::size_of;
 use crate::paging::lands::{VirtualSpaceLand, UserLand, KernelLand};
 use crate::paging::{PAGE_SIZE, process_memory::QueryMemory, MappingAccessRights, PageState, kernel_memory::get_kernel_memory};
-use crate::frame_allocator::{FrameAllocator, FrameAllocatorTrait};
+use crate::frame_allocator::FrameAllocator;
 use crate::mem::VirtualAddress;
 use crate::error::KernelError;
 use xmas_elf::ElfFile;
@@ -122,7 +122,7 @@ impl KernelStack {
     /// Puts two poisons pointers at the base of the stack for the `saved ebp` and `saved eip`.
     unsafe fn create_poison_pointers(&mut self) {
         let saved_eip: *mut usize = (self.stack_address.addr() + STACK_SIZE_WITH_GUARD * PAGE_SIZE
-                                                               - size_of::<usize>()
+                                     - size_of::<usize>()
                                     ) as *mut usize;
         let saved_ebp: *mut usize = saved_eip.offset(-1);
         *saved_eip = 0x00000000;

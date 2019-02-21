@@ -3,7 +3,8 @@
 //! Only handles the usual case of two PICs in a cascading setup, where the
 //! SLAVE is setup to cascade to the line 2 of the MASTER.
 
-use crate::i386::pio::Pio;
+#[cfg(target_arch = "x86")]
+use crate::arch::i386::pio::Pio;
 use crate::io::Io;
 use crate::sync::{Once, SpinLockIRQ};
 
@@ -36,16 +37,19 @@ const ICW4_8086: u8     = 0x01;       /* 8086/88 (MCS-80/85) mode */
 //const icw4_sfnm         = 0x10;       /* Special fully nested (not) */
 
 /// The PIC manager.
-static PIC: Once<Pic> = Once::new();
+#[cfg(target_arch = "x86")]
+static PIC: Once<Pic<Pio<u8>>> = Once::new();
 
 /// Acquires a reference to the PIC, initializing it if it wasn't already setup.
-pub fn get() -> &'static Pic {
+#[cfg(target_arch = "x86")]
+pub fn get() -> &'static Pic<Pio<u8>> {
     PIC.call_once(|| unsafe {
         Pic::new()
     })
 }
 
 /// Initializes the PIC if it has not yet been initialized. Otherwise, does nothing.
+#[cfg(target_arch = "x86")]
 pub fn init() {
     PIC.call_once(|| unsafe {
         Pic::new()
@@ -54,23 +58,24 @@ pub fn init() {
 
 /// A single PIC8259 device.
 #[derive(Debug)]
-struct InternalPic {
+struct InternalPic<T> {
     /// The PIC's COMMAND IO port.
-    port_cmd: Pio<u8>,
+    port_cmd: T,
     /// The PIC's DATA IO port.
-    port_data: Pio<u8>
+    port_data: T
 }
 
 /// A master/slave PIC setup, as commonly found on IBM PCs.
 #[derive(Debug)]
-pub struct Pic {
+pub struct Pic<T> {
     /// The master PIC.
-    master: SpinLockIRQ<InternalPic>,
+    master: SpinLockIRQ<InternalPic<T>>,
     /// The slave PIC, cascaded on line 2 of `.master`
-    slave: SpinLockIRQ<InternalPic>,
+    slave: SpinLockIRQ<InternalPic<T>>,
 }
 
-impl Pic {
+#[cfg(target_arch = "x86")]
+impl Pic<Pio<u8>> {
     /// Creates a new PIC, and initializes it.
     ///
     /// Interrupts will be mapped to IRQ [32..48]
@@ -79,13 +84,15 @@ impl Pic {
     ///
     /// This should only be called once! If called more than once, then both Pics instances
     /// will share the same underlying Pios, but different mutexes protecting them!
-    unsafe fn new() -> Pic {
+    unsafe fn new() -> Pic<Pio<u8>> {
         Pic {
             master: SpinLockIRQ::new(InternalPic::new(0x20, true, 32)),
             slave: SpinLockIRQ::new(InternalPic::new(0xA0, false, 32 + 8)),
         }
     }
+}
 
+impl<T: Io<Value = u8>> Pic<T> {
     /// Mask the given IRQ number. Will redirect the call to the right Pic device.
     pub fn mask(&self, irq: u8) {
         if irq < 8 {
@@ -106,7 +113,8 @@ impl Pic {
     }
 }
 
-impl InternalPic {
+#[cfg(target_arch = "x86")]
+impl InternalPic<Pio<u8>> {
     /// Setup the 8259 pic. Redirect the IRQ to the chosen interrupt vector.
     ///
     /// # Safety
@@ -114,7 +122,7 @@ impl InternalPic {
     /// The port should map to a proper PIC device. Sending invalid data to a
     /// random device can lead to memory unsafety. Furthermore, care should be
     /// taken not to share the underlying Pio.
-    unsafe fn new(port_base: u16, is_master: bool, vector_offset: u8) -> InternalPic {
+    unsafe fn new(port_base: u16, is_master: bool, vector_offset: u8) -> InternalPic<Pio<u8>> {
         let mut pic = InternalPic {
             port_cmd: Pio::new(port_base),
             port_data: Pio::new(port_base + 1)
@@ -140,7 +148,9 @@ impl InternalPic {
 
         pic
     }
+}
 
+impl<T: Io<Value = u8>> InternalPic<T> {
     /// Acknowledges an IRQ, allowing the PIC to send a new IRQ on the next
     /// cycle.
     pub fn acknowledge(&mut self) {

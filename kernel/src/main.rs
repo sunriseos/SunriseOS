@@ -6,7 +6,7 @@
 //! Currently doesn't do much, besides booting and printing Hello World on the
 //! screen. But hey, that's a start.
 
-#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, allocator_api, alloc, box_syntax, no_more_cas, const_vec_new, range_contains, step_trait, thread_local, nll)]
+#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, allocator_api, alloc, box_syntax, no_more_cas, const_vec_new, range_contains, step_trait, thread_local, nll, untagged_unions, maybe_uninit, const_fn_union)]
 #![no_std]
 #![cfg_attr(target_os = "none", no_main)]
 #![recursion_limit = "1024"]
@@ -49,16 +49,13 @@ use core::fmt::Write;
 use alloc::prelude::*;
 use crate::utils::io;
 
+pub mod arch;
 pub mod paging;
 pub mod event;
 pub mod error;
 pub mod log_impl;
-#[cfg(any(target_arch = "x86", test))]
-#[macro_use]
-pub mod i386;
-pub mod interrupts;
 pub mod frame_allocator;
-
+pub mod syscalls;
 pub mod heap_allocator;
 pub mod devices;
 pub mod sync;
@@ -82,10 +79,11 @@ pub use crate::heap_allocator::rust_oom;
 #[global_allocator]
 static ALLOCATOR: heap_allocator::Allocator = heap_allocator::Allocator::new();
 
-use crate::i386::stack;
+use crate::arch::{StackDumpSource, KernelStack, dump_stack};
 use crate::paging::{PAGE_SIZE, MappingAccessRights};
 use crate::mem::VirtualAddress;
 use crate::process::{ProcessStruct, ThreadStruct};
+use crate::elf_loader::Module;
 
 /// Forces a double fault by stack overflowing.
 ///
@@ -128,10 +126,9 @@ unsafe fn force_double_fault() {
 /// From now on, the kernel's only job will be to respond to IRQs and serve syscalls.
 fn main() {
     info!("Loading all the init processes");
-    for module in i386::multiboot::get_boot_information().module_tags().skip(1) {
+    for module in crate::arch::get_modules() {
         info!("Loading {}", module.name());
-        let mapped_module = elf_loader::map_grub_module(module)
-            .unwrap_or_else(|_| panic!("Unable to find available memory for module {}", module.name()));
+        let mapped_module = elf_loader::map_module(&module);
         let proc = ProcessStruct::new(String::from(module.name()), elf_loader::get_kacs(&mapped_module)).unwrap();
         let (ep, sp) = {
                 let mut pmemlock = proc.pmemory.lock();
@@ -158,91 +155,6 @@ fn main() {
     }
 }
 
-/// The entry point of our kernel.
-///
-/// This function is jump'd into from the bootstrap code, which:
-///
-/// * enabled paging,
-/// * gave us a valid KernelStack,
-/// * mapped grub's multiboot information structure in KernelLand (its address in $ebx),
-///
-/// What we do is just bzero the .bss, and call a rust function, passing it the content of $ebx.
-#[cfg(target_os = "none")]
-#[no_mangle]
-pub unsafe extern fn start() -> ! {
-    asm!("
-        // Memset the bss. Hopefully memset doesn't actually use the bss...
-        mov eax, BSS_END
-        sub eax, BSS_START
-        push eax
-        push 0
-        push BSS_START
-        call memset
-        add esp, 12
-
-        // Save multiboot infos addr present in ebx
-        push ebx
-        call common_start" : : : : "intel", "volatile");
-    core::intrinsics::unreachable()
-}
-
-/// CRT0 starts here.
-///
-/// This function takes care of initializing the kernel, before calling the main function.
-#[cfg(target_os = "none")]
-#[no_mangle]
-pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
-    use crate::devices::rs232::{SerialAttributes, SerialColor};
-
-    log_impl::early_init();
-
-
-    let log = &mut devices::rs232::SerialLogger;
-    // Say hello to the world
-    let _ = writeln!(log, "\n# Welcome to {}KFS{}!\n",
-        SerialAttributes::fg(SerialColor::LightCyan),
-        SerialAttributes::default());
-
-    // Parse the multiboot infos
-    let boot_info = unsafe { multiboot2::load(multiboot_info_addr) };
-    info!("Parsed multiboot informations");
-
-    // Setup frame allocator
-    frame_allocator::init(&boot_info);
-    info!("Initialized frame allocator");
-
-    // Set up (read: inhibit) the GDT.
-    info!("Initializing gdt...");
-    i386::gdt::init_gdt();
-    info!("Gdt initialized");
-
-    i386::multiboot::init(boot_info);
-
-    log_impl::init();
-
-    unsafe { devices::pit::init_channel_0() };
-    info!("Initialized PIT");
-
-    info!("Enabling interrupts");
-    unsafe { interrupts::init(); }
-
-    //info!("Disable timer interrupt");
-    //devices::pic::get().mask(0);
-
-    info!("Becoming the first process");
-    unsafe { scheduler::create_first_process() };
-
-    info!("Calling main()");
-
-    main();
-    // Die !
-    // We shouldn't reach this...
-    loop {
-        #[cfg(target_os = "none")]
-        unsafe { asm!("HLT"); }
-    }
-}
-
 /// The exception handling personality function for use in the bootstrap.
 ///
 /// We have no exception handling in the kernel, so make it do nothing.
@@ -265,20 +177,19 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 ///
 /// Note that if `None` is passed, this function is safe.
 ///
-/// [dump_stack]: crate::stack::dump_stack
-unsafe fn do_panic(msg: core::fmt::Arguments<'_>, stackdump_source: Option<stack::StackDumpSource>) -> ! {
+/// [dump_stack]: crate::arch::stub::dump_stack
+unsafe fn do_panic(msg: core::fmt::Arguments<'_>, stackdump_source: Option<StackDumpSource>) -> ! {
+    use crate::arch::{get_logger, force_logger_unlock};
 
     // Disable interrupts forever!
     unsafe { sync::permanently_disable_interrupts(); }
     // Don't deadlock in the logger
-    unsafe { SerialLogger.force_unlock(); }
+    unsafe { force_logger_unlock(); }
 
     //todo: force unlock the KernelMemory lock
     //      and also the process memory lock for userspace stack dumping (only if panic-on-excetpion ?).
 
-    use crate::devices::rs232::SerialLogger;
-
-    let _ = writeln!(SerialLogger, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\
+    let _ = writeln!(get_logger(), "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\
                                     ! Panic! at the disco\n\
                                     ! {}\n\
                                     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
@@ -289,14 +200,16 @@ unsafe fn do_panic(msg: core::fmt::Arguments<'_>, stackdump_source: Option<stack
     use xmas_elf::symbol_table::Entry32;
     use xmas_elf::sections::SectionData;
     use xmas_elf::ElfFile;
-    use crate::elf_loader::MappedGrubModule;
+    use crate::elf_loader::MappedModule;
 
-    let mapped_kernel_elf = i386::multiboot::try_get_boot_information()
-        .and_then(|info| info.module_tags().nth(0))
-        .and_then(|module| elf_loader::map_grub_module(module).ok());
+    // TODO: Get kernel in arch-generic way.
+    let mapped_kernel_module = crate::arch::i386::multiboot::try_get_boot_information()
+        .and_then(|info| info.module_tags().nth(0));
+    let mapped_kernel_elf = mapped_kernel_module.as_ref()
+        .and_then(|module| Some(elf_loader::map_module(module)));
 
     /// Gets the symbol table of a mapped module.
-    fn get_symbols<'a>(mapped_kernel_elf: &'a Option<MappedGrubModule<'_>>) -> Option<(&'a ElfFile<'a>, &'a[Entry32])> {
+    fn get_symbols<'a>(mapped_kernel_elf: &'a Option<MappedModule<'_>>) -> Option<(&'a ElfFile<'a>, &'a[Entry32])> {
         let module = mapped_kernel_elf.as_ref()?;
         let elf = module.elf.as_ref().ok()?;
         let data = elf.find_section_by_name(".symtab")?
@@ -311,24 +224,26 @@ unsafe fn do_panic(msg: core::fmt::Arguments<'_>, stackdump_source: Option<stack
     let elf_and_st = get_symbols(&mapped_kernel_elf);
 
     if elf_and_st.is_none() {
-        let _ = writeln!(SerialLogger, "Panic handler: Failed to get kernel elf symbols");
+        let _ = writeln!(get_logger(), "Panic handler: Failed to get kernel elf symbols");
     }
 
     // Then print the stack
     if let Some(sds) = stackdump_source {
         unsafe {
             // this is unsafe, caller must check safety
-            crate::stack::dump_stack(&sds, elf_and_st)
+            dump_stack(&sds, elf_and_st)
         }
     } else {
-        crate::stack::KernelStack::dump_current_stack(elf_and_st)
+        KernelStack::dump_current_stack(elf_and_st)
     }
 
-    let _ = writeln!(SerialLogger, "Thread : {:#x?}", scheduler::try_get_current_thread());
+    let _ = writeln!(get_logger(), "Thread : {:#x?}", scheduler::try_get_current_thread());
 
-    let _ = writeln!(SerialLogger, "!!!!!!!!!!!!!!!END PANIC!!!!!!!!!!!!!!");
+    let _ = writeln!(get_logger(), "!!!!!!!!!!!!!!!END PANIC!!!!!!!!!!!!!!");
 
-    loop { unsafe { asm!("HLT"); } }
+    loop {
+        arch::wait_for_interrupt();
+    }
 }
 
 /// Function called on `panic!` invocation.

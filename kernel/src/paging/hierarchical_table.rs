@@ -20,7 +20,7 @@ use core::iter::{Iterator, Peekable};
 ///
 /// PageState is generic over various kind of Present states, similar to the
 /// Option type.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum PageState<T> {
     /// Available, aka unused.
     /// Will page fault on use.

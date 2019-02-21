@@ -26,7 +26,7 @@ use super::cross_process::CrossProcessMapping;
 use super::error::MmError;
 use super::MappingAccessRights;
 use crate::mem::{VirtualAddress, PhysicalAddress};
-use crate::frame_allocator::{FrameAllocator, FrameAllocatorTrait, PhysicalMemRegion};
+use crate::frame_allocator::{FrameAllocator, PhysicalMemRegion};
 use crate::paging::arch::Entry;
 use crate::error::KernelError;
 use crate::utils::{check_aligned, check_nonzero_length};

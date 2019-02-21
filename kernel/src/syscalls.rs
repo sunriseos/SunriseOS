@@ -1,10 +1,9 @@
 //! Syscall implementations
 
-use crate::i386;
 use crate::mem::{VirtualAddress, PhysicalAddress};
 use crate::mem::{UserSpacePtr, UserSpacePtrMut};
 use crate::paging::{MappingAccessRights, mapping::MappingType};
-use crate::frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
+use crate::frame_allocator::{PhysicalMemRegion, FrameAllocator};
 use crate::process::{Handle, ThreadStruct, ProcessStruct};
 use crate::event::{self, Waitable};
 use crate::scheduler::{self, get_current_thread, get_current_process};
@@ -14,7 +13,7 @@ use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use crate::ipc;
-use super::check_thread_killed;
+use crate::utils::check_thread_killed;
 use crate::error::UserspaceError;
 use kfs_libkern::{nr, SYSCALL_NAMES, MemoryInfo, MemoryAttributes, MemoryPermissions};
 use bit_field::BitArray;
@@ -41,7 +40,9 @@ fn set_heap_size(new_size: usize) -> Result<usize, UserspaceError> {
 }
 
 /// Maps the vga frame buffer mmio in userspace memory
+#[cfg(target_arch = "x86")] // Temporary.
 fn map_framebuffer() -> Result<(usize, usize, usize, usize), UserspaceError> {
+    use crate::arch::i386;
     let tag = i386::multiboot::get_boot_information().framebuffer_info_tag()
         .expect("Framebuffer to be provided");
     let framebuffer_size = tag.framebuffer_bpp() as usize
@@ -613,6 +614,7 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
         (true, nr::ConnectToPort) => registers.apply1(connect_to_port(x0 as _)),
 
         // KFS extensions
+        #[cfg(target_arch = "i386")]
         (true, nr::MapFramebuffer) => registers.apply4(map_framebuffer()),
 
         // Unknown/unauthorized syscall.

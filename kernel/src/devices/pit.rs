@@ -54,7 +54,8 @@
 
 use crate::sync::SpinLock;
 use crate::io::Io;
-use crate::i386::pio::Pio;
+#[cfg(target_arch = "x86")]
+use crate::arch::i386::pio::Pio;
 use crate::event::{self, IRQEvent, Waitable};
 use crate::utils::div_ceil;
 
@@ -70,9 +71,10 @@ pub const CHAN_0_FREQUENCY: usize = 100;
 /// The channel 0 reset value
 const CHAN_0_DIVISOR: u16 = (OSCILLATOR_FREQ / CHAN_0_FREQUENCY) as u16;
 
+#[cfg(target_arch = "x86")]
 lazy_static! {
     /// The mutex wrapping the ports
-    static ref PIT_PORTS: SpinLock<PITPorts> = SpinLock::new(PITPorts {
+    static ref PIT_PORTS: SpinLock<PITPorts<Pio<u8>>> = SpinLock::new(PITPorts {
         /// Port 0x40, PIT's Channel 0.
         port_chan_0: Pio::new(0x40),
         /// Port 0x42, PIT's Channel 2.
@@ -111,14 +113,14 @@ bitflags! {
 
 /// We put the PIT ports in a structure to have them under a single mutex
 #[allow(clippy::missing_docs_in_private_items)]
-struct PITPorts {
-    port_chan_0: Pio<u8>,
-    port_chan_2: Pio<u8>,
-    port_cmd:    Pio<u8>,
-    port_61:     Pio<u8>
+struct PITPorts<T> {
+    port_chan_0: T,
+    port_chan_2: T,
+    port_cmd:    T,
+    port_61:     T
 }
 
-impl PITPorts {
+impl<T: Io<Value = u8>> PITPorts<T> {
     /// Writes a reload value in lobyte/hibyte access mode
     fn write_reload_value(&mut self, channel_selector: ChannelSelector, value: u16) {
         let port = match channel_selector {
@@ -133,15 +135,15 @@ impl PITPorts {
 }
 
 /// Channel 2
-struct PITChannel2<'ports> {
+struct PITChannel2<'ports, T> {
     /// A reference to the PITPorts structure.
-    ports: &'ports mut PITPorts
+    ports: &'ports mut PITPorts<T>
 }
 
-impl<'ports> PITChannel2<'ports> {
+impl<'ports, T: Io<Value = u8>> PITChannel2<'ports, T> {
 
     /// Sets mode #0 for Channel 2.
-    fn init(ports: &mut PITPorts) -> PITChannel2<'_> {
+    fn init(ports: &mut PITPorts<T>) -> PITChannel2<'_, T> {
         ports.port_cmd.write(
             0b10110000 // channel 2, lobyte/hibyte, interrupt on terminal count
         );
@@ -194,13 +196,6 @@ impl<'ports> PITChannel2<'ports> {
     }
 }
 
-/// Spin waits for at least `ms` amount of milliseconds
-pub fn spin_wait_ms(ms: usize) {
-    let mut ports = PIT_PORTS.lock();
-    let mut chan2 = PITChannel2::init(&mut ports);
-    chan2.spin_wait_ms(ms);
-}
-
 /// A stream of event that trigger every `ms` amount of milliseconds, by counting Channel 0 interruptions.
 #[derive(Debug)]
 struct WaitFor {
@@ -242,6 +237,7 @@ pub fn wait_ms(ms: usize) -> impl Waitable {
 }
 
 /// Initialize the channel 0 to send recurring irqs.
+#[cfg(target_arch = "x86")]
 pub unsafe fn init_channel_0() {
     let mut ports = PIT_PORTS.lock();
     ports.port_cmd.write(

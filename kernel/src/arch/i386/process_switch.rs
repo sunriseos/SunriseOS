@@ -3,10 +3,10 @@
 //! This modules describe low-level functions and structures needed to perform a process switch
 
 use crate::process::ThreadStruct;
-use crate::i386::gdt;
+use crate::arch::i386::gdt;
 use alloc::sync::Arc;
 use core::mem::size_of;
-use crate::i386::TssStruct;
+use crate::arch::i386::TssStruct;
 
 /// The hardware context of a paused thread. It contains just enough registers to get the thread
 /// running again.
@@ -191,7 +191,7 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
 
 /// Prepares the thread for its first schedule by writing default values at the start of the
 /// stack that will be loaded in the registers in schedule-in.
-/// See process_switch() documentation for more details.
+/// See [arch::stub::prepare_for_first_schedule] and [process_switch] documentation for more details.
 ///
 /// # Safety
 ///

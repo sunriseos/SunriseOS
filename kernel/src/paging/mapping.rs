@@ -218,7 +218,7 @@ mod test {
     use super::MappingType;
     use crate::mem::{VirtualAddress, PhysicalAddress};
     use crate::paging::PAGE_SIZE;
-    use crate::frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
+    use crate::frame_allocator::{PhysicalMemRegion, FrameAllocator};
     use std::sync::Arc;
     use std::vec::Vec;
     use crate::utils::Splittable;

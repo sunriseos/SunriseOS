@@ -5,39 +5,23 @@
 //! Feature `panic-on-exception` makes the kernel stop and panic when a thread generates
 //! an exception. This is useful for debugging.
 
-use crate::i386::structures::idt::{ExceptionStackFrame, PageFaultErrorCode, Idt};
-use crate::i386::instructions::interrupts::sti;
+use crate::arch::i386::structures::idt::{ExceptionStackFrame, PageFaultErrorCode, Idt};
+use crate::arch::i386::instructions::interrupts::sti;
 use crate::mem::VirtualAddress;
 use crate::paging::kernel_memory::get_kernel_memory;
-use crate::i386::{TssStruct, PrivilegeLevel};
-use crate::i386::gdt;
+use crate::arch::i386::{TssStruct, PrivilegeLevel};
+use crate::arch::i386::gdt;
 use crate::scheduler::get_current_thread;
-use crate::process::{ProcessStruct, ThreadState};
-use crate::sync::SpinLockIRQ;
-use core::sync::atomic::Ordering;
+use crate::process::ProcessStruct;
 
 use core::fmt::Arguments;
 use crate::sync::SpinLock;
 use crate::devices::pic;
 use crate::scheduler;
+use crate::syscalls;
+use crate::utils::check_thread_killed;
 
 mod irq;
-mod syscalls;
-
-/// Checks if our thread was killed, in which case unschedule ourselves.
-///
-/// # Note
-///
-/// As this function will be the last that will be called by a thread before dying,
-/// caller must make sure all of its scope variables are ok to be leaked.
-pub fn check_thread_killed() {
-    if scheduler::get_current_thread().state.load(Ordering::SeqCst) == ThreadState::Killed {
-        let lock = SpinLockIRQ::new(());
-        loop { // in case of spurious wakeups
-            let _ = scheduler::unschedule(&lock, lock.lock());
-        }
-    }
-}
 
 /// Panics with an informative message.
 fn panic_on_exception(exception_string: Arguments<'_>, exception_stack_frame: &ExceptionStackFrame) -> ! {
@@ -182,7 +166,7 @@ fn double_fault_handler() {
                     tss_main.eip, tss_main.cr3,
                     tss_main.eax, tss_main.ebx, tss_main.ecx, tss_main.edx,
                     tss_main.esi, tss_main.edi, tss_main.esp, tss_main.ebp),
-                Some(crate::stack::StackDumpSource::new(
+                Some(super::stack::StackDumpSource::new(
                     tss_main.esp as usize, tss_main.ebp as usize, tss_main.eip as usize
                     )));
         } else {
@@ -428,10 +412,13 @@ pub unsafe fn init() {
     pic::init();
 
     {
+        info!("Getting page");
         let page = get_kernel_memory().get_page();
         let idt = page.addr() as *mut u8 as *mut Idt;
         unsafe {
+            info!("Initializing page {:?}", page);
             (*idt).init();
+            info!("Setting exceptions {:p}", idt);
             (*idt).divide_by_zero.set_handler_fn(divide_by_zero_handler);
             (*idt).debug.set_handler_fn(debug_handler);
             (*idt).non_maskable_interrupt.set_handler_fn(non_maskable_interrupt_handler);
@@ -440,7 +427,9 @@ pub unsafe fn init() {
             (*idt).bound_range_exceeded.set_handler_fn(bound_range_exceeded_handler);
             (*idt).invalid_opcode.set_handler_fn(invalid_opcode_handler);
             (*idt).device_not_available.set_handler_fn(device_not_available_handler);
+            info!("Setting double fault handler {:p}", idt);
             (*idt).double_fault.set_handler_task_gate_addr(double_fault_handler as u32);
+            info!("Setting rest of exceptions {:p}", idt);
             // coprocessor_segment_overrun
             (*idt).invalid_tss.set_handler_fn(invalid_tss_handler);
             (*idt).segment_not_present.set_handler_fn(segment_not_present_handler);
@@ -454,17 +443,21 @@ pub unsafe fn init() {
             (*idt).virtualization.set_handler_fn(virtualization_handler);
             (*idt).security_exception.set_handler_fn(security_exception_handler);
 
+            info!("Setting IRQ handlers");
             for (i, handler) in irq::IRQ_HANDLERS.iter().enumerate() {
                 (*idt).interrupts[i].set_handler_fn(*handler);
             }
 
             // Add entry for syscalls
+            info!("Setting syscall handler");
             let syscall_int = (*idt)[0x80].set_interrupt_gate_addr(syscall_handler as u32);
             syscall_int.set_privilege_level(PrivilegeLevel::Ring3);
             syscall_int.disable_interrupts(false);
         }
+        info!("Setting IDT global");
         let mut lock = IDT.lock();
         *lock = Some(page);
+        info!("Loading IDT");
         (*idt).load();
     }
 

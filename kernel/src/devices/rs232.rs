@@ -3,7 +3,8 @@
 use core::fmt::{Display, Write, Error, Formatter};
 use crate::sync::{Once, SpinLock};
 use crate::io::Io;
-use crate::i386::pio::Pio;
+#[cfg(target_arch = "x86")]
+use crate::arch::i386::pio::Pio;
 
 /// The base IO port of a COM
 #[derive(Debug, Copy, Clone)]
@@ -98,6 +99,7 @@ impl Display for SerialAttributes {
 /// Initialized on first use.
 ///
 /// Log functions will access the [SerialInternal] it wraps, and send text to it.
+#[cfg(target_arch = "x86")]
 static G_SERIAL: Once<SpinLock<SerialInternal<Pio<u8>>>> = Once::new();
 
 /// A COM output. Wraps the IO ports of this COM, and provides function for writing to it.
@@ -108,9 +110,10 @@ struct SerialInternal<T> {
     status_port: T
 }
 
+#[cfg(target_arch = "x86")]
 impl SerialInternal<Pio<u8>> {
     /// Creates a COM port from it's base IO address.
-    #[cfg(all(target_arch="x86", not(test)))]
+    #[cfg(not(test))]
     #[allow(unused)]
     pub fn new(com_port: ComPort) -> SerialInternal<Pio<u8>> {
         let mut data_port       = Pio::<u8>::new(com_port.0 + 0);
@@ -137,6 +140,9 @@ impl SerialInternal<Pio<u8>> {
     #[cfg(test)]
     pub fn new(_com_port: ComPort) -> SerialInternal<Pio<u8>> { panic!("mock implementation !") }
 
+}
+
+impl<T: Io<Value = u8>> SerialInternal<T> {
     /// Outputs a string to this COM.
     fn send_string(&mut self, string: &str) {
         for byte in string.bytes() {
@@ -161,6 +167,7 @@ impl SerialInternal<Pio<u8>> {
 #[derive(Debug)]
 pub struct SerialLogger;
 
+#[cfg(target_arch = "x86")]
 impl SerialLogger {
     /// Re-take the lock protecting multiple access to the device.
     ///
@@ -172,6 +179,7 @@ impl SerialLogger {
     }
 }
 
+#[cfg(target_arch = "x86")]
 impl Write for SerialLogger {
     /// Writes a string to COM1.
     fn write_str(&mut self, s: &str) -> Result<(), ::core::fmt::Error> {

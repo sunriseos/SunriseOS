@@ -6,7 +6,9 @@
 
 use alloc::boxed::Box;
 use core::ops::{Deref, DerefMut};
+use crate::mem::PhysicalAddress;
 
+pub mod interrupts;
 #[macro_use]
 pub mod registers;
 pub mod stack;
@@ -28,7 +30,7 @@ pub mod instructions {
     pub mod tables {
         //! Instructions for loading descriptor tables (GDT, IDT, etc.).
 
-        use crate::i386::structures::gdt::SegmentSelector;
+        use crate::arch::i386::structures::gdt::SegmentSelector;
 
         /// A struct describing a pointer to a descriptor table (GDT / IDT).
         /// This is in a format suitable for giving to 'lgdt' or 'lidt'.
@@ -81,7 +83,7 @@ pub mod instructions {
     pub mod segmentation {
         //! Provides functions to read and write segment registers.
 
-        use crate::i386::structures::gdt::SegmentSelector;
+        use crate::arch::i386::structures::gdt::SegmentSelector;
 
         /// Reload code segment register.
         /// Note this is special since we can not directly move
@@ -147,7 +149,7 @@ pub mod instructions {
 
         /// Returns whether interrupts are enabled.
         pub fn are_enabled() -> bool {
-            use crate::i386::registers::eflags::{self, EFlags};
+            use crate::arch::i386::registers::eflags::{self, EFlags};
 
             eflags::read().contains(EFlags::INTERRUPT_FLAG)
         }
@@ -442,3 +444,166 @@ impl DerefMut for AlignedTssStruct {
         &mut self.0
     }
 }
+
+// CRT0 here
+
+/// The entry point of our kernel.
+///
+/// This function is jump'd into from the bootstrap code, which:
+///
+/// * enabled paging,
+/// * gave us a valid KernelStack,
+/// * mapped grub's multiboot information structure in KernelLand (its address in $ebx),
+///
+/// What we do is just bzero the .bss, and call a rust function, passing it the content of $ebx.
+#[cfg(target_os = "none")]
+#[no_mangle]
+pub unsafe extern fn start() -> ! {
+    asm!("
+        // Memset the bss. Hopefully memset doesn't actually use the bss...
+        mov eax, BSS_END
+        sub eax, BSS_START
+        push eax
+        push 0
+        push BSS_START
+        call memset
+        add esp, 12
+
+        // Save multiboot infos addr present in ebx
+        push ebx
+        call $0" : : "i"(common_start as *const u8) : : "intel", "volatile");
+    core::intrinsics::unreachable()
+}
+
+/// CRT0 starts here.
+///
+/// This function takes care of initializing the kernel, before calling the main function.
+#[cfg(target_os = "none")]
+extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
+    use crate::devices::rs232::{SerialAttributes, SerialColor};
+    use crate::arch::get_logger;
+    use core::fmt::Write;
+
+    crate::log_impl::early_init();
+
+    // Say hello to the world
+    let _ = writeln!(get_logger(), "\n# Welcome to {}KFS{}!\n",
+        SerialAttributes::fg(SerialColor::LightCyan),
+        SerialAttributes::default());
+
+    // Parse the multiboot infos
+    info!("Parsing multiboot informations");
+    let boot_info = unsafe { multiboot2::load(multiboot_info_addr) };
+    crate::arch::i386::multiboot::init(boot_info);
+
+    // Setup frame allocator
+    info!("Initializing frame allocator");
+    crate::frame_allocator::init();
+
+    // Set up (read: inhibit) the GDT.
+    info!("Initializing gdt...");
+    crate::arch::i386::gdt::init_gdt();
+
+    crate::log_impl::init();
+
+    info!("Initializing PIT");
+    unsafe { crate::devices::pit::init_channel_0() };
+
+    info!("Enabling interrupts");
+    unsafe { interrupts::init(); }
+
+    info!("Becoming the first process");
+    unsafe { crate::scheduler::create_first_process() };
+
+    info!("Calling main()");
+
+    crate::main();
+    // Die !
+    // We shouldn't reach this...
+    loop {
+        #[cfg(target_os = "none")]
+        unsafe { asm!("HLT"); }
+    }
+}
+
+// START ARCH API HERE
+/// See [arch::stub::enable_interrupts]
+pub unsafe fn enable_interrupts() {
+    instructions::interrupts::sti();
+}
+
+/// See [arch::stub::disable_interrupts]
+pub unsafe fn disable_interrupts() -> bool {
+    let backup = instructions::interrupts::are_enabled();
+    instructions::interrupts::cli();
+    backup
+}
+
+/// See [arch::stub::get_cmdline]
+///
+/// On i386, it will return the cmdline from the multiboot information. Before
+/// multiboot is properly initialized, or if the commandline tag is missing from
+/// the multiboot information structure, it will return the default value
+/// "debug".
+pub fn get_cmdline() -> &'static str {
+    multiboot::try_get_boot_information()
+        .and_then(|v| v.command_line_tag())
+        .map(|v| v.command_line())
+        .unwrap_or("debug")
+}
+
+/// See [arch::stub::get_logger]
+///
+/// On i386, we return the RS232 SerialLogger.
+pub fn get_logger() -> impl core::fmt::Write {
+    use crate::devices::rs232::SerialLogger;
+    SerialLogger
+}
+
+/// See [arch::stub::force_logger_unlock]
+pub unsafe fn force_logger_unlock() {
+    use crate::devices::rs232::SerialLogger;
+    SerialLogger.force_unlock();
+}
+
+/// See [arch::stub::get_modules]
+pub fn get_modules() -> impl Iterator<Item = impl crate::elf_loader::Module> {
+    impl crate::elf_loader::Module for &multiboot2::ModuleTag {
+        fn start_address(&self) -> PhysicalAddress {
+            PhysicalAddress(multiboot2::ModuleTag::start_address(self) as usize)
+        }
+        fn end_address(&self) -> PhysicalAddress {
+            PhysicalAddress(multiboot2::ModuleTag::end_address(self) as usize)
+        }
+        fn name(&self) -> &str {
+            multiboot2::ModuleTag::name(self)
+        }
+    }
+
+    multiboot::try_get_boot_information()
+        .into_iter()
+        .map(|v| v.module_tags().skip(1))
+        .flatten()
+}
+
+/// See [arch::stub::wait_for_interrupt]
+pub fn wait_for_interrupt() {
+    unsafe {
+        instructions::interrupts::hlt()
+    }
+}
+
+pub fn get_available_memory_regions() -> impl Iterator<Item = super::MemRegion> {
+    let boot_info = multiboot::get_boot_information();
+    let memory_map_tag = boot_info.memory_map_tag()
+        .expect("GRUB, you're drunk. Give us our memory_map_tag.");
+
+    memory_map_tag.memory_areas()
+        .map(|v| super::MemRegion {
+            addr: v.start_address(),
+            page_count: v.end_address() - v.start_address() / 4096
+        })
+}
+
+pub use self::process_switch::{ThreadHardwareContext, process_switch, prepare_for_first_schedule};
+pub use self::stack::{KernelStack, StackDumpSource, dump_stack};

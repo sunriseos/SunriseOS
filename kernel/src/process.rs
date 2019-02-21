@@ -1,7 +1,7 @@
 //! Process
 
-use crate::stack::KernelStack;
-use crate::i386::process_switch::*;
+use crate::arch::KernelStack;
+use crate::arch::{ThreadHardwareContext, prepare_for_first_schedule};
 use crate::paging::process_memory::ProcessMemory;
 use alloc::boxed::Box;
 use alloc::sync::{Arc, Weak};
@@ -105,17 +105,6 @@ pub struct ThreadStruct {
     ///
     /// The currently running process is indirectly kept alive by the `CURRENT_THREAD` global in scheduler.
     pub process: Arc<ProcessStruct>,
-
-    /// Interrupt disable counter.
-    ///
-    /// # Description
-    ///
-    /// Allows recursively disabling interrupts while keeping a sane behavior.
-    /// Should only be manipulated through sync::enable_interrupts and
-    /// sync::disable_interrupts.
-    ///
-    /// Used by the SpinLockIRQ to implement recursive irqsave logic.
-    pub int_disable_counter: AtomicUsize,
 
     /// Argument passed to the entrypoint on first schedule.
     pub arg: usize
@@ -534,7 +523,6 @@ impl ThreadStruct {
                 state,
                 kstack,
                 hwcontext : empty_hwcontext,
-                int_disable_counter: AtomicUsize::new(0),
                 process: Arc::clone(belonging_process),
                 arg
             }
@@ -607,7 +595,6 @@ impl ThreadStruct {
                 state,
                 kstack,
                 hwcontext,
-                int_disable_counter: AtomicUsize::new(0),
                 process: Arc::clone(&process),
                 arg: 0
             }
