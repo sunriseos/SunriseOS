@@ -6,6 +6,7 @@
 
 use alloc::boxed::Box;
 use core::ops::{Deref, DerefMut};
+use crate::mem::PhysicalAddress;
 
 pub mod interrupts;
 #[macro_use]
@@ -563,6 +564,26 @@ pub fn get_logger() -> impl core::fmt::Write {
 pub unsafe fn force_logger_unlock() {
     use crate::devices::rs232::SerialLogger;
     SerialLogger.force_unlock();
+}
+
+/// See [arch::stub::get_modules]
+pub fn get_modules() -> impl Iterator<Item = impl crate::elf_loader::Module> {
+    impl crate::elf_loader::Module for &multiboot2::ModuleTag {
+        fn start_address(&self) -> PhysicalAddress {
+            PhysicalAddress(multiboot2::ModuleTag::start_address(self) as usize)
+        }
+        fn end_address(&self) -> PhysicalAddress {
+            PhysicalAddress(multiboot2::ModuleTag::end_address(self) as usize)
+        }
+        fn name(&self) -> &str {
+            multiboot2::ModuleTag::name(self)
+        }
+    }
+
+    multiboot::try_get_boot_information()
+        .into_iter()
+        .map(|v| v.module_tags().skip(1))
+        .flatten()
 }
 
 pub use self::process_switch::{ThreadHardwareContext, process_switch, prepare_for_first_schedule};

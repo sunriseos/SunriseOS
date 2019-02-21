@@ -24,5 +24,7 @@ cfg_if! {
 pub use self::arch::{
     enable_interrupts, disable_interrupts, get_cmdline, get_logger,
     force_logger_unlock, ThreadHardwareContext, process_switch,
-    prepare_for_first_schedule
+    prepare_for_first_schedule,
+
+    get_modules
 };

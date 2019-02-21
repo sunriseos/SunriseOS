@@ -6,6 +6,8 @@
 //! with a simple implementation.
 
 use alloc::sync::Arc;
+
+use crate::mem::PhysicalAddress;
 use crate::process::ThreadStruct;
 
 /// Enable interruptions. After calling this function, hardware should call
@@ -78,4 +80,26 @@ pub unsafe extern "C" fn process_switch(_thread_b: Arc<ThreadStruct>, _thread_cu
 ///
 /// UB if called on a thread after it was scheduled for the first time.
 pub unsafe fn prepare_for_first_schedule(_t: &ThreadStruct, _entrypoint: usize, _userspace_stack: usize) {
+}
+
+/// Get a list of Kernel Internal Processes to load. These are processes
+/// typically bundled with the kernel that are the basic necessary processes to
+/// load other processes from the filesystem. These are typically FS, Loader and
+/// Boot.
+pub fn get_modules() -> impl Iterator<Item = impl crate::elf_loader::Module> {
+    #[doc(hidden)]
+    #[derive(Debug)]
+    struct EmptyModule;
+    impl crate::elf_loader::Module for EmptyModule {
+        fn start_address(&self) -> PhysicalAddress {
+            unreachable!()
+        }
+        fn end_address(&self) -> PhysicalAddress {
+            unreachable!()
+        }
+        fn name(&self) -> &str {
+            "Empty Module"
+        }
+    }
+    core::iter::empty::<EmptyModule>()
 }

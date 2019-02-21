@@ -83,6 +83,7 @@ use crate::arch::i386::stack;
 use crate::paging::{PAGE_SIZE, MappingAccessRights};
 use crate::mem::VirtualAddress;
 use crate::process::{ProcessStruct, ThreadStruct};
+use crate::elf_loader::Module;
 
 /// Forces a double fault by stack overflowing.
 ///
@@ -125,10 +126,9 @@ unsafe fn force_double_fault() {
 /// From now on, the kernel's only job will be to respond to IRQs and serve syscalls.
 fn main() {
     info!("Loading all the init processes");
-    for module in crate::arch::i386::multiboot::get_boot_information().module_tags().skip(1) {
+    for module in crate::arch::get_modules() {
         info!("Loading {}", module.name());
-        let mapped_module = elf_loader::map_grub_module(module)
-            .unwrap_or_else(|_| panic!("Unable to find available memory for module {}", module.name()));
+        let mapped_module = elf_loader::map_module(&module);
         let proc = ProcessStruct::new(String::from(module.name()), elf_loader::get_kacs(&mapped_module)).unwrap();
         let (ep, sp) = {
                 let mut pmemlock = proc.pmemory.lock();
@@ -200,14 +200,16 @@ unsafe fn do_panic(msg: core::fmt::Arguments<'_>, stackdump_source: Option<stack
     use xmas_elf::symbol_table::Entry32;
     use xmas_elf::sections::SectionData;
     use xmas_elf::ElfFile;
-    use crate::elf_loader::MappedGrubModule;
+    use crate::elf_loader::MappedModule;
 
-    let mapped_kernel_elf = crate::arch::i386::multiboot::try_get_boot_information()
-        .and_then(|info| info.module_tags().nth(0))
-        .and_then(|module| elf_loader::map_grub_module(module).ok());
+    // TODO: Get kernel in arch-generic way.
+    let mapped_kernel_module = crate::arch::i386::multiboot::try_get_boot_information()
+        .and_then(|info| info.module_tags().nth(0));
+    let mapped_kernel_elf = mapped_kernel_module.as_ref()
+        .and_then(|module| Some(elf_loader::map_module(module)));
 
     /// Gets the symbol table of a mapped module.
-    fn get_symbols<'a>(mapped_kernel_elf: &'a Option<MappedGrubModule<'_>>) -> Option<(&'a ElfFile<'a>, &'a[Entry32])> {
+    fn get_symbols<'a>(mapped_kernel_elf: &'a Option<MappedModule<'_>>) -> Option<(&'a ElfFile<'a>, &'a[Entry32])> {
         let module = mapped_kernel_elf.as_ref()?;
         let elf = module.elf.as_ref().ok()?;
         let data = elf.find_section_by_name(".symtab")?
