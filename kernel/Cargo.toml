@@ -35,7 +35,7 @@ mashup = "0.1.9"
 
 [dependencies.smallvec]
 default-features = false
-version = "0.6.8"
+version = "0.6.9"
 
 [dependencies.byteorder]
 default-features = false
