@@ -21,7 +21,7 @@
 //! by an unprivileged process.
 //! Service Manager
 
-#![feature(alloc, const_let)]
+#![feature(alloc)]
 #![no_std]
 
 // rustc warnings

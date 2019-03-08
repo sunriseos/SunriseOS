@@ -1,4 +1,4 @@
-#![feature(alloc, const_let)]
+#![feature(alloc)]
 #![no_std]
 
 // rustc warnings

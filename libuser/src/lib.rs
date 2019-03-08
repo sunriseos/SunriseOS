@@ -13,6 +13,8 @@
 #![allow(dead_code)]
 #![cfg_attr(test, allow(unused_imports))]
 
+#![allow(non_upper_case_globals)] // I blame roblabla.
+
 // rustdoc warnings
 #![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
 #![deny(intra_doc_link_resolution_failure)]
