@@ -179,9 +179,10 @@ pub fn dispatch_event(irq: usize) {
 }
 
 /// Creates an IRQEvent waiting for the given IRQ number.
-pub fn wait_event(irq: usize) -> IRQEvent {
+pub fn wait_event(irq: u8) -> IRQEvent {
+    crate::devices::pic::get().unmask(irq);
     IRQEvent {
-        state: &IRQ_STATES[irq], ack: AtomicUsize::new(IRQ_STATES[irq].counter.load(Ordering::SeqCst))
+        state: &IRQ_STATES[irq as usize], ack: AtomicUsize::new(IRQ_STATES[irq as usize].counter.load(Ordering::SeqCst))
     }
 }
 

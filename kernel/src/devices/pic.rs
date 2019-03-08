@@ -95,6 +95,21 @@ impl Pic {
         }
     }
 
+    /// Unmask the given IRQ number. Will redirect the call to the right Pic device.
+    pub fn unmask(&self, irq: u8) {
+        if irq < 8 {
+            self.master.lock().unmask(irq);
+        } else {
+            self.slave.lock().unmask(irq - 8);
+        }
+    }
+
+    /// Reads the PIC interrupt mask. Used for debug purposes.
+    ///
+    /// LSB is irq 0, MSB is irq 15.
+    pub fn get_mask(&self) -> u16 {
+        u16::from(self.master.lock().get_mask()) | (u16::from(self.slave.lock().get_mask()) << 8)
+    }
 
     /// Acknowledges an IRQ, allowing the PIC to send a new IRQ on the next
     /// cycle.
@@ -151,8 +166,16 @@ impl InternalPic {
 
     /// Mask the given IRQ
     pub fn mask(&mut self, irq: u8) {
-        let mut data = self.port_data.read();
-        data |= 1 << irq;
-        self.port_data.write(data);
+        self.port_data.writef(1 << irq, true);
+    }
+
+    /// Unmask the given IRQ
+    pub fn unmask(&mut self, irq: u8) {
+        self.port_data.writef(1 << irq, false);
+    }
+
+    /// Read the IRQ mask. Used mostly for debug purposes.
+    pub fn get_mask(&self) -> u8 {
+        self.port_data.read()
     }
 }
