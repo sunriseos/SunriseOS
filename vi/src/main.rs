@@ -42,6 +42,7 @@ use spin::Mutex;
 use crate::libuser::error::Error;
 use crate::libuser::syscalls::MemoryPermissions;
 use kfs_libutils::align_up;
+use libuser::mem::{find_free_address, PAGE_SIZE};
 
 /// Entry point interface.
 #[derive(Default, Debug)]
@@ -59,8 +60,8 @@ object! {
         #[cmdid(0)]
         fn create_buffer(&mut self, manager: &WaitableManager, handle: Handle<copy>, top: i32, left: i32, width: u32, height: u32,) -> Result<(Handle,), Error> {
             let sharedmem = SharedMemory(handle);
-            let size = align_up(width * height * 4, 0x1000);
-            let addr = libuser::find_free_address(size as _, 0x1000)?;
+            let size = align_up(width * height * 4, PAGE_SIZE as _);
+            let addr = find_free_address(size as _, PAGE_SIZE)?;
             let mapped = sharedmem.map(addr, size as _, MemoryPermissions::READABLE)?;
             let buf = IBuffer {
                 buffer: Arc::new(Buffer {
