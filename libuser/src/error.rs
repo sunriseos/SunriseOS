@@ -58,7 +58,7 @@ impl Error {
     /// Create an Error from a packed error code, creating a backtrace at this
     /// point.
     pub fn from_code(errcode: u32) -> Error {
-        let module = errcode & 0x1F;
+        let module = errcode & 0x1FF;
         let description = errcode >> 9;
         match Module(module) {
             Module::Kernel => Error::Kernel(KernelError::from_description(description), Backtrace::new()),
