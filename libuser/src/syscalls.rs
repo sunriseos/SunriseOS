@@ -376,14 +376,16 @@ pub fn create_interrupt_event(irqnum: usize, flag: u32) -> Result<ReadableEvent,
 /// 1. 0x00000000 (On Horizon it contains the KernelSpace virtual address of this mapping,
 ///    but I don't see any use for it).
 /// 2. The length of the physical region.
+// kfs extension
+/// 3. The offset in the region of the given virtual address.
 ///
 /// # Error
 ///
 /// - InvalidAddress: This address does not map physical memory.
-pub fn query_physical_address(virtual_address: usize) -> Result<(usize, usize, usize), KernelError> {
+pub fn query_physical_address(virtual_address: usize) -> Result<(usize, usize, usize, usize), KernelError> {
     unsafe {
-        let (phys_addr, kernel_addr, phys_len, ..) = syscall(nr::QueryPhysicalAddress, virtual_address, 0, 0, 0, 0, 0)?;
-        Ok((phys_addr, kernel_addr, phys_len))
+        let (phys_addr, kernel_addr, phys_len, offset, ..) = syscall(nr::QueryPhysicalAddress, virtual_address, 0, 0, 0, 0, 0)?;
+        Ok((phys_addr, kernel_addr, phys_len, offset))
     }
 }
 

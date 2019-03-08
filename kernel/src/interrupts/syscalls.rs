@@ -111,11 +111,28 @@ fn create_interrupt_event(irq_num: usize, _flag: u32) -> Result<usize, Userspace
 /// 1. 0x00000000 (On Horizon it contains the KernelSpace virtual address of this mapping,
 ///    but I don't see any use for it).
 /// 2. The length of the physical region.
+// kfs extension
+/// 3. The offset in the region of the given virtual address.
 ///
 /// # Error
 ///
 /// - InvalidAddress: This address does not map physical memory.
-fn query_physical_address(virtual_address: usize) -> Result<(usize, usize, usize), UserspaceError> {
+// TODO: Kernel mappings must be physically continuous.
+// BODY: Virtual memory is a great thing, it can make a fragmented mapping appear contiguous from the
+// BODY: userspace. But unfortunately Horizon does not take advantage of this feature, and
+// BODY: allocates its mapping as a single Physical Memory Region.
+// BODY:
+// BODY: Its syscalls are based around that fact, and to do a `virt_to_phys(addr)`, you simply
+// BODY: need to `query_memory(addr).offset` to get its offset in its mapping, and compute its
+// BODY: physical address as `query_physical_address(addr).base + offset`.
+// BODY:
+// BODY: This will not work when the mapping is composed of several physical regions, and
+// BODY: Horizon drivers will not be expecting that. So for them to work on our kernel, we must
+// BODY: renounce using fragmented mappings.
+// BODY:
+// BODY: For now `query_physical_address` is providing an additional "offset in physical region" return value,
+// BODY: to help KFS drivers doing a virt_to_phys without needing to walk the list of physical regions.
+fn query_physical_address(virtual_address: usize) -> Result<(usize, usize, usize, usize), UserspaceError> {
     let virtual_address = VirtualAddress(virtual_address);
     let proc = scheduler::get_current_process();
     let mem = proc.pmemory.lock();
@@ -130,7 +147,7 @@ fn query_physical_address(virtual_address: usize) -> Result<(usize, usize, usize
     let mut i = 0;
     let pos = frames.iter().position(|region| { i += region.size(); i > offset })
         .expect("Mapping region count is corrupted");
-    Ok((frames[pos].address().addr(), 0x00000000, frames[pos].size()))
+    Ok((frames[pos].address().addr(), 0x00000000, frames[pos].size(), offset - (i - frames[pos].size())))
 }
 
 /// Waits for one of the handles to signal an event.
@@ -665,7 +682,7 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
         (true, nr::ReplyAndReceiveWithUserBuffer) => registers.apply1(reply_and_receive_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), UserSpacePtr::from_raw_parts(x2 as _, x3), x4 as _, x5)),
         (true, nr::CreateSharedMemory) => registers.apply1(create_shared_memory(x0 as _, x1 as _, x2 as _)),
         (true, nr::CreateInterruptEvent) => registers.apply1(create_interrupt_event(x0, x1 as u32)),
-        (true, nr::QueryPhysicalAddress) => registers.apply3(query_physical_address(x0 as _)),
+        (true, nr::QueryPhysicalAddress) => registers.apply4(query_physical_address(x0 as _)),
         (true, nr::CreatePort) => registers.apply2(create_port(x0 as _, x1 != 0, UserSpacePtr(x2 as _))),
         (true, nr::ManageNamedPort) => registers.apply1(manage_named_port(UserSpacePtr(x0 as _), x1 as _)),
         (true, nr::ConnectToPort) => registers.apply1(connect_to_port(x0 as _)),
