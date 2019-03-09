@@ -228,22 +228,9 @@ mod test {
     use crate::paging::PAGE_SIZE;
 
     #[test]
-    #[should_panic]
     fn on_fixed_mmio_checks_reserved() {
         let _f = crate::frame_allocator::init();
-        unsafe { PhysicalMemRegion::on_fixed_mmio(PhysicalAddress(0x00000000), PAGE_SIZE) };
-    }
-
-    #[test]
-    fn on_fixed_mmio_rounds_unaligned() {
-        let _f = crate::frame_allocator::init();
-        // reserve them so we don't panic
-        crate::frame_allocator::mark_frame_bootstrap_allocated(PhysicalAddress(0));
-        crate::frame_allocator::mark_frame_bootstrap_allocated(PhysicalAddress(PAGE_SIZE));
-
-        let region = unsafe { PhysicalMemRegion::on_fixed_mmio(PhysicalAddress(0x00000007), PAGE_SIZE + 1) };
-        assert_eq!(region.start_addr, 0);
-        assert_eq!(region.frames, 2);
+        unsafe { PhysicalMemRegion::on_fixed_mmio(PhysicalAddress(0x00000000), PAGE_SIZE) }.unwrap_err();
     }
 
     #[test]
