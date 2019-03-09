@@ -49,6 +49,8 @@ pub enum Error {
     //Vi(ViError, Backtrace),
     /// Internal Libuser error.
     Libuser(LibuserError, Backtrace),
+    /// Ahci driver error.
+    Ahci(AhciError, Backtrace),
     /// An unknown error type. Either someone returned a custom error, or this
     /// version of libuser is outdated.
     Unknown(u32, Backtrace)
@@ -65,6 +67,7 @@ impl Error {
             Module::Sm => Error::Sm(SmError(description), Backtrace::new()),
             //Module::Vi => Error::Vi(ViError(description), Backtrace::new()),
             Module::Libuser => Error::Libuser(LibuserError(description), Backtrace::new()),
+            Module::Ahci => Error::Ahci(AhciError(description), Backtrace::new()),
             _ => Error::Unknown(errcode, Backtrace::new())
         }
     }
@@ -78,6 +81,7 @@ impl Error {
             Error::Sm(err, ..) => err.0 << 9 | Module::Sm.0,
             //Error::Vi(err, ..) => err.0 << 9 | Module::Vi.0,
             Error::Libuser(err, ..) => err.0 << 9 | Module::Libuser.0,
+            Error::Ahci(err, ..) => err.0 << 9 | Module::Ahci.0,
             Error::Unknown(err, ..) => err,
         }
     }
@@ -104,7 +108,8 @@ enum_with_val! {
         Kernel = 1,
         Sm = 21,
         Vi = 114,
-        Libuser = 115
+        Libuser = 115,
+        Ahci = 116,
     }
 }
 
@@ -159,5 +164,25 @@ enum_with_val! {
 impl From<SmError> for Error {
     fn from(error: SmError) -> Self {
         Error::Sm(error, Backtrace::new())
+    }
+}
+
+enum_with_val! {
+    /// AHCI driver errors.
+    #[derive(PartialEq, Eq, Clone, Copy)]
+    pub struct AhciError(u32) {
+        /// Passed argument were found to be illegal.
+        InvalidArg = 1,
+        /// Passed buffer for DMA is too physically scattered. This can only happen for read/writes
+        /// of 1985 sectors or more.
+        BufferTooScattered = 2,
+        /// The hardware reported an error.
+        IoError = 3,
+    }
+}
+
+impl From<AhciError> for Error {
+    fn from(error: AhciError) -> Self {
+        Error::Ahci(error, Backtrace::new())
     }
 }

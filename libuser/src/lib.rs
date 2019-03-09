@@ -3,7 +3,7 @@
 //! Provides an allocator, various lang items.
 
 #![no_std]
-#![feature(global_asm, asm, start, lang_items, core_intrinsics, const_fn, alloc)]
+#![feature(global_asm, asm, start, lang_items, core_intrinsics, const_fn, alloc, box_syntax, untagged_unions)]
 
 // rustc warnings
 #![warn(unused)]
@@ -49,6 +49,7 @@ pub mod error;
 pub mod allocator;
 pub mod terminal;
 pub mod window;
+pub mod zero_box;
 mod log_impl;
 
 pub use kfs_libutils::io;
