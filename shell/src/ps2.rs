@@ -95,7 +95,7 @@ struct KeyEvent {
 impl KeyEvent {
 
     /// Reads one or more bytes from the port until it matches a known scancode sequence
-    #[allow(clippy::cyclomatic_complexity)] // sorry clippy, but you don't how terrible ps2 scancodes are.
+    #[allow(clippy::cognitive_complexity)] // sorry clippy, but you don't how terrible ps2 scancodes are.
     fn read_key_event(port: Pio<u8>) -> KeyEvent {
         let scancode = port.read();
         let mut state = Pressed;
