@@ -5,6 +5,7 @@
 use crate::types::{SharedMemory, MappedSharedMemory};
 use crate::vi::{ViInterface, IBuffer};
 use crate::syscalls::MemoryPermissions;
+use crate::mem::{find_free_address, PAGE_SIZE};
 use kfs_libutils::align_up;
 use crate::error::Error;
 use core::slice;
@@ -55,9 +56,9 @@ impl Window {
         let bpp = 32;
         let size = height * width * bpp / 8;
 
-        let sharedmem = SharedMemory::new(align_up(size, 0x1000) as _, MemoryPermissions::READABLE | MemoryPermissions::WRITABLE, MemoryPermissions::READABLE)?;
-        let addr = crate::find_free_address(size as _, 0x1000)?;
-        let buf = sharedmem.map(addr, align_up(size as _, 0x1000), MemoryPermissions::READABLE | MemoryPermissions::WRITABLE)?;
+        let sharedmem = SharedMemory::new(align_up(size, PAGE_SIZE as _) as _, MemoryPermissions::READABLE | MemoryPermissions::WRITABLE, MemoryPermissions::READABLE)?;
+        let addr = find_free_address(size as _, PAGE_SIZE)?;
+        let buf = sharedmem.map(addr, align_up(size as _, PAGE_SIZE), MemoryPermissions::READABLE | MemoryPermissions::WRITABLE)?;
         let handle = vi.create_buffer(buf.as_shared_mem(), top, left, width, height)?;
 
         let mut fb = Window {

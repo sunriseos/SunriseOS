@@ -4,14 +4,15 @@
 
 use super::{FrameAllocator, FrameAllocatorTraitPrivate};
 use crate::paging::PAGE_SIZE;
-use crate::mem::PhysicalAddress;
-use crate::utils::{align_down, div_ceil, check_aligned, Splittable};
+use crate::mem::{PhysicalAddress, VirtualAddress};
+use crate::utils::{div_ceil, check_aligned, check_nonzero_length, Splittable};
 use core::ops::Range;
 use core::iter::StepBy;
 use core::fmt::{Formatter, Error, Debug};
 use core::marker::PhantomData;
 use crate::error::KernelError;
 use alloc::vec::Vec;
+use failure::Backtrace;
 
 /// A span of adjacent physical frames. A frame is [PAGE_SIZE].
 ///
@@ -45,16 +46,27 @@ impl PhysicalMemRegion {
     /// On drop the region won't be given back to the [FrameAllocator],
     /// and thous stay marked as reserved.
     ///
-    /// # Panic
+    /// # Error
     ///
-    /// * Panics if any of the frames in this span wasn't marked as reserved in
-    /// the [FrameAllocator], as it could had mistakenly given it as regular ram.
-    pub unsafe fn on_fixed_mmio(start_addr: PhysicalAddress, len: usize) -> Self {
-        assert!(FrameAllocator::check_is_reserved(start_addr, len));
-        PhysicalMemRegion {
-            start_addr: align_down(start_addr.addr(), PAGE_SIZE),
-            frames: div_ceil(len, PAGE_SIZE),
-            should_free_on_drop: false
+    /// * InvalidAddress:
+    ///     * `address` is not PAGE_SIZE aligned.
+    ///     * One or more of the frames in this span wasn't marked as reserved in
+    ///       the [FrameAllocator], as it could had mistakenly given it as regular RAM.
+    /// * InvalidLength:
+    ///     * `length` is not PAGE_SIZE aligned.
+    ///     * `length` is zero.
+    pub unsafe fn on_fixed_mmio(address: PhysicalAddress, length: usize) -> Result<Self, KernelError> {
+        check_nonzero_length(length)?;
+        check_aligned(length, PAGE_SIZE)?;
+        check_aligned(address.addr(), PAGE_SIZE)?;
+        if !FrameAllocator::check_is_reserved(address, length) {
+            Err(KernelError::InvalidAddress { address: VirtualAddress(address.addr()), length, backtrace: Backtrace::new() })
+        } else {
+            Ok(PhysicalMemRegion {
+                start_addr: address.addr(),
+                frames: div_ceil(length, PAGE_SIZE),
+                should_free_on_drop: false
+            })
         }
     }
 
@@ -216,22 +228,9 @@ mod test {
     use crate::paging::PAGE_SIZE;
 
     #[test]
-    #[should_panic]
     fn on_fixed_mmio_checks_reserved() {
         let _f = crate::frame_allocator::init();
-        unsafe { PhysicalMemRegion::on_fixed_mmio(PhysicalAddress(0x00000000), PAGE_SIZE) };
-    }
-
-    #[test]
-    fn on_fixed_mmio_rounds_unaligned() {
-        let _f = crate::frame_allocator::init();
-        // reserve them so we don't panic
-        crate::frame_allocator::mark_frame_bootstrap_allocated(PhysicalAddress(0));
-        crate::frame_allocator::mark_frame_bootstrap_allocated(PhysicalAddress(PAGE_SIZE));
-
-        let region = unsafe { PhysicalMemRegion::on_fixed_mmio(PhysicalAddress(0x00000007), PAGE_SIZE + 1) };
-        assert_eq!(region.start_addr, 0);
-        assert_eq!(region.frames, 2);
+        unsafe { PhysicalMemRegion::on_fixed_mmio(PhysicalAddress(0x00000000), PAGE_SIZE) }.unwrap_err();
     }
 
     #[test]

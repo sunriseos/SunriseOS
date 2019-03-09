@@ -492,7 +492,7 @@ impl ProcessStruct {
 impl Drop for ProcessStruct {
     fn drop(&mut self) {
         // todo this should be a debug !
-        info!("Dropped a process : {:?}", self)
+        info!("☠️ Dropped a process : {}", self.name)
     }
 }
 
@@ -661,7 +661,7 @@ impl ThreadStruct {
 impl Drop for ThreadStruct {
     fn drop(&mut self) {
         // todo this should be a debug !
-        info!("Dropped a thread : {:?}", self)
+        info!("💀 Dropped a thread : {}", self.process.name)
     }
 }
 

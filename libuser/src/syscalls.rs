@@ -365,6 +365,30 @@ pub fn create_interrupt_event(irqnum: usize, flag: u32) -> Result<ReadableEvent,
     }
 }
 
+/// Gets the physical region a given virtual address maps.
+///
+/// This syscall is mostly used for DMAs, where the physical address of a buffer needs to be known
+/// by userspace.
+///
+/// # Return
+///
+/// 0. The start address of the physical region.
+/// 1. 0x00000000 (On Horizon it contains the KernelSpace virtual address of this mapping,
+///    but I don't see any use for it).
+/// 2. The length of the physical region.
+// kfs extension
+/// 3. The offset in the region of the given virtual address.
+///
+/// # Error
+///
+/// - InvalidAddress: This address does not map physical memory.
+pub fn query_physical_address(virtual_address: usize) -> Result<(usize, usize, usize, usize), KernelError> {
+    unsafe {
+        let (phys_addr, kernel_addr, phys_len, offset, ..) = syscall(nr::QueryPhysicalAddress, virtual_address, 0, 0, 0, 0, 0)?;
+        Ok((phys_addr, kernel_addr, phys_len, offset))
+    }
+}
+
 /// Creates an anonymous port.
 pub fn create_port(max_sessions: u32, is_light: bool, name_ptr: &str) -> Result<(ClientPort, ServerPort), KernelError> {
     unsafe {
@@ -395,5 +419,23 @@ pub fn map_framebuffer() -> Result<(&'static mut [u8], usize, usize, usize), Ker
         let (addr, width, height, bpp) = syscall(nr::MapFramebuffer, 0, 0, 0, 0, 0, 0)?;
         let framebuffer_size = bpp * width * height / 8;
         Ok((slice::from_raw_parts_mut(addr as *mut u8, framebuffer_size), width, height, bpp))
+    }
+}
+
+/// Maps a physical region in the address space of the process.
+///
+/// # Errors
+///
+/// * InvalidAddress:
+///     * `virtual_address` is already occupied.
+///     * `virtual_address` is not PAGE_SIZE aligned.
+///     * `physical_address` points to a physical region in DRAM (it's not MMIO).
+/// * InvalidLength:
+///     * `length` is not PAGE_SIZE aligned.
+///     * `length` is zero.
+pub fn map_mmio_region(physical_address: usize, size: usize, virtual_address: usize, writable: bool) -> Result<(), KernelError> {
+    unsafe {
+        syscall(nr::MapMmioRegion, physical_address, size, virtual_address, writable as usize, 0, 0)?;
+        Ok(())
     }
 }
