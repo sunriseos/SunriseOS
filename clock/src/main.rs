@@ -2,7 +2,7 @@
 //!
 //! Show the current time in the bottom left corner of the screen.
 
-#![feature(alloc, const_let)]
+#![feature(alloc)]
 #![no_std]
 
 // rustc warnings

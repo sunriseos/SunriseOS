@@ -4,7 +4,7 @@
 //! In the future, it will also be capable of talking to the GPU to provide an
 //! OpenGL abstraction layer.
 
-#![feature(alloc, const_vec_new, const_let)]
+#![feature(alloc, const_vec_new)]
 #![no_std]
 
 // rustc warnings

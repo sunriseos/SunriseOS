@@ -4,7 +4,6 @@
 //! test KFS. Type help followed by enter to get a list of allowed commands.
 
 #![feature(alloc, asm, naked_functions)]
-#![feature(const_let)]
 #![no_std]
 
 // rustc warnings

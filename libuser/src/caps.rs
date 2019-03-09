@@ -67,13 +67,6 @@
 /// ```
 ///
 /// The order of the capabilities member is not important, and trailing comas are allowed.
-///
-/// This macro requires the const_let feature. Please add the following to the
-/// start of your crate before using it:
-///
-/// ```
-/// #![feature(const_let)]
-/// ```
 #[macro_export]
 macro_rules! capabilities {
     ($ident:ident = Capabilities {
