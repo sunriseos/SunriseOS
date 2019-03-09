@@ -4,6 +4,7 @@ target
 Cargo.lock
 isofiles/boot/kfs-*
 os.iso
+DISK.img
 .idea
 .gdbinit
 .gdb_history
