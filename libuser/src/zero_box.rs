@@ -9,6 +9,7 @@ use core::ops::{Deref, DerefMut};
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct ZeroBox<T> {
+    /// The box we secretely wrap.
     owned_box: Box<T>
 }
 
