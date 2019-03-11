@@ -49,6 +49,7 @@ fn main() {
             "meme2" => show_gif(&LOUIS2[..]),
             "meme3" => show_gif(&LOUIS3[..]),
             "meme4" => show_gif(&LOUIS4[..]),
+            "meme5" => show_gif(&LOUIS5[..]),
             "test_threads" => terminal = test_threads(terminal),
             "test_divide_by_zero" => test_divide_by_zero(),
             "test_page_fault" => test_page_fault(),
@@ -65,6 +66,7 @@ fn main() {
                 let _ = writeln!(&mut terminal, "meme2: Display the KFS-2 meme");
                 let _ = writeln!(&mut terminal, "meme3: Display the KFS-3 meme");
                 let _ = writeln!(&mut terminal, "meme4: Display the KFS-4 meme");
+                let _ = writeln!(&mut terminal, "meme5: Display the KFS-5 meme");
                 let _ = writeln!(&mut terminal, "test_threads: Run threads that concurrently print As and Bs");
                 let _ = writeln!(&mut terminal, "test_divide_by_zero: Check exception handling by throwing a divide by zero");
                 let _ = writeln!(&mut terminal, "test_page_fault: Check exception handling by throwing a page_fault");
@@ -209,9 +211,8 @@ static LOUIS2: &'static [u8; 93818] = include_bytes!("../img/meme2.gif");
 static LOUIS3: &'static [u8; 1318100] = include_bytes!("../img/meme3.gif");
 /// Meme for KFS4
 static LOUIS4: &'static [u8; 103803] = include_bytes!("../img/meme4.gif");
-// TODO: Meme for KFS5.
-// BODY: We cannot give KFS5 until we have a meme. It is of utmost importance
-// BODY: that a meme is found and placed here.
+/// Meme for KFS5
+static LOUIS5: &'static [u8; 106140] = include_bytes!("../img/meme5.gif");
 
 capabilities!(CAPABILITIES = Capabilities {
     svcs: [
