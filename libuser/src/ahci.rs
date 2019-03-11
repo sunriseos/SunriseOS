@@ -33,6 +33,8 @@ impl AhciInterface {
     /// Asks to the ahci service how many disks it has discovered.
     ///
     /// [get_disk] accepts disk ids in `0..discovered_disks_count()`.
+    ///
+    /// [get_disk]: AhciInterface::get_disk
     pub fn discovered_disks_count(&mut self) -> Result<u32, Error> {
         let mut buf = [0; 0x100];
 

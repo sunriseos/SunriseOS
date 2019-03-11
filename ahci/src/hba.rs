@@ -778,7 +778,8 @@ impl Px {
     /// * `sector_count` == 0.
     /// * `sector_count` is greater than supported maximum (256 for 28-bit devices, 65536 for 48-bit ones).
     /// * `lba + sector_count` is not representable on a 28-bit/48-bit address.
-    /// * all [fill_prdt] errors.
+    /// * query_physical_address() failed.
+    /// * AhciError::BufferTooScattered: `buffer` is so scattered it overflows PRDT.
     #[allow(clippy::too_many_arguments)] // heh
     #[allow(clippy::missing_docs_in_private_items)]
     pub unsafe fn read_dma(
@@ -877,7 +878,8 @@ impl Px {
     /// * `sector_count` == 0.
     /// * `sector_count` is greater than supported maximum (256 for 28-bit devices, 65536 for 48-bit ones).
     /// * `lba + sector_count` is not representable on a 28-bit/48-bit address.
-    /// * all [fill_prdt] errors.
+    /// * query_physical_address() failed.
+    /// * AhciError::BufferTooScattered: `buffer` is so scattered it overflows PRDT.
     #[allow(clippy::too_many_arguments)] // heh
     #[allow(clippy::missing_docs_in_private_items)]
     pub unsafe fn write_dma(
