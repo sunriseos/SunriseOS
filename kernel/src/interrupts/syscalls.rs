@@ -96,7 +96,7 @@ fn create_interrupt_event(irq_num: usize, _flag: u32) -> Result<usize, Userspace
             return Err(UserspaceError::NoSuchEntry);
         }
     }
-    let hnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ReadableEvent(Box::new(event::wait_event(irq_num)))));
+    let hnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ReadableEvent(Box::new(event::wait_event(irq_num as u8)))));
     Ok(hnd as _)
 }
 
