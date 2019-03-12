@@ -191,7 +191,6 @@ struct Request {
     answered: Arc<SpinLock<Option<Result<(), UserspaceError>>>>,
 }
 
-// TODO finish buf_map
 /// Send an IPC Buffer from the sender into the receiver.
 ///
 /// There are two "families" of IPC buffers:
@@ -241,21 +240,9 @@ fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mu
     let size = size as usize;
 
     // Map the descriptor in the other process.
-    let to_addr : VirtualAddress = unimplemented!("Needs the equivalent to find_available_virtual_space");
-    /*let to_addr = to_mem.find_available_virtual_space_runtime(size / paging::PAGE_SIZE)
-        .ok_or(UserspaceError::MemoryFull)?;*/
-
-    let mapping = from_mem.unmap(VirtualAddress(addr), size)?;
-    let flags = mapping.flags();
-    let phys = match mapping.mtype() {
-        MappingType::Available | MappingType::Guarded | MappingType::SystemReserved =>
-            // todo remap it D:
-            return Err(UserspaceError::InvalidAddress),
-        MappingType::Regular(vec) /*| MappingType::Stack(vec) */ => Arc::new(vec),
-        MappingType::Shared(arc) => arc,
-    };
-
-    from_mem.map_shared_mapping(phys, VirtualAddress(addr), flags)?;
+    let mapping = from_mem.share_existing_mapping(VirtualAddress(addr), size)?;
+    let to_addr = to_mem.find_available_space(size)?;
+    to_mem.map_shared_mapping(mapping, to_addr, MappingAccessRights::u_rw())?;
 
     let loweraddr = to_addr.addr() as u32;
     let rest = *0u32
