@@ -9,6 +9,7 @@ use font_rs::{font, font::{Font, GlyphBitmap}};
 use hashbrown::HashMap;
 use crate::window::{Window, Color};
 use crate::error::Error;
+use crate::vi::ViInterface;
 
 /// Just an x and a y
 #[derive(Copy, Clone, Debug)]
@@ -79,14 +80,14 @@ impl Terminal {
 
         let my_linespace = my_descent + my_ascent;
 
-        // TODO: Terminal - Get window size from vi
-        // BODY: Terminal defines a fullscreen size as 1280 * 800, but should
-        // BODY: really get it from vi instead. 
+        let mut vi = ViInterface::raw_new()?;
+        let (fullscreen_width, fullscreen_height) = vi.get_screen_resolution()?;
+
         let framebuffer = match size {
-            WindowSize::Fullscreen => Window::new(0, 0, 1280, 800)?,
+            WindowSize::Fullscreen => Window::new(&mut vi, 0, 0, fullscreen_width, fullscreen_height)?,
             WindowSize::FontLines(lines, is_bottom) => {
                 let height = if lines < 0 {
-                    let max_lines = 800 / my_linespace;
+                    let max_lines = (fullscreen_height as usize) / my_linespace;
                     my_linespace * ((max_lines as i32) + lines) as usize
                 } else if lines == 1 {
                     // Orycterope's fault. Scrolling expects at least one line
@@ -96,13 +97,13 @@ impl Terminal {
                     my_linespace * lines as usize
                 };
                 let top = if is_bottom {
-                    800 - height
+                    (fullscreen_height as usize) - height
                 } else {
                     0
                 };
-                Window::new(top as i32, 0, 1280, height as u32)?
+                Window::new(&mut vi, top as i32, 0, fullscreen_width, height as u32)?
             }
-            WindowSize::Manual(top, left, width, height) => Window::new(top, left, width, height)?
+            WindowSize::Manual(top, left, width, height) => Window::new(&mut vi, top, left, width, height)?
         };
 
         Ok(Terminal {

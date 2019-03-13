@@ -34,6 +34,7 @@ use crate::libuser::io;
 use crate::libuser::sm;
 use crate::libuser::window::{Window, Color};
 use crate::libuser::terminal::{Terminal, WindowSize};
+use kfs_libuser::vi::ViInterface;
 
 use core::fmt::Write;
 use alloc::prelude::*;
@@ -79,7 +80,9 @@ fn main() {
 /// Shows a GIF in a new window, blocking the caller. When a key is pressed, the
 /// window is closed and control is given back to the caller.
 fn show_gif(louis: &[u8]) {
-    let mut window = Window::new(0, 0, 1280, 800).unwrap();
+    let mut vi = ViInterface::raw_new().unwrap();
+    let (fullscreen_width, fullcreen_height) = vi.get_screen_resolution().unwrap();
+    let mut window = Window::new(&mut vi, 0, 0, fullscreen_width, fullcreen_height).unwrap();
     let mut reader = gif::Decoder::new(&louis[..]).read_info().unwrap();
     let mut buf = Vec::new();
 

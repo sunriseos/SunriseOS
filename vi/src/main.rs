@@ -79,10 +79,13 @@ object! {
             Ok((client.into_handle(),))
         }
 
-        /// Gets the screen resolution.
+        /// Gets the screen (width, height) in pixels.
+        ///
+        /// Cannot fail.
         #[cmdid(1)]
-        fn get_resolution(&mut self,) -> Result<(u32, u32,), Error> {
-            Ok((1280, 800))
+        fn get_screen_resolution(&mut self,) -> Result<(u32, u32,), Error> {
+            let fb = FRAMEBUFFER.lock();
+            Ok((fb.width() as _, fb.height() as _))
         }
     }
 }
