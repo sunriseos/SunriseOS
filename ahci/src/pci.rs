@@ -13,7 +13,23 @@ pub const CONFIG_DATA: u16 = 0xCFC;
 
 /// A struct tying the two pci config ports together.
 struct PciConfigPortsPair {
+    /// The address port.
+    ///
+    /// Write the '''address''' of the config-space register you want to access.
+    ///
+    /// An address is formatted as follow:
+    ///
+    /// * 31    Enable bit
+    /// * 30:24 Reserved
+    /// * 23:16 Bus Number
+    /// * 15:11 Device Number
+    /// * 10:8  Function Number
+    /// * 7:0   Register Offset
     address: Pio<u32>,
+    /// The data port.
+    ///
+    /// After having put the address of the register you want in `.address`,
+    /// read this port to retrieve its value.
     data: Pio<u32>
 }
 
@@ -34,7 +50,7 @@ const MAX_REGISTER: u8 = 63;
 
 /// A pci device, addressed by its bus number, slot, and function.
 #[derive(Debug, Copy, Clone)]
-#[allow(missing_docs)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct PciDevice {
     /// The device's bus number.
     bus: u8,
@@ -67,6 +83,7 @@ struct PciDevice {
 
 /// Pci header when Header Type == 0x00 (General device).
 #[derive(Copy, Clone, Debug)]
+#[allow(clippy::missing_docs_in_private_items)]
 struct PciHeader00 {
     bar0: BAR,
     bar1: BAR,
@@ -88,17 +105,23 @@ struct PciHeader00 {
 /// Contents of pci config registers 0x4-0xf, structure varies based on Header Type.
 #[derive(Copy, Clone, Debug)]
 enum PciHeader {
-    GeneralDevice(PciHeader00), // header type == 0x00
-    PCItoPCIBridge,             // header type == 0x01, not implemented
-    CardBus,                    // header type == 0x02, not implemented
-    UnknownHeaderType(u8)       // header type == other
+    /// header type == 0x00
+    GeneralDevice(PciHeader00),
+    /// header type == 0x01, not implemented
+    PCItoPCIBridge,
+    /// header type == 0x02, not implemented
+    CardBus,
+    /// header type == other
+    UnknownHeaderType(u8)
 }
 
 /// Base Address Registers. Minimal implementation, does not support 64-bits BARs.
 #[derive(Copy, Clone, Debug)]
 enum BAR {
-    Memory(u32, u32), // a memory space address and its size
-    Io(u32, u32)      // an IO space address
+    /// a memory space address and its size
+    Memory(u32, u32),
+    /// an IO space address
+    Io(u32, u32)
 }
 
 impl PciDevice {

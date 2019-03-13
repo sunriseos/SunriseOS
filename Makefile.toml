@@ -166,19 +166,47 @@ mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltori
 '''
 ]
 
+[tasks.disk]
+workspace = false
+description = "Creates an empty disk image."
+command = "dd"
+args = [ "if=/dev/zero", "of=DISK.img", "count=8M", "iflag=count_bytes" ]
+
+# because we can't have a dependency on a file ರ_ರ
+[tasks.create-disk-if-not-exist]
+workspace = false
+description = "Invokes the task `disk` if DISK.img does not already exist."
+condition_script = [ "[ ! -e DISK.img ]" ]
+run_task = "disk"
+
 [tasks.qemu]
 workspace = false
 description = "Runs the bootable ISO in qemu."
-dependencies = ["iso-release"]
+dependencies = ["iso-release", "create-disk-if-not-exist"]
 command = "qemu-system-i386"
-args = ["-cdrom", "os.iso", "-serial", "stdio", "-vnc", "${VNC_PORT}", "-no-reboot", "-enable-kvm"]
+args = [
+    "-cdrom", "os.iso",
+    "-serial", "stdio",
+    "-vnc", "${VNC_PORT}",
+    "-no-reboot",
+    "-enable-kvm",
+    "-drive", "id=diskA,file=DISK.img,format=raw,if=none", "-device", "ahci,id=ahci", "-device", "ide-drive,drive=diskA,bus=ahci.0",
+    ]
 
 [tasks.qemu-debug]
 workspace = false
 description = "Runs the bootable ISO in qemu with gdb support"
-dependencies = ["iso"]
+dependencies = ["iso", "create-disk-if-not-exist"]
 command = "qemu-system-i386"
-args = ["-cdrom", "os.iso", "-serial", "stdio", "-vnc", "${VNC_PORT}", "-no-reboot", "-gdb", "tcp::${GDB_PORT}", "-S", "-d", "cpu_reset"]
+args = [
+    "-cdrom", "os.iso",
+    "-serial", "stdio",
+    "-vnc", "${VNC_PORT}",
+    "-no-reboot",
+    "-gdb", "tcp::${GDB_PORT}", "-S",
+    "-d", "cpu_reset",
+    "-drive", "id=diskA,file=DISK.img,format=raw,if=none", "-device", "ahci,id=ahci", "-device", "ide-drive,drive=diskA,bus=ahci.0",
+    ]
 
 [tasks.doc]
 workspace = false
