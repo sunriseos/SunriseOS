@@ -22,6 +22,8 @@
 
 use crate::types::*;
 use crate::error::{KernelError, Error};
+use crate::syscalls;
+use crate::ipc::Message;
 
 /// Main interface of the service manager. Allows registering and retrieving
 /// handles to all the services.
@@ -30,38 +32,35 @@ pub struct IUserInterface(ClientSession);
 
 impl IUserInterface {
     /// Connects to the Service Manager.
-	  pub fn raw_new() -> Result<IUserInterface, Error> {
-		    use crate::syscalls;
-
+    pub fn raw_new() -> Result<IUserInterface, Error> {
         loop {
-		        let _ = match syscalls::connect_to_named_port("sm:\0") {
+            let _ = match syscalls::connect_to_named_port("sm:\0") {
                 Ok(s) => return Ok(IUserInterface(s)),
                 Err(KernelError::NoSuchEntry) => syscalls::sleep_thread(0),
                 Err(err) => Err(err)?
             };
         }
-	  }
+    }
 
     /// Retrieves a service registered in the service manager.
     pub fn get_service(&self, name: u64) -> Result<ClientSession, Error> {
-		    use crate::ipc::Message;
         let mut buf = [0; 0x100];
 
-		    #[repr(C)] #[derive(Clone, Copy, Default)]
+        #[repr(C)] #[derive(Clone, Copy, Default)]
         #[allow(clippy::missing_docs_in_private_items)]
-		    struct InRaw {
-			      name: u64,
-		    }
-		    let mut msg = Message::<_, [_; 0], [_; 0], [_; 0]>::new_request(None, 1);
+        struct InRaw {
+            name: u64,
+        }
+        let mut msg = Message::<_, [_; 0], [_; 0], [_; 0]>::new_request(None, 1);
         msg.push_raw(InRaw {
             name,
         });
         msg.pack(&mut buf[..]);
 
-		    self.0.send_sync_request_with_user_buffer(&mut buf[..])?;
-		    let mut res : Message<'_, (), [_; 0], [_; 0], [_; 1]> = Message::unpack(&buf[..]);
+        self.0.send_sync_request_with_user_buffer(&mut buf[..])?;
+        let mut res : Message<'_, (), [_; 0], [_; 0], [_; 1]> = Message::unpack(&buf[..]);
         res.error()?;
-		    Ok(ClientSession(res.pop_handle_move()?))
+        Ok(ClientSession(res.pop_handle_move()?))
     }
 
     /// Registers a service registered in the service manager.
@@ -70,17 +69,16 @@ impl IUserInterface {
     ///
     /// [create_port]: crate::syscalls::create_port
     pub fn register_service(&self, name: u64, is_light: bool, max_handles: u32) -> Result<ServerPort, Error> {
-		    use crate::ipc::Message;
         let mut buf = [0; 0x100];
 
-		    #[repr(C)] #[derive(Clone, Copy, Default)]
+        #[repr(C)] #[derive(Clone, Copy, Default)]
         #[allow(clippy::missing_docs_in_private_items)]
-		    struct InRaw {
-			      name: u64,
-			      is_light: bool,
-			      max_handles: u32,
-		    }
-		    let mut msg = Message::<_, [_; 0], [_; 0], [_; 0]>::new_request(None, 2);
+        struct InRaw {
+            name: u64,
+            is_light: bool,
+            max_handles: u32,
+        }
+        let mut msg = Message::<_, [_; 0], [_; 0], [_; 0]>::new_request(None, 2);
         msg.push_raw(InRaw {
             name,
             is_light,
@@ -88,9 +86,9 @@ impl IUserInterface {
         });
         msg.pack(&mut buf[..]);
 
-		    self.0.send_sync_request_with_user_buffer(&mut buf[..])?;
-		    let mut res : Message<'_, (), [_; 0], [_; 0], [_; 1]> = Message::unpack(&buf[..]);
+        self.0.send_sync_request_with_user_buffer(&mut buf[..])?;
+        let mut res : Message<'_, (), [_; 0], [_; 0], [_; 1]> = Message::unpack(&buf[..]);
         res.error()?;
-		    Ok(ServerPort(res.pop_handle_move()?))
+        Ok(ServerPort(res.pop_handle_move()?))
     }
 }
