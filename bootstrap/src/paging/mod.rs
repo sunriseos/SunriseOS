@@ -167,16 +167,14 @@ impl VirtualSpaceLand for UserLand {
 
 // Assertions to check that Kernel/User pages falls on distinct page tables
 // and also that they do not overlap
-fn __land_assertions() {
-    const_assert!(KernelLand::start_addr().0 < KernelLand::end_addr().0);
-    const_assert!(UserLand::start_addr().0 < UserLand::end_addr().0);
-    // TODO: Const FN sucks! Check that the kernelland and userland don't overlap.
-    //const_assert!(::core::cmp::max(KernelLand::start_addr(), UserLand::start_addr()) >=
-    //              ::core::cmp::min(KernelLand::end_addr(),   UserLand::end_addr()));
+const_assert!(KernelLand::start_addr().0 < KernelLand::end_addr().0);
+const_assert!(UserLand::start_addr().0 < UserLand::end_addr().0);
+// TODO: Const FN sucks! Check that the kernelland and userland don't overlap.
+//const_assert!(::core::cmp::max(KernelLand::start_addr(), UserLand::start_addr()) >=
+//              ::core::cmp::min(KernelLand::end_addr(),   UserLand::end_addr()));
 
-    const_assert!(KernelLand::start_addr().0 % (ENTRY_COUNT * PAGE_SIZE) == 0);
-    const_assert!(UserLand::start_addr().0   % (ENTRY_COUNT * PAGE_SIZE) == 0);
-}
+const_assert!(KernelLand::start_addr().0 % (ENTRY_COUNT * PAGE_SIZE) == 0);
+const_assert!(UserLand::start_addr().0   % (ENTRY_COUNT * PAGE_SIZE) == 0);
 
 /// Creates a mapping in the page tables with the given flags.
 /// Allocates the pointed page and chooses the virtual address.

@@ -392,7 +392,7 @@ impl fmt::Debug for Idt {
     }
 }
 
-const_assert_eq!(const_assert_idt; mem::size_of::<Idt>(), 256 * 8);
+const_assert_eq!(mem::size_of::<Idt>(), 256 * 8);
 
 
 impl Idt {
@@ -544,7 +544,7 @@ impl<F> fmt::Debug for IdtEntry<F> {
     }
 }
 
-const_assert_eq!(const_assert_idtentry; mem::size_of::<IdtEntry<()>>(), 8);
+const_assert_eq!(mem::size_of::<IdtEntry<()>>(), 8);
 
 /// A handler function for an interrupt or an exception without error code.
 pub type HandlerFunc = extern "x86-interrupt" fn(&mut ExceptionStackFrame);
