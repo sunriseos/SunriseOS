@@ -199,8 +199,13 @@ fn test_divide_by_zero() {
 
 /// Test function ensuring pagefaults kills only the current process.
 fn test_page_fault() {
-    let ptr: *const u8 = core::ptr::null();
-    let _res = unsafe { *ptr };
+    // dereference the null pointer.
+    // doing this in rust is so UB, it's optimized out, so we do it in asm.
+    unsafe {
+        asm!("
+        mov al, [0]
+        " ::: "eax" : "volatile", "intel")
+    }
 }
 
 /// Meme for KFS1
