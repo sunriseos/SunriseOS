@@ -79,8 +79,8 @@ fn main() {
 /// Shows a GIF in a new window, blocking the caller. When a key is pressed, the
 /// window is closed and control is given back to the caller.
 fn show_gif(louis: &[u8]) {
-    let mut window = Window::new(0, 0, 1280, 800).unwrap();
     let mut reader = gif::Decoder::new(&louis[..]).read_info().unwrap();
+    let mut window = Window::new(0, 0, u32::from(reader.width()), u32::from(reader.height())).unwrap();
     let mut buf = Vec::new();
 
     loop {
