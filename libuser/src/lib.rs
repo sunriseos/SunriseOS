@@ -57,13 +57,9 @@ pub use kfs_libutils::io;
 
 use kfs_libutils as utils;
 
-// TODO: report #[cfg(not(test))] and #[global_allocator]
-// BODY: `#[cfg(not(test))]` still compiles this item with cargo test,
-// BODY: but `#[cfg(target_os = "none")] does not. I think this is a bug,
-// BODY: we should report it.
 /// Global allocator. Every implicit allocation in the rust liballoc library (for
 /// instance for Vecs, Arcs, etc...) are allocated with this allocator.
-#[cfg(target_os = "none")]
+#[cfg(not(test))]
 #[global_allocator]
 static ALLOCATOR: allocator::Allocator = allocator::Allocator::new();
 
