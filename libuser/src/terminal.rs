@@ -80,11 +80,10 @@ impl Terminal {
 
         let my_linespace = my_descent + my_ascent;
 
-        let mut vi = ViInterface::raw_new()?;
-        let (fullscreen_width, fullscreen_height) = vi.get_screen_resolution()?;
+        let (fullscreen_width, fullscreen_height) = ViInterface::raw_new()?.get_screen_resolution()?;
 
         let framebuffer = match size {
-            WindowSize::Fullscreen => Window::new(&mut vi, 0, 0, fullscreen_width, fullscreen_height)?,
+            WindowSize::Fullscreen => Window::new(0, 0, fullscreen_width, fullscreen_height)?,
             WindowSize::FontLines(lines, is_bottom) => {
                 let height = if lines < 0 {
                     let max_lines = (fullscreen_height as usize) / my_linespace;
@@ -101,9 +100,9 @@ impl Terminal {
                 } else {
                     0
                 };
-                Window::new(&mut vi, top as i32, 0, fullscreen_width, height as u32)?
+                Window::new(top as i32, 0, fullscreen_width, height as u32)?
             }
-            WindowSize::Manual(top, left, width, height) => Window::new(&mut vi, top, left, width, height)?
+            WindowSize::Manual(top, left, width, height) => Window::new(top, left, width, height)?
         };
 
         Ok(Terminal {
