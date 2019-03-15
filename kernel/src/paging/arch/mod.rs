@@ -8,3 +8,4 @@ pub use self::i386::entry::I386Entry as Entry;
 pub use self::i386::entry::I386EntryFlags as EntryFlags;
 pub use self::i386::is_paging_on;
 pub use self::i386::read_cr2; // todo give access to this in an arch-independent way
+pub use self::i386::lands::{KernelLand, UserLand, RecursiveTablesLand};
