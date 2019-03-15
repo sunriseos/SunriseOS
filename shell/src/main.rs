@@ -34,7 +34,6 @@ use crate::libuser::io;
 use crate::libuser::sm;
 use crate::libuser::window::{Window, Color};
 use crate::libuser::terminal::{Terminal, WindowSize};
-use kfs_libuser::vi::ViInterface;
 
 use core::fmt::Write;
 use alloc::prelude::*;
