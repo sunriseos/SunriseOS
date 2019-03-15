@@ -196,17 +196,14 @@ impl ProcessMemory {
     ///
     /// # Error
     ///
-    /// Returns a KernelError if length is not page aligned.
-    /// Returns a KernelError if length is 0.
+    /// * `InvalidAddress`: `address` is not page aligned.
     pub fn map_phys_region_to(&mut self,
                               phys: PhysicalMemRegion,
                               address: VirtualAddress,
                               flags: MappingAccessRights)
                               -> Result<(), KernelError> {
-        let length = phys.size();
         address.check_aligned_to(PAGE_SIZE)?;
-        check_aligned(length, PAGE_SIZE)?;
-        check_nonzero_length(length)?;
+        let length = phys.size();
         UserLand::check_contains_region(address, length)?;
         self.userspace_bookkeping.check_vacant(address, length)?;
         // ok, everything seems good, from now on treat errors as unexpected

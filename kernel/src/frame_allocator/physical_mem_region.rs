@@ -33,10 +33,16 @@ pub struct PhysicalMemRegion {
 }
 
 impl PhysicalMemRegion {
-     /// Get the start address of this PhysicalMemRegion
+    /// Get the start address of this PhysicalMemRegion.
+    ///
+    /// The address of a PhysicalMemRegion is guaranteed to be page size aligned.
     pub fn address(&self) -> PhysicalAddress { PhysicalAddress(self.start_addr) }
 
-    /// Get the size this PhysicalMemRegion spans
+    /// Get the size this PhysicalMemRegion spans.
+    ///
+    /// The size of a PhysicalMemRegion is guaranteed to be page size aligned, and non-zero.
+    // about the non-zero, this promise is violated, but only internally in the frame allocator,
+    // and never exposed to other modules.
     pub fn size(&self) -> usize { self.frames * PAGE_SIZE }
 
     /// Constructs a `PhysicalMemRegion` by circumventing the [FrameAllocator].
