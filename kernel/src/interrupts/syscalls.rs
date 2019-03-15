@@ -141,7 +141,7 @@ fn query_physical_address(virtual_address: usize) -> Result<(usize, usize, usize
         MappingType::Regular(regions) => regions,
         MappingType::Shared(arc_regions) => arc_regions.as_ref(),
         MappingType::Available | MappingType::Guarded | MappingType::SystemReserved =>
-            return Err(KernelError::InvalidAddress { address: virtual_address, length: 1, backtrace: Backtrace::new() }.into()),
+            return Err(KernelError::InvalidAddress { address: virtual_address.addr(), backtrace: Backtrace::new() }.into()),
     };
     let offset = virtual_address - mapping.mapping().address();
     let mut i = 0;

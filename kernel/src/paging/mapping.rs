@@ -84,7 +84,7 @@ impl Mapping {
     /// Returns an Error if `address` is not page aligned.
     /// Returns an Error if `length` is 0.
     pub fn new_regular(address: VirtualAddress, frames: Vec<PhysicalMemRegion>, flags: MappingAccessRights) -> Result<Mapping, KernelError> {
-        check_aligned(address.addr(), PAGE_SIZE)?;
+        address.check_aligned_to(PAGE_SIZE)?;
         let length = frames.iter().flatten().count() * PAGE_SIZE;
         check_nonzero_length(length)?;
         address.checked_add(length - 1)?;
@@ -99,7 +99,7 @@ impl Mapping {
     /// Returns an Error if `address` is not page aligned.
     /// Returns an Error if `length` is 0.
     pub fn new_shared(address: VirtualAddress, frames: Arc<Vec<PhysicalMemRegion>>, flags: MappingAccessRights) -> Result<Mapping, KernelError> {
-        check_aligned(address.addr(), PAGE_SIZE)?;
+        address.check_aligned_to(PAGE_SIZE)?;
         let length = frames.iter().flatten().count() * PAGE_SIZE;
         check_nonzero_length(length)?;
         address.checked_add(length - 1)?;
@@ -114,7 +114,7 @@ impl Mapping {
     /// Returns an Error if `address` or `length` is not page aligned.
     /// Returns an Error if `length` is 0.
     pub fn new_guard(address: VirtualAddress, length: usize) -> Result<Mapping, KernelError> {
-        check_aligned(address.addr(), PAGE_SIZE)?;
+        address.check_aligned_to(PAGE_SIZE)?;
         check_aligned(length, PAGE_SIZE)?;
         check_nonzero_length(length)?;
         address.checked_add(length - 1)?;
@@ -129,7 +129,7 @@ impl Mapping {
     /// Returns an Error if `address` or `length` is not page aligned.
     /// Returns an Error if `length` is 0.
     pub fn new_available(address: VirtualAddress, length: usize) -> Result<Mapping, KernelError> {
-        check_aligned(address.addr(), PAGE_SIZE)?;
+        address.check_aligned_to(PAGE_SIZE)?;
         check_aligned(length, PAGE_SIZE)?;
         check_nonzero_length(length)?;
         address.checked_add(length - 1)?;
@@ -144,7 +144,7 @@ impl Mapping {
     /// Returns an Error if `address` or `length` is not page aligned.
     /// Returns an Error if `length` is 0.
     pub fn new_system_reserved(address: VirtualAddress, length: usize) -> Result<Mapping, KernelError> {
-        check_aligned(address.addr(), PAGE_SIZE)?;
+        address.check_aligned_to(PAGE_SIZE)?;
         check_aligned(length, PAGE_SIZE)?;
         check_nonzero_length(length)?;
         address.checked_add(length - 1)?;

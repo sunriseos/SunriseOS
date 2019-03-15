@@ -204,7 +204,7 @@ impl ProcessMemory {
                               flags: MappingAccessRights)
                               -> Result<(), KernelError> {
         let length = phys.size();
-        check_aligned(address.addr(), PAGE_SIZE)?;
+        address.check_aligned_to(PAGE_SIZE)?;
         check_aligned(length, PAGE_SIZE)?;
         check_nonzero_length(length)?;
         UserLand::check_contains_region(address, length)?;
@@ -227,7 +227,7 @@ impl ProcessMemory {
     /// Returns a KernelError if address does not fall in UserLand.
     /// Returns a KernelError if address or length is not PAGE_SIZE aligned.
     pub fn create_regular_mapping(&mut self, address: VirtualAddress, length: usize, flags: MappingAccessRights) -> Result<(), KernelError> {
-        check_aligned(address.addr(), PAGE_SIZE)?;
+        address.check_aligned_to(PAGE_SIZE)?;
         check_aligned(length, PAGE_SIZE)?;
         check_nonzero_length(length)?;
         UserLand::check_contains_region(address, length)?;
@@ -255,7 +255,7 @@ impl ProcessMemory {
                               address: VirtualAddress,
                               flags: MappingAccessRights)
                               -> Result<(), KernelError> {
-        check_aligned(address.addr(), PAGE_SIZE)?;
+        address.check_aligned_to(PAGE_SIZE)?;
         // compute the length
         let length = shared_mapping.iter().flatten().count() * PAGE_SIZE;
         check_nonzero_length(length)?;
@@ -301,7 +301,7 @@ impl ProcessMemory {
     /// Returns a KernelError if address does not fall in UserLand.
     /// Returns a KernelError if address or length is not PAGE_SIZE aligned.
     pub fn unmap(&mut self, address: VirtualAddress, length: usize) -> Result<Mapping, KernelError> {
-        check_aligned(address.addr(), PAGE_SIZE)?;
+        address.check_aligned_to(PAGE_SIZE)?;
         check_aligned(length, PAGE_SIZE)?;
         UserLand::check_contains_region(address, length)?;
         let mapping = self.userspace_bookkeping.remove_mapping(address, length)?;

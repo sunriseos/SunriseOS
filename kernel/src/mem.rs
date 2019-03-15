@@ -155,6 +155,18 @@ impl PhysicalAddress {
         }
     }
 
+    /// Checks that this address meets the given alignment.
+    ///
+    /// # Errors
+    ///
+    /// * `InvalidAddress`: `self` is not aligned to `alignment`.
+    pub fn check_aligned_to(self, alignment: usize) -> Result<(), KernelError> {
+        match self.0 % alignment {
+            0 => Ok(()),
+            _ => Err(KernelError::InvalidAddress { address: self.0, backtrace: Backtrace::new() })
+        }
+    }
+
     /// Rounds down to PAGE_SIZE.
     pub fn floor(self) -> PhysicalAddress { PhysicalAddress(round_to_page(self.0)) }
 
@@ -168,6 +180,18 @@ impl VirtualAddress {
         match self.0.checked_add(rhs) {
             Some(sum) => Ok(VirtualAddress(sum)),
             None => Err(KernelError::WouldOverflow { lhs: self.0, operation: ArithmeticOperation::Add, rhs, backtrace: Backtrace::new() })
+        }
+    }
+
+    /// Checks that this address meets the given alignment.
+    ///
+    /// # Errors
+    ///
+    /// * `InvalidAddress`: `self` is not aligned to `alignment`.
+    pub fn check_aligned_to(self, alignment: usize) -> Result<(), KernelError> {
+        match self.0 % alignment {
+            0 => Ok(()),
+            _ => Err(KernelError::InvalidAddress { address: self.0, backtrace: Backtrace::new() })
         }
     }
 

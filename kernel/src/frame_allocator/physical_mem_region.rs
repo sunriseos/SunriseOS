@@ -4,7 +4,7 @@
 
 use super::{FrameAllocator, FrameAllocatorTraitPrivate};
 use crate::paging::PAGE_SIZE;
-use crate::mem::{PhysicalAddress, VirtualAddress};
+use crate::mem::PhysicalAddress;
 use crate::utils::{div_ceil, check_aligned, check_nonzero_length, Splittable};
 use core::ops::Range;
 use core::iter::StepBy;
@@ -58,9 +58,9 @@ impl PhysicalMemRegion {
     pub unsafe fn on_fixed_mmio(address: PhysicalAddress, length: usize) -> Result<Self, KernelError> {
         check_nonzero_length(length)?;
         check_aligned(length, PAGE_SIZE)?;
-        check_aligned(address.addr(), PAGE_SIZE)?;
+        address.check_aligned_to(PAGE_SIZE)?;
         if !FrameAllocator::check_is_reserved(address, length) {
-            Err(KernelError::InvalidAddress { address: VirtualAddress(address.addr()), length, backtrace: Backtrace::new() })
+            Err(KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new() })
         } else {
             Ok(PhysicalMemRegion {
                 start_addr: address.addr(),

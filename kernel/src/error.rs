@@ -2,7 +2,6 @@
 
 use failure::Backtrace;
 use crate::paging::error::MmError;
-use crate::mem::VirtualAddress;
 use core::fmt::{self, Display};
 
 pub use kfs_libkern::error::KernelError as UserspaceError;
@@ -42,10 +41,9 @@ pub enum KernelError {
     VirtualMemoryExhaustion {
         backtrace: Backtrace,
     },
-    #[fail(display = "Invalid address: virtual address {} len {} is considered invalid", address, length)]
+    #[fail(display = "Invalid address: address {:#010x} is considered invalid", address)]
     InvalidAddress {
-        address: VirtualAddress,
-        length: usize,
+        address: usize,
         backtrace: Backtrace,
     },
     #[fail(display = "Invalid size: size {} is considered invalid", size)]
