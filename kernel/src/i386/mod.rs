@@ -342,7 +342,7 @@ impl Default for TssStruct {
     }
 }
 
-const_assert_eq!(tss_struct_size; ::core::mem::size_of::<TssStruct>(), 0x68);
+const_assert_eq!(::core::mem::size_of::<TssStruct>(), 0x68);
 
 impl TssStruct {
     /// Creates a new TssStruct.

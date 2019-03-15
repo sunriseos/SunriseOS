@@ -11,8 +11,11 @@ kfs-libutils = { path = "../libutils" }
 spin = "0.4"
 log = "0.4.6"
 bitfield = "0.13.1"
-static_assertions = "0.3.1"
 
 [dependencies.lazy_static]
 features = ["spin_no_std"]
 version = "1.3.0"
+
+[dependencies.static_assertions]
+version  = "0.3.1"
+features = ["nightly"]

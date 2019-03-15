@@ -1026,7 +1026,7 @@ pub struct CmdHeaderArray {
     pub slots: [CmdHeader; 32]
 }
 
-assert_eq_size!(size_CmdHeaderArray; CmdHeaderArray, [u8; 1024]);
+assert_eq_size!(CmdHeaderArray, [u8; 1024]);
 
 unsafe impl ZeroInitialized for CmdHeaderArray {}
 
@@ -1068,7 +1068,7 @@ pub struct CmdTable {
                             // 248 entries fills the rest of the page.
 }
 
-assert_eq_size!(size_CmdTable; CmdTable, [u8; 4096]);
+assert_eq_size!(CmdTable, [u8; 4096]);
 
 unsafe impl ZeroInitialized for CmdTable {}
 
@@ -1084,7 +1084,7 @@ union Cfis {
     // ...
 }
 
-assert_eq_size!(size_Cfis; Cfis, [u8; 64]);
+assert_eq_size!(Cfis, [u8; 64]);
 
 /// Physical Region Descriptor Table entry.
 ///
@@ -1189,7 +1189,7 @@ pub struct ReceivedFis {
     _rsv3:  [u8; 0x60],
 }
 
-assert_eq_size!(size_ReceivedFis; ReceivedFis, [u8; 0x100]);
+assert_eq_size!(ReceivedFis, [u8; 0x100]);
 
 unsafe impl ZeroInitialized for ReceivedFis {}
 

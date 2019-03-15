@@ -24,12 +24,9 @@ pub struct PageTable {
 /// A page directory
 pub struct PageDirectory(PageTable);
 
-// Assertions
-fn __assertions() {
-    const_assert!(::core::mem::size_of::<PageDirectory>() >= MEMORY_FRAME_SIZE);
-    const_assert!(::core::mem::size_of::<PageTable>() >= MEMORY_FRAME_SIZE);
-    const_assert!(::core::mem::size_of::<PageTable>() == ::core::mem::size_of::<PageDirectory>());
-}
+const_assert!(::core::mem::size_of::<PageDirectory>() >= MEMORY_FRAME_SIZE);
+const_assert!(::core::mem::size_of::<PageTable>() >= MEMORY_FRAME_SIZE);
+const_assert!(::core::mem::size_of::<PageTable>() == ::core::mem::size_of::<PageDirectory>());
 
 /// When paging is on, accessing this address loops back to the directory itself thanks to
 /// recursive mapping on directory's last entry
