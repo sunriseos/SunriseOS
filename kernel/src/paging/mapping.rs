@@ -5,7 +5,7 @@ use crate::paging::{PAGE_SIZE, MappingAccessRights, error::MmError};
 use crate::error::KernelError;
 use crate::frame_allocator::PhysicalMemRegion;
 use alloc::{vec::Vec, sync::Arc};
-use crate::utils::{check_aligned, check_nonzero_length, Splittable};
+use crate::utils::{check_size_aligned, check_nonzero_length, Splittable};
 use failure::Backtrace;
 use kfs_libkern;
 
@@ -78,11 +78,12 @@ impl<'a> From<&'a MappingType> for kfs_libkern::MemoryType {
 impl Mapping {
     /// Tries to construct a regular mapping.
     ///
-    /// # Error
+    /// # Errors
     ///
     /// Returns an Error if `address` + `frames`'s length would overflow.
-    /// Returns an Error if `address` is not page aligned.
-    /// Returns an Error if `length` is 0.
+    ///
+    /// * `InvalidAddress`: `address` is not page aligned.
+    /// * `InvalidSize`: `frames` is empty.
     pub fn new_regular(address: VirtualAddress, frames: Vec<PhysicalMemRegion>, flags: MappingAccessRights) -> Result<Mapping, KernelError> {
         address.check_aligned_to(PAGE_SIZE)?;
         let length = frames.iter().flatten().count() * PAGE_SIZE;
@@ -96,8 +97,9 @@ impl Mapping {
     /// # Error
     ///
     /// Returns an Error if `address` + `frames`'s length would overflow.
-    /// Returns an Error if `address` is not page aligned.
-    /// Returns an Error if `length` is 0.
+    ///
+    /// * `InvalidAddress`: `address` is not page aligned.
+    /// * `InvalidSize`: `frames` is empty.
     pub fn new_shared(address: VirtualAddress, frames: Arc<Vec<PhysicalMemRegion>>, flags: MappingAccessRights) -> Result<Mapping, KernelError> {
         address.check_aligned_to(PAGE_SIZE)?;
         let length = frames.iter().flatten().count() * PAGE_SIZE;
@@ -108,14 +110,17 @@ impl Mapping {
 
     /// Tries to construct a guarded mapping.
     ///
-    /// # Error
+    /// # Errors
     ///
     /// Returns an Error if `address` + `length` would overflow.
-    /// Returns an Error if `address` or `length` is not page aligned.
-    /// Returns an Error if `length` is 0.
+    ///
+    /// * `InvalidAddress`: `address` is not page aligned.
+    /// * `InvalidSize`:
+    ///     * `length` is not page aligned.
+    ///     * `length` is 0.
     pub fn new_guard(address: VirtualAddress, length: usize) -> Result<Mapping, KernelError> {
         address.check_aligned_to(PAGE_SIZE)?;
-        check_aligned(length, PAGE_SIZE)?;
+        check_size_aligned(length, PAGE_SIZE)?;
         check_nonzero_length(length)?;
         address.checked_add(length - 1)?;
         Ok(Mapping { address, length, mtype: MappingType::Guarded, flags: MappingAccessRights::empty() })
@@ -123,14 +128,17 @@ impl Mapping {
 
     /// Tries to construct an available mapping.
     ///
-    /// # Error
+    /// # Errors
     ///
     /// Returns an Error if `address` + `length` would overflow.
-    /// Returns an Error if `address` or `length` is not page aligned.
-    /// Returns an Error if `length` is 0.
+    ///
+    /// * `InvalidAddress`: `address` is not page aligned.
+    /// * `InvalidSize`:
+    ///     * `length` is not page aligned.
+    ///     * `length` is 0.
     pub fn new_available(address: VirtualAddress, length: usize) -> Result<Mapping, KernelError> {
         address.check_aligned_to(PAGE_SIZE)?;
-        check_aligned(length, PAGE_SIZE)?;
+        check_size_aligned(length, PAGE_SIZE)?;
         check_nonzero_length(length)?;
         address.checked_add(length - 1)?;
         Ok(Mapping { address, length, mtype: MappingType::Available, flags: MappingAccessRights::empty() })
@@ -138,14 +146,17 @@ impl Mapping {
 
     /// Tries to construct a system reserved mapping.
     ///
-    /// # Error
+    /// # Errors
     ///
     /// Returns an Error if `address` + `length` would overflow.
-    /// Returns an Error if `address` or `length` is not page aligned.
-    /// Returns an Error if `length` is 0.
+    ///
+    /// * `InvalidAddress`: `address` is not page aligned.
+    /// * `InvalidSize`:
+    ///     * `length` is not page aligned.
+    ///     * `length` is 0.
     pub fn new_system_reserved(address: VirtualAddress, length: usize) -> Result<Mapping, KernelError> {
         address.check_aligned_to(PAGE_SIZE)?;
-        check_aligned(length, PAGE_SIZE)?;
+        check_size_aligned(length, PAGE_SIZE)?;
         check_nonzero_length(length)?;
         address.checked_add(length - 1)?;
         Ok(Mapping { address, length, mtype: MappingType::SystemReserved, flags: MappingAccessRights::empty() })
@@ -182,11 +193,12 @@ impl Splittable for Mapping {
     ///
     /// Because it is reference counted, a Shared mapping cannot be splitted.
     ///
-    /// # Error
+    /// # Errors
     ///
-    /// * InvalidMapping if it's a shared or system reserved mapping.
+    /// * `InvalidMapping` if it's a shared or system reserved mapping.
+    /// * `InvalidSize`: `offset` is not page aligned.
     fn split_at(&mut self, offset: usize) -> Result<Option<Self>, KernelError> {
-        check_aligned(offset, PAGE_SIZE)?;
+        check_size_aligned(offset, PAGE_SIZE)?;
         match self.mtype_ref() {
             MappingType::Shared(_) | MappingType::SystemReserved => return Err(KernelError::MmError(MmError::InvalidMapping { backtrace: Backtrace::new() })),
             _ => ()

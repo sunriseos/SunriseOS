@@ -18,7 +18,7 @@ use crate::paging::PAGE_SIZE;
 use multiboot2::BootInformation;
 use crate::sync::SpinLock;
 use alloc::vec::Vec;
-use crate::utils::{check_aligned, check_nonzero_length};
+use crate::utils::{check_size_aligned, check_nonzero_length};
 use bit_field::BitArray;
 use crate::utils::BitArrayExt;
 use crate::mem::PhysicalAddress;
@@ -173,18 +173,19 @@ impl FrameAllocatorTrait for FrameAllocator {
     /// Allocates a single [PhysicalMemRegion].
     /// Frames are physically consecutive.
     ///
-    /// # Error
+    /// # Errors
     ///
-    /// * Error if `length` == 0.
-    /// * Error if `length` is not a multiple of [PAGE_SIZE].
+    /// * `InvalidSize`
+    ///     * `length` is not page size aligned.
+    ///     * `length` is 0.
     ///
-    /// # Panic
+    /// # Panics
     ///
-    /// * Panics if FRAME_ALLOCATOR was not initialized.
+    /// * Panics if [FRAME_ALLOCATOR] was not initialized.
     #[allow(clippy::match_bool)]
     fn allocate_region(length: usize) -> Result<PhysicalMemRegion, KernelError> {
         check_nonzero_length(length)?;
-        check_aligned(length, PAGE_SIZE)?;
+        check_size_aligned(length, PAGE_SIZE)?;
         let nr_frames = length / PAGE_SIZE;
         let mut allocator = FRAME_ALLOCATOR.lock();
         assert!(allocator.initialized, "The frame allocator was not initialized");
@@ -223,17 +224,18 @@ impl FrameAllocatorTrait for FrameAllocator {
 
     /// Allocates physical frames, possibly fragmented across several physical regions.
     ///
-    /// # Error
+    /// # Errors
     ///
-    /// * Error if `length` == 0.
-    /// * Error if `length` is not a multiple of [PAGE_SIZE].
+    /// * `InvalidSize`:
+    ///     * `length` is not page size aligned.
+    ///     * `length` is 0.
     ///
-    /// # Panic
+    /// # Panics
     ///
     /// * Panics if FRAME_ALLOCATOR was not initialized.
     fn allocate_frames_fragmented(length: usize) -> Result<Vec<PhysicalMemRegion>, KernelError> {
         check_nonzero_length(length)?;
-        check_aligned(length, PAGE_SIZE)?;
+        check_size_aligned(length, PAGE_SIZE)?;
         let requested = length / PAGE_SIZE;
 
         let mut allocator_lock = FRAME_ALLOCATOR.lock();

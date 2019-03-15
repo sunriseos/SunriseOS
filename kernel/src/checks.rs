@@ -3,11 +3,15 @@
 use crate::error::KernelError;
 use failure::Backtrace;
 
-/// checks that a certain value meets the given alignment.
-pub fn check_aligned(val: usize, alignment: usize) -> Result<(), KernelError> {
-    match val % alignment {
+/// Checks that a size meets the given alignment.
+///
+/// # Errors
+///
+/// * `InvalidSize`: `size` is not aligned to `alignment`.
+pub fn check_size_aligned(size: usize, alignment: usize) -> Result<(), KernelError> {
+    match size % alignment {
         0 => Ok(()),
-        _ => Err(KernelError::AlignmentError { given: val, needed: alignment, backtrace: Backtrace::new() } )
+        _ => Err(KernelError::InvalidSize { size, backtrace: Backtrace::new() })
     }
 }
 
