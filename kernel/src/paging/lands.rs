@@ -4,8 +4,6 @@
 pub use super::arch::{KernelLand, UserLand, RecursiveTablesLand};
 
 use crate::mem::VirtualAddress;
-use super::PAGE_SIZE;
-use super::arch::ENTRY_COUNT;
 use crate::error::KernelError;
 use failure::Backtrace;
 
@@ -25,18 +23,6 @@ pub trait VirtualSpaceLand {
 
     /// The length of this land.
     fn length() -> usize { Self::end_addr().addr() - Self::start_addr().addr() + 1 }
-
-    // TODO: VirtalSpaceLand start_table/ end_table is arch specific
-    // BODY: These functions should be moved to `paging::arch::i386::table.rs`
-    /// The index in page directory of the first table of this land.
-    fn start_table() -> usize {
-        Self::start_addr().addr() / (PAGE_SIZE * ENTRY_COUNT) as usize
-    }
-
-    /// The index in page directory of the last table of this land.
-    fn end_table() -> usize {
-        Self::end_addr().addr() / (PAGE_SIZE * ENTRY_COUNT) as usize
-    }
 
     /// Is the address contained in this Land ?
     fn contains_address(address: VirtualAddress) -> bool {

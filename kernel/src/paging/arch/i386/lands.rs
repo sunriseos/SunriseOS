@@ -36,6 +36,20 @@ impl VirtualSpaceLand for RecursiveTablesLand {
     const   END: VirtualAddress = VirtualAddress(0xffffffff);
 }
 
+/// When paging is on, accessing this address loops back to the directory itself thanks to
+/// recursive mapping on directory's last entry.
+pub const DIRECTORY_RECURSIVE_ADDRESS: VirtualAddress = VirtualAddress(0xffff_f000);
+
+/// The index in page directory of the first table of UserLand.
+pub const USERLAND_START_TABLE: usize = UserLand::START.addr() / (PAGE_SIZE * ENTRY_COUNT) as usize;
+/// The index in page directory of the last table of UserLand.
+pub const USERLAND_END_TABLE:   usize = UserLand::END.addr()   / (PAGE_SIZE * ENTRY_COUNT) as usize;
+
+/// The index in page directory of the first table of KernelLand.
+pub const KERNELLAND_START_TABLE: usize = KernelLand::START.addr() / (PAGE_SIZE * ENTRY_COUNT) as usize;
+/// The index in page directory of the last table of KernelLand.
+pub const KERNELLAND_END_TABLE:   usize = KernelLand::END.addr()   / (PAGE_SIZE * ENTRY_COUNT) as usize;
+
 // Assertions to check that Kernel/User pages falls on distinct page tables
 // and also that they do not overlap.
 
