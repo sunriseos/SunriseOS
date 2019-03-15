@@ -34,12 +34,12 @@ pub struct VirtualAddress(pub usize);
 
 impl VirtualAddress  {
     /// Gets the address as a `usize`.
-    pub fn addr(self) -> usize { self.0 }
+    pub const fn addr(self) -> usize { self.0 }
 }
 
 impl PhysicalAddress {
     /// Gets the address as a `usize`.
-    pub fn addr(self) -> usize { self.0 }
+    pub const fn addr(self) -> usize { self.0 }
 }
 
 impl ::core::ops::Add<usize> for VirtualAddress {
