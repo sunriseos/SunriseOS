@@ -414,7 +414,7 @@ mod test {
         let frames = vec![FrameAllocator::allocate_region(3 * PAGE_SIZE).unwrap()];
         let mut mapping = Mapping::new_regular(VirtualAddress(2 * PAGE_SIZE), frames, MappingAccessRights::k_r()).unwrap();
         match mapping.split_at(PAGE_SIZE + 1).unwrap_err() {
-            KernelError::AlignmentError { .. } => (),
+            KernelError::InvalidSize { .. } => (),
             unexpected_err => panic!("test failed, error {:?}", unexpected_err)
         }
         // check mapping was untouched

@@ -51,12 +51,6 @@ pub enum KernelError {
         size: usize,
         backtrace: Backtrace,
     },
-    #[fail(display = "Alignment error: expected alignment {}, got {}", needed, given)]
-    AlignmentError {
-        given: usize,
-        needed: usize,
-        backtrace: Backtrace,
-    },
     #[fail(display = "Arithmetic error: {} {} {} would cause an overflow", lhs, operation, rhs)]
     WouldOverflow {
         lhs: usize,
@@ -111,13 +105,6 @@ impl From<KernelError> for UserspaceError {
             KernelError::InvalidAddress { .. } => UserspaceError::InvalidAddress,
             KernelError::InvalidSize { .. } => UserspaceError::InvalidSize,
             KernelError::ZeroLengthError { .. } => UserspaceError::InvalidSize,
-            // TODO: AlignementError should discriminate unaligned size and unaligned address
-            // BODY: We can only convey InvalidSize and InvalidAddress to userspace.
-            // BODY: We should define two check functions, that work on a either size or an address,
-            // BODY: and can propagate the right error to userspace automatically.
-            // BODY:
-            // BODY: We must then remove KernelError::AlignmentError.
-            KernelError::AlignmentError { .. } => UserspaceError::InvalidAddress,
             KernelError::InvalidCombination { .. } => UserspaceError::InvalidCombination,
             KernelError::ExceedingMaximum { .. } => UserspaceError::ExceedingMaximum,
             KernelError::InvalidKernelCaps { .. } => UserspaceError::InvalidKernelCaps,
