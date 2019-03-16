@@ -885,13 +885,13 @@ where
     }
 }
 
-// TODO: find_ty_cmdid panics if the buffer is too small.
-// BODY: We should return an error if the buf size is too small instead of
-// BODY: panicking
 /// Quickly find the type and cmdid of an IPC message for the server dispatcher.
 ///
 /// Doesn't do any validation that the message is valid.
-fn find_ty_cmdid(buf: &[u8]) -> (u16, u32) {
+fn find_ty_cmdid(buf: &[u8]) -> Option<(u16, u32)> {
+    if buf.len() < 8 {
+        return None
+    }
     let hdr = LE::read_u64(&buf[0..8]);
     let ty = hdr.get_bits(0..16) as u16;
     let x_descs = hdr.get_bits(16..20) as usize;
@@ -899,6 +899,9 @@ fn find_ty_cmdid(buf: &[u8]) -> (u16, u32) {
     let b_descs = hdr.get_bits(24..28) as usize;
     let w_descs = hdr.get_bits(28..32) as usize;
     let (pid, copyhandles, movehandles) = if hdr.get_bit(63) {
+        if buf.len() < 12 {
+            return None
+        }
         let dsc = LE::read_u32(&buf[8..12]);
         (dsc.get_bit(0) as usize, dsc.get_bits(1..5) as usize, dsc.get_bits(5..9) as usize)
     } else {
@@ -906,7 +909,10 @@ fn find_ty_cmdid(buf: &[u8]) -> (u16, u32) {
     };
     let raw = 8 + (hdr.get_bit(63) as usize) * 4 + pid * 8 + (copyhandles + movehandles) * 4 + (x_descs * 8 + (a_descs + b_descs + w_descs) * 12);
     let raw = align_up(raw, 16) + 8;
+    if buf.len() < raw + 4 {
+        return None
+    }
     let cmdid = LE::read_u32(&buf[raw..raw + 4]);
-    (ty, cmdid)
+    Some((ty, cmdid))
 }
 

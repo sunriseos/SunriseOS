@@ -184,15 +184,15 @@ impl<T: Object + Debug> IWaitable for SessionWrapper<T> {
 
     fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<bool, Error> {
         self.handle.receive(&mut self.buf[..], Some(0))?;
-        let (ty, cmdid) = super::find_ty_cmdid(&self.buf[..]);
-        match ty {
+
+        match super::find_ty_cmdid(&self.buf[..]) {
             // TODO: Handle other types.
-            4 | 6 => {
+            Some((4, cmdid)) | Some((6, cmdid)) => {
                 self.object.dispatch(manager, cmdid, &mut self.buf[..])?;
                 self.handle.reply(&mut self.buf[..])?;
                 Ok(false)
             },
-            2 => Ok(true),
+            Some((2, _)) => Ok(true),
             _ => Ok(true)
         }
     }
