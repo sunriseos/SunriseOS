@@ -41,6 +41,7 @@ use spin::Mutex;
 use core::ops::{Deref, DerefMut, Index};
 use core::fmt::{self, Debug};
 use crate::error::Error;
+use crate::ipc::Message;
 
 /// A handle to a waitable object.
 pub trait IWaitable: Debug {
@@ -152,7 +153,14 @@ pub struct SessionWrapper<T: Object> {
 
     /// Command buffer for this session.
     /// Ensure 16 bytes of alignment so the raw data is properly aligned.
-    buf: Align16<[u8; 0x100]>
+    buf: Align16<[u8; 0x100]>,
+
+    /// Buffer used for receiving type-X buffers and answering to type-C buffers.
+    // TODO: Pointer Buf should take its size as a generic parameter.
+    // BODY: The Pointer Buffer size should be configurable by the sysmodule.
+    // BODY: We'll wait for const generics to do it however, as otherwise we'd
+    // BODY: have to bend over backwards with typenum.
+    pointer_buf: [u8; 0x300]
 }
 
 impl<T: Object + Debug> Debug for SessionWrapper<T> {
@@ -161,6 +169,7 @@ impl<T: Object + Debug> Debug for SessionWrapper<T> {
             .field("handle", &self.handle)
             .field("object", &self.object)
             .field("buf", &&self.buf[..])
+            .field("pointer_buf", &&self.pointer_buf[..])
             .finish()
     }
 }
@@ -173,6 +182,7 @@ impl<T: Object> SessionWrapper<T> {
             handle,
             object,
             buf: Align16([0; 0x100]),
+            pointer_buf: [0; 0x300],
         }
     }
 }
@@ -183,6 +193,11 @@ impl<T: Object + Debug> IWaitable for SessionWrapper<T> {
     }
 
     fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<bool, Error> {
+        // Push a C Buffer before receiving.
+        let mut req = Message::<(), [_; 1], [_; 0], [_; 0]>::new_request(None, 0);
+        req.push_in_pointer(&mut self.pointer_buf, false);
+        req.pack(&mut self.buf[..]);
+
         self.handle.receive(&mut self.buf[..], Some(0))?;
 
         match super::find_ty_cmdid(&self.buf[..]) {
@@ -226,7 +241,8 @@ impl<T: Object + Default + Debug + 'static> IWaitable for PortHandler<T> {
         let session = Box::new(SessionWrapper {
             object: T::default(),
             handle: self.handle.accept()?,
-            buf: Align16([0; 0x100])
+            buf: Align16([0; 0x100]),
+            pointer_buf: [0; 0x300]
         });
         manager.add_waitable(session);
         Ok(false)
