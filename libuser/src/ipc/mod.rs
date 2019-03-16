@@ -26,6 +26,8 @@ use crate::error::{Error, LibuserError};
 #[macro_use]
 pub mod macros;
 pub mod server;
+mod buffer;
+pub use buffer::*;
 
 bitfield! {
     /// Represenens the header of an HIPC command.
@@ -136,6 +138,15 @@ impl IPCBufferType {
             false
         }
     }
+
+    /// Checks if this buffer is a Pointer Buffer.
+    fn is_type_x(self) -> bool {
+        if let IPCBufferType::X { .. } = self {
+            true
+        } else {
+            false
+        }
+    }
 }
 
 /// An IPC Buffer represents a section of memory to send to the other side of the
@@ -166,82 +177,32 @@ pub struct IPCBuffer<'a> {
     phantom: PhantomData<&'a ()>
 }
 
-// TODO: libuser IPCBuffer: Verify that passed type matches the mutability guarantees
-// BODY: In the libuser, IPCBuffer::from_* take an IPCBufferType and a reference.
-// BDOY: Based on the passed type, the remote process will be able to modify the
-// BODY: passed reference. Obviously, we don't want a remote process to modify
-// BODY: our read-only slice. We should either have assertions guaranteeing that,
-// BODY: or more fine-grained functions.
 impl<'a> IPCBuffer<'a> {
-    /// Creates an IPC buffer from a mutable reference and a type. The type
-    /// should be of type B, W or C.
-    pub fn from_mut_ref<T>(val: &'a mut T, ty: IPCBufferType) -> IPCBuffer<'_> {
+    /// Creates a Type-C IPCBuffer from the given reference.
+    ///
+    /// If has_u16_size is true, the size of the pointer will be written after
+    /// the raw data. This is only used when sending client-sized arrays.
+    fn in_pointer<T>(data: &mut T, has_u16_size: bool) -> IPCBuffer {
         IPCBuffer {
-            addr: val as *mut T as usize,
-            size: mem::size_of::<T>(),
-            ty,
-            phantom: PhantomData
-        }
-    }
-    /// Creates an IPC buffer from a reference and a type. The type should be of
-    /// type A or X.
-    pub fn from_ref<T>(val: &'a T, ty: IPCBufferType) -> IPCBuffer<'_> {
-        IPCBuffer {
-            addr: val as *const T as usize,
-            size: mem::size_of::<T>(),
-            ty,
-            phantom: PhantomData
-        }
-    }
-    /// Creates an IPC buffer from a mutable slice and a type. The type should be
-    /// of type B, W or C.
-    pub fn from_slice<T>(val: &'a [T], ty: IPCBufferType) -> IPCBuffer<'_> {
-        IPCBuffer {
-            addr: if val.is_empty() { 0 } else { val.as_ptr() as usize },
-            size: mem::size_of::<T>() * val.len(),
-            ty,
-            phantom: PhantomData
-        }
-    }
-    /// Creates an IPC buffer from a slice and a type. The type should be of
-    /// type A or X.
-    pub fn from_mut_slice<T>(val: &'a mut [T], ty: IPCBufferType) -> IPCBuffer<'_> {
-        IPCBuffer {
-            addr: if val.is_empty() { 0 } else { val.as_ptr() as usize },
-            size: mem::size_of::<T>() * val.len(),
-            ty,
+            addr: data as *mut T as usize,
+            size: core::mem::size_of::<T>(),
+            ty: IPCBufferType::C {
+                has_u16_size
+            },
             phantom: PhantomData
         }
     }
 
-    /// Creates an IPC buffer from a raw pointer, a len and a type. The length is
-    /// a number of T elements, **not** a byte length. The type should be of type
-    /// B, W or C.
+    /// Creates a Type-X IPCBuffer from the given reference.
     ///
-    /// # Safety
-    ///
-    /// The pointer should point to memory pointing to len valid T.
-    pub unsafe fn from_ptr_len<T>(val: *const T, len: usize, ty: IPCBufferType) -> IPCBuffer<'static> {
+    /// The counter defines which type-C buffer this should be copied into.
+    fn out_pointer<T>(data: &T, counter: u8) -> IPCBuffer {
         IPCBuffer {
-            addr: val as usize,
-            size: mem::size_of::<T>() * len,
-            ty,
-            phantom: PhantomData
-        }
-    }
-
-    /// Creates an IPC buffer from a raw mut pointer, a len and a type. The
-    /// length is a number of T elements, **not** a byte length. The type should
-    /// be of type A or X.
-    ///
-    /// # Safety
-    ///
-    /// The pointer should point to memory pointing to len valid T.
-    pub unsafe fn from_mut_ptr_len<T>(val: *mut T, len: usize, ty: IPCBufferType) -> IPCBuffer<'static> {
-        IPCBuffer {
-            addr: val as usize,
-            size: mem::size_of::<T>() * len,
-            ty,
+            addr: data as *const T as usize,
+            size: core::mem::size_of::<T>(),
+            ty: IPCBufferType::X {
+                counter
+            },
             phantom: PhantomData
         }
     }
@@ -470,10 +431,6 @@ where
         self
     }
 
-    // TODO: Figure out a better API for buffers. This sucks.
-    /*fn pop_in_buffer<T>(&mut self) -> InBuffer<T> {
-}*/
-
     /// Retrieve a moved handle from this IPC message. Those are popped in the
     /// order they were inserted.
     ///
@@ -511,6 +468,67 @@ where
         self.pid.take()
             .map(Pid)
             .ok_or_else(|| LibuserError::PidMissing.into())
+    }
+
+    /// Retreive the next InBuffer (type-A buffer) in the message.
+    ///
+    /// # Errors
+    ///
+    /// Returns an InvalidIpcBufferCount if not enough buffers are present
+    ///
+    /// Returns an InvalidIpcBuffer if the next buffer was not of the appropriate
+    /// size.
+    ///
+    /// # Safety
+    ///
+    /// This method is unsafe as it allows creating references to arbitrary
+    /// memory, and of arbitrary type.
+    pub unsafe fn pop_in_buffer<T>(&mut self) -> Result<InBuffer<'_, T>, Error> {
+        self.buffers.iter().position(|buf| buf.buftype().is_type_a())
+            .and_then(|pos| self.buffers.pop_at(pos))
+            .ok_or_else(|| LibuserError::InvalidIpcBufferCount.into())
+            .and_then(|buf| InBuffer::<T>::new(buf))
+    }
+
+    /// Push an InPointer (type-C buffer) backed by the specified data.
+    ///
+    /// If `has_u16_count` is true, the size of the X buffer will be appended
+    /// to the Raw Data. See Buffer 0xA on the IPC Marshalling page of
+    /// switchbrew.
+    pub fn push_in_pointer<T>(&mut self, data: &'a mut T, has_u16_count: bool) -> &mut Self {
+        self.buffers.push(IPCBuffer::in_pointer(data, has_u16_count));
+        self
+    }
+
+    /// Push an OutPointer (type-X buffer) backed by the specified data.
+    ///
+    /// If `has_u16_count` is true, the size of the X buffer will be appended
+    /// to the Raw Data. See Buffer 0xA on the IPC Marshalling page of
+    /// switchbrew.
+    pub fn push_out_pointer<T>(&mut self, data: &'a T) -> &mut Self {
+        let index = self.buffers.iter().filter(|buf| buf.buftype().is_type_x()).count();
+        self.buffers.push(IPCBuffer::out_pointer(data, index as u8));
+        self
+    }
+
+    /// Retreive the next InPointer (type-X buffer) in the message.
+    ///
+    /// # Errors
+    ///
+    /// Returns an InvalidIpcBufferCount if not enough buffers are present
+    ///
+    /// Returns an InvalidIpcBuffer if the next buffer was not of the appropriate
+    /// size.
+    ///
+    /// # Safety
+    ///
+    /// This method is unsafe as it allows creating references to arbitrary
+    /// memory, and of arbitrary type.
+    pub unsafe fn pop_in_pointer<T>(&mut self) -> Result<InPointer<'_, T>, Error> {
+        self.buffers.iter().position(|buf| buf.buftype().is_type_x())
+            .and_then(|pos| self.buffers.pop_at(pos))
+            .ok_or_else(|| LibuserError::InvalidIpcBufferCount.into())
+            .and_then(|buf| InPointer::<T>::new(buf))
     }
 
     /// Packs this IPC Message to an IPC buffer.
