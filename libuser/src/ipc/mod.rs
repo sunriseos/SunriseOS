@@ -85,6 +85,17 @@ pub enum IPCBufferType {
         /// - 3: Device mapping allowed for src but not for dst.
         flags: u8
     },
+    /// SendReceive Buffer.
+    W {
+        /// Determines what MemoryState to use with the mapped memory in the
+        /// sysmodule. Used to enforce whether or not device mapping is allowed
+        /// for src and dst buffers respectively.
+        ///
+        /// - 0: Device mapping *not* allowed for src or dst.
+        /// - 1: Device mapping allowed for src and dst.
+        /// - 3: Device mapping allowed for src but not for dst.
+        flags: u8
+    },
     /// Pointer.
     X {
         /// The index of the C buffer to copy this pointer into.
@@ -111,6 +122,15 @@ impl IPCBufferType {
     /// Checks if this buffer is a Receive Buffer.
     fn is_type_b(self) -> bool {
         if let IPCBufferType::B { .. } = self {
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Checks if this buffer is a SendReceive Buffer.
+    fn is_type_w(self) -> bool {
+        if let IPCBufferType::W { .. } = self {
             true
         } else {
             false
@@ -499,13 +519,15 @@ where
             mut descriptor_count_x,
             mut descriptor_count_a,
             mut descriptor_count_b,
-            mut descriptor_count_c) = (/* X */0, /* A */0, /* B */0, /* C */0);
+            mut descriptor_count_w,
+            mut descriptor_count_c) = (/* X */0, /* A */0, /* B */0, /* W */0, /* C */0);
 
         for bufty in self.buffers.iter().map(|b| b.buftype()) {
             match bufty {
                 IPCBufferType::X { .. } => descriptor_count_x += 1u8,
                 IPCBufferType::A { .. } => descriptor_count_a += 1u8,
                 IPCBufferType::B { .. } => descriptor_count_b += 1u8,
+                IPCBufferType::W { .. } => descriptor_count_w += 1u8,
                 IPCBufferType::C { .. } => descriptor_count_c += 1u8,
             }
         }
@@ -519,7 +541,7 @@ where
             hdr.set_num_x_descriptors(descriptor_count_x);
             hdr.set_num_a_descriptors(descriptor_count_a);
             hdr.set_num_b_descriptors(descriptor_count_b);
-            hdr.set_num_w_descriptors(0);
+            hdr.set_num_w_descriptors(descriptor_count_w);
             if descriptor_count_c == 0 {
                 hdr.set_c_descriptor_flags(0);
             } else if descriptor_count_c == 1 {
@@ -631,9 +653,10 @@ where
         // B descriptors
         pack_abw_descriptors(&mut cursor, self.buffers.iter().filter(|buf| buf.buftype().is_type_b()));
 
-        // TODO: Implement W Descriptors
-        // BODY: W Descriptors are read-write descriptors. Technically speaking,
-        // BODY: a B descriptor is supposed to be write-only. But Nintendo sucks.
+        // W descriptors
+        // Those are read-write descriptors. Technically speaking, a B descriptor is supposed
+        // to be write-only. But Nintendo sucks.
+        pack_abw_descriptors(&mut cursor, self.buffers.iter().filter(|buf| buf.buftype().is_type_w()));
 
         // Align to 16-byte boundary
         let before_pad = align_up(cursor.pos(), 16) - cursor.pos();
@@ -769,8 +792,7 @@ where
             } else if i < hdr.num_a_descriptors() + hdr.num_b_descriptors() {
                 IPCBufferType::B { flags }
             } else {
-                panic!("Unsupported W descriptor");
-                //IPCBufferType::W { flags }
+                IPCBufferType::W { flags }
             };
 
             buffers.push(IPCBuffer { addr, size, ty, phantom: PhantomData });
