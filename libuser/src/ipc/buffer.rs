@@ -26,10 +26,10 @@ use crate::error::{Error, LibuserError};
 /// An incoming Pointer buffer, also known as a Type-X Buffer.
 pub struct InPointer<'a, T: ?Sized> {
     /// Address of the InBuffer in the current address space.
-    addr: usize,
+    addr: u64,
     /// Size of the InPointer. Should match the size of T, or be a multiple of
     /// the size of T::Item if T is a slice.
-    size: usize,
+    size: u64,
     /// Lifetime of the InPointer, should be bound to a [Message](crate::ipc::Message).
     phantom: PhantomData<&'a T>
 }
@@ -47,7 +47,7 @@ impl<'a, T> InPointer<'a, T> {
     /// expected
     pub fn new(buf: IPCBuffer) -> Result<InPointer<'_, T>, Error> {
         assert!(buf.buftype().is_type_x());
-        if buf.size != core::mem::size_of::<T>() {
+        if buf.size != core::mem::size_of::<T>() as u64 {
             Err(LibuserError::InvalidIpcBuffer.into())
         } else {
             Ok(InPointer {
@@ -63,7 +63,7 @@ impl<'a, T> core::ops::Deref for InPointer<'a, T> {
     type Target = T;
     fn deref(&self) -> &T {
         unsafe {
-            (self.addr as *const T).as_ref().unwrap()
+            (self.addr as usize as *const T).as_ref().unwrap()
         }
     }
 }
@@ -89,7 +89,7 @@ impl<'a, T> InPointer<'a, [T]> {
     /// expected
     pub fn new(buf: IPCBuffer) -> Result<InPointer<'_, [T]>, Error> {
         assert!(buf.buftype().is_type_x());
-        if buf.size % core::mem::size_of::<T>() != 0 || buf.size == 0 {
+        if buf.size % core::mem::size_of::<T>() as u64 != 0 || buf.size == 0 {
             Err(LibuserError::InvalidIpcBuffer.into())
         } else {
             Ok(InPointer {
@@ -105,7 +105,8 @@ impl<'a, T> core::ops::Deref for InPointer<'a, [T]> {
     type Target = [T];
     fn deref(&self) -> &[T] {
         unsafe {
-            core::slice::from_raw_parts(self.addr as *const T, self.size / core::mem::size_of::<T>())
+            core::slice::from_raw_parts(self.addr as usize as *const T,
+                                        self.size as usize / core::mem::size_of::<T>())
         }
     }
 }
@@ -113,10 +114,10 @@ impl<'a, T> core::ops::Deref for InPointer<'a, [T]> {
 /// An incoming Buffer, also known as a Type-A Buffer.
 pub struct InBuffer<'a, T: ?Sized> {
     /// Address of the InBuffer in the current address space.
-    addr: usize,
+    addr: u64,
     /// Size of the InBuffer. Should match the size of T, or be a multiple of
     /// the size of T::Item if T is a slice.
-    size: usize,
+    size: u64,
     /// Lifetime of the InBuffer, should be bound to a [Message](crate::ipc::Message).
     phantom: PhantomData<&'a T>
 }
@@ -135,7 +136,7 @@ impl<'a, T> InBuffer<'a, T> {
     /// expected
     pub fn new(buf: IPCBuffer) -> Result<InBuffer<'_, T>, Error> {
         assert!(buf.buftype().is_type_a());
-        if buf.size != core::mem::size_of::<T>() {
+        if buf.size != core::mem::size_of::<T>() as u64 {
             Err(LibuserError::InvalidIpcBuffer.into())
         } else {
             Ok(InBuffer {
@@ -151,7 +152,7 @@ impl<'a, T> core::ops::Deref for InBuffer<'a, T> {
     type Target = T;
     fn deref(&self) -> &T {
         unsafe {
-            (self.addr as *const T).as_ref().unwrap()
+            (self.addr as usize as *const T).as_ref().unwrap()
         }
     }
 }
@@ -178,7 +179,7 @@ impl<'a, T> InBuffer<'a, [T]> {
     /// expected
     pub fn new(buf: IPCBuffer) -> Result<InBuffer<'_, [T]>, Error> {
         assert!(buf.buftype().is_type_a());
-        if buf.size % core::mem::size_of::<T>() != 0 || buf.size == 0 {
+        if buf.size % core::mem::size_of::<T>() as u64 != 0 || buf.size == 0 {
             Err(LibuserError::InvalidIpcBuffer.into())
         } else {
             Ok(InBuffer {
@@ -194,7 +195,8 @@ impl<'a, T> core::ops::Deref for InBuffer<'a, [T]> {
     type Target = [T];
     fn deref(&self) -> &[T] {
         unsafe {
-            core::slice::from_raw_parts(self.addr as *const T, self.size / core::mem::size_of::<T>())
+            core::slice::from_raw_parts(self.addr as usize as *const T,
+                                        self.size as usize / core::mem::size_of::<T>())
         }
     }
 }

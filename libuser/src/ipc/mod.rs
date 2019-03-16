@@ -166,9 +166,9 @@ impl IPCBufferType {
 #[derive(Debug, Clone)]
 pub struct IPCBuffer<'a> {
     /// Address to the value
-    addr: usize,
+    addr: u64,
     /// Size of the value
-    size: usize,
+    size: u64,
     /// Buffer type
     ty: IPCBufferType,
     /// Tie the buffer's lifetime to the value's !
@@ -184,8 +184,8 @@ impl<'a> IPCBuffer<'a> {
     /// the raw data. This is only used when sending client-sized arrays.
     fn in_pointer<T>(data: &mut T, has_u16_size: bool) -> IPCBuffer {
         IPCBuffer {
-            addr: data as *mut T as usize,
-            size: core::mem::size_of::<T>(),
+            addr: data as *mut T as usize as u64,
+            size: core::mem::size_of::<T>() as u64,
             ty: IPCBufferType::C {
                 has_u16_size
             },
@@ -198,8 +198,8 @@ impl<'a> IPCBuffer<'a> {
     /// The counter defines which type-C buffer this should be copied into.
     fn out_pointer<T>(data: &T, counter: u8) -> IPCBuffer {
         IPCBuffer {
-            addr: data as *const T as usize,
-            size: core::mem::size_of::<T>(),
+            addr: data as *const T as usize as u64,
+            size: core::mem::size_of::<T>() as u64,
             ty: IPCBufferType::X {
                 counter
             },
@@ -531,6 +531,11 @@ where
             .and_then(|buf| InPointer::<T>::new(buf))
     }
 
+    // TODO: Move pack to a non-generic function
+    // BODY: Right now the pack and unpack functions are duplicated for every
+    // BODY: instanciation of Message. This probably has a huge penalty on
+    // BODY: codesize. We should make a function taking everything as slices
+    // BODY: instead
     /// Packs this IPC Message to an IPC buffer.
     pub fn pack(self, data: &mut [u8]) {
         let (
@@ -657,7 +662,7 @@ where
                 cursor.write_u32::<LE>((size & 0xFFFFFFFF) as u32);
                 cursor.write_u32::<LE>((addr & 0xFFFFFFFF) as u32);
 
-                let num = flags as usize
+                let num = u64::from(flags)
                     | ((addr >> 36) & 0b111) << 2
                     | ((size >> 32) & 0b1111) << 24
                     | ((addr >> 32) & 0b1111) << 28;
@@ -788,8 +793,8 @@ where
             let laddr = cursor.read_u32::<LE>();
             let addr = *u64::from(laddr)
                 .set_bits(32..36, u64::from(stuffed.get_bits(12..16)))
-                .set_bits(36..39, u64::from(stuffed.get_bits(6..9))) as usize;
-            let size = stuffed.get_bits(16..32) as usize;
+                .set_bits(36..39, u64::from(stuffed.get_bits(6..9)));
+            let size = u64::from(stuffed.get_bits(16..32));
             let counter = stuffed.get_bits(0..4) as u8;
             buffers.push(IPCBuffer { addr, size, ty: IPCBufferType::X { counter }, phantom: PhantomData });
         }
@@ -800,9 +805,9 @@ where
             let stuff = cursor.read_u32::<LE>();
             let addr = *u64::from(laddr)
                 .set_bits(32..36, u64::from(stuff.get_bits(28..32)))
-                .set_bits(36..39, u64::from(stuff.get_bits(2..5))) as usize;
+                .set_bits(36..39, u64::from(stuff.get_bits(2..5)));
             let size = *u64::from(lsize)
-                .set_bits(32..36, u64::from(stuff.get_bits(24..28))) as usize;
+                .set_bits(32..36, u64::from(stuff.get_bits(24..28)));
             let flags = stuff.get_bits(0..2) as u8;
 
             let ty = if i < hdr.num_a_descriptors() {
