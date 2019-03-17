@@ -1,21 +1,17 @@
 //! i386 Page Tables hierarchy
 
 use super::{PAGE_SIZE, ENTRY_COUNT};
+use super::lands::{USERLAND_START_TABLE, USERLAND_END_TABLE, KERNELLAND_START_TABLE, KERNELLAND_END_TABLE, DIRECTORY_RECURSIVE_ADDRESS};
 use super::entry::{I386Entry, I386EntryFlags};
 use super::super::super::hierarchical_table::{HierarchicalTable, SmartHierarchicalTable,
                                               TableHierarchy, InactiveHierarchyTrait,
                                               PagingCacheFlusher, PageState, NoFlush,
                                               HierarchicalEntry};
-use super::super::super::lands::{KernelLand, UserLand, VirtualSpaceLand};
 use super::super::super::kernel_memory::get_kernel_memory;
 use super::super::super::MappingAccessRights;
 use crate::mem::{VirtualAddress, PhysicalAddress};
 use crate::frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
 use core::fmt::{Debug, Formatter, Error};
-
-/// When paging is on, accessing this address loops back to the directory itself thanks to
-/// recursive mapping on directory's last entry.
-pub const DIRECTORY_RECURSIVE_ADDRESS: VirtualAddress = VirtualAddress(0xffff_f000);
 
 /// A page table or directory in memory.
 ///
@@ -30,7 +26,6 @@ impl Debug for Table {
         Debug::fmt(&&self.entries[..], f)
     }
 }
-
 
 /* ********************************************************************************************** */
 
@@ -107,6 +102,7 @@ impl HierarchicalTable for ActivePageDirectory {
     /// # Panics
     ///
     /// Panics if the entry was not available.
+    #[allow(clippy::absurd_extreme_comparisons)] // USERLAND_START_TABLE <= index is more readable
     fn create_child_table(&mut self, index: usize) -> SmartHierarchicalTable<ActivePageTable> {
         assert!(self.entries()[index].is_unused(), "called create_child_table on a non available entry");
         let table_frame = FrameAllocator::allocate_frame().unwrap();
@@ -114,7 +110,7 @@ impl HierarchicalTable for ActivePageDirectory {
         // A directory entry is always WRITABLE, write permission is handled at table level.
         let mut flags = I386EntryFlags::PRESENT | I386EntryFlags::WRITABLE;
         // If we're in user land, we should create the table as USER_ACCESSIBLE.
-        if UserLand::start_table() <= index && index <= UserLand::end_table() {
+        if USERLAND_START_TABLE <= index && index <= USERLAND_END_TABLE {
             flags |= I386EntryFlags::USER_ACCESSIBLE;
         }
 
@@ -220,6 +216,7 @@ impl HierarchicalTable for InactivePageDirectory {
     /// # Panics
     ///
     /// Panics if the entry was not available.
+    #[allow(clippy::absurd_extreme_comparisons)] // USERLAND_START_TABLE <= index is more readable
     fn create_child_table(&mut self, index: usize) -> SmartHierarchicalTable<InactivePageTable> {
         assert!(self.entries()[index].is_unused());
         let table_frame = FrameAllocator::allocate_frame().unwrap();
@@ -239,7 +236,7 @@ impl HierarchicalTable for InactivePageDirectory {
         // A directory entry is always WRITABLE, write permission is handled at table level.
         let mut flags = I386EntryFlags::PRESENT | I386EntryFlags::WRITABLE;
         // If we're in user land, we should create the table as USER_ACCESSIBLE.
-        if UserLand::start_table() <= index && index <= UserLand::end_table() {
+        if USERLAND_START_TABLE <= index && index <= USERLAND_END_TABLE {
             flags |= I386EntryFlags::USER_ACCESSIBLE;
         }
 
@@ -308,8 +305,8 @@ impl InactiveHierarchyTrait for InactiveHierarchy {
         let mut dir = self.get_top_level_table();
         let mut memory = get_kernel_memory();
         let mut active_dir = memory.get_hierarchy().get_top_level_table();
-        dir.entries()[KernelLand::start_table()..=KernelLand::end_table()]
-            .clone_from_slice(&active_dir.entries()[KernelLand::start_table()..=KernelLand::end_table()]);
+        dir.entries()[KERNELLAND_START_TABLE..=KERNELLAND_END_TABLE]
+            .clone_from_slice(&active_dir.entries()[KERNELLAND_START_TABLE..=KERNELLAND_END_TABLE]);
     }
 
     fn is_currently_active(&self) -> bool {
