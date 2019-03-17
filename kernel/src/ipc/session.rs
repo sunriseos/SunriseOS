@@ -34,6 +34,7 @@ use crate::paging::{MappingAccessRights, process_memory::ProcessMemory};
 use crate::mem::{UserSpacePtr, UserSpacePtrMut, VirtualAddress};
 use bit_field::BitField;
 use crate::error::KernelError;
+use crate::checks::check_lower_than_usize;
 
 /// Wrapper around the currently active session and the incoming request list.
 /// They are kept together so they are locked together.
@@ -223,19 +224,9 @@ fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mu
         .set_bits(32..36, u64::from(rest.get_bits(24..28)));
 
     // 64-bit address on a 32-bit kernel!
-    if (usize::max_value() as u64) < addr {
-        return Err(UserspaceError::InvalidAddress);
-    }
-
-    // 64-bit size on a 32-bit kernel!
-    if (usize::max_value() as u64) < size {
-        return Err(UserspaceError::InvalidSize);
-    }
-
-    // 64-bit address on a 32-bit kernel
-    if (usize::max_value() as u64) < addr.saturating_add(size) {
-        return Err(UserspaceError::InvalidSize);
-    }
+    check_lower_than_usize(addr, UserspaceError::InvalidAddress)?;
+    check_lower_than_usize(size, UserspaceError::InvalidSize)?;
+    check_lower_than_usize(addr.saturating_add(size), UserspaceError::InvalidSize)?;
 
     let addr = addr as usize;
     let size = size as usize;
@@ -543,7 +534,13 @@ fn pass_message(from_buf: &[u8], from_proc: Arc<ThreadStruct>, to_buf: &mut [u8]
                 }
             };
 
-            // TODO: Check if from/to are > usize::max_value()
+            // Check addresses fit in 32-bit kernel.
+            check_lower_than_usize(from_addr, UserspaceError::InvalidAddress)?;
+            check_lower_than_usize(from_size, UserspaceError::InvalidAddress)?;
+            check_lower_than_usize(from_addr.saturating_add(from_size), UserspaceError::InvalidAddress)?;
+            check_lower_than_usize(to_addr, UserspaceError::InvalidAddress)?;
+            check_lower_than_usize(to_size, UserspaceError::InvalidAddress)?;
+            check_lower_than_usize(to_addr.saturating_add(to_size), UserspaceError::InvalidAddress)?;
 
             let (mapping, mut uspaceptr) = if !is_reply {
                 // We're receiving: C Buffers are in our address space, X buffers
