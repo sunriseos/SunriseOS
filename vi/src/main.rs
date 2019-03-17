@@ -79,10 +79,13 @@ object! {
             Ok((client.into_handle(),))
         }
 
-        /// Gets the screen resolution.
+        /// Gets the screen (width, height) in pixels.
+        ///
+        /// Cannot fail.
         #[cmdid(1)]
-        fn get_resolution(&mut self,) -> Result<(u32, u32,), Error> {
-            Ok((1280, 800))
+        fn get_screen_resolution(&mut self,) -> Result<(u32, u32,), Error> {
+            let fb = FRAMEBUFFER.lock();
+            Ok((fb.width() as _, fb.height() as _))
         }
     }
 }
@@ -93,7 +96,14 @@ object! {
 static BUFFERS: Mutex<Vec<Weak<Buffer>>> = Mutex::new(Vec::new());
 
 /// The backbuffer to draw into.
-static BACKBUFFER_ARR: Mutex<[VBEColor; 1280 * 800]> = Mutex::new([VBEColor::rgb(0, 0, 0); 1280 * 800]);
+///
+/// This is an array residing in the .bss, big enough to hold a UHD 4K screen.
+///
+/// Most of the time, the actual screen will be much smaller, and only
+/// `BACKBUFFER_ARR[0..(screen_height * screen_width)]` should be accessed.
+///
+/// Its actual size is irrelevant.
+static BACKBUFFER_ARR: Mutex<[VBEColor; 3840 * 2160]> = Mutex::new([VBEColor::rgb(0, 0, 0); 3840 * 2160]);
 
 /// Gets the intersection between two rectangles.
 fn get_intersect((atop, aleft, awidth, aheight): (u32, u32, u32, u32), (btop, bleft, bwidth, bheight): (u32, u32, u32, u32)) -> Option<(u32, u32, u32, u32)> {
@@ -204,8 +214,14 @@ impl Drop for IBuffer {
     /// Redraw the zone where the buffer was when dropping it, to make sure it
     /// disappears.
     fn drop(&mut self) {
+        let (fullscreen_width, fullscreen_height, bpp) = {
+            let fb = FRAMEBUFFER.lock();
+            (fb.width(), fb.height(), fb.bpp())
+        };
+        // create a fake Framebuffer that writes to BACKBUFFER_ARR,
+        // and copy it to actual screen only when we're done composing all layers in it.
         let mut backbuffer_arr = BACKBUFFER_ARR.lock();
-        let mut framebuffer = Framebuffer::new_buffer(&mut *backbuffer_arr, 1280, 800, 32);
+        let mut framebuffer = Framebuffer::new_buffer(&mut *backbuffer_arr, fullscreen_width, fullscreen_height, bpp);
         let (dtop, dleft, dwidth, dheight) = self.buffer.get_real_bounds(framebuffer.width() as u32, framebuffer.height() as u32);
         framebuffer.clear_at(dleft as _, dtop as _, dwidth as _, dheight as _);
         BUFFERS.lock().retain(|buffer| {
@@ -220,7 +236,9 @@ impl Drop for IBuffer {
                 false
             }
         });
-        FRAMEBUFFER.lock().get_fb().copy_from_slice(framebuffer.get_fb());
+        // BACKBUFFER_ARR is often bigger than our screen, take only the first pixels.
+        let screen_in_backbuffer = &mut framebuffer.get_fb()[0..(fullscreen_width * fullscreen_height)];
+        FRAMEBUFFER.lock().get_fb().copy_from_slice(screen_in_backbuffer);
     }
 }
 
@@ -230,8 +248,14 @@ object! {
         #[cmdid(0)]
         #[inline(never)]
         fn draw(&mut self, ) -> Result<(), Error> {
+            let (fullscreen_width, fullscreen_height, bpp) = {
+                let fb = FRAMEBUFFER.lock();
+                (fb.width(), fb.height(), fb.bpp())
+            };
+            // create a fake Framebuffer that writes to BACKBUFFER_ARR,
+            // and copy it to actual screen only when we're done composing all layers in it.
             let mut backbuffer_arr = BACKBUFFER_ARR.lock();
-            let mut framebuffer = Framebuffer::new_buffer(&mut *backbuffer_arr, 1280, 800, 32);
+            let mut framebuffer = Framebuffer::new_buffer(&mut *backbuffer_arr, fullscreen_width, fullscreen_height, bpp);
             let (dtop, dleft, dwidth, dheight) = self.buffer.get_real_bounds(framebuffer.width() as u32, framebuffer.height() as u32);
             framebuffer.clear_at(dleft as _, dtop as _, dwidth as _, dheight as _);
             BUFFERS.lock().retain(|buffer| {
@@ -242,7 +266,9 @@ object! {
                     false
                 }
             });
-            FRAMEBUFFER.lock().get_fb().copy_from_slice(framebuffer.get_fb());
+            // BACKBUFFER_ARR is often bigger than our screen, take only the first pixels.
+            let screen_in_backbuffer = &mut framebuffer.get_fb()[0..(fullscreen_width * fullscreen_height)];
+            FRAMEBUFFER.lock().get_fb().copy_from_slice(screen_in_backbuffer);
             Ok(())
         }
     }

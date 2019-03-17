@@ -54,6 +54,20 @@ impl ViInterface {
         res.error()?;
         Ok(IBuffer(ClientSession(res.pop_handle_move().unwrap())))
     }
+
+    /// Gets the screen (width, height) in pixels.
+    pub fn get_screen_resolution(&mut self,) -> Result<(u32, u32), Error> {
+        use crate::ipc::Message;
+        let mut buf = [0; 0x100];
+
+        let msg = Message::<(), [_; 0], [_; 0], [_; 0]>::new_request(None, 1);
+        msg.pack(&mut buf[..]);
+
+        self.0.send_sync_request_with_user_buffer(&mut buf[..])?;
+        let res : Message<'_, [u32; 2], [_; 0], [_; 0], [_; 0]> = Message::unpack(&buf[..]);
+        res.error()?;
+        Ok((res.raw()[0], res.raw()[1]))
+    }
 }
 
 /// A handle to a window. Created through the create_buffer function on

@@ -52,7 +52,6 @@ impl Window {
     /// Creates a window in the vi compositor.
     pub fn new(top: i32, left: i32, width: u32, height: u32) -> Result<Window, Error> {
         let mut vi = ViInterface::raw_new()?;
-
         let bpp = 32;
         let size = height * width * bpp / 8;
 
