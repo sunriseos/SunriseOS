@@ -18,7 +18,7 @@ pub fn check_size_aligned(size: usize, alignment: usize) -> Result<(), KernelErr
 /// checks that a length is not 0.
 pub fn check_nonzero_length(length: usize) -> Result<(), KernelError> {
     if length == 0 {
-        Err(KernelError::ZeroLengthError { backtrace: Backtrace::new() })
+        Err(KernelError::InvalidSize { size: 0, backtrace: Backtrace::new() })
     } else {
         Ok(())
     }

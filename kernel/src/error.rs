@@ -33,10 +33,6 @@ pub enum KernelError {
         size: usize,
         backtrace: Backtrace,
     },
-    #[fail(display = "Length error: length is 0")]
-    ZeroLengthError {
-        backtrace: Backtrace,
-    },
     #[fail(display = "Memory management error: {}", _0)]
     MmError(MmError),
     #[fail(display = "Process was killed before finishing operation")]
@@ -79,7 +75,6 @@ impl From<KernelError> for UserspaceError {
             KernelError::ThreadAlreadyStarted { .. } => UserspaceError::ProcessAlreadyStarted,
             KernelError::InvalidAddress { .. } => UserspaceError::InvalidAddress,
             KernelError::InvalidSize { .. } => UserspaceError::InvalidSize,
-            KernelError::ZeroLengthError { .. } => UserspaceError::InvalidSize,
             KernelError::InvalidCombination { .. } => UserspaceError::InvalidCombination,
             KernelError::ExceedingMaximum { .. } => UserspaceError::ExceedingMaximum,
             KernelError::InvalidKernelCaps { .. } => UserspaceError::InvalidKernelCaps,
