@@ -82,29 +82,35 @@ impl Mapping {
     ///
     /// Returns an Error if `address` + `frames`'s length would overflow.
     ///
-    /// * `InvalidAddress`: `address` is not page aligned.
+    /// * `InvalidAddress`:
+    ///     * `address` is not page aligned.
+    ///     * `address` + length would overflow.
     /// * `InvalidSize`: `frames` is empty.
     pub fn new_regular(address: VirtualAddress, frames: Vec<PhysicalMemRegion>, flags: MappingAccessRights) -> Result<Mapping, KernelError> {
         address.check_aligned_to(PAGE_SIZE)?;
         let length = frames.iter().flatten().count() * PAGE_SIZE;
         check_nonzero_length(length)?;
-        address.checked_add(length - 1)?;
+        address.checked_add(length - 1)
+            .ok_or_else(|| KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new()})?;
         Ok(Mapping { address, length, mtype: MappingType::Regular(frames), flags })
     }
 
     /// Tries to construct a shared mapping.
     ///
-    /// # Error
+    /// # Errors
     ///
     /// Returns an Error if `address` + `frames`'s length would overflow.
     ///
-    /// * `InvalidAddress`: `address` is not page aligned.
+    /// * `InvalidAddress`:
+    ///     * `address` is not page aligned.
+    ///     * `address` + length would overflow.
     /// * `InvalidSize`: `frames` is empty.
     pub fn new_shared(address: VirtualAddress, frames: Arc<Vec<PhysicalMemRegion>>, flags: MappingAccessRights) -> Result<Mapping, KernelError> {
         address.check_aligned_to(PAGE_SIZE)?;
         let length = frames.iter().flatten().count() * PAGE_SIZE;
         check_nonzero_length(length)?;
-        address.checked_add(length - 1)?;
+        address.checked_add(length - 1)
+            .ok_or_else(|| KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new()})?;
         Ok(Mapping { address, length, mtype: MappingType::Shared(frames), flags })
     }
 
@@ -114,7 +120,9 @@ impl Mapping {
     ///
     /// Returns an Error if `address` + `length` would overflow.
     ///
-    /// * `InvalidAddress`: `address` is not page aligned.
+    /// * `InvalidAddress`:
+    ///     * `address` is not page aligned.
+    ///     * `address` + length would overflow.
     /// * `InvalidSize`:
     ///     * `length` is not page aligned.
     ///     * `length` is 0.
@@ -122,7 +130,8 @@ impl Mapping {
         address.check_aligned_to(PAGE_SIZE)?;
         check_size_aligned(length, PAGE_SIZE)?;
         check_nonzero_length(length)?;
-        address.checked_add(length - 1)?;
+        address.checked_add(length - 1)
+            .ok_or_else(|| KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new()})?;
         Ok(Mapping { address, length, mtype: MappingType::Guarded, flags: MappingAccessRights::empty() })
     }
 
@@ -132,7 +141,9 @@ impl Mapping {
     ///
     /// Returns an Error if `address` + `length` would overflow.
     ///
-    /// * `InvalidAddress`: `address` is not page aligned.
+    /// * `InvalidAddress`:
+    ///     * `address` is not page aligned.
+    ///     * `address` + length would overflow.
     /// * `InvalidSize`:
     ///     * `length` is not page aligned.
     ///     * `length` is 0.
@@ -140,7 +151,8 @@ impl Mapping {
         address.check_aligned_to(PAGE_SIZE)?;
         check_size_aligned(length, PAGE_SIZE)?;
         check_nonzero_length(length)?;
-        address.checked_add(length - 1)?;
+        address.checked_add(length - 1)
+            .ok_or_else(|| KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new()})?;
         Ok(Mapping { address, length, mtype: MappingType::Available, flags: MappingAccessRights::empty() })
     }
 
@@ -150,7 +162,9 @@ impl Mapping {
     ///
     /// Returns an Error if `address` + `length` would overflow.
     ///
-    /// * `InvalidAddress`: `address` is not page aligned.
+    /// * `InvalidAddress`:
+    ///     * `address` is not page aligned.
+    ///     * `address` + length would overflow.
     /// * `InvalidSize`:
     ///     * `length` is not page aligned.
     ///     * `length` is 0.
@@ -158,7 +172,8 @@ impl Mapping {
         address.check_aligned_to(PAGE_SIZE)?;
         check_size_aligned(length, PAGE_SIZE)?;
         check_nonzero_length(length)?;
-        address.checked_add(length - 1)?;
+        address.checked_add(length - 1)
+            .ok_or_else(|| KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new()})?;
         Ok(Mapping { address, length, mtype: MappingType::SystemReserved, flags: MappingAccessRights::empty() })
     }
 

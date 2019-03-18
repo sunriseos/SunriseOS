@@ -110,23 +110,29 @@ impl UserspaceBookkeeping {
 
     /// Checks that a given range is unoccupied.
     ///
-    /// # Error
+    /// # Errors
     ///
-    /// Returns an Error if address + length - 1 would overflow.
-    /// Returns an Error if length is 0.
+    /// * `InvalidAddress`:
+    ///     * `address + length - 1` would overflow
+    /// * `InvalidSize`:
+    ///     * `length` is 0.
     pub fn is_vacant(&self, address: VirtualAddress, length: usize) -> Result<bool, KernelError> {
         check_nonzero_length(length)?;
-        let end_addr = address.checked_add(length - 1)?;
+        let end_addr = address.checked_add(length - 1)
+            .ok_or_else(|| KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new()})?;
         Ok(self.mappings.range(address..=end_addr).next().is_none())
     }
 
     /// Asserts that a given range is unoccupied
     ///
-    /// # Error
+    /// # Errors
     ///
-    /// Returns an Error if range is occupied.
-    /// Returns an Error if address + length - 1 would overflow.
-    /// Returns an Error if length is 0.
+    /// * `OccupiedMapping`:
+    ///     * range is occupied
+    /// * `InvalidAddress`:
+    ///     * `address + length - 1` would overflow
+    /// * `InvalidSize`:
+    ///     * `length` is 0.
     pub fn check_vacant(&self, address: VirtualAddress, length: usize) -> Result<(), KernelError> {
         if !self.is_vacant(address, length)? {
             Err(KernelError::MmError(

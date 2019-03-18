@@ -37,7 +37,7 @@ use super::{PAGE_SIZE, MappingAccessRights};
 use super::mapping::{Mapping, MappingType};
 use super::kernel_memory::get_kernel_memory;
 use super::error::MmError;
-use crate::utils::{check_nonzero_length, add_or_error};
+use crate::utils::check_nonzero_length;
 use failure::Backtrace;
 use crate::error::KernelError;
 
@@ -60,19 +60,24 @@ impl<'a> CrossProcessMapping<'a> {
     ///
     /// Temporarily remaps a subsection of the mapping in KernelLand.
     ///
-    /// # Error
+    /// # Errors
+    ///
+    /// * `InvalidSize`:
+    ///     * `offset + len > mapping.length()`.
+    ///     * `offset + len - 1` would overflow.
+    ///     * `len` is 0.
     ///
     /// * Error if the mapping is Available/Guarded/SystemReserved, as there would be
     /// no point to remap it, and dereferencing the pointer would cause the kernel to page-fault.
-    /// * Error if `offset` + `len` > `mapping` length.
-    /// * Error if `offset` + `len` would overflow.
-    // todo: should be offset + (len - 1), but need to check that it wouldn't overflow in our function
-    /// * Error if `len` is 0.
     pub fn mirror_mapping(mapping: &Mapping, offset: usize, len: usize) -> Result<CrossProcessMapping<'_>, KernelError> {
         check_nonzero_length(len)?;
-        if add_or_error(offset, len)? > mapping.length() {
-            return Err(KernelError::MmError(MmError::InvalidMapping { backtrace: Backtrace::new() }))
-        }
+        offset.checked_add(len - 1)
+            .ok_or_else(|| KernelError::InvalidSize { size: usize::max_value(), backtrace: Backtrace::new() })
+            .and_then(|sum| if sum >= mapping.length() {
+                Err(KernelError::InvalidSize { size: sum, backtrace: Backtrace::new() })
+            } else {
+                Ok(())
+            })?;
         let regions = match mapping.mtype_ref() {
             MappingType::Guarded | MappingType::Available | MappingType::SystemReserved
                 => return Err(KernelError::MmError(MmError::InvalidMapping { backtrace: Backtrace::new() })),

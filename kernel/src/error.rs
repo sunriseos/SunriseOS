@@ -2,26 +2,8 @@
 
 use failure::Backtrace;
 use crate::paging::error::MmError;
-use core::fmt::{self, Display};
 
 pub use kfs_libkern::error::KernelError as UserspaceError;
-
-#[derive(Debug, Clone, Copy)]
-#[allow(missing_docs, clippy::missing_docs_in_private_items)]
-pub enum ArithmeticOperation { Add, Sub, Mul, Div, Mod, Pow }
-
-impl Display for ArithmeticOperation {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
-            ArithmeticOperation::Add => write!(f, "+"),
-            ArithmeticOperation::Sub => write!(f, "-"),
-            ArithmeticOperation::Mul => write!(f, "*"),
-            ArithmeticOperation::Div => write!(f, "/"),
-            ArithmeticOperation::Mod => write!(f, "%"),
-            ArithmeticOperation::Pow => write!(f, "**"),
-        }
-    }
-}
 
 /// Kernel Error.
 ///
@@ -49,13 +31,6 @@ pub enum KernelError {
     #[fail(display = "Invalid size: size {} is considered invalid", size)]
     InvalidSize {
         size: usize,
-        backtrace: Backtrace,
-    },
-    #[fail(display = "Arithmetic error: {} {} {} would cause an overflow", lhs, operation, rhs)]
-    WouldOverflow {
-        lhs: usize,
-        rhs: usize,
-        operation: ArithmeticOperation,
         backtrace: Backtrace,
     },
     #[fail(display = "Length error: length is 0")]
