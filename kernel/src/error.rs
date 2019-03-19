@@ -76,10 +76,10 @@ impl From<KernelError> for UserspaceError {
             KernelError::ExceedingMaximum { .. } => UserspaceError::ExceedingMaximum,
             KernelError::InvalidKernelCaps { .. } => UserspaceError::InvalidKernelCaps,
             KernelError::ReservedValue { .. } => UserspaceError::ReservedValue,
-            //KernelError::
+            KernelError::ProcessKilled { .. } => UserspaceError::InvalidHandle, // process is dying, consider the handle invalid, only a bit early.
             KernelError::ThisWillNeverHappenButPleaseDontMatchExhaustively => unreachable!(),
             // todo
-            _ => unimplemented!("Unmatched Error: {}", err)
+            //_ => unimplemented!("Unmatched Error: {}", err)
         }
     }
 }
