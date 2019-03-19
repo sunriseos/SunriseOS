@@ -59,9 +59,6 @@ pub enum KernelError {
     ReservedValue {
         backtrace: Backtrace,
     },
-    #[doc(hidden)]
-    #[fail(display = "Should never ever ***EVER*** be returned")]
-    ThisWillNeverHappenButPleaseDontMatchExhaustively,
 }
 
 impl From<KernelError> for UserspaceError {
@@ -77,9 +74,6 @@ impl From<KernelError> for UserspaceError {
             KernelError::InvalidKernelCaps { .. } => UserspaceError::InvalidKernelCaps,
             KernelError::ReservedValue { .. } => UserspaceError::ReservedValue,
             KernelError::ProcessKilled { .. } => UserspaceError::InvalidHandle, // process is dying, consider the handle invalid, only a bit early.
-            KernelError::ThisWillNeverHappenButPleaseDontMatchExhaustively => unreachable!(),
-            // todo
-            //_ => unimplemented!("Unmatched Error: {}", err)
         }
     }
 }
