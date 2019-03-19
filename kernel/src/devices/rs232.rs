@@ -174,9 +174,18 @@ impl SerialLogger {
 
 impl Write for SerialLogger {
     /// Writes a string to COM1.
+    #[cfg(not(test))]
     fn write_str(&mut self, s: &str) -> Result<(), ::core::fmt::Error> {
         let mut internal = G_SERIAL.call_once(|| SpinLock::new(SerialInternal::<Pio<u8>>::new(COM1))).lock();
         internal.send_string(s);
+        Ok(())
+    }
+
+    #[cfg(test)]
+    /// When printing in tests, write to stdout.
+    fn write_str(&mut self, s: &str) -> Result<(), ::core::fmt::Error> {
+        use std::println;
+        println!("{}", s);
         Ok(())
     }
 }
