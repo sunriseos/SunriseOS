@@ -36,7 +36,6 @@ use crate::mem::VirtualAddress;
 use super::{PAGE_SIZE, MappingAccessRights};
 use super::mapping::{Mapping, MappingType};
 use super::kernel_memory::get_kernel_memory;
-use super::error::MmError;
 use crate::utils::check_nonzero_length;
 use failure::Backtrace;
 use crate::error::KernelError;
@@ -60,15 +59,17 @@ impl<'a> CrossProcessMapping<'a> {
     ///
     /// Temporarily remaps a subsection of the mapping in KernelLand.
     ///
+    /// This function will not remap Available/Guarded/SystemReserved mappings, as there would be
+    /// no point to remap them, and dereferencing the pointer would cause the kernel to page-fault.
+    ///
     /// # Errors
     ///
+    /// * `InvalidAddress`:
+    ///     * the mapping is Available/Guarded/SystemReserved.
     /// * `InvalidSize`:
     ///     * `offset + len > mapping.length()`.
     ///     * `offset + len - 1` would overflow.
     ///     * `len` is 0.
-    ///
-    /// * Error if the mapping is Available/Guarded/SystemReserved, as there would be
-    /// no point to remap it, and dereferencing the pointer would cause the kernel to page-fault.
     pub fn mirror_mapping(mapping: &Mapping, offset: usize, len: usize) -> Result<CrossProcessMapping<'_>, KernelError> {
         check_nonzero_length(len)?;
         offset.checked_add(len - 1)
@@ -80,7 +81,7 @@ impl<'a> CrossProcessMapping<'a> {
             })?;
         let regions = match mapping.mtype_ref() {
             MappingType::Guarded | MappingType::Available | MappingType::SystemReserved
-                => return Err(KernelError::MmError(MmError::InvalidMapping { backtrace: Backtrace::new() })),
+                => return Err(KernelError::InvalidAddress { address: mapping.address().addr(), backtrace: Backtrace::new() }),
             MappingType::Regular(ref f) => f,
             //MappingType::Stack(ref f) => f,
             MappingType::Shared(ref f) => f

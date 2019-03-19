@@ -23,7 +23,6 @@ use super::lands::{UserLand, VirtualSpaceLand};
 use super::bookkeeping::UserspaceBookkeeping;
 use super::mapping::{Mapping, MappingType};
 use super::cross_process::CrossProcessMapping;
-use super::error::MmError;
 use super::MappingAccessRights;
 use crate::mem::{VirtualAddress, PhysicalAddress};
 use crate::frame_allocator::{FrameAllocator, FrameAllocatorTrait, PhysicalMemRegion};
@@ -308,11 +307,13 @@ impl ProcessMemory {
     ///
     /// If the range maps physical memory, it will be de-allocated.
     ///
-    /// # Error
+    /// # Errors
     ///
     /// * `InvalidAddress`:
-    ///     * there was no mapping corresponding to the range.
+    ///     * there was no mapping starting at `address`.
     ///     * range does not fall in UserLand.
+    /// * `InvalidSize`:
+    ///     * `length` is not the size of the mapping at `address`.
     pub fn unmap(&mut self, address: VirtualAddress, length: usize) -> Result<Mapping, KernelError> {
         UserLand::check_contains_region(address, length)?;
         // allow address and length to be unaligned, remove_mapping will just not find anything.
@@ -338,13 +339,19 @@ impl ProcessMemory {
     ///
     /// Because it is reference counted, a Shared mapping cannot be resized.
     ///
-    /// # Error
+    /// # Errors
     ///
-    /// * WasAvailable if `address` does not match any existent mapping.
-    /// * InvalidSize if `new_size` > previous mapping length.
-    /// * InvalidSize if `new_size` is not PAGE_SIZE aligned.
+    /// * `InvalidAddress`:
+    ///     * No mapping was found starting at `address`.
+    /// * `InvalidSize`:
+    ///     * `new_size` > previous mapping length.
+    ///     * `new_size` is not PAGE_SIZE aligned.
+    ///
     /// * SharedMapping if `address` falls in a shared mapping.
     /// * InvalidMapping if `address` falls in a system reserved mapping.
+    // todo shrink_mapping seems extremely fishy
+    // body I should check everything is right with its return types and early returns.
+    // body It should at least check early for Shared and SystemReserved mappings.
     pub fn shrink_mapping(&mut self, address: VirtualAddress, new_size: usize) -> Result<Option<Mapping>, KernelError> {
         check_size_aligned(new_size, PAGE_SIZE)?;
         // 1. get the previous mapping's address and size.
@@ -387,26 +394,27 @@ impl ProcessMemory {
     ///
     /// Because it is reference counted, a Shared mapping cannot be resized.
     ///
-    /// # Error
+    /// # Errors
     ///
-    /// * WasAvailable if `address` does not match any existent mapping.
-    /// * SharedMapping if `address` falls in a shared mapping.
-    /// * InvalidMapping if `address` falls in a system reserved mapping.
-    /// * InvalidSize if `new_size` < previous mapping length.
-    /// * InvalidSize if `new_size` is not PAGE_SIZE aligned.
-    /// * InvalidSize if \[`address`..`new_size`\] does not fall in UserLand.
-    /// * WasOccupied if a mapping was already present in the expanding area.
+    /// * `InvalidAddress`:
+    ///     * There was already a mapping in the range `address..(address + new_size)`.
+    ///     * `address` does not match any existent mapping.
+    ///     * `address` falls in a shared or system reserved mapping, which cannot be resized.
+    /// * `InvalidSize`:
+    ///     * `address..(address + new_size)` does not fall in UserLand.
+    ///     * `new_size` < previous mapping length.
+    ///     * `new_size` is not page aligned.
     pub fn expand_mapping(&mut self, address: VirtualAddress, new_size: usize) -> Result<(), KernelError> {
         check_size_aligned(new_size, PAGE_SIZE)?;
         // 1. get the previous mapping's address and size.
         let (start_addr, old_size) = {
             let old_mapping_ref = self.userspace_bookkeping.occupied_mapping_at(address)?;
-            // check it's not a shared mapping.
+            // check it's not a shared or system reserved mapping.
             if let MappingType::Shared(..) = old_mapping_ref.mtype_ref() {
-                return Err(KernelError::MmError(MmError::SharedMapping { backtrace: Backtrace::new() }));
+                return Err(KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new() });
             }
             if let MappingType::SystemReserved = old_mapping_ref.mtype_ref() {
-                return Err(KernelError::MmError(MmError::InvalidMapping { backtrace: Backtrace::new() }));
+                return Err(KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new() });
             }
             (old_mapping_ref.address(), old_mapping_ref.length())
         };

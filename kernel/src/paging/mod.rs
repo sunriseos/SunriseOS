@@ -21,7 +21,6 @@ pub mod kernel_memory;
 pub mod lands;
 pub mod mapping;
 pub mod cross_process;
-pub mod error;
 mod hierarchical_table;
 mod arch;
 mod bookkeeping;

@@ -1,7 +1,6 @@
 //! UserspaceError and KernelError
 
 use failure::Backtrace;
-use crate::paging::error::MmError;
 
 pub use kfs_libkern::error::KernelError as UserspaceError;
 
@@ -33,8 +32,6 @@ pub enum KernelError {
         size: usize,
         backtrace: Backtrace,
     },
-    #[fail(display = "Memory management error: {}", _0)]
-    MmError(MmError),
     #[fail(display = "Process was killed before finishing operation")]
     ProcessKilled {
         backtrace: Backtrace,

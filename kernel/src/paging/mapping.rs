@@ -1,7 +1,7 @@
 //! Mapping
 
 use crate::mem::VirtualAddress;
-use crate::paging::{PAGE_SIZE, MappingAccessRights, error::MmError};
+use crate::paging::{PAGE_SIZE, MappingAccessRights};
 use crate::error::KernelError;
 use crate::frame_allocator::PhysicalMemRegion;
 use alloc::{vec::Vec, sync::Arc};
@@ -210,12 +210,14 @@ impl Splittable for Mapping {
     ///
     /// # Errors
     ///
-    /// * `InvalidMapping` if it's a shared or system reserved mapping.
-    /// * `InvalidSize`: `offset` is not page aligned.
+    /// * `InvalidAddress`:
+    ///     * shared or system reserved mapping, which cannot be split.
+    /// * `InvalidSize`:
+    ///     * `offset` is not page aligned.
     fn split_at(&mut self, offset: usize) -> Result<Option<Self>, KernelError> {
         check_size_aligned(offset, PAGE_SIZE)?;
         match self.mtype_ref() {
-            MappingType::Shared(_) | MappingType::SystemReserved => return Err(KernelError::MmError(MmError::InvalidMapping { backtrace: Backtrace::new() })),
+            MappingType::Shared(_) | MappingType::SystemReserved => return Err(KernelError::InvalidAddress { address: self.address.addr(), backtrace: Backtrace::new() }),
             _ => ()
         }
 
@@ -250,7 +252,6 @@ mod test {
     use std::vec::Vec;
     use crate::utils::Splittable;
     use crate::error::KernelError;
-    use crate::paging::error::MmError;
 
     /// Applies the same tests to guard, available and system_reserved.
     macro_rules! test_empty_mapping {
@@ -449,7 +450,7 @@ mod test {
         let frames = Arc::new(vec![FrameAllocator::allocate_region(3 * PAGE_SIZE).unwrap()]);
         let mut mapping = Mapping::new_shared(VirtualAddress(2 * PAGE_SIZE), frames, MappingAccessRights::k_r()).unwrap();
         match mapping.split_at(0).unwrap_err() {
-            KernelError::MmError(MmError::InvalidMapping { .. }) => (),
+            KernelError::InvalidAddress { .. } => (),
             unexpected_err => panic!("test failed, error {:?}", unexpected_err)
         }
         // check mapping was untouched
@@ -467,7 +468,7 @@ mod test {
     fn splittable_system_reserved() {
         let mut mapping = Mapping::new_system_reserved(VirtualAddress(2 * PAGE_SIZE), 3 * PAGE_SIZE).unwrap();
         match mapping.split_at(0).unwrap_err() {
-            KernelError::MmError(MmError::InvalidMapping { .. }) => (),
+            KernelError::InvalidAddress { .. } => (),
             unexpected_err => panic!("test failed, error {:?}", unexpected_err)
         }
         // check mapping was untouched
