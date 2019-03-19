@@ -1,6 +1,6 @@
 //! Checked maths functions returning useful errors.
 
-use crate::error::KernelError;
+use crate::error::{KernelError, UserspaceError};
 use failure::Backtrace;
 
 /// checks that a certain value meets the given alignment.
@@ -39,5 +39,14 @@ pub fn sub_or_error(lhs: usize, rhs: usize) -> Result<usize, KernelError> {
                                                  operation: crate::error::ArithmeticOperation::Sub,
                                                  rhs,
                                                  backtrace: Backtrace::new() })
+    }
+}
+
+/// Checks the given u64 fits an usize on this architecture.
+pub fn check_lower_than_usize(val: u64, err: UserspaceError) -> Result<(), UserspaceError> {
+    if (usize::max_value() as u64) < val {
+        Err(err)
+    } else {
+        Ok(())
     }
 }

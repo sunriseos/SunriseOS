@@ -297,22 +297,26 @@ macro_rules! object {
     // TODO: an input HandleRef makes no sense. Ideally, I'd have Handle<copy>
     // and Handle<move>, and would remove the <copy> and <move> from the input?
     // Alternatively, have a HandleCopy and HandleMove types, but meh.
+    //
+    // Safety: pop_*_buffer are safe to call in this context since they will
+    // be passed to the underlying function, with a bound lifetime. As such, we
+    // are guaranteed the lifetime will not get extended beyond that of the message.
 
     // We got an InBuffer (type A). Let's call pop_in_buffer.
     (@callargs $sel:expr, $manager:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: InBuffer<$ty:ty>, $($tt:tt)*) => {
-        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_in_buffer::<$ty>()?), $($tt)*);
+        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* unsafe { $msgin.pop_in_buffer::<$ty>()? }), $($tt)*);
     };
     // We got an OutBuffer (type B). Let's call pop_out_buffer.
     (@callargs $sel:expr, $manager:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: OutBuffer<$ty:ty>, $($tt:tt)*) => {
-        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_out_buffer::<$ty>()?), $($tt)*);
+        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* unsafe { $msgin.pop_out_buffer::<$ty>()? }), $($tt)*);
     };
     // We got an InPointer (type X). Let's call pop_in_pointer.
     (@callargs $sel:expr, $manager:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: InPointer<$ty:ty>, $($tt:tt)*) => {
-        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_in_pointer::<$ty>()?), $($tt)*);
+        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* unsafe { $msgin.pop_in_pointer::<$ty>()? }), $($tt)*);
     };
     // We got an OutPointer (type C). Let's call pop_out_pointer.
     (@callargs $sel:expr, $manager:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: OutPointer<$ty:ty>, $($tt:tt)*) => {
-        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* $msgin.pop_out_pointer::<$ty>()?), $($tt)*);
+        object!(@callargs $sel, $manager, funcname=$funcname, msgin=$msgin, args=($($arg,)* unsafe { $msgin.pop_out_pointer::<$ty>()? }), $($tt)*);
     };
     // We got a Handle. Let's call pop_handle_move.
     (@callargs $sel:expr, $manager:expr, funcname=$funcname:ident, msgin=$msgin:expr, args=($($arg:expr),*), $name:ident: Handle<move>, $($tt:tt)*) => {

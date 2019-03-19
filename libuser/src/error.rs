@@ -125,6 +125,10 @@ enum_with_val! {
         InvalidCopyHandleCount = 3,
         /// Attempted to read PID from an IPC message containing none.
         PidMissing = 4,
+        /// Not enough IPC buffers were passed to an IPC message.
+        InvalidIpcBufferCount = 5,
+        /// Invalid IPCBuffer
+        InvalidIpcBuffer = 6,
     }
 }
 
