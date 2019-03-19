@@ -80,12 +80,11 @@ impl Mapping {
     ///
     /// # Errors
     ///
-    /// Returns an Error if `address` + `frames`'s length would overflow.
-    ///
     /// * `InvalidAddress`:
     ///     * `address` is not page aligned.
-    ///     * `address` + length would overflow.
-    /// * `InvalidSize`: `frames` is empty.
+    ///     * `address` + `frames`'s length would overflow.
+    /// * `InvalidSize`:
+    ///     * `frames` is empty.
     pub fn new_regular(address: VirtualAddress, frames: Vec<PhysicalMemRegion>, flags: MappingAccessRights) -> Result<Mapping, KernelError> {
         address.check_aligned_to(PAGE_SIZE)?;
         let length = frames.iter().flatten().count() * PAGE_SIZE;
@@ -99,12 +98,11 @@ impl Mapping {
     ///
     /// # Errors
     ///
-    /// Returns an Error if `address` + `frames`'s length would overflow.
-    ///
     /// * `InvalidAddress`:
     ///     * `address` is not page aligned.
-    ///     * `address` + length would overflow.
-    /// * `InvalidSize`: `frames` is empty.
+    ///     * `address` + `frame`'s length would overflow.
+    /// * `InvalidSize`:
+    ///     * `frames` is empty.
     pub fn new_shared(address: VirtualAddress, frames: Arc<Vec<PhysicalMemRegion>>, flags: MappingAccessRights) -> Result<Mapping, KernelError> {
         address.check_aligned_to(PAGE_SIZE)?;
         let length = frames.iter().flatten().count() * PAGE_SIZE;
@@ -118,11 +116,9 @@ impl Mapping {
     ///
     /// # Errors
     ///
-    /// Returns an Error if `address` + `length` would overflow.
-    ///
     /// * `InvalidAddress`:
     ///     * `address` is not page aligned.
-    ///     * `address` + length would overflow.
+    ///     * `address + length - 1` would overflow.
     /// * `InvalidSize`:
     ///     * `length` is not page aligned.
     ///     * `length` is 0.
@@ -139,11 +135,9 @@ impl Mapping {
     ///
     /// # Errors
     ///
-    /// Returns an Error if `address` + `length` would overflow.
-    ///
     /// * `InvalidAddress`:
     ///     * `address` is not page aligned.
-    ///     * `address` + length would overflow.
+    ///     * `address + length - 1` would overflow.
     /// * `InvalidSize`:
     ///     * `length` is not page aligned.
     ///     * `length` is 0.
@@ -160,11 +154,9 @@ impl Mapping {
     ///
     /// # Errors
     ///
-    /// Returns an Error if `address` + `length` would overflow.
-    ///
     /// * `InvalidAddress`:
     ///     * `address` is not page aligned.
-    ///     * `address` + length would overflow.
+    ///     * `address + length - 1` would overflow.
     /// * `InvalidSize`:
     ///     * `length` is not page aligned.
     ///     * `length` is 0.
