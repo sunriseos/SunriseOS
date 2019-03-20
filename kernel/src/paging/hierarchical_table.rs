@@ -169,6 +169,8 @@ pub trait HierarchicalTable {
     ///
     /// Should panic if called on a table which isn't a parent table.
     /// Should panic if entry was not available.
+    // todo: paging: return PhysicalMemoryExhaustion when allocating page table failed
+    // body: Right now we panic. This is terrible.
     fn create_child_table(&mut self, index: usize) -> SmartHierarchicalTable<Self::ChildTableType>;
 
     /// Gets the child page table at given index, or creates it if it does not exist

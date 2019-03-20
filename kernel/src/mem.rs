@@ -6,7 +6,7 @@
 use core::ops::{Deref, DerefMut};
 use core::mem;
 use core::fmt::{Formatter, Error, Display, Debug, LowerHex};
-use crate::error::{KernelError, ArithmeticOperation};
+use crate::error::KernelError;
 use failure::Backtrace;
 use core::iter::Step;
 
@@ -147,11 +147,23 @@ impl LowerHex for VirtualAddress {
 }
 
 impl PhysicalAddress {
-    /// Tries to add an offset to a PhysicalAddress, returning a [KernelError] if this would cause an overflow.
-    pub fn checked_add(self, rhs: usize) -> Result<PhysicalAddress, KernelError> {
-        match self.0.checked_add(rhs) {
-            Some(sum) => Ok(PhysicalAddress(sum)),
-            None => Err(KernelError::WouldOverflow { lhs: self.0, operation: ArithmeticOperation::Add, rhs, backtrace: Backtrace::new() })
+    /// Tries to add an offset to a PhysicalAddress, returning None if this would cause an overflow.
+    ///
+    /// This function does not return a KernelError, as it does not know whether the address or the size
+    /// is the cause of the error.
+    pub fn checked_add(self, rhs: usize) -> Option<PhysicalAddress> {
+        self.0.checked_add(rhs).map(PhysicalAddress)
+    }
+
+    /// Checks that this address meets the given alignment.
+    ///
+    /// # Errors
+    ///
+    /// * `InvalidAddress`: `self` is not aligned to `alignment`.
+    pub fn check_aligned_to(self, alignment: usize) -> Result<(), KernelError> {
+        match self.0 % alignment {
+            0 => Ok(()),
+            _ => Err(KernelError::InvalidAddress { address: self.0, backtrace: Backtrace::new() })
         }
     }
 
@@ -163,11 +175,23 @@ impl PhysicalAddress {
 }
 
 impl VirtualAddress {
-    /// Tries to add an offset to a VirtualAddress, returning a [KernelError] if this would cause an overflow.
-    pub fn checked_add(self, rhs: usize) -> Result<VirtualAddress, KernelError> {
-        match self.0.checked_add(rhs) {
-            Some(sum) => Ok(VirtualAddress(sum)),
-            None => Err(KernelError::WouldOverflow { lhs: self.0, operation: ArithmeticOperation::Add, rhs, backtrace: Backtrace::new() })
+    /// Tries to add an offset to a VirtualAddress, returning None if this would cause an overflow.
+    ///
+    /// This function does not return a KernelError, as it does not know whether the address or the size
+    /// is the cause of the error.
+    pub fn checked_add(self, rhs: usize) -> Option<VirtualAddress> {
+        self.0.checked_add(rhs).map(VirtualAddress)
+    }
+
+    /// Checks that this address meets the given alignment.
+    ///
+    /// # Errors
+    ///
+    /// * `InvalidAddress`: `self` is not aligned to `alignment`.
+    pub fn check_aligned_to(self, alignment: usize) -> Result<(), KernelError> {
+        match self.0 % alignment {
+            0 => Ok(()),
+            _ => Err(KernelError::InvalidAddress { address: self.0, backtrace: Backtrace::new() })
         }
     }
 

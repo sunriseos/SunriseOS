@@ -4,7 +4,6 @@ use crate::mem::VirtualAddress;
 use crate::paging::lands::{KernelLand, RecursiveTablesLand, VirtualSpaceLand};
 use alloc::collections::BTreeMap;
 use crate::error::KernelError;
-use super::error::MmError;
 use crate::utils::check_nonzero_length;
 use failure::Backtrace;
 use super::mapping::Mapping;
@@ -97,40 +96,47 @@ impl UserspaceBookkeeping {
 
     /// Returns the mapping `address` falls into.
     ///
-    /// # Error
+    /// Fails if there is no occupied mapping at `address`.
     ///
-    /// Returns an Error if mapping pointed to by address is vacant.
+    /// # Errors
+    ///
+    /// * `InvalidAddress`:
+    ///     * mapping pointed to by address is vacant.
     pub fn occupied_mapping_at(&self, address: VirtualAddress) -> Result<&Mapping, KernelError> {
         match self.mapping_at_or_preceding(address) {
             // check cannot overflow
             Some(m) if m.length() - 1 + m.address() >= address => Ok(m),
-            _ => Err(KernelError::MmError(MmError::WasAvailable { address, backtrace: Backtrace::new() }))
+            _ => Err(KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new() })
         }
     }
 
     /// Checks that a given range is unoccupied.
     ///
-    /// # Error
+    /// # Errors
     ///
-    /// Returns an Error if address + length - 1 would overflow.
-    /// Returns an Error if length is 0.
+    /// * `InvalidAddress`:
+    ///     * `address + length - 1` would overflow
+    /// * `InvalidSize`:
+    ///     * `length` is 0.
     pub fn is_vacant(&self, address: VirtualAddress, length: usize) -> Result<bool, KernelError> {
         check_nonzero_length(length)?;
-        let end_addr = address.checked_add(length - 1)?;
+        let end_addr = address.checked_add(length - 1)
+            .ok_or_else(|| KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new()})?;
         Ok(self.mappings.range(address..=end_addr).next().is_none())
     }
 
     /// Asserts that a given range is unoccupied
     ///
-    /// # Error
+    /// # Errors
     ///
-    /// Returns an Error if range is occupied.
-    /// Returns an Error if address + length - 1 would overflow.
-    /// Returns an Error if length is 0.
+    /// * `InvalidAddress`:
+    ///     * range is occupied.
+    ///     * `address + length - 1` would overflow
+    /// * `InvalidSize`:
+    ///     * `length` is 0.
     pub fn check_vacant(&self, address: VirtualAddress, length: usize) -> Result<(), KernelError> {
         if !self.is_vacant(address, length)? {
-            Err(KernelError::MmError(
-                MmError::OccupiedMapping { address, length, backtrace: Backtrace::new() }))
+            Err(KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new() })
         } else {
             Ok(())
         }
@@ -138,9 +144,10 @@ impl UserspaceBookkeeping {
 
     /// Adds a mapping to the list of tracked mappings
     ///
-    /// # Error
+    /// # Errors
     ///
-    /// Returns a KernelError if the space was not vacant.
+    /// * `InvalidAddress`:
+    ///     * range is not vacant.
     pub fn add_mapping(&mut self, mapping: Mapping) -> Result<(), KernelError> {
         self.check_vacant(mapping.address(), mapping.length())?;
         self.mappings.insert(mapping.address(), mapping);
@@ -151,15 +158,17 @@ impl UserspaceBookkeeping {
     ///
     /// This function will never split an existing tracked mapping.
     ///
-    /// # Error
+    /// # Errors
     ///
-    /// Returns a KernelError if parameters do not span exactly the whole mapping.
-    /// Returns a KernelError if address falls in an available mapping.
+    /// `InvalidAddress`:
+    ///     * `address` does not correspond to the start of a mapping.
+    /// `InvalidSize`:
+    ///     * `length` is not the size of the mapping at `address`.
     pub fn remove_mapping(&mut self, address: VirtualAddress, length: usize) -> Result<Mapping, KernelError> {
         if self.mappings.get(&address)
-            .filter(|m| m.length() == length)
-            .is_none() {
-            Err(KernelError::MmError(MmError::DoesNotSpanMapping { address, length, backtrace: Backtrace::new() }))
+            .ok_or_else(|| KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new() })?
+        .length() != length {
+            Err(KernelError::InvalidSize { size: length, backtrace: Backtrace::new() })
         } else {
             Ok(self.mappings.remove(&address).unwrap())
         }

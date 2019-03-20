@@ -57,7 +57,7 @@ pub trait VirtualSpaceLand {
         if Self::contains_region(address, length) {
             Ok(())
         } else {
-            Err(KernelError::InvalidAddress { address, length, backtrace: Backtrace::new() })
+            Err(KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new() })
         }
     }
 }

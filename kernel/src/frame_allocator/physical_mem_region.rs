@@ -4,8 +4,8 @@
 
 use super::{FrameAllocator, FrameAllocatorTraitPrivate};
 use crate::paging::PAGE_SIZE;
-use crate::mem::{PhysicalAddress, VirtualAddress};
-use crate::utils::{div_ceil, check_aligned, check_nonzero_length, Splittable};
+use crate::mem::PhysicalAddress;
+use crate::utils::{div_ceil, check_size_aligned, check_nonzero_length, Splittable};
 use core::ops::Range;
 use core::iter::StepBy;
 use core::fmt::{Formatter, Error, Debug};
@@ -33,10 +33,16 @@ pub struct PhysicalMemRegion {
 }
 
 impl PhysicalMemRegion {
-     /// Get the start address of this PhysicalMemRegion
+    /// Get the start address of this PhysicalMemRegion.
+    ///
+    /// The address of a PhysicalMemRegion is guaranteed to be page size aligned.
     pub fn address(&self) -> PhysicalAddress { PhysicalAddress(self.start_addr) }
 
-    /// Get the size this PhysicalMemRegion spans
+    /// Get the size this PhysicalMemRegion spans.
+    ///
+    /// The size of a PhysicalMemRegion is guaranteed to be page size aligned, and non-zero.
+    // about the non-zero, this promise is violated, but only internally in the frame allocator,
+    // and never exposed to other modules.
     pub fn size(&self) -> usize { self.frames * PAGE_SIZE }
 
     /// Constructs a `PhysicalMemRegion` by circumventing the [FrameAllocator].
@@ -57,10 +63,10 @@ impl PhysicalMemRegion {
     ///     * `length` is zero.
     pub unsafe fn on_fixed_mmio(address: PhysicalAddress, length: usize) -> Result<Self, KernelError> {
         check_nonzero_length(length)?;
-        check_aligned(length, PAGE_SIZE)?;
-        check_aligned(address.addr(), PAGE_SIZE)?;
+        check_size_aligned(length, PAGE_SIZE)?;
+        address.check_aligned_to(PAGE_SIZE)?;
         if !FrameAllocator::check_is_reserved(address, length) {
-            Err(KernelError::InvalidAddress { address: VirtualAddress(address.addr()), length, backtrace: Backtrace::new() })
+            Err(KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new() })
         } else {
             Ok(PhysicalMemRegion {
                 start_addr: address.addr(),
@@ -167,8 +173,12 @@ impl Debug for PhysicalMemRegion {
 
 impl Splittable for PhysicalMemRegion {
     /// Splits the given PhysicalMemRegion in two parts, at the given offset.
+    ///
+    /// # Errors
+    ///
+    /// * `InvalidSize`: `offset` is not PAGE_SIZE aligned.
     fn split_at(&mut self, offset: usize) -> Result<Option<Self>, KernelError> {
-        check_aligned(offset, PAGE_SIZE)?;
+        check_size_aligned(offset, PAGE_SIZE)?;
         if offset != 0 && offset < self.size() {
             let frames_count = self.frames;
             self.frames = offset / PAGE_SIZE;
@@ -188,8 +198,12 @@ impl Splittable for Vec<PhysicalMemRegion> {
     ///
     /// If the offset falls in the middle of a PhysicalMemRegion, it is splitted,
     /// and the right part is moved to the second Vec.
+    ///
+    /// # Errors
+    ///
+    /// * `InvalidSize`: `offset` is not PAGE_SIZE aligned.
     fn split_at(&mut self, offset: usize) -> Result<Option<Self>, KernelError> {
-        check_aligned(offset, PAGE_SIZE)?;
+        check_size_aligned(offset, PAGE_SIZE)?;
         if offset == 0 { return Ok(None) };
 
         let mut length_acc = 0;
