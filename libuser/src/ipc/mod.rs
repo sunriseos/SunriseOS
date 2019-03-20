@@ -26,6 +26,8 @@ use crate::error::{Error, LibuserError};
 #[macro_use]
 pub mod macros;
 pub mod server;
+mod buffer;
+pub use buffer::*;
 
 bitfield! {
     /// Represenens the header of an HIPC command.
@@ -85,6 +87,17 @@ pub enum IPCBufferType {
         /// - 3: Device mapping allowed for src but not for dst.
         flags: u8
     },
+    /// SendReceive Buffer.
+    W {
+        /// Determines what MemoryState to use with the mapped memory in the
+        /// sysmodule. Used to enforce whether or not device mapping is allowed
+        /// for src and dst buffers respectively.
+        ///
+        /// - 0: Device mapping *not* allowed for src or dst.
+        /// - 1: Device mapping allowed for src and dst.
+        /// - 3: Device mapping allowed for src but not for dst.
+        flags: u8
+    },
     /// Pointer.
     X {
         /// The index of the C buffer to copy this pointer into.
@@ -116,6 +129,24 @@ impl IPCBufferType {
             false
         }
     }
+
+    /// Checks if this buffer is a SendReceive Buffer.
+    fn is_type_w(self) -> bool {
+        if let IPCBufferType::W { .. } = self {
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Checks if this buffer is a Pointer Buffer.
+    fn is_type_x(self) -> bool {
+        if let IPCBufferType::X { .. } = self {
+            true
+        } else {
+            false
+        }
+    }
 }
 
 /// An IPC Buffer represents a section of memory to send to the other side of the
@@ -135,9 +166,9 @@ impl IPCBufferType {
 #[derive(Debug, Clone)]
 pub struct IPCBuffer<'a> {
     /// Address to the value
-    addr: usize,
+    addr: u64,
     /// Size of the value
-    size: usize,
+    size: u64,
     /// Buffer type
     ty: IPCBufferType,
     /// Tie the buffer's lifetime to the value's !
@@ -146,82 +177,32 @@ pub struct IPCBuffer<'a> {
     phantom: PhantomData<&'a ()>
 }
 
-// TODO: libuser IPCBuffer: Verify that passed type matches the mutability guarantees
-// BODY: In the libuser, IPCBuffer::from_* take an IPCBufferType and a reference.
-// BDOY: Based on the passed type, the remote process will be able to modify the
-// BODY: passed reference. Obviously, we don't want a remote process to modify
-// BODY: our read-only slice. We should either have assertions guaranteeing that,
-// BODY: or more fine-grained functions.
 impl<'a> IPCBuffer<'a> {
-    /// Creates an IPC buffer from a mutable reference and a type. The type
-    /// should be of type B, W or C.
-    pub fn from_mut_ref<T>(val: &'a mut T, ty: IPCBufferType) -> IPCBuffer<'_> {
+    /// Creates a Type-C IPCBuffer from the given reference.
+    ///
+    /// If has_u16_size is true, the size of the pointer will be written after
+    /// the raw data. This is only used when sending client-sized arrays.
+    fn in_pointer<T>(data: &mut T, has_u16_size: bool) -> IPCBuffer {
         IPCBuffer {
-            addr: val as *mut T as usize,
-            size: mem::size_of::<T>(),
-            ty,
-            phantom: PhantomData
-        }
-    }
-    /// Creates an IPC buffer from a reference and a type. The type should be of
-    /// type A or X.
-    pub fn from_ref<T>(val: &'a T, ty: IPCBufferType) -> IPCBuffer<'_> {
-        IPCBuffer {
-            addr: val as *const T as usize,
-            size: mem::size_of::<T>(),
-            ty,
-            phantom: PhantomData
-        }
-    }
-    /// Creates an IPC buffer from a mutable slice and a type. The type should be
-    /// of type B, W or C.
-    pub fn from_slice<T>(val: &'a [T], ty: IPCBufferType) -> IPCBuffer<'_> {
-        IPCBuffer {
-            addr: if val.is_empty() { 0 } else { val.as_ptr() as usize },
-            size: mem::size_of::<T>() * val.len(),
-            ty,
-            phantom: PhantomData
-        }
-    }
-    /// Creates an IPC buffer from a slice and a type. The type should be of
-    /// type A or X.
-    pub fn from_mut_slice<T>(val: &'a mut [T], ty: IPCBufferType) -> IPCBuffer<'_> {
-        IPCBuffer {
-            addr: if val.is_empty() { 0 } else { val.as_ptr() as usize },
-            size: mem::size_of::<T>() * val.len(),
-            ty,
+            addr: data as *mut T as usize as u64,
+            size: core::mem::size_of::<T>() as u64,
+            ty: IPCBufferType::C {
+                has_u16_size
+            },
             phantom: PhantomData
         }
     }
 
-    /// Creates an IPC buffer from a raw pointer, a len and a type. The length is
-    /// a number of T elements, **not** a byte length. The type should be of type
-    /// B, W or C.
+    /// Creates a Type-X IPCBuffer from the given reference.
     ///
-    /// # Safety
-    ///
-    /// The pointer should point to memory pointing to len valid T.
-    pub unsafe fn from_ptr_len<T>(val: *const T, len: usize, ty: IPCBufferType) -> IPCBuffer<'static> {
+    /// The counter defines which type-C buffer this should be copied into.
+    fn out_pointer<T>(data: &T, counter: u8) -> IPCBuffer {
         IPCBuffer {
-            addr: val as usize,
-            size: mem::size_of::<T>() * len,
-            ty,
-            phantom: PhantomData
-        }
-    }
-
-    /// Creates an IPC buffer from a raw mut pointer, a len and a type. The
-    /// length is a number of T elements, **not** a byte length. The type should
-    /// be of type A or X.
-    ///
-    /// # Safety
-    ///
-    /// The pointer should point to memory pointing to len valid T.
-    pub unsafe fn from_mut_ptr_len<T>(val: *mut T, len: usize, ty: IPCBufferType) -> IPCBuffer<'static> {
-        IPCBuffer {
-            addr: val as usize,
-            size: mem::size_of::<T>() * len,
-            ty,
+            addr: data as *const T as usize as u64,
+            size: core::mem::size_of::<T>() as u64,
+            ty: IPCBufferType::X {
+                counter
+            },
             phantom: PhantomData
         }
     }
@@ -450,10 +431,6 @@ where
         self
     }
 
-    // TODO: Figure out a better API for buffers. This sucks.
-    /*fn pop_in_buffer<T>(&mut self) -> InBuffer<T> {
-}*/
-
     /// Retrieve a moved handle from this IPC message. Those are popped in the
     /// order they were inserted.
     ///
@@ -493,19 +470,87 @@ where
             .ok_or_else(|| LibuserError::PidMissing.into())
     }
 
+    /// Retreive the next InBuffer (type-A buffer) in the message.
+    ///
+    /// # Errors
+    ///
+    /// Returns an InvalidIpcBufferCount if not enough buffers are present
+    ///
+    /// Returns an InvalidIpcBuffer if the next buffer was not of the appropriate
+    /// size.
+    ///
+    /// # Safety
+    ///
+    /// This method is unsafe as it allows creating references to arbitrary
+    /// memory, and of arbitrary type.
+    pub unsafe fn pop_in_buffer<T>(&mut self) -> Result<InBuffer<'_, T>, Error> {
+        self.buffers.iter().position(|buf| buf.buftype().is_type_a())
+            .and_then(|pos| self.buffers.pop_at(pos))
+            .ok_or_else(|| LibuserError::InvalidIpcBufferCount.into())
+            .and_then(|buf| InBuffer::<T>::new(buf))
+    }
+
+    /// Push an InPointer (type-C buffer) backed by the specified data.
+    ///
+    /// If `has_u16_count` is true, the size of the X buffer will be appended
+    /// to the Raw Data. See Buffer 0xA on the IPC Marshalling page of
+    /// switchbrew.
+    pub fn push_in_pointer<T>(&mut self, data: &'a mut T, has_u16_count: bool) -> &mut Self {
+        self.buffers.push(IPCBuffer::in_pointer(data, has_u16_count));
+        self
+    }
+
+    /// Push an OutPointer (type-X buffer) backed by the specified data.
+    ///
+    /// If `has_u16_count` is true, the size of the X buffer will be appended
+    /// to the Raw Data. See Buffer 0xA on the IPC Marshalling page of
+    /// switchbrew.
+    pub fn push_out_pointer<T>(&mut self, data: &'a T) -> &mut Self {
+        let index = self.buffers.iter().filter(|buf| buf.buftype().is_type_x()).count();
+        self.buffers.push(IPCBuffer::out_pointer(data, index as u8));
+        self
+    }
+
+    /// Retreive the next InPointer (type-X buffer) in the message.
+    ///
+    /// # Errors
+    ///
+    /// Returns an InvalidIpcBufferCount if not enough buffers are present
+    ///
+    /// Returns an InvalidIpcBuffer if the next buffer was not of the appropriate
+    /// size.
+    ///
+    /// # Safety
+    ///
+    /// This method is unsafe as it allows creating references to arbitrary
+    /// memory, and of arbitrary type.
+    pub unsafe fn pop_in_pointer<T>(&mut self) -> Result<InPointer<'_, T>, Error> {
+        self.buffers.iter().position(|buf| buf.buftype().is_type_x())
+            .and_then(|pos| self.buffers.pop_at(pos))
+            .ok_or_else(|| LibuserError::InvalidIpcBufferCount.into())
+            .and_then(|buf| InPointer::<T>::new(buf))
+    }
+
+    // TODO: Move pack to a non-generic function
+    // BODY: Right now the pack and unpack functions are duplicated for every
+    // BODY: instanciation of Message. This probably has a huge penalty on
+    // BODY: codesize. We should make a function taking everything as slices
+    // BODY: instead
     /// Packs this IPC Message to an IPC buffer.
     pub fn pack(self, data: &mut [u8]) {
         let (
             mut descriptor_count_x,
             mut descriptor_count_a,
             mut descriptor_count_b,
-            mut descriptor_count_c) = (/* X */0, /* A */0, /* B */0, /* C */0);
+            mut descriptor_count_w,
+            mut descriptor_count_c) = (/* X */0, /* A */0, /* B */0, /* W */0, /* C */0);
 
         for bufty in self.buffers.iter().map(|b| b.buftype()) {
             match bufty {
                 IPCBufferType::X { .. } => descriptor_count_x += 1u8,
                 IPCBufferType::A { .. } => descriptor_count_a += 1u8,
                 IPCBufferType::B { .. } => descriptor_count_b += 1u8,
+                IPCBufferType::W { .. } => descriptor_count_w += 1u8,
                 IPCBufferType::C { .. } => descriptor_count_c += 1u8,
             }
         }
@@ -519,7 +564,7 @@ where
             hdr.set_num_x_descriptors(descriptor_count_x);
             hdr.set_num_a_descriptors(descriptor_count_a);
             hdr.set_num_b_descriptors(descriptor_count_b);
-            hdr.set_num_w_descriptors(0);
+            hdr.set_num_w_descriptors(descriptor_count_w);
             if descriptor_count_c == 0 {
                 hdr.set_c_descriptor_flags(0);
             } else if descriptor_count_c == 1 {
@@ -617,7 +662,7 @@ where
                 cursor.write_u32::<LE>((size & 0xFFFFFFFF) as u32);
                 cursor.write_u32::<LE>((addr & 0xFFFFFFFF) as u32);
 
-                let num = flags as usize
+                let num = u64::from(flags)
                     | ((addr >> 36) & 0b111) << 2
                     | ((size >> 32) & 0b1111) << 24
                     | ((addr >> 32) & 0b1111) << 28;
@@ -631,9 +676,10 @@ where
         // B descriptors
         pack_abw_descriptors(&mut cursor, self.buffers.iter().filter(|buf| buf.buftype().is_type_b()));
 
-        // TODO: Implement W Descriptors
-        // BODY: W Descriptors are read-write descriptors. Technically speaking,
-        // BODY: a B descriptor is supposed to be write-only. But Nintendo sucks.
+        // W descriptors
+        // Those are read-write descriptors. Technically speaking, a B descriptor is supposed
+        // to be write-only. But Nintendo sucks.
+        pack_abw_descriptors(&mut cursor, self.buffers.iter().filter(|buf| buf.buftype().is_type_w()));
 
         // Align to 16-byte boundary
         let before_pad = align_up(cursor.pos(), 16) - cursor.pos();
@@ -747,8 +793,8 @@ where
             let laddr = cursor.read_u32::<LE>();
             let addr = *u64::from(laddr)
                 .set_bits(32..36, u64::from(stuffed.get_bits(12..16)))
-                .set_bits(36..39, u64::from(stuffed.get_bits(6..9))) as usize;
-            let size = stuffed.get_bits(16..32) as usize;
+                .set_bits(36..39, u64::from(stuffed.get_bits(6..9)));
+            let size = u64::from(stuffed.get_bits(16..32));
             let counter = stuffed.get_bits(0..4) as u8;
             buffers.push(IPCBuffer { addr, size, ty: IPCBufferType::X { counter }, phantom: PhantomData });
         }
@@ -759,9 +805,9 @@ where
             let stuff = cursor.read_u32::<LE>();
             let addr = *u64::from(laddr)
                 .set_bits(32..36, u64::from(stuff.get_bits(28..32)))
-                .set_bits(36..39, u64::from(stuff.get_bits(2..5))) as usize;
+                .set_bits(36..39, u64::from(stuff.get_bits(2..5)));
             let size = *u64::from(lsize)
-                .set_bits(32..36, u64::from(stuff.get_bits(24..28))) as usize;
+                .set_bits(32..36, u64::from(stuff.get_bits(24..28)));
             let flags = stuff.get_bits(0..2) as u8;
 
             let ty = if i < hdr.num_a_descriptors() {
@@ -769,8 +815,7 @@ where
             } else if i < hdr.num_a_descriptors() + hdr.num_b_descriptors() {
                 IPCBufferType::B { flags }
             } else {
-                panic!("Unsupported W descriptor");
-                //IPCBufferType::W { flags }
+                IPCBufferType::W { flags }
             };
 
             buffers.push(IPCBuffer { addr, size, ty, phantom: PhantomData });
@@ -840,13 +885,13 @@ where
     }
 }
 
-// TODO: find_ty_cmdid panics if the buffer is too small.
-// BODY: We should return an error if the buf size is too small instead of
-// BODY: panicking
 /// Quickly find the type and cmdid of an IPC message for the server dispatcher.
 ///
 /// Doesn't do any validation that the message is valid.
-fn find_ty_cmdid(buf: &[u8]) -> (u16, u32) {
+fn find_ty_cmdid(buf: &[u8]) -> Option<(u16, u32)> {
+    if buf.len() < 8 {
+        return None
+    }
     let hdr = LE::read_u64(&buf[0..8]);
     let ty = hdr.get_bits(0..16) as u16;
     let x_descs = hdr.get_bits(16..20) as usize;
@@ -854,6 +899,9 @@ fn find_ty_cmdid(buf: &[u8]) -> (u16, u32) {
     let b_descs = hdr.get_bits(24..28) as usize;
     let w_descs = hdr.get_bits(28..32) as usize;
     let (pid, copyhandles, movehandles) = if hdr.get_bit(63) {
+        if buf.len() < 12 {
+            return None
+        }
         let dsc = LE::read_u32(&buf[8..12]);
         (dsc.get_bit(0) as usize, dsc.get_bits(1..5) as usize, dsc.get_bits(5..9) as usize)
     } else {
@@ -861,7 +909,10 @@ fn find_ty_cmdid(buf: &[u8]) -> (u16, u32) {
     };
     let raw = 8 + (hdr.get_bit(63) as usize) * 4 + pid * 8 + (copyhandles + movehandles) * 4 + (x_descs * 8 + (a_descs + b_descs + w_descs) * 12);
     let raw = align_up(raw, 16) + 8;
+    if buf.len() < raw + 4 {
+        return None
+    }
     let cmdid = LE::read_u32(&buf[raw..raw + 4]);
-    (ty, cmdid)
+    Some((ty, cmdid))
 }
 

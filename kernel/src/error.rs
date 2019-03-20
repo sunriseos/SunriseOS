@@ -55,6 +55,11 @@ pub enum KernelError {
         kcap: u32,
         backtrace: Backtrace,
     },
+    // TODO: Properly split this up.
+    #[fail(display = "Error related to IPC")]
+    IpcError {
+        backtrace: Backtrace,
+    },
     #[fail(display = "Value is reserved for future use.")]
     ReservedValue {
         backtrace: Backtrace,
@@ -72,6 +77,7 @@ impl From<KernelError> for UserspaceError {
             KernelError::InvalidCombination { .. } => UserspaceError::InvalidCombination,
             KernelError::ExceedingMaximum { .. } => UserspaceError::ExceedingMaximum,
             KernelError::InvalidKernelCaps { .. } => UserspaceError::InvalidKernelCaps,
+            KernelError::IpcError { .. } => UserspaceError::PortRemoteDead,
             KernelError::ReservedValue { .. } => UserspaceError::ReservedValue,
             KernelError::ProcessKilled { .. } => UserspaceError::InvalidHandle, // process is dying, consider the handle invalid, only a bit early.
         }

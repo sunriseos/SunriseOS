@@ -280,6 +280,59 @@ impl ProcessMemory {
         Ok(())
     }
 
+    /// Turns an existing mapping at the specified address into a shared mapping.
+    /// Returns the underlying PhysicalMemRegion Arc.
+    ///
+    /// This method does not touch the page tables - as such, it is safe to use
+    /// in an SMP environment while other threads are potentially running and
+    /// accessing the shared mapping.
+    ///
+    /// # Errors
+    ///
+    /// * `InvalidAddress`:
+    ///     * `address` does not correspond to the start of a mapping.
+    ///     * `address` points to an Available/Guarded/SystemReserved mapping.
+    /// * `InvalidSize`:
+    ///     * `length` is not the size of the mapping at `address`.
+    pub fn share_existing_mapping(&mut self, address: VirtualAddress, length: usize) -> Result<Arc<Vec<PhysicalMemRegion>>, KernelError> {
+        let mapping = self.userspace_bookkeping.remove_mapping(address, length)?;
+        match mapping.mtype_ref() {
+            MappingType::Regular(_region) => (),
+            MappingType::Shared(region) => {
+                let region = region.clone();
+                self.userspace_bookkeping.add_mapping(mapping)
+                    .expect("add_mapping failed in shared_existing_mapping");
+                return Ok(region)
+            },
+            _ => {
+                self.userspace_bookkeping.add_mapping(mapping)
+                    .expect("add_mapping failed in shared_existing_mapping");
+                return Err(KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new() });
+            },
+        };
+
+        let addr = mapping.address();
+        let flags = mapping.flags();
+
+        if let MappingType::Regular(region) = mapping.mtype() {
+            let shared_region = Arc::new(region);
+            let mapping = Mapping::new_shared(addr, shared_region.clone(), flags)
+                .expect("Turning a known valid region into a shared mapping cannot fail");
+
+            // This cannot fail. We are the sole owners of the UserspaceBookkeeping
+            // (protected by a lock). We removed the mapping earlier, and nobody
+            // should have had a chance to put a mapping back in its place. If
+            // add_mapping fails here, it means either a lock is failing to lock
+            // properly, or remove_mapping is broken.
+            self.userspace_bookkeping.add_mapping(mapping)
+                .expect("Add_mapping failed in shared_existing_mapping");
+
+            Ok(shared_region)
+        } else {
+            unreachable!("Case handled in the earlier match")
+        }
+    }
+
     /// Guards a range of addresses
     ///
     /// # Errors

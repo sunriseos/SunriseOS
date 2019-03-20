@@ -379,7 +379,7 @@ fn reply_and_receive_with_user_buffer(buf: UserSpacePtrMut<[u8]>, handles: UserS
     let idx = wait_synchronization(handles, timeout)?;
 
     let servsess = proc.phandles.lock().get_handle(handles[idx])?.as_server_session()?;
-    servsess.receive(buf)?;
+    servsess.receive(buf, reply_target == 0)?;
     Ok(idx)
 }
 

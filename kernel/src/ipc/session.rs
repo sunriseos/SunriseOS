@@ -30,9 +30,11 @@ use crate::process::ThreadStruct;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::slice;
 use byteorder::{LE, ByteOrder};
-use crate::paging::{MappingAccessRights, mapping::MappingType, process_memory::ProcessMemory};
+use crate::paging::{MappingAccessRights, process_memory::ProcessMemory};
 use crate::mem::{UserSpacePtr, UserSpacePtrMut, VirtualAddress};
 use bit_field::BitField;
+use crate::error::KernelError;
+use crate::checks::check_lower_than_usize;
 
 /// Wrapper around the currently active session and the incoming request list.
 /// They are kept together so they are locked together.
@@ -191,7 +193,6 @@ struct Request {
     answered: Arc<SpinLock<Option<Result<(), UserspaceError>>>>,
 }
 
-// TODO finish buf_map
 /// Send an IPC Buffer from the sender into the receiver.
 ///
 /// There are two "families" of IPC buffers:
@@ -223,46 +224,38 @@ fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mu
         .set_bits(32..36, u64::from(rest.get_bits(24..28)));
 
     // 64-bit address on a 32-bit kernel!
-    if (usize::max_value() as u64) < addr {
-        return Err(UserspaceError::InvalidAddress);
-    }
-
-    // 64-bit size on a 32-bit kernel!
-    if (usize::max_value() as u64) < size {
-        return Err(UserspaceError::InvalidSize);
-    }
-
-    // 64-bit address on a 32-bit kernel
-    if (usize::max_value() as u64) < addr.saturating_add(size) {
-        return Err(UserspaceError::InvalidSize);
-    }
+    check_lower_than_usize(addr, UserspaceError::InvalidAddress)?;
+    check_lower_than_usize(size, UserspaceError::InvalidSize)?;
+    check_lower_than_usize(addr.saturating_add(size), UserspaceError::InvalidSize)?;
 
     let addr = addr as usize;
     let size = size as usize;
 
-    // Map the descriptor in the other process.
-    let to_addr : VirtualAddress = unimplemented!("Needs the equivalent to find_available_virtual_space");
-    /*let to_addr = to_mem.find_available_virtual_space_runtime(size / paging::PAGE_SIZE)
-        .ok_or(UserspaceError::MemoryFull)?;*/
+    let to_addr = if addr == 0 {
+        // Null pointers shouldn't be mapped.
+        0
+    } else {
+        // TODO: buf_map: Check that from_mem has the right permissions
+        // BODY: buf_map currently remaps without checking the permissions. This
+        // BODY: could allow a user to read non-user-accessible memory, or
+        // BODY: write to non-writable memory.
+        // BODY:
+        // BODY: Whatever mechanism we setup for UserSpacePtr, we should probably
+        // BODY: reuse it here.
 
-    let mapping = from_mem.unmap(VirtualAddress(addr), size)?;
-    let flags = mapping.flags();
-    let phys = match mapping.mtype() {
-        MappingType::Available | MappingType::Guarded | MappingType::SystemReserved =>
-            // todo remap it D:
-            return Err(UserspaceError::InvalidAddress),
-        MappingType::Regular(vec) /*| MappingType::Stack(vec) */ => Arc::new(vec),
-        MappingType::Shared(arc) => arc,
+        // Map the descriptor in the other process.
+        let mapping = from_mem.share_existing_mapping(VirtualAddress(addr), size)?;
+        let to_addr = to_mem.find_available_space(size)?;
+        to_mem.map_shared_mapping(mapping, to_addr, MappingAccessRights::u_rw())?;
+        to_addr.addr()
     };
 
-    from_mem.map_shared_mapping(phys, VirtualAddress(addr), flags)?;
-
-    let loweraddr = to_addr.addr() as u32;
+    let loweraddr = to_addr as u32;
     let rest = *0u32
         .set_bits(0..2, bufflags)
-        .set_bits(2..5, (to_addr.addr() as u64).get_bits(36..39) as u32)
+        .set_bits(2..5, (to_addr as u64).get_bits(36..39) as u32)
         .set_bits(24..28, (size as u64).get_bits(32..36) as u32)
-        .set_bits(28..32, (to_addr.addr() as u64).get_bits(32..36) as u32);
+        .set_bits(28..32, (to_addr as u64).get_bits(32..36) as u32);
 
     LE::write_u32(&mut to_buf[*curoff + 0..*curoff + 4], lowersize);
     LE::write_u32(&mut to_buf[*curoff + 4..*curoff + 8], loweraddr);
@@ -284,8 +277,6 @@ impl ClientSession {
     /// take an arbitrary long time. We do not eagerly read the buffer - it will
     /// be read from when the server asks to receive a request.
     pub fn send_request(&self, buf: UserSpacePtrMut<[u8]>) -> Result<(), UserspaceError> {
-        // TODO: Unmapping is out of the question. Ideally, I should just affect the bookkeeping
-        // in order to remap it in the kernel.
         let answered = Arc::new(SpinLock::new(None));
 
         {
@@ -323,6 +314,60 @@ impl ClientSession {
     }
 }
 
+/// Efficiently finds C Descriptor in a message.
+fn find_c_descriptors(buf: &mut [u8]) -> Result<CBufBehavior, KernelError> {
+    let mut curoff = 0;
+
+    let hdr = MsgPackedHdr(LE::read_u64(&buf[curoff..curoff + 8]));
+    curoff += 8;
+
+    let cflag = hdr.c_descriptor_flags();
+
+    match cflag {
+        0 => return Ok(CBufBehavior::Disabled),
+        1 => return Ok(CBufBehavior::Inlined),
+        _ => ()
+    }
+
+    // Go grab C descriptors
+
+    if hdr.enable_handle_descriptor() {
+        let descriptor = HandleDescriptorHeader(LE::read_u32(&buf[curoff..curoff + 4]));
+        curoff += 4;
+        if descriptor.send_pid() {
+            curoff += 8;
+        }
+        curoff += 4 * usize::from(descriptor.num_copy_handles() + descriptor.num_move_handles());
+    }
+
+    curoff += 8 * usize::from(hdr.num_x_descriptors());
+    curoff += 12 * usize::from(hdr.num_a_descriptors() + hdr.num_b_descriptors() + hdr.num_w_descriptors());
+    curoff += 4 * usize::from(hdr.raw_section_size());
+
+
+    match hdr.c_descriptor_flags() {
+        0 | 1 => unreachable!(),
+        2 => {
+            let word1 = LE::read_u32(&buf[curoff..curoff + 4]);
+            let word2 = LE::read_u32(&buf[curoff + 4..curoff + 8]);
+            let addr = *u64::from(word1).set_bits(32..48, u64::from(word2.get_bits(0..16)));
+            let size = u64::from(word2.get_bits(16..32));
+            Ok(CBufBehavior::Single(addr, size))
+        },
+        x => {
+            let mut bufs = [(0, 0); 13];
+            for i in 0..x - 2 {
+                let word1 = LE::read_u32(&buf[curoff..curoff + 4]);
+                let word2 = LE::read_u32(&buf[curoff + 4..curoff + 8]);
+                let addr = *u64::from(word1).set_bits(32..48, u64::from(word2.get_bits(0..16)));
+                let size = u64::from(word2.get_bits(16..32));
+                bufs[i as usize] = (addr, size);
+            }
+            Ok(CBufBehavior::Numbered(bufs, (x - 2) as usize))
+        }
+    }
+}
+
 impl ServerSession {
     /// Receive an IPC request through the server pipe. Takes a userspace buffer
     /// containing an empty IPC message. The request may optionally contain a
@@ -331,7 +376,7 @@ impl ServerSession {
     ///
     /// This function does **not** wait. It assumes an active_request has already
     /// been set by a prior call to wait.
-    pub fn receive(&self, mut buf: UserSpacePtrMut<[u8]>) -> Result<(), UserspaceError> {
+    pub fn receive(&self, mut buf: UserSpacePtrMut<[u8]>, has_c_descriptors: bool) -> Result<(), UserspaceError> {
         // Read active session
         let internal = self.0.internal.lock();
 
@@ -347,7 +392,13 @@ impl ServerSession {
             slice::from_raw_parts_mut(mapping.addr().addr() as *mut u8, mapping.len())
         };
 
-        pass_message(sender_buf, active.sender.clone(), &mut *buf, scheduler::get_current_thread())?;
+        let c_bufs = if has_c_descriptors {
+            find_c_descriptors(&mut *buf)?
+        } else {
+            CBufBehavior::Disabled
+        };
+
+        pass_message(sender_buf, active.sender.clone(), &mut *buf, scheduler::get_current_thread(), false, &*memlock, c_bufs)?;
 
         Ok(())
     }
@@ -380,7 +431,7 @@ impl ServerSession {
             slice::from_raw_parts_mut(mapping.addr().addr() as *mut u8, mapping.len())
         };
 
-        pass_message(&*buf, scheduler::get_current_thread(), sender_buf, active.sender.clone())?;
+        pass_message(&*buf, scheduler::get_current_thread(), sender_buf, active.sender.clone(), true, &*memlock, CBufBehavior::Disabled)?;
 
         *active.answered.lock() = Some(Ok(()));
 
@@ -390,9 +441,21 @@ impl ServerSession {
     }
 }
 
-// TODO: Kernel IPC: Implement X and C descriptor support in pass_message.
-// BODY: X and C descriptors are complicated and support for them is put off for
-// BODY: the time being. We'll likely want them when implementing FS though.
+/// Defines how to handle X Buffer descriptors based on the C Buffer flags.
+#[allow(clippy::large_enum_variant)] // Expected.
+enum CBufBehavior {
+    /// No C Buffers are available. Presence of X Buffers should cause an error.
+    Disabled,
+    /// X Buffers should be copied after the Raw Data.
+    Inlined,
+    /// X Buffers should be copied sequentially to the C Buffer represented by
+    /// the given address/size pair.
+    Single(u64, u64),
+    /// X Buffers should be copied to the appropriate C Buffer represented y
+    /// the given address/size pair, based on the counter.
+    Numbered([(u64, u64); 13], usize)
+}
+
 /// Send a message from the sender to the receiver. This is more or less a
 /// memcpy, with some special case done to satisfy the various commands of the
 /// CMIF structure:
@@ -404,8 +467,11 @@ impl ServerSession {
 ///   rewritten to the receiver's.
 /// - Buffers are appropriately mapped through the [buf_map] function, and the
 ///   address are rewritten to in the receiver's address space.
+///
+/// This function should always be called from the context of the receiver/
+/// server.
 #[allow(unused)]
-fn pass_message(from_buf: &[u8], from_proc: Arc<ThreadStruct>, to_buf: &mut [u8], to_proc: Arc<ThreadStruct>) -> Result<(), UserspaceError> {
+fn pass_message(from_buf: &[u8], from_proc: Arc<ThreadStruct>, to_buf: &mut [u8], to_proc: Arc<ThreadStruct>, is_reply: bool, other_memlock: &ProcessMemory, c_bufs: CBufBehavior) -> Result<(), UserspaceError> {
     // TODO: pass_message deadlocks when sending message to the same process.
     // BODY: If from_proc and to_proc are the same process, pass_message will
     // BODY: deadlock trying to acquire the locks to the handle table or the
@@ -452,8 +518,80 @@ fn pass_message(from_buf: &[u8], from_proc: Arc<ThreadStruct>, to_buf: &mut [u8]
         }
     }
 
-    for i in 0..hdr.num_x_descriptors() {
-        unimplemented!("Let's figure this out another time");
+    {
+        let mut coff = 0;
+        for i in 0..hdr.num_x_descriptors() {
+            let word1 = LE::read_u32(&from_buf[curoff..curoff + 4]);
+            let counter = word1.get_bits(0..6); // Counter can't go higher anyways.
+
+            let from_addr = *u64::from(LE::read_u32(&from_buf[curoff + 4..curoff + 8]))
+                .set_bits(32..36, u64::from(word1.get_bits(12..16)))
+                .set_bits(36..39, u64::from(word1.get_bits(6..9)));
+            let from_size = u64::from(word1.get_bits(16..32));
+
+            let (to_addr, to_size) = match c_bufs {
+                CBufBehavior::Disabled => return Err(UserspaceError::PortRemoteDead),
+                CBufBehavior::Inlined => unimplemented!(),
+                CBufBehavior::Single(addr, size) => {
+                    (addr + coff, size - coff)
+                },
+                CBufBehavior::Numbered(bufs, count) => {
+                    // TODO: IPC Type-X: Prevent multiple writes to a C-buffer?
+                    // BODY: Do I need to prevent multiple writes to the same
+                    // BODY: buffer ID? In theory, I could use coff as a bitmap
+                    // BODY: of used buffers, and prevent reuse this way, but I'm
+                    // BODY: unsure of how the nintendo switch behaves here.
+                    let (addr, size) = bufs[..count][counter as usize];
+                    (addr, size)
+                }
+            };
+
+            // Check addresses fit in 32-bit kernel.
+            check_lower_than_usize(from_addr, UserspaceError::InvalidAddress)?;
+            check_lower_than_usize(from_size, UserspaceError::InvalidAddress)?;
+            check_lower_than_usize(from_addr.saturating_add(from_size), UserspaceError::InvalidAddress)?;
+            check_lower_than_usize(to_addr, UserspaceError::InvalidAddress)?;
+            check_lower_than_usize(to_size, UserspaceError::InvalidAddress)?;
+            check_lower_than_usize(to_addr.saturating_add(to_size), UserspaceError::InvalidAddress)?;
+
+            let (mapping, mut uspaceptr) = if !is_reply {
+                // We're receiving: C Buffers are in our address space, X buffers
+                // are in the other address space
+                let mapping = other_memlock.mirror_mapping(VirtualAddress(from_addr as usize), from_size as usize)?;
+                let uspaceptr = UserSpacePtrMut::from_raw_parts_mut(to_addr as *mut u8, to_size as usize);
+                (mapping, uspaceptr)
+            } else {
+                // We're receiving: C Buffers are in our address space, X buffers
+                // are in the other address space
+                let mapping = other_memlock.mirror_mapping(VirtualAddress(to_addr as usize), to_size as usize)?;
+                let uspaceptr = UserSpacePtrMut::from_raw_parts_mut(from_addr as *mut u8, from_size as usize);
+                (mapping, uspaceptr)
+            };
+
+            let (from, to) = {
+                let ref_mapping = unsafe {
+                    slice::from_raw_parts_mut(mapping.addr().addr() as *mut u8, mapping.len())
+                };
+                let ref_uspace = &mut *uspaceptr;
+                if !is_reply {
+                    (ref_mapping, ref_uspace)
+                } else {
+                    (ref_uspace, ref_mapping)
+                }
+            };
+
+            to[..from.len()].copy_from_slice(from);
+            coff += from.len() as u64;
+
+            let mut counter = counter;
+            LE::write_u32(&mut to_buf[curoff..curoff + 4], *counter
+                .set_bits(6..9, to_addr.get_bits(36..39) as u32)
+                .set_bits(12..16, to_addr.get_bits(32..36) as u32)
+                .set_bits(16..32, from_size as u32));
+            LE::write_u32(&mut to_buf[curoff + 4..curoff + 8], to_addr as u32);
+
+            curoff += 8;
+        }
     }
 
     if hdr.num_a_descriptors() != 0 || hdr.num_b_descriptors() != 0 {
