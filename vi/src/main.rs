@@ -148,7 +148,7 @@ fn draw(buf: &Buffer, framebuffer: &mut Framebuffer<'_>, top: u32, left: u32, wi
                 let mut curleft = left;
                 while curleft < left + width {
                     // This overflows when buf.width * buf.height * 4 >= sizeof(usize)
-                    let dataidx = (((curtop as i32 - buf.top) as u32 * width + (curleft as i32 - buf.left) as u32) * 4) as usize;
+                    let dataidx = (((curtop as i32 - buf.top) as u32 * buf.width + (curleft as i32 - buf.left) as u32) * 4) as usize;
                     let fbidx = framebuffer.get_px_offset(curleft as usize, curtop as usize) as usize;
                     // TODO: Vi: Implement alpha blending
                     // BODY: Vi currently does not do alpha blending at all.
