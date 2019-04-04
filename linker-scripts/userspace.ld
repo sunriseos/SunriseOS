@@ -1,11 +1,21 @@
 ENTRY(start)
 OUTPUT_FORMAT(elf32-i386)
 
+PHDRS
+{
+  text PT_LOAD FLAGS(5);
+  rodata PT_LOAD FLAGS(4);
+  data PT_LOAD FLAGS(6);
+  bss PT_LOAD FLAGS(6);
+  dynamic PT_DYNAMIC;
+}
+
 SECTIONS
 {
-  /* Read-only sections, merged into text segment: */
-  . = SEGMENT_START("text-segment", 0x400000) + SIZEOF_HEADERS;
-  .text : {
+  . = 0;
+
+  .text : ALIGN(0x1000) {
+    KEEP(*(.text.crt0))
     *(.text.unlikely .text.*_unlikely .text.unlikely.*)
     *(.text.exit .text.exit.*)
     *(.text.startup .text.startup.*)
@@ -15,32 +25,40 @@ SECTIONS
     *(.gnu.warning)
   }
 
-  . = ALIGN(CONSTANT (MAXPAGESIZE));
-  /* Adjust the address for the rodata segment.  We want to adjust up to
-     the same address within the page on the next page up.  */
-  . = SEGMENT_START("rodata-segment", ALIGN(CONSTANT (MAXPAGESIZE)) + (. & (CONSTANT (MAXPAGESIZE) - 1)));
+  /* RO sections */
+
+  . = ALIGN(0x1000);
+
   .rodata : { *(.rodata .rodata.*) } :rodata
   .hash : { *(.hash) }
   .dynsym : { *(.dynsym .dynsym.*) }
   .dynstr : { *(.dynstr .dynstr.*) }
-  .rela.dyn : { *(.rela.dyn) }
+  .rela.dyn : { *(.rela.dyn) } :rodata
+  .rela.plt : { *(.rela.plt) } :rodata
 
   .eh_frame : ONLY_IF_RO {
     HIDDEN(__eh_frame_start = .);
-    KEEP (*(.eh_frame)) *(.eh_frame.*)
+    *(.eh_frame .eh_frame.*)
     HIDDEN(__eh_frame_end = .);
   }
 
   .eh_frame_hdr : {
-    HIDDEN(__eh_frame_hdr_start = .);
-    *(.eh_frame_hdr) *(.eh_frame_entry .eh_frame_entry.*)
-    HIDDEN(__eh_frame_hdr_end = .);
+    EH_FRAME_HDR_START = .;
+    *(.eh_frame_hdr .eh_frame_hdr.*)
+    EH_FRAME_HDR_END = .;
   }
+
   .gcc_except_table : ONLY_IF_RO { *(.gcc_except_table .gcc_except_table.*) }
   .gnu_extab : ONLY_IF_RO { *(.gnu_extab*) }
 
-  . = DATA_SEGMENT_ALIGN (CONSTANT (MAXPAGESIZE), CONSTANT (COMMONPAGESIZE));
+  .dynamic : {
+    DYNAMIC = .;
+    *(.dynamic)
+  } :rodata :dynamic
 
+  /* RW sections */
+
+  . = ALIGN(0x1000);
   .data : {
     *(.data .data.*)
     *(.got .got.*)
@@ -55,13 +73,11 @@ SECTIONS
   .gnu_extab : ONLY_IF_RW { *(.gnu_extab*) }
   .gcc_except_table : ONLY_IF_RW { *(.gcc_except_table .gcc_except_table.*) }
 
-  .dynamic : {
-    HIDDEN(__dynamic_start = .);
-    *(.dynamic)
-  }
+  /* BSS section */
 
-  .bss            :
-  {
+  . = ALIGN(0x1000);
+
+  .bss : {
    BSS_START = .;
    *(.dynbss)
    *(.bss .bss.* .gnu.linkonce.b.*)
@@ -73,7 +89,7 @@ SECTIONS
       pad the .data section.  */
    . = ALIGN(. != 0 ? 64 / 8 : 1);
    BSS_END = .;
-  }
+  } :bss
 
   /* Kernel caps and ioports access control */
   .kernel_caps : {
