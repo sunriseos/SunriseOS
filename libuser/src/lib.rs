@@ -3,9 +3,8 @@
 //! Provides an allocator, various lang items.
 
 #![no_std]
-#![feature(global_asm, asm, start, lang_items, core_intrinsics, const_fn, alloc, box_syntax, untagged_unions)]
+#![feature(global_asm, asm, start, lang_items, core_intrinsics, const_fn, alloc, box_syntax, untagged_unions, proc_macro_hygiene)]
 
-// rustc warnings
 #![warn(unused)]
 #![warn(missing_debug_implementations)]
 #![allow(unused_unsafe)]
@@ -38,12 +37,16 @@ extern crate log;
 #[macro_use]
 extern crate lazy_static;
 
+use swipc_gen::gen_ipc;
+
 pub mod caps;
 pub mod syscalls;
 pub mod mem;
 pub mod types;
 pub mod ipc;
 pub mod sm;
+
+#[gen_ipc(path = "../../ipcdefs/vi.id", prefix = "libuser")]
 pub mod vi;
 pub mod ahci;
 pub mod error;

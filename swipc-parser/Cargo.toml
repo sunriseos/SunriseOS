@@ -1,0 +1,9 @@
+[package]
+name = "swipc-parser"
+version = "0.1.0"
+authors = ["roblabla <unfiltered@roblab.la>"]
+edition = "2018"
+
+[dependencies]
+pest = { git = "https://github.com/pest-parser/pest" }
+pest_derive = "2.0"

@@ -1,0 +1,83 @@
+start = { SOI ~ def+ ~ EOI }
+
+number = @{
+     ("0x" ~ ASCII_HEX_DIGIT+)
+   | (ASCII_DIGIT+)
+}
+
+def = {
+      typeDef
+    | interface
+}
+
+expression = {
+      ty
+    | number
+}
+
+name = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+iname = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | ":")* }
+sname = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | ":" | "-")* }
+
+serviceNameList = { sname ~ ("," ~ sname)* ~ ","? }
+structField = { comment* ~ ty ~ name ~ ";" }
+enumField = { comment* ~ name ~ "=" ~ number ~ ";" }
+
+structTemplate = { "<" ~ number ~ ">" }
+structure = { "struct" ~ structTemplate? ~ "{" ~ structField+ ~ "}" }
+enumeration = { "enum" ~ "<" ~ name ~ ">" ~ "{" ~ enumField+ ~ "}" }
+
+aliasArray = { "array" ~ "<" ~ alias ~ "," ~ number ~ ">" }
+aliasBuffer = { "buffer" ~ "<" ~ alias ~ "," ~ number ~ "," ~ number ~ ">" }
+aliasObject = { "object" ~ "<" ~ iname ~ ">" }
+aliasBytes = { "bytes" ~ "<" ~ number ~ ">" }
+aliasAlign = { "align" ~ "<" ~ number ~ "," ~ alias ~ ">" }
+aliasKObject = { "KObject" }
+aliasPid = { "pid" }
+
+khandleIsCopy = { "copy" | "move" }
+khandleType = { "process" | "thread" | "debug"
+              | "code_memory" | "transfer_memory" | "shared_memory"
+              | "server_port" | "client_port"
+              | "server_session" | "client_session"
+              | "server_light_session" | "client_light_session"
+              | "readable_event" | "writable_event" | "irq_event"
+              | "device_address_space"
+}
+aliasKHandle = { "KHandle" ~ "<" ~ khandleIsCopy ~ ("," ~ khandleType)? ~ ">" }
+
+alias = {
+       aliasArray
+     | aliasBuffer
+     | aliasObject
+     | aliasBytes
+     | aliasAlign
+     | aliasPid
+     | aliasKObject
+     | aliasKHandle
+     | iname
+}
+ty = {
+       structure
+     | enumeration
+     | alias
+}
+
+typeDef = { comment* ~ "type" ~ iname ~ "=" ~ ty ~ ";" }
+
+interface = { comment* ~ "interface" ~ iname ~ ("is" ~ serviceNameList)? ~ "{" ~ funcDef* ~ "}" }
+namedTuple = { "(" ~ (namedType ~ ("," ~ namedType)*)? ~ ","? ~ ")" }
+namedType = { alias ~ name? }
+comment = @{ "#" ~ (!"\n" ~ ANY)* }
+versionNumber = { number ~ "." ~ number ~ "." ~ number }
+range = { versionNumber? ~ "-" ~ versionNumber? }
+decorator = ${ "@" ~ (versionDecorator | undocumentedDecorator) }
+
+versionPlus = { "+" }
+versionDecorator = { "version" ~ "(" ~ versionNumber ~ (versionPlus | ("-" ~ versionNumber))? ~ ")" }
+undocumentedDecorator = { "undocumented" }
+
+funcDef = { comment* ~ decorator* ~ "[" ~ number ~ "]" ~ name ~ namedTuple ~ ("->" ~ (namedType | namedTuple))? ~ ";" }
+
+WHITESPACE = _{ " " | "\n" | "\t" }
+COMMENT = _{ ("/*" ~ (!"*/" ~ ANY)* ~ "*/") | ("//" ~ (!"\n" ~ ANY)*) }
