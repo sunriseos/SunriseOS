@@ -355,7 +355,7 @@ pub trait PageTablesSet {
             }
         }
 
-        let mut iter = (0..kfs_libutils::align_down(usize::max_value(), PAGE_SIZE)).step_by(PAGE_SIZE);
+        let mut iter = (0..sunrise_libutils::align_down(usize::max_value(), PAGE_SIZE)).step_by(PAGE_SIZE);
         let mut state = State::from(self, VirtualAddress(iter.next().unwrap()));
 
         // Don't print last entry because it's just the recursive entry.

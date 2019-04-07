@@ -58,7 +58,7 @@
 #[macro_use]
 extern crate alloc;
 #[macro_use]
-extern crate kfs_libuser;
+extern crate sunrise_libuser;
 #[macro_use]
 extern crate log;
 #[macro_use]
@@ -73,12 +73,12 @@ use crate::hba::HbaMemoryRegisters;
 use crate::disk::{Disk, IDisk};
 use alloc::prelude::*;
 use alloc::sync::Arc;
-use kfs_libuser::error::{Error, AhciError};
-use kfs_libuser::ipc::server::{WaitableManager, PortHandler, IWaitable};
+use sunrise_libuser::error::{Error, AhciError};
+use sunrise_libuser::ipc::server::{WaitableManager, PortHandler, IWaitable};
 use spin::Mutex;
-use kfs_libuser::types::Handle;
-use kfs_libuser::syscalls;
-use kfs_libuser::ipc::server::SessionWrapper;
+use sunrise_libuser::types::Handle;
+use sunrise_libuser::syscalls;
+use sunrise_libuser::ipc::server::SessionWrapper;
 
 /// Array of discovered disk.
 ///
@@ -162,24 +162,24 @@ object! {
 
 capabilities!(CAPABILITIES = Capabilities {
     svcs: [
-        kfs_libuser::syscalls::nr::SleepThread,
-        kfs_libuser::syscalls::nr::ExitProcess,
-        kfs_libuser::syscalls::nr::CloseHandle,
-        kfs_libuser::syscalls::nr::WaitSynchronization,
-        kfs_libuser::syscalls::nr::OutputDebugString,
+        sunrise_libuser::syscalls::nr::SleepThread,
+        sunrise_libuser::syscalls::nr::ExitProcess,
+        sunrise_libuser::syscalls::nr::CloseHandle,
+        sunrise_libuser::syscalls::nr::WaitSynchronization,
+        sunrise_libuser::syscalls::nr::OutputDebugString,
 
-        kfs_libuser::syscalls::nr::SetHeapSize,
-        kfs_libuser::syscalls::nr::QueryMemory,
-        kfs_libuser::syscalls::nr::MapSharedMemory,
-        kfs_libuser::syscalls::nr::UnmapSharedMemory,
-        kfs_libuser::syscalls::nr::ConnectToNamedPort,
-        kfs_libuser::syscalls::nr::CreateInterruptEvent,
-        kfs_libuser::syscalls::nr::QueryPhysicalAddress,
-        kfs_libuser::syscalls::nr::MapMmioRegion,
-        kfs_libuser::syscalls::nr::SendSyncRequestWithUserBuffer,
-        kfs_libuser::syscalls::nr::ReplyAndReceiveWithUserBuffer,
-        kfs_libuser::syscalls::nr::AcceptSession,
-        kfs_libuser::syscalls::nr::CreateSession,
+        sunrise_libuser::syscalls::nr::SetHeapSize,
+        sunrise_libuser::syscalls::nr::QueryMemory,
+        sunrise_libuser::syscalls::nr::MapSharedMemory,
+        sunrise_libuser::syscalls::nr::UnmapSharedMemory,
+        sunrise_libuser::syscalls::nr::ConnectToNamedPort,
+        sunrise_libuser::syscalls::nr::CreateInterruptEvent,
+        sunrise_libuser::syscalls::nr::QueryPhysicalAddress,
+        sunrise_libuser::syscalls::nr::MapMmioRegion,
+        sunrise_libuser::syscalls::nr::SendSyncRequestWithUserBuffer,
+        sunrise_libuser::syscalls::nr::ReplyAndReceiveWithUserBuffer,
+        sunrise_libuser::syscalls::nr::AcceptSession,
+        sunrise_libuser::syscalls::nr::CreateSession,
     ],
     raw_caps: [
         // todo: IRQ capabilities at runtime
@@ -194,7 +194,7 @@ capabilities!(CAPABILITIES = Capabilities {
         // body: - Declaring every IRQ line in our capabilities, but only effectively using one ?
         // body: - Deporting the PIC management to a userspace module, and allow it to accept
         // body:   dynamic irq capabilities in yet undefined way.
-        kfs_libuser::caps::ioport(pci::CONFIG_ADDRESS + 0), kfs_libuser::caps::ioport(pci::CONFIG_ADDRESS + 1), kfs_libuser::caps::ioport(pci::CONFIG_ADDRESS + 2), kfs_libuser::caps::ioport(pci::CONFIG_ADDRESS + 3),
-        kfs_libuser::caps::ioport(pci::CONFIG_DATA    + 0), kfs_libuser::caps::ioport(pci::CONFIG_DATA    + 1), kfs_libuser::caps::ioport(pci::CONFIG_DATA    + 2), kfs_libuser::caps::ioport(pci::CONFIG_DATA    + 3),
+        sunrise_libuser::caps::ioport(pci::CONFIG_ADDRESS + 0), sunrise_libuser::caps::ioport(pci::CONFIG_ADDRESS + 1), sunrise_libuser::caps::ioport(pci::CONFIG_ADDRESS + 2), sunrise_libuser::caps::ioport(pci::CONFIG_ADDRESS + 3),
+        sunrise_libuser::caps::ioport(pci::CONFIG_DATA    + 0), sunrise_libuser::caps::ioport(pci::CONFIG_DATA    + 1), sunrise_libuser::caps::ioport(pci::CONFIG_DATA    + 2), sunrise_libuser::caps::ioport(pci::CONFIG_DATA    + 3),
     ]
 });

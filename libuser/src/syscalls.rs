@@ -2,8 +2,8 @@
 
 use core::slice;
 use crate::types::*;
-pub use kfs_libkern::nr;
-pub use kfs_libkern::{MemoryInfo, MemoryPermissions};
+pub use sunrise_libkern::nr;
+pub use sunrise_libkern::{MemoryInfo, MemoryPermissions};
 use crate::error::KernelError;
 
 // Assembly blob can't get documented, but clippy requires it.
@@ -273,7 +273,7 @@ pub(crate) fn close_handle(handle: u32) -> Result<(), KernelError> {
 ///   svcCancelSynchronization to cancel this thread. Handle index is not
 ///   updated.
 /// - 0xee01: Too many handles. Returned when the number of handles passed is
-///   >0x40. Note: KFS currently does not return this error. It is perfectly able
+///   >0x40. Note: Sunrise kernel currently does not return this error. It is perfectly able
 ///   to wait on more than 0x40 handles.
 pub fn wait_synchronization(handles: &[HandleRef<'_>], timeout_ns: Option<usize>) -> Result<usize, KernelError> {
     unsafe {
@@ -376,7 +376,7 @@ pub fn create_interrupt_event(irqnum: usize, flag: u32) -> Result<ReadableEvent,
 /// 1. 0x00000000 (On Horizon it contains the KernelSpace virtual address of this mapping,
 ///    but I don't see any use for it).
 /// 2. The length of the physical region.
-// kfs extension
+// sunrise extension
 /// 3. The offset in the region of the given virtual address.
 ///
 /// # Error

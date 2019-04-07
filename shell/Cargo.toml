@@ -1,5 +1,5 @@
 [package]
-name = "kfs-shell"
+name = "sunrise-shell"
 version = "0.1.0"
 authors = ["roblabla <unfiltered@roblab.la>", "orycterope <tvermeilh@gmail.com>"]
 license = "Apache-2.0 OR MIT"
@@ -8,7 +8,7 @@ edition = "2018"
 [dependencies]
 gif = { git = "https://github.com/roblabla/image-gif" }
 log = "0.4.6"
-kfs-libuser = { path = "../libuser" }
+sunrise-libuser = { path = "../libuser" }
 spin = "0.5"
 
 [dependencies.byteorder]

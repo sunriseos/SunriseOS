@@ -5,11 +5,11 @@
 //!
 //! [Serial ATA AHCI: Specification, Rev. 1.3.1]: http://www.intel.com/content/dam/www/public/us/en/documents/technical-specifications/serial-ata-ahci-spec-rev1-3-1.pdf
 
-use kfs_libuser::io::{Io, Mmio};
-use kfs_libuser::syscalls::{sleep_thread, query_physical_address};
-use kfs_libuser::mem::{map_mmio, virt_to_phys};
-use kfs_libuser::error::{Error, AhciError};
-use kfs_libuser::zero_box::*;
+use sunrise_libuser::io::{Io, Mmio};
+use sunrise_libuser::syscalls::{sleep_thread, query_physical_address};
+use sunrise_libuser::mem::{map_mmio, virt_to_phys};
+use sunrise_libuser::error::{Error, AhciError};
+use sunrise_libuser::zero_box::*;
 use core::fmt::{self, Debug, Formatter};
 use core::mem::size_of;
 use core::cmp::min;

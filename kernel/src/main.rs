@@ -1,4 +1,4 @@
-//! KFS
+//! Sunrise kernel
 //!
 //! A small kernel written in rust for shit and giggles. Also, hopefully the
 //! last project I'll do before graduating from 42 >_>'.
@@ -199,7 +199,7 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 
     let log = &mut devices::rs232::SerialLogger;
     // Say hello to the world
-    let _ = writeln!(log, "\n# Welcome to {}KFS{}!\n",
+    let _ = writeln!(log, "\n# Welcome to {}SunriseOS{}!\n",
         SerialAttributes::fg(SerialColor::LightCyan),
         SerialAttributes::default());
 

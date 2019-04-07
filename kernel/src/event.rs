@@ -1,6 +1,6 @@
-//! The core event handling primitives of KFS.
+//! The core event handling primitives of Sunrise.
 //!
-//! The KFS kernel sports a couple sources of events, such as IRQs, timers,
+//! The Sunrise kernel supports a couple sources of events, such as IRQs, timers,
 //! userspace-triggered events, and other. It must be possible to await for
 //! one or multiple events at the same time.
 //!
@@ -31,7 +31,7 @@ use crate::scheduler;
 /// additional logic to is_signaled. For example:
 ///
 /// ```
-/// use kfs_kernel::event::{IRQEvent, Waitable};
+/// use sunrise_kernel::event::{IRQEvent, Waitable};
 /// use core::sync::atomic::{AtomicUsize, Ordering};
 /// struct WaitFor5Ticks(IRQEvent, AtomicUsize);
 /// impl Waitable for WaitFor5Ticks {
@@ -76,7 +76,7 @@ pub trait Waitable: Debug + Send + Sync {
     /// will want to defer this to an IRQEvent. For instance:
     ///
     /// ```
-    /// #use kfs_kernel::event::{IRQEvent, Waitable};
+    /// #use sunrise_kernel::event::{IRQEvent, Waitable};
     /// #struct Wait(IRQEvent);
     /// #impl Waitable for WaitFor5Ticks {
     /// #fn is_signaled(&self) -> bool {

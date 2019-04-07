@@ -8,8 +8,8 @@
 /// generating the dispatcher logic. The syntax for using it is as under:
 ///
 /// ```rust
-/// # #[macro_use] extern crate kfs_libuser; fn main() {
-/// use kfs_libuser::error::Error;
+/// # #[macro_use] extern crate sunrise_libuser; fn main() {
+/// use sunrise_libuser::error::Error;
 ///
 /// struct Service;
 /// object! {

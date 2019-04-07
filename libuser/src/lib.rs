@@ -28,7 +28,7 @@ extern crate bitfield;
 
 
 #[macro_use]
-extern crate kfs_libutils;
+extern crate sunrise_libutils;
 #[macro_use]
 extern crate failure;
 
@@ -53,9 +53,9 @@ pub mod window;
 pub mod zero_box;
 mod log_impl;
 
-pub use kfs_libutils::io;
+pub use sunrise_libutils::io;
 
-use kfs_libutils as utils;
+use sunrise_libutils as utils;
 
 /// Global allocator. Every implicit allocation in the rust liballoc library (for
 /// instance for Vecs, Arcs, etc...) are allocated with this allocator.

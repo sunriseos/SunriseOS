@@ -2,7 +2,7 @@
 //!
 //! A minimal PCI implementation, that permits only discovering AHCI devices, and querying their BAR.
 
-use kfs_libutils::io::{Io, Pio};
+use sunrise_libutils::io::{Io, Pio};
 use spin::Mutex;
 use alloc::prelude::*;
 

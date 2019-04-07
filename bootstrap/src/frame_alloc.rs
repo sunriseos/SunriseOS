@@ -14,8 +14,8 @@
 use multiboot2::BootInformation;
 use spin::Mutex;
 use bit_field::BitArray;
-use kfs_libutils::BitArrayExt;
-use kfs_libutils::{bit_array_first_one, bit_array_first_count_one};
+use sunrise_libutils::BitArrayExt;
+use sunrise_libutils::{bit_array_first_one, bit_array_first_count_one};
 use crate::paging::PAGE_SIZE;
 use crate::address::PhysicalAddress;
 use crate::bootstrap_logging::Serial;

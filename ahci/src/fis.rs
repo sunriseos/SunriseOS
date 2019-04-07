@@ -5,7 +5,7 @@
 
 #![allow(clippy::missing_docs_in_private_items)] // just read the spec, ok !?
 
-use kfs_libuser::io::Mmio;
+use sunrise_libuser::io::Mmio;
 
 /// The types of a FIS.
 ///

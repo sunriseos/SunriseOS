@@ -1,7 +1,7 @@
 //! Shell
 //!
 //! Creates an interactive terminal window, providing a few functions useful to
-//! test KFS. Type help followed by enter to get a list of allowed commands.
+//! test Sunrise. Type help followed by enter to get a list of allowed commands.
 
 #![feature(alloc, asm, naked_functions)]
 #![no_std]
@@ -25,7 +25,7 @@ extern crate log;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
-extern crate kfs_libuser as libuser;
+extern crate sunrise_libuser as libuser;
 
 
 
