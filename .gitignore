@@ -9,6 +9,6 @@ DISK.img
 .gdbinit
 .gdb_history
 /CMakeLists.txt
-/sunrise.iml
+/*.iml
 /cmake-build-debug
 /link.T
