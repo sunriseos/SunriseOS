@@ -11,7 +11,7 @@
   "linker-is-gnu": true,
   "pre-link-args": {
     "ld.lld": [
-      "-Tlink.T"
+      "-Tlinker-scripts/userspace.ld"
     ]
   },
   "executables": true,

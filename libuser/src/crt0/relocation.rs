@@ -18,29 +18,32 @@ mod module_header {
     "#);
 }
 
-/// The definition of a MOD0 header.
+/// The definition of a module header.
+/// This is used by RTLD to do dynamic linking.
+/// See https://switchbrew.org/wiki/NSO#MOD and https://switchbrew.org/wiki/Rtld
 #[repr(C)]
 #[derive(Debug)]
 pub struct ModuleHeader {
     /// The magic value of the MOD header.
     pub magic: u32,
 
-    /// The offset of the dynamic section.
+    /// The offset of the dynamic section relative to ModuleHeader address.
     pub dynamic_off: u32,
 
-    /// The offset of the start of the bss section.
+    /// The offset of the begining of the bss section relative to ModuleHeader address.
     pub bss_start_off: u32,
 
-    /// The offset of the end of the bss section.
+    /// The offset of the end of the bss section relative to ModuleHeader address.
     pub bss_end_off: u32,
 
-    /// The offset of the start of the eh_frame_hdr section.
+    /// The offset of the begining of the eh_frame_hdr section relative to ModuleHeader address.
     pub unwind_start_off: u32,
 
-    /// The offset of the end of the eh_frame_hdr section.
+    /// The offset of the end of the eh_frame_hdr section relative to ModuleHeader address.
     pub unwind_end_off: u32,
 
     /// The offset of the module object that will be used by the rtld.
+    /// This offset is relative to ModuleHeader address.
     pub module_object_off: u32
 }
 

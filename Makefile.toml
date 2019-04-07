@@ -14,10 +14,6 @@ script = ["cp linker-scripts/bootstrap.ld link.T"]
 workspace = false
 script = ["cp linker-scripts/kernel.ld    link.T"]
 
-[tasks.userspace-linker]
-workspace = false
-script = ["cp linker-scripts/userspace.ld    link.T"]
-
 [tasks.install-rust-src]
 install_crate = { rustup_component_name = "rust-src" }
 
@@ -55,70 +51,70 @@ args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-kernel", "--r
 [tasks.vi]
 workspace = false
 description = "Compiles sunrise-vi"
-dependencies = ["userspace-linker", "install-rust-src"]
+dependencies = ["install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-vi"]
 
 [tasks.vi-release]
 workspace = false
 description = "Compiles sunrise-vi"
-dependencies = ["userspace-linker", "install-rust-src"]
+dependencies = ["install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-vi", "--release"]
 
 [tasks.sm]
 workspace = false
 description = "Compiles sunrise-sm"
-dependencies = ["userspace-linker", "install-rust-src"]
+dependencies = ["install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-sm"]
 
 [tasks.sm-release]
 workspace = false
 description = "Compiles sunrise-sm"
-dependencies = ["userspace-linker", "install-rust-src"]
+dependencies = ["install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-sm", "--release"]
 
 [tasks.shell]
 workspace = false
 description = "Compiles sunrise-shell"
-dependencies = ["userspace-linker", "install-rust-src"]
+dependencies = ["install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-shell"]
 
 [tasks.shell-release]
 workspace = false
 description = "Compiles sunrise-shell"
-dependencies = ["userspace-linker", "install-rust-src"]
+dependencies = ["install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-shell", "--release"]
 
 [tasks.clock]
 workspace = false
 description = "Compiles sunrise-clock"
-dependencies = ["userspace-linker", "install-rust-src"]
+dependencies = ["install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-clock"]
 
 [tasks.clock-release]
 workspace = false
 description = "Compiles sunrise-clock"
-dependencies = ["userspace-linker", "install-rust-src"]
+dependencies = ["install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-clock", "--release"]
 
 [tasks.ahci]
 workspace = false
 description = "Compiles sunrise-ahci"
-dependencies = ["userspace-linker", "install-rust-src"]
+dependencies = ["install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-ahci"]
 
 [tasks.ahci-release]
 workspace = false
 description = "Compiles sunrise-ahci"
-dependencies = ["userspace-linker", "install-rust-src"]
+dependencies = ["install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-ahci", "--release"]
 

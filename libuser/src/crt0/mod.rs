@@ -48,6 +48,7 @@ pub unsafe extern fn start() {
 }
 
 /// Clean module bss.
+/// NOTE: Even if the bss should be cleared before calling anything in Rust, all functions used here are guaranteed to not use the bss.
 #[cfg(target_os = "none")]
 #[no_mangle]
 #[link_section = ".text.crt0"]
