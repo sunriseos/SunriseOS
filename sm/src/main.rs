@@ -37,7 +37,7 @@
 #![deny(intra_doc_link_resolution_failure)]
 
 #[macro_use]
-extern crate kfs_libuser as libuser;
+extern crate sunrise_libuser as libuser;
 #[macro_use]
 extern crate alloc;
 
@@ -147,17 +147,17 @@ fn main() {
 
 capabilities!(CAPABILITIES = Capabilities {
     svcs: [
-        kfs_libuser::syscalls::nr::SleepThread,
-        kfs_libuser::syscalls::nr::ExitProcess,
-        kfs_libuser::syscalls::nr::CloseHandle,
-        kfs_libuser::syscalls::nr::WaitSynchronization,
-        kfs_libuser::syscalls::nr::OutputDebugString,
+        sunrise_libuser::syscalls::nr::SleepThread,
+        sunrise_libuser::syscalls::nr::ExitProcess,
+        sunrise_libuser::syscalls::nr::CloseHandle,
+        sunrise_libuser::syscalls::nr::WaitSynchronization,
+        sunrise_libuser::syscalls::nr::OutputDebugString,
 
-        kfs_libuser::syscalls::nr::SetHeapSize,
-        kfs_libuser::syscalls::nr::ManageNamedPort,
-        kfs_libuser::syscalls::nr::AcceptSession,
-        kfs_libuser::syscalls::nr::ReplyAndReceiveWithUserBuffer,
-        kfs_libuser::syscalls::nr::CreatePort,
-        kfs_libuser::syscalls::nr::ConnectToPort,
+        sunrise_libuser::syscalls::nr::SetHeapSize,
+        sunrise_libuser::syscalls::nr::ManageNamedPort,
+        sunrise_libuser::syscalls::nr::AcceptSession,
+        sunrise_libuser::syscalls::nr::ReplyAndReceiveWithUserBuffer,
+        sunrise_libuser::syscalls::nr::CreatePort,
+        sunrise_libuser::syscalls::nr::ConnectToPort,
     ]
 });

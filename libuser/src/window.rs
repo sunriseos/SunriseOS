@@ -6,7 +6,7 @@ use crate::types::{SharedMemory, MappedSharedMemory};
 use crate::vi::{ViInterface, IBuffer};
 use crate::syscalls::MemoryPermissions;
 use crate::mem::{find_free_address, PAGE_SIZE};
-use kfs_libutils::align_up;
+use sunrise_libutils::align_up;
 use crate::error::Error;
 use core::slice;
 

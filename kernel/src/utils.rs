@@ -1,7 +1,7 @@
 //! Generic useful functions
 
-use kfs_libutils;
-pub use self::kfs_libutils::*;
+use sunrise_libutils;
+pub use self::sunrise_libutils::*;
 pub use crate::checks::*;
 use crate::error::KernelError;
 

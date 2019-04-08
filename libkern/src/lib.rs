@@ -17,7 +17,7 @@
 #![deny(intra_doc_link_resolution_failure)]
 
 #[macro_use]
-extern crate kfs_libutils;
+extern crate sunrise_libutils;
 #[macro_use]
 extern crate bitflags;
 #[macro_use]
@@ -298,7 +298,7 @@ syscalls! {
     SetResourceLimitLimitValue = 0x7E,
     CallSecureMonitor = 0x7F,
 
-    // KFS Extensions
+    // Sunrise extensions
     MapFramebuffer = 0x80,
     StartProcessEntrypoint = 0x81,
     MapMmioRegion = 0x82,

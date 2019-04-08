@@ -1,11 +1,11 @@
 //! Kernel Capabilities declaration
 //!
-//! Every program loaded by KFS has to declare the kernel capabilities it wishes
+//! Every program loaded by Sunrise has to declare the kernel capabilities it wishes
 //! to use. Upon doing a privileged action (such as using a syscall, or creating
 //! an event for an IRQ), the kernel will check that the process was allowed to
 //! take this action.
 //!
-//! The main use-case is to make privilege escalation more complicated. In KFS,
+//! The main use-case is to make privilege escalation more complicated. In Sunrise,
 //! an exploit only grants the capabilities of the process that was vulnerable,
 //! requiring more pivoting in order to gain better accesses. For instance,
 //! a vulnerability in the browser does not give rights to access the filesystem.
@@ -22,8 +22,8 @@
 //! # Example
 //!
 //! ```
-//! extern crate kfs_libuser;
-//! use kfs_libuser::{syscalls, caps};
+//! extern crate sunrise_libuser;
+//! use sunrise_libuser::{syscalls, caps};
 //! capabilities!(CAPABILITIES = Capabilities {
 //!     svcs: [
 //!         syscalls::nr::SetHeapSize,
@@ -51,8 +51,8 @@
 /// syntax:
 ///
 /// ```no_run
-/// extern crate kfs_libuser;
-/// use kfs_libuser::{syscalls, caps};
+/// extern crate sunrise_libuser;
+/// use sunrise_libuser::{syscalls, caps};
 /// capabilities!(CAPABILITIES = Capabilities {
 ///     svcs: [
 ///         // Array of syscall numbers.

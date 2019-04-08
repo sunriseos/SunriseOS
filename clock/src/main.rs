@@ -18,13 +18,13 @@
 #![deny(intra_doc_link_resolution_failure)]
 
 #[macro_use]
-extern crate kfs_libuser;
+extern crate sunrise_libuser;
 #[macro_use]
 extern crate alloc;
 
-use kfs_libuser::terminal::{Terminal, WindowSize};
-use kfs_libuser::io::{self, Io};
-use kfs_libuser::syscalls;
+use sunrise_libuser::terminal::{Terminal, WindowSize};
+use sunrise_libuser::io::{self, Io};
+use sunrise_libuser::syscalls;
 use core::fmt::Write;
 
 /// IBM Real Time Clock provides access to the current date and time (at second
@@ -163,24 +163,24 @@ fn main() {
 
 capabilities!(CAPABILITIES = Capabilities {
     svcs: [
-        kfs_libuser::syscalls::nr::SleepThread,
-        kfs_libuser::syscalls::nr::ExitProcess,
-        kfs_libuser::syscalls::nr::CloseHandle,
-        kfs_libuser::syscalls::nr::WaitSynchronization,
-        kfs_libuser::syscalls::nr::OutputDebugString,
+        sunrise_libuser::syscalls::nr::SleepThread,
+        sunrise_libuser::syscalls::nr::ExitProcess,
+        sunrise_libuser::syscalls::nr::CloseHandle,
+        sunrise_libuser::syscalls::nr::WaitSynchronization,
+        sunrise_libuser::syscalls::nr::OutputDebugString,
 
-        kfs_libuser::syscalls::nr::ConnectToNamedPort,
-        kfs_libuser::syscalls::nr::CreateInterruptEvent,
-        kfs_libuser::syscalls::nr::SetHeapSize,
-        kfs_libuser::syscalls::nr::SendSyncRequestWithUserBuffer,
-        kfs_libuser::syscalls::nr::QueryMemory,
-        kfs_libuser::syscalls::nr::CreateSharedMemory,
-        kfs_libuser::syscalls::nr::MapSharedMemory,
-        kfs_libuser::syscalls::nr::UnmapSharedMemory,
+        sunrise_libuser::syscalls::nr::ConnectToNamedPort,
+        sunrise_libuser::syscalls::nr::CreateInterruptEvent,
+        sunrise_libuser::syscalls::nr::SetHeapSize,
+        sunrise_libuser::syscalls::nr::SendSyncRequestWithUserBuffer,
+        sunrise_libuser::syscalls::nr::QueryMemory,
+        sunrise_libuser::syscalls::nr::CreateSharedMemory,
+        sunrise_libuser::syscalls::nr::MapSharedMemory,
+        sunrise_libuser::syscalls::nr::UnmapSharedMemory,
     ],
     raw_caps: [
-        kfs_libuser::caps::irq_pair(0x08, 0x3FF),
-        kfs_libuser::caps::ioport(0x70),
-        kfs_libuser::caps::ioport(0x71),
+        sunrise_libuser::caps::irq_pair(0x08, 0x3FF),
+        sunrise_libuser::caps::ioport(0x70),
+        sunrise_libuser::caps::ioport(0x71),
     ]
 });

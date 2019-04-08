@@ -2,7 +2,7 @@
 
 use failure::Backtrace;
 
-pub use kfs_libkern::error::KernelError as UserspaceError;
+pub use sunrise_libkern::error::KernelError as UserspaceError;
 
 /// Kernel Error.
 ///

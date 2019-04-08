@@ -34,7 +34,7 @@
 //!
 //! [switchbrew Error Codes page]: https://switchbrew.org/w/index.php?title=Error_codes
 
-pub use kfs_libkern::error::KernelError;
+pub use sunrise_libkern::error::KernelError;
 use failure::Backtrace;
 use core::fmt;
 

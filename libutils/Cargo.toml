@@ -1,5 +1,5 @@
 [package]
-name = "kfs-libutils"
+name = "sunrise-libutils"
 version = "0.1.0"
 authors = ["roblabla <unfiltered@roblab.la>", "orycterope <tvermeilh@gmail.com>"]
 license = "Apache-2.0 OR MIT"

@@ -7,7 +7,7 @@ use crate::frame_allocator::PhysicalMemRegion;
 use alloc::{vec::Vec, sync::Arc};
 use crate::utils::{check_size_aligned, check_nonzero_length, Splittable};
 use failure::Backtrace;
-use kfs_libkern;
+use sunrise_libkern;
 
 /// A memory mapping.
 /// Stores the address, the length, and the type it maps.
@@ -58,19 +58,19 @@ pub enum MappingType {
     SystemReserved
 }
 
-impl<'a> From<&'a MappingType> for kfs_libkern::MemoryType {
-    fn from(ty: &'a MappingType) -> kfs_libkern::MemoryType {
+impl<'a> From<&'a MappingType> for sunrise_libkern::MemoryType {
+    fn from(ty: &'a MappingType) -> sunrise_libkern::MemoryType {
         match ty {
             // TODO: Extend MappingType to cover all MemoryTypes
             // BODY: Currently, MappingType only covers a very limited view of the mappings.
             // It should have the ability to understand all the various kind of memory allocations,
             // such as "Heap", "CodeMemory", "SharedMemory", "TransferMemory", etc...
 
-            MappingType::Available => kfs_libkern::MemoryType::Unmapped,
-            MappingType::Guarded => kfs_libkern::MemoryType::Reserved,
-            MappingType::Regular(_) => kfs_libkern::MemoryType::Normal,
-            MappingType::Shared(_) => kfs_libkern::MemoryType::SharedMemory,
-            MappingType::SystemReserved => kfs_libkern::MemoryType::Reserved,
+            MappingType::Available => sunrise_libkern::MemoryType::Unmapped,
+            MappingType::Guarded => sunrise_libkern::MemoryType::Reserved,
+            MappingType::Regular(_) => sunrise_libkern::MemoryType::Normal,
+            MappingType::Shared(_) => sunrise_libkern::MemoryType::SharedMemory,
+            MappingType::SystemReserved => sunrise_libkern::MemoryType::Reserved,
         }
     }
 }

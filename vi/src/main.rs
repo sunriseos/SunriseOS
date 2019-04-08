@@ -20,7 +20,7 @@
 #![deny(intra_doc_link_resolution_failure)]
 
 #[macro_use]
-extern crate kfs_libuser as libuser;
+extern crate sunrise_libuser as libuser;
 
 #[macro_use]
 extern crate alloc;
@@ -41,7 +41,7 @@ use crate::libuser::types::*;
 use spin::Mutex;
 use crate::libuser::error::Error;
 use crate::libuser::syscalls::MemoryPermissions;
-use kfs_libutils::align_up;
+use sunrise_libutils::align_up;
 use libuser::mem::{find_free_address, PAGE_SIZE};
 
 /// Entry point interface.
@@ -283,27 +283,27 @@ fn main() {
 }
 capabilities!(CAPABILITIES = Capabilities {
     svcs: [
-        kfs_libuser::syscalls::nr::SleepThread,
-        kfs_libuser::syscalls::nr::ExitProcess,
-        kfs_libuser::syscalls::nr::CloseHandle,
-        kfs_libuser::syscalls::nr::WaitSynchronization,
-        kfs_libuser::syscalls::nr::OutputDebugString,
+        sunrise_libuser::syscalls::nr::SleepThread,
+        sunrise_libuser::syscalls::nr::ExitProcess,
+        sunrise_libuser::syscalls::nr::CloseHandle,
+        sunrise_libuser::syscalls::nr::WaitSynchronization,
+        sunrise_libuser::syscalls::nr::OutputDebugString,
 
-        kfs_libuser::syscalls::nr::ReplyAndReceiveWithUserBuffer,
-        kfs_libuser::syscalls::nr::AcceptSession,
-        kfs_libuser::syscalls::nr::CreateSession,
+        sunrise_libuser::syscalls::nr::ReplyAndReceiveWithUserBuffer,
+        sunrise_libuser::syscalls::nr::AcceptSession,
+        sunrise_libuser::syscalls::nr::CreateSession,
 
-        kfs_libuser::syscalls::nr::ConnectToNamedPort,
-        kfs_libuser::syscalls::nr::SendSyncRequestWithUserBuffer,
+        sunrise_libuser::syscalls::nr::ConnectToNamedPort,
+        sunrise_libuser::syscalls::nr::SendSyncRequestWithUserBuffer,
 
-        kfs_libuser::syscalls::nr::SetHeapSize,
+        sunrise_libuser::syscalls::nr::SetHeapSize,
 
-        kfs_libuser::syscalls::nr::QueryMemory,
+        sunrise_libuser::syscalls::nr::QueryMemory,
 
-        kfs_libuser::syscalls::nr::MapSharedMemory,
-        kfs_libuser::syscalls::nr::UnmapSharedMemory,
+        sunrise_libuser::syscalls::nr::MapSharedMemory,
+        sunrise_libuser::syscalls::nr::UnmapSharedMemory,
 
-        kfs_libuser::syscalls::nr::MapFramebuffer,
+        sunrise_libuser::syscalls::nr::MapFramebuffer,
     ],
 });
 

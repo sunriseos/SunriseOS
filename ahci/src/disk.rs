@@ -5,11 +5,11 @@ use core::fmt::{self, Debug, Formatter};
 
 use spin::Mutex;
 
-use kfs_libuser::error::{Error, AhciError};
-use kfs_libuser::types::SharedMemory;
-use kfs_libuser::syscalls::MemoryPermissions;
-use kfs_libuser::types::Handle;
-use kfs_libuser::zero_box::ZeroBox;
+use sunrise_libuser::error::{Error, AhciError};
+use sunrise_libuser::types::SharedMemory;
+use sunrise_libuser::syscalls::MemoryPermissions;
+use sunrise_libuser::types::Handle;
+use sunrise_libuser::zero_box::ZeroBox;
 
 use crate::hba::*;
 
@@ -190,7 +190,7 @@ object! {
         #[cmdid(1)]
         fn read_dma(&mut self, handle: Handle<copy>, mapping_size: u64, lba: u64, sector_count: u64,) -> Result<(), Error> {
             let sharedmem = SharedMemory(handle);
-            let addr = kfs_libuser::mem::find_free_address(mapping_size as _, 0x1000)?;
+            let addr = sunrise_libuser::mem::find_free_address(mapping_size as _, 0x1000)?;
             let mapped = sharedmem.map(addr, mapping_size as _, MemoryPermissions::empty())
             // no need for permission, only the disk will dma to it.
                 .map_err(|_| AhciError::InvalidArg)?;
@@ -215,7 +215,7 @@ object! {
         #[cmdid(2)]
         fn write_dma(&mut self, handle: Handle<copy>, mapping_size: u64, lba: u64, sector_count: u64,) -> Result<(), Error> {
             let sharedmem = SharedMemory(handle);
-            let addr = kfs_libuser::mem::find_free_address(mapping_size as _, 0x1000)?;
+            let addr = sunrise_libuser::mem::find_free_address(mapping_size as _, 0x1000)?;
             let mapped = sharedmem.map(addr, mapping_size as _, MemoryPermissions::empty())
             // no need for permission, only the disk will dma to it.
                 .map_err(|_| AhciError::InvalidArg)?;

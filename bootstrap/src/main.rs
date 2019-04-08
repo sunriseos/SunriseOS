@@ -85,7 +85,7 @@ pub fn print_stack() {
         let sp: usize;
         asm!("mov $0, esp" : "=r"(sp) : : : "intel");
         let sp_start = sp - crate::STACK.0.as_ptr() as usize;
-        kfs_libutils::print_hexdump(&mut Serial, &crate::STACK.0[sp_start..]);
+        sunrise_libutils::print_hexdump(&mut Serial, &crate::STACK.0[sp_start..]);
     }
 }
 

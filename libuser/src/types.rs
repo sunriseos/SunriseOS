@@ -6,7 +6,7 @@
 use core::marker::PhantomData;
 use crate::syscalls;
 use core::num::NonZeroU32;
-use kfs_libkern::MemoryPermissions;
+use sunrise_libkern::MemoryPermissions;
 use crate::error::{Error, KernelError};
 use crate::ipc::{Message, MessageTy};
 use core::mem;
