@@ -19,7 +19,7 @@ name = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 iname = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | ":")* }
 sname = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | ":" | "-")* }
 
-serviceNameList = { sname ~ ("," ~ sname)* ~ ","? }
+serviceNameList = { decorator* ~ sname ~ ("," ~ decorator* ~ sname)* ~ ","? }
 structField = { comment* ~ ty ~ name ~ ";" }
 enumField = { comment* ~ name ~ "=" ~ number ~ ";" }
 
@@ -71,11 +71,13 @@ namedType = { alias ~ name? }
 comment = @{ "#" ~ (!"\n" ~ ANY)* }
 versionNumber = { number ~ "." ~ number ~ "." ~ number }
 range = { versionNumber? ~ "-" ~ versionNumber? }
-decorator = ${ "@" ~ (versionDecorator | undocumentedDecorator) }
+decorator = ${ "@" ~ (versionDecorator | undocumentedDecorator | managedportDecorator | unknownDecorator) }
 
 versionPlus = { "+" }
 versionDecorator = { "version" ~ "(" ~ versionNumber ~ (versionPlus | ("-" ~ versionNumber))? ~ ")" }
 undocumentedDecorator = { "undocumented" }
+managedportDecorator = { "managedport" }
+unknownDecorator = { name ~ ("(" ~ sname+ ~ ")")? }
 
 funcDef = { comment* ~ decorator* ~ "[" ~ number ~ "]" ~ name ~ namedTuple ~ ("->" ~ (namedType | namedTuple))? ~ ";" }
 

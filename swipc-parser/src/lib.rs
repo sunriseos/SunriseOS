@@ -62,6 +62,8 @@ pub enum Type {
 pub enum Decorator {
     Undocumented,
     Version(String, Option<String>),
+    ManagedPort,
+    Unknown(String, String),
 }
 
 #[derive(Debug)]
@@ -78,7 +80,7 @@ pub struct Func {
 pub struct Interface {
     pub doc: String,
     pub name: String,
-    pub service_list: Vec<String>,
+    pub service_list: Vec<(Vec<Decorator>, String)>,
     pub funcs: Vec<Func>
 }
 
@@ -299,14 +301,17 @@ fn parse_type_def(mut typedef: Pairs<Rule>) -> TypeDef {
     }
 }
 
-fn parse_service_name_list(parent: &mut Pairs<Rule>) -> Vec<String> {
+fn parse_service_name_list(parent: &mut Pairs<Rule>) -> Vec<(Vec<Decorator>, String)> {
     let service_list = parent.next().unwrap();
     assert_eq!(service_list.as_rule(), Rule::serviceNameList);
 
     let mut ret = Vec::new();
-    for item in service_list.into_inner() {
+    let mut inner = service_list.into_inner();
+    while inner.peek().is_some() {
+        let decorators = parse_decorators(&mut inner);
+        let item = inner.next().unwrap();
         assert_eq!(item.as_rule(), Rule::sname);
-        ret.push(item.as_str().into());
+        ret.push((decorators, item.as_str().into()));
     }
     ret
 }
@@ -352,6 +357,15 @@ fn parse_decorators(parent: &mut Pairs<Rule>) -> Vec<Decorator> {
                 },
                 Rule::undocumentedDecorator => {
                     decorators.push(Decorator::Undocumented);
+                },
+                Rule::managedportDecorator => {
+                    decorators.push(Decorator::ManagedPort);
+                },
+                Rule::unknownDecorator => {
+                    let mut inner = inner.into_inner();
+                    let name = parse_name(&mut inner).to_string();
+                    let args = parse_name(&mut inner).to_string();
+                    decorators.push(Decorator::Unknown(name, args));
                 },
                 _ => unreachable!()
             }

@@ -464,7 +464,7 @@ pub fn generate_ipc(path: &Path, prefix: String, mod_name: String, crate_name: S
 
         if !interface.service_list.is_empty() {
             writeln!(s, "\nimpl {} {{", struct_name).unwrap();
-            for service in interface.service_list.iter() {
+            for (decorators, service) in interface.service_list.iter() {
                 let name = if interface.service_list.len() == 1 {
                     "".to_string()
                 } else {
