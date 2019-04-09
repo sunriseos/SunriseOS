@@ -254,10 +254,21 @@ description = "Run the tests in 32bit mode"
 command = "cargo"
 args = ["test", "--target=i686-unknown-linux-gnu"]
 
+[tasks.refresh-crates]
+workspace = false
+description = "Make cargo-clippy work..."
+command = "touch"
+args = ["-c", "kernel/src/main.rs", "bootstrap/src/main.rs",
+	"shell/src/main.rs", "libuser/src/lib.rs", "clock/src/main.rs",
+	"sm/src/main.rs", "vi/src/main.rs", "ahci/src/main.rs",
+	"libutils/src/lib.rs", "libkern/src/lib.rs", "swipc-gen/src/lib.rs",
+	"swipc-parser/src/lib.rs"
+]
+
 [tasks.clippy-kfs-target]
 workspace = false
 description = "Run clippy on kfs components"
-dependencies = ["install-rust-src"]
+dependencies = ["install-rust-src", "refresh-crates"]
 install_crate = { rustup_component_name = "clippy" }
 command = "cargo"
 args = ["xclippy", "--target=i386-unknown-none",
@@ -270,7 +281,7 @@ args = ["xclippy", "--target=i386-unknown-none",
 [tasks.clippy-host-target]
 workspace = false
 description = "Run clippy on host components (relying on std)"
-dependencies = ["install-rust-src"]
+dependencies = ["install-rust-src", "refresh-crates"]
 install_crate = { rustup_component_name = "clippy" }
 command = "cargo"
 args = ["clippy",
