@@ -1,8 +1,6 @@
 use lazy_static::lazy_static;
 
-use std::fs;
 use std::fmt::Write;
-use std::path::Path;
 use std::collections::HashMap;
 use swipc_parser::{Alias, Func, KHandleType, TypeDef, Type, Decorator};
 use bit_field::BitField;
@@ -382,9 +380,25 @@ fn generate_mod(m: Mod, depth: usize, mod_name: &str, crate_name: &str) -> Strin
     s
 }
 
-pub fn generate_ipc(path: &Path, prefix: String, mod_name: String, crate_name: String) -> String {
-    let ctx = swipc_parser::parse(&fs::read_to_string(path).unwrap());
+/// Generate a module containing all the functions in the given IPC file.
+///
+/// Strips the prefix from namespace path. The prefix should represents the
+/// location of the module. For instance, if the module is being defined in
+/// `libuser::ipc`, then prefix should contain `libuser::ipc`. If the file
+/// contains any IPC outside the given prefix, an error will be raised.
+///
+/// The module name and crate name should be specified. This is used to allow
+/// kfs_libuser to `use` itself - since otherwise it will not be in the
+/// namespace.
+///
+/// The generated string will contain a module hierarchy.
+///
+/// # Example
+pub fn generate_ipc(s: &str, prefix: String, mod_name: String, crate_name: String) -> String {
+    // Read and parse the SwIPC file.
+    let ctx = swipc_parser::parse(s);
 
+    // Create the root module.
     let mut root_mod = Mod {
         types: Vec::new(),
         ifaces: Vec::new(),
