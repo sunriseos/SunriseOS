@@ -95,12 +95,26 @@ fn format_ret_ty(ret: &[(Alias, Option<String>)]) -> Result<String, Error> {
     }
 }
 
+fn get_handle_type(ty: &Option<KHandleType>) -> Option<&'static str> {
+    match ty {
+        Some(KHandleType::ClientSession) => Some("kfs_libuser::types::ClientSession"),
+        Some(KHandleType::ServerSession) => Some("kfs_libuser::types::ServerSession"),
+        Some(KHandleType::ClientPort)    => Some("kfs_libuser::types::ClientPort"),
+        Some(KHandleType::ServerPort)    => Some("kfs_libuser::types::ServerPort"),
+        Some(KHandleType::SharedMemory)  => Some("kfs_libuser::types::SharedMemory"),
+        _                                => None
+    }
+}
+
 fn format_ret(ret: (&Alias, String)) -> Result<String, Error> {
     match ret.0 {
         Alias::Object(ty) => Ok(format!("{}::from(ClientSession(res.pop_handle_move()?))", ty)),
         Alias::KObject => Ok(format!("res.pop_handle_move()?")),
-        Alias::KHandle(false, _) => Ok(format!("res.pop_handle_move()?")),
-        Alias::KHandle(true, _) => Ok(format!("res.pop_handle_copy()?")),
+        Alias::KHandle(is_copy, ty) => if let Some(s) = get_handle_type(ty) {
+            Ok(format!("{}(res.pop_handle_{}()?)", s, if *is_copy { "copy" } else { "move" }))
+        } else {
+            Ok(format!("res.pop_handle_{}()?", if *is_copy { "copy" } else { "move" }))
+        },
         Alias::Pid => Ok(format!("res.pop_pid()?")),
         Alias::Bytes(..) |
         Alias::Align(..) |
@@ -137,15 +151,10 @@ fn get_type(output: bool, ty: &Alias) -> Result<String, Error> {
         Alias::Align(_alignment, _underlying) => Err(Error::UnsupportedStruct),
 
         Alias::KObject => Ok("Handle".to_string()),
-        Alias::KHandle(is_copy, ty) => {
-            Ok(format!("{}{}", if *is_copy && !output { "&" } else { "" }, match ty {
-                Some(KHandleType::ClientSession) => "kfs_libuser::types::ClientSession",
-                Some(KHandleType::ServerSession) => "kfs_libuser::types::ServerSession",
-                Some(KHandleType::ClientPort)    => "kfs_libuser::types::ClientPort",
-                Some(KHandleType::ServerPort)    => "kfs_libuser::types::ServerPort",
-                Some(KHandleType::SharedMemory)  => "kfs_libuser::types::SharedMemory",
-                _                                => "kfs_libuser::types::Handle"
-            }))
+        Alias::KHandle(is_copy, ty) => if let Some(s) = get_handle_type(ty) {
+            Ok(format!("{}{}", if *is_copy && !output { "&" } else { "" }, s))
+        } else {
+            Ok(format!("kfs_libuser::types::{}", if *is_copy && !output { "HandleRef" } else { "Handle" }))
         },
         Alias::Pid => Ok("u64".to_string()),
         Alias::Other(ty) if ty == "unknown" => Err(Error::UnsupportedStruct),
@@ -226,18 +235,17 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
                 }
             },
             Alias::Object(_)                          => writeln!(s, "        msg.push_handle_move({}.into());", argname).unwrap(),
-            Alias::KHandle(false, Some(KHandleType::ClientSession))
-          | Alias::KHandle(false, Some(KHandleType::ServerSession))
-          | Alias::KHandle(false, Some(KHandleType::ClientPort))
-          | Alias::KHandle(false, Some(KHandleType::ServerPort))
-          | Alias::KHandle(false, Some(KHandleType::SharedMemory)) => writeln!(s, "        msg.push_handle_move({}.0);", argname).unwrap(),
-            Alias::KHandle(true, Some(KHandleType::ClientSession))
-          | Alias::KHandle(true, Some(KHandleType::ServerSession))
-          | Alias::KHandle(true, Some(KHandleType::ClientPort))
-          | Alias::KHandle(true, Some(KHandleType::ServerPort))
-          | Alias::KHandle(true, Some(KHandleType::SharedMemory)) => writeln!(s, "        msg.push_handle_copy({}.0.as_ref());", argname).unwrap(),
-            Alias::KObject | Alias::KHandle(false, _) => writeln!(s, "        msg.push_handle_move({});", argname).unwrap(),
-            Alias::KHandle(true, _)                   => writeln!(s, "        msg.push_handle_copy({});", argname).unwrap(),
+            Alias::KHandle(false, ty)                 => if let Some(_) = get_handle_type(ty) {
+                writeln!(s, "        msg.push_handle_move({}.0);", argname).unwrap()
+            } else {
+                writeln!(s, "        msg.push_handle_move({});", argname).unwrap()
+            },
+            Alias::KHandle(true, ty)                  => if let Some(_) = get_handle_type(ty) {
+                writeln!(s, "        msg.push_handle_copy({}.0.as_ref());", argname).unwrap()
+            } else {
+                writeln!(s, "        msg.push_handle_copy({});", argname).unwrap()
+            },
+            Alias::KObject                            => writeln!(s, "        msg.push_handle_move({});", argname).unwrap(),
             Alias::Pid                                => writeln!(s, "        msg.send_pid(None);").unwrap(),
             _                                         => continue,
         }
