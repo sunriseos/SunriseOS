@@ -348,7 +348,7 @@ fn generate_mod(m: Mod, depth: usize, mod_name: &str, crate_name: &str) -> Strin
 
     let depthstr = "    ".repeat(depth);
 
-    writeln!(s, "{}mod {} {{", depthstr, mod_name).unwrap();
+    writeln!(s, "{}pub mod {} {{", depthstr, mod_name).unwrap();
     writeln!(s, "{}    //! Auto-generated documentation", depthstr).unwrap();
     writeln!(s, "{}    use crate as {};", depthstr, crate_name.replace("-", "_")).unwrap();
     writeln!(s, "").unwrap();
