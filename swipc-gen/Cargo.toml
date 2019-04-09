@@ -3,6 +3,7 @@ name = "swipc-gen"
 version = "0.1.0"
 authors = ["roblabla <unfiltered@roblab.la>"]
 edition = "2018"
+description = "Client code generator for SwIPC calls"
 
 [lib]
 proc-macro = true
