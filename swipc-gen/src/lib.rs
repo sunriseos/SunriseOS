@@ -6,6 +6,7 @@ use proc_macro::TokenStream;
 use syn::{AttributeArgs, ItemMod, parse_macro_input, spanned::Spanned};
 use darling::FromMeta;
 use std::path::PathBuf;
+use std::fmt::Write;
 
 mod gen_rust_code;
 
@@ -35,7 +36,10 @@ pub fn gen_ipc(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let crate_name = std::env::var("CARGO_PKG_NAME").unwrap();
 
-    let s = gen_rust_code::generate_ipc(&root.join("src/").join(args.path), prefix, item.ident.to_string(), crate_name);
+    let mut generated_mod = gen_rust_code::generate_ipc(&root.join("src/").join(&args.path), prefix, item.ident.to_string(), crate_name);
 
-    s.parse().unwrap()
+    // Force a rebuild if the SwIPC definition changes.
+    writeln!(generated_mod, "\nconst _: &[u8] = include_bytes!(\"{}\");", args.path).unwrap();
+
+    generated_mod.parse().unwrap()
 }
