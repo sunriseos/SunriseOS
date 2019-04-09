@@ -4,7 +4,7 @@ use std::fs;
 use std::fmt::Write;
 use std::path::Path;
 use std::collections::HashMap;
-use swipc_parser::{Alias, Func, KHandleType, TypeDef, Type};
+use swipc_parser::{Alias, Func, KHandleType, TypeDef, Type, Decorator};
 use bit_field::BitField;
 
 lazy_static! {
@@ -478,22 +478,40 @@ pub fn generate_ipc(path: &Path, prefix: String, mod_name: String, crate_name: S
                 } else {
                     format!("_{}", service.replace(":", "_"))
                 };
+
                 writeln!(s, "    pub fn raw_new{}() -> Result<{}, Error> {{", name, struct_name).unwrap();
-                writeln!(s, "         use kfs_libuser::syscalls;").unwrap();
-                writeln!(s, "         use kfs_libuser::error::SmError;").unwrap();
-                writeln!(s, "         ").unwrap();
-                writeln!(s, "         loop {{").unwrap();
-                writeln!(s, "              let svcname = unsafe {{").unwrap();
-                let mut service_name = service.to_string();
-                service_name += &"\\0".repeat(8 - service_name.len());
-                writeln!(s, r#"                  core::mem::transmute(*b"{}")"#, service_name).unwrap();
-                writeln!(s, "              }};").unwrap();
-                writeln!(s, "              let _ = match kfs_libuser::sm::IUserInterface::raw_new()?.get_service(svcname) {{").unwrap();
-                writeln!(s, "                  Ok(s) => return Ok({}(s)),", struct_name).unwrap();
-                writeln!(s, "                  Err(Error::Sm(SmError::ServiceNotRegistered, ..)) => syscalls::sleep_thread(0),").unwrap();
-                writeln!(s, "                  Err(err) => return Err(err)").unwrap();
-                writeln!(s, "              }};").unwrap();
-                writeln!(s, "         }}").unwrap();
+                writeln!(s, "        use kfs_libuser::syscalls;").unwrap();
+                writeln!(s, "        use kfs_libuser::error::KernelError;").unwrap();
+
+                if decorators.iter().find(|v| if let Decorator::ManagedPort = v { true } else { false }).is_some() {
+                    // This service is a kernel-managed port.
+                    writeln!(s, "        loop {{").unwrap();
+                    let mut service_name = service.to_string();
+                    service_name += &"\\0";
+                    writeln!(s, r#"            let _ = match syscalls::connect_to_named_port("{}") {{"#, service_name).unwrap();
+                    writeln!(s, "                Ok(s) => return Ok({}(s)),", struct_name).unwrap();
+                    writeln!(s, "                Err(KernelError::NoSuchEntry) => syscalls::sleep_thread(0),").unwrap();
+                    writeln!(s, "                Err(err) => Err(err)?").unwrap();
+                    writeln!(s, "            }};").unwrap();
+                    writeln!(s, "        }}").unwrap();
+                } else {
+                    // This service is a sm-managed port.
+                    writeln!(s, "         use kfs_libuser::error::SmError;").unwrap();
+                    writeln!(s, "         ").unwrap();
+                    writeln!(s, "         loop {{").unwrap();
+                    writeln!(s, "              let svcname = unsafe {{").unwrap();
+                    let mut service_name = service.to_string();
+                    service_name += &"\\0".repeat(8 - service_name.len());
+                    writeln!(s, r#"                  core::mem::transmute(*b"{}")"#, service_name).unwrap();
+                    writeln!(s, "              }};").unwrap();
+                    writeln!(s, "              let _ = match kfs_libuser::sm::IUserInterface::raw_new()?.get_service(svcname) {{").unwrap();
+                    writeln!(s, "                  Ok(s) => return Ok({}(s)),", struct_name).unwrap();
+                    writeln!(s, "                  Err(Error::Sm(SmError::ServiceNotRegistered, ..)) => syscalls::sleep_thread(0),").unwrap();
+                    writeln!(s, "                  Err(err) => return Err(err)").unwrap();
+                    writeln!(s, "              }};").unwrap();
+                    writeln!(s, "         }}").unwrap();
+                }
+
                 writeln!(s, "    }}").unwrap();
             }
             writeln!(s, "}}").unwrap();
