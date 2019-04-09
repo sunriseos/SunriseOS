@@ -1,4 +1,51 @@
-extern crate pest;
+//! Efficient parser for the SwIPC files
+//!
+//! SwIPC is your one-stop-shop for Nintendo Switch IPC definitions. The format
+//! is documented on [the SwIPC repo](https://github.com/reswitched/SwIPC). This
+//! crate can parse the SwIPC auto.id file almost instantaneously, removing the
+//! need for the old python parser's need for caches.
+//!
+//! The main entry-point for this crate is the [parse] function, which takes a
+//! string containing the content you want to parse, and returns a [Ctx] struct
+//! containing all the definitions parsed. If the file didn't parse, we panic.
+//!
+//! # Example
+//!
+//! ```
+//! # let vi = "# Entry point interface.
+//! # interface libuser::vi::ViInterface is vi {
+//! #     # Gets the screen resolution.
+//! #     [1] get_resolution() -> (u32 width, u32 height);
+//! # }";
+//! let ctx = parse(vi);
+//! let vi = ctx.interfaces["libuser::vi::ViInterface"];
+//! for func in vi.funcs {
+//!     println!("[{}] {}: {}", func.num, func.name, func.doc);
+//! }
+//! ```
+
+// rustc warnings
+#![warn(unused)]
+#![warn(missing_debug_implementations)]
+#![allow(unused_unsafe)]
+#![allow(unreachable_code)]
+#![allow(dead_code)]
+#![cfg_attr(test, allow(unused_imports))]
+
+// rustdoc warnings
+#![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
+#![deny(intra_doc_link_resolution_failure)]
+
+// TODO: Bring the SwIPC parser in-line with new upstream format.
+// BODY: KObject should be removed, KHandle should be renamed to handle.
+// BODY: 
+// BODY: Unknown can now carry a size (which behaves like bytes). Unsized unknown
+// BODY: should be treated as an unsupported struct.
+// BODY:
+// BODY: Struct should now carry their size (and can optionally be validated).
+// BODY:
+// BODY: Buffer size is now optional, and defaults to variable/client-sized. 
+
 #[macro_use]
 extern crate pest_derive;
 
@@ -6,67 +53,134 @@ use pest::Parser;
 use pest::iterators::{Pairs, Pair};
 use std::collections::HashMap;
 
-#[derive(Parser)]
-#[grammar = "grammar.pest"]
-struct SwipcParser;
+mod pest_parser {
+    #![allow(missing_docs)]
+    #![allow(clippy::missing_docs_in_private_items)]
 
+    #[derive(Parser)]
+    #[grammar = "grammar.pest"]
+    pub struct SwipcParser;
+}
+
+use pest_parser::*;
+
+/// A new type definition.
+///
+/// [SwIPC doc](https://github.com/reswitched/SwIPC#typedefs).
 #[derive(Debug)]
+#[allow(missing_docs)]
+#[allow(clippy::missing_docs_in_private_items)]
 pub struct TypeDef {
     pub doc: String,
     pub name: String,
     pub ty: Type
 }
 
+/// Struct definition.
+///
+/// Can optionally be decorated with a size.
+///
+/// The fields tuple contains (documentation, name, type).
 #[derive(Debug)]
+#[allow(missing_docs)]
+#[allow(clippy::missing_docs_in_private_items)]
 pub struct Struct {
     pub size: Option<u64>,
     pub fields: Vec<(String, String, Type)>
 }
 
+/// Enum definition.
+///
+/// The tyname represents the size of the enum. Can be u8, u16, u32 or u64.
+///
+/// The fields tuple contains (documentation, name, number).
 #[derive(Debug)]
+#[allow(missing_docs)]
+#[allow(clippy::missing_docs_in_private_items)]
 pub struct Enum {
     pub tyname: String,
     pub fields: Vec<(String, String, u64)>
 }
 
+/// Type of a KHandle. Represents all the kernel handle types on the Horizon/NX
+/// kernel.
 #[derive(Debug)]
+#[allow(missing_docs)]
+#[allow(clippy::missing_docs_in_private_items)]
 pub enum KHandleType {
-    // TODO: REvent, WEvent, IrqEvent, DeviceAddressSpace
     Process, Thread, Debug, CodeMemory, TransferMemory, SharedMemory,
     ServerPort, ClientPort, ServerSession, ClientSession,
     ServerLightSession, ClientLightSession, ReadableEvent, WritableEvent,
     IrqEvent, DeviceAddressSpace
 }
 
+/// A type alias.
+///
+/// To simplify the grammar a bit, it also contains the special types.
 #[derive(Debug)]
+#[allow(missing_docs)]
 pub enum Alias {
+    /// Buffer Array. Equivalent to buffer<data_type, transfer_type, variable>
     Array(Box<Alias>, u64),
+    /// An IPC Buffer transfering untyped data.
+    /// First argument represents underlying datatype, second argument represents
+    /// the IPC buffer kind [as described on switchbrew], and the third
+    /// argument is the size.
+    ///
+    /// [as described on switchbrew]: https://switchbrew.org/w/index.php?title=IPC_Marshalling#Official_marshalling_code
     Buffer(Box<Alias>, u64, u64),
+    /// An IPC Object implementing the given interface.
     Object(String),
+    /// A byte blob of the given size.
     Bytes(u64),
+    /// Forces the alignment to the given size for the given underlying type.
     Align(u64, Box<Alias>),
+    /// Same as a KHandle<move, None>
     KObject,
+    /// A Kernel Handle of the given type. If the first argument is true, the
+    /// handle is a copy Handle, otherwise it's a move a handle.
     KHandle(bool, Option<KHandleType>),
+    /// A Pid.
     Pid,
+    /// Either a builtin or another structure.
     Other(String)
 }
 
+/// A new type definition.
 #[derive(Debug)]
+#[allow(missing_docs)]
 pub enum Type {
+    /// Creates a new structure
     Struct(Struct),
+    /// Creates a new enum
     Enum(Enum),
+    /// Creates a new type alias
     Alias(Alias),
 }
 
+/// Represents a decorator.
 #[derive(Debug)]
+#[allow(missing_docs)]
 pub enum Decorator {
+    /// Can be attached to a function to specify that its types are unknown.
     Undocumented,
+    /// Can be attached to a function to specify that the function was added
+    /// or removed in a specific version.
+    ///
+    /// First argument specifies which version the function was added in - it
+    /// defaults to 1.0.0. The second argument specifies when the function was
+    /// removed, or None if it's still around.
     Version(String, Option<String>),
+    /// Can be attached to a service to tag it as a kernel-managed port.
     ManagedPort,
+    /// A decorator not known by this parser.
     Unknown(String, String),
 }
 
+/// A function on an interface.
 #[derive(Debug)]
+#[allow(missing_docs)]
+#[allow(clippy::missing_docs_in_private_items)]
 pub struct Func {
     pub doc: String,
     pub decorators: Vec<Decorator>,
@@ -76,7 +190,10 @@ pub struct Func {
     pub ret: Vec<(Alias, Option<String>)>
 }
 
+/// An interface definition.
 #[derive(Debug)]
+#[allow(missing_docs)]
+#[allow(clippy::missing_docs_in_private_items)]
 pub struct Interface {
     pub doc: String,
     pub name: String,
@@ -84,18 +201,26 @@ pub struct Interface {
     pub funcs: Vec<Func>
 }
 
+/// A top-level item. Can either be a type definition, or an interface.
 #[derive(Debug)]
+#[allow(missing_docs)]
+#[allow(clippy::missing_docs_in_private_items)]
 pub enum Def {
     Type(TypeDef),
     Interface(Interface),
 }
 
+/// The context returned by a successful parse. Contains convenient hashmaps
+/// to access types and interfaces from their fully qualified name.
 #[derive(Debug)]
+#[allow(missing_docs)]
+#[allow(clippy::missing_docs_in_private_items)]
 pub struct Ctx {
     pub types: HashMap<String, TypeDef>,
     pub interfaces: HashMap<String, Interface>
 }
 
+#[allow(clippy::missing_docs_in_private_items)]
 fn parse_comment(parent: &mut Pairs<Rule>) -> String {
     let mut comment = String::new();
 
@@ -111,6 +236,7 @@ fn parse_comment(parent: &mut Pairs<Rule>) -> String {
     comment
 }
 
+#[allow(clippy::missing_docs_in_private_items)]
 fn parse_name<'a>(parent: &mut Pairs<'a, Rule>) -> &'a str {
     let name = parent.next().unwrap();
     match name.as_rule() {
@@ -120,6 +246,7 @@ fn parse_name<'a>(parent: &mut Pairs<'a, Rule>) -> &'a str {
     name.as_str()
 }
 
+#[allow(clippy::missing_docs_in_private_items)]
 fn parse_number(parent: &mut Pairs<Rule>) -> u64 {
     let num = parent.next().unwrap();
     assert_eq!(num.as_rule(), Rule::number, "Broken parser: {:?} is not a number", num);
@@ -131,6 +258,7 @@ fn parse_number(parent: &mut Pairs<Rule>) -> u64 {
     }
 }
 
+#[allow(clippy::missing_docs_in_private_items)]
 fn parse_struct(mut ty: Pairs<Rule>) -> Struct {
     // Template is optional.
     let size = match ty.peek().unwrap().as_rule() {
@@ -162,6 +290,7 @@ fn parse_struct(mut ty: Pairs<Rule>) -> Struct {
     }
 }
 
+#[allow(clippy::missing_docs_in_private_items)]
 fn parse_enum(mut ty: Pairs<Rule>) -> Enum {
     let tyname = parse_name(&mut ty).to_string();
 
@@ -184,6 +313,7 @@ fn parse_enum(mut ty: Pairs<Rule>) -> Enum {
     }
 }
 
+#[allow(clippy::missing_docs_in_private_items)]
 fn parse_alias(mut ty: Pairs<Rule>) -> Alias {
     let aliaspair = ty.peek().unwrap();
     let ret = match aliaspair.as_rule() {
@@ -267,6 +397,7 @@ fn parse_alias(mut ty: Pairs<Rule>) -> Alias {
     ret
 }
 
+#[allow(clippy::missing_docs_in_private_items)]
 fn parse_type(parent: &mut Pairs<Rule>) -> Type {
     let ty = parent.next().unwrap();
     assert_eq!(ty.as_rule(), Rule::ty);
@@ -289,6 +420,7 @@ fn parse_type(parent: &mut Pairs<Rule>) -> Type {
     }
 }
 
+#[allow(clippy::missing_docs_in_private_items)]
 fn parse_type_def(mut typedef: Pairs<Rule>) -> TypeDef {
     let doc = parse_comment(&mut typedef);
     let name = parse_name(&mut typedef);
@@ -301,6 +433,7 @@ fn parse_type_def(mut typedef: Pairs<Rule>) -> TypeDef {
     }
 }
 
+#[allow(clippy::missing_docs_in_private_items)]
 fn parse_service_name_list(parent: &mut Pairs<Rule>) -> Vec<(Vec<Decorator>, String)> {
     let service_list = parent.next().unwrap();
     assert_eq!(service_list.as_rule(), Rule::serviceNameList);
@@ -316,6 +449,7 @@ fn parse_service_name_list(parent: &mut Pairs<Rule>) -> Vec<(Vec<Decorator>, Str
     ret
 }
 
+#[allow(clippy::missing_docs_in_private_items)]
 fn parse_version_number(parent: &mut Pairs<Rule>) -> String {
     let version_number = parent.next().unwrap();
     assert_eq!(version_number.as_rule(), Rule::versionNumber);
@@ -328,6 +462,7 @@ fn parse_version_number(parent: &mut Pairs<Rule>) -> String {
     format!("{}.{}.{}", one, two, three)
 }
 
+#[allow(clippy::missing_docs_in_private_items)]
 fn parse_decorators(parent: &mut Pairs<Rule>) -> Vec<Decorator> {
     let mut decorators = Vec::new();
 
@@ -377,6 +512,7 @@ fn parse_decorators(parent: &mut Pairs<Rule>) -> Vec<Decorator> {
     decorators
 }
 
+#[allow(clippy::missing_docs_in_private_items)]
 fn parse_named_type(named_type: Pair<Rule>) -> (Alias, Option<String>) {
     let mut named_type = named_type.into_inner();
 
@@ -394,6 +530,7 @@ fn parse_named_type(named_type: Pair<Rule>) -> (Alias, Option<String>) {
     (ty, name)
 }
 
+#[allow(clippy::missing_docs_in_private_items)]
 fn parse_named_tuple(parent: &mut Pairs<Rule>) -> Vec<(Alias, Option<String>)> {
     let named_tuple = parent.next().unwrap();
     assert_eq!(named_tuple.as_rule(), Rule::namedTuple);
@@ -407,6 +544,7 @@ fn parse_named_tuple(parent: &mut Pairs<Rule>) -> Vec<(Alias, Option<String>)> {
     ret
 }
 
+#[allow(clippy::missing_docs_in_private_items)]
 fn parse_func(func: Pair<Rule>) -> Func {
     assert_eq!(func.as_rule(), Rule::funcDef, "Broken parser: this is not a function: {:?}", func);
 
@@ -433,6 +571,7 @@ fn parse_func(func: Pair<Rule>) -> Func {
     }
 }
 
+#[allow(clippy::missing_docs_in_private_items)]
 fn parse_interface(mut interface: Pairs<Rule>) -> Interface {
     let doc = parse_comment(&mut interface);
     let name = parse_name(&mut interface);
@@ -455,6 +594,7 @@ fn parse_interface(mut interface: Pairs<Rule>) -> Interface {
     }
 }
 
+#[allow(clippy::missing_docs_in_private_items)]
 fn parse_def(mut def: Pairs<Rule>) -> Def {
     let inner = def.next().unwrap();
     assert!(def.next().is_none(), "Broken parser: type has more than 1 element");
@@ -470,20 +610,21 @@ fn parse_def(mut def: Pairs<Rule>) -> Def {
     }
 }
 
-pub fn parse(file: &str) -> Ctx {
+/// Parse the given string into a SwIPC [Ctx].
+pub fn parse(s: &str) -> Ctx {
     let mut ctx = Ctx {
         types: HashMap::new(),
         interfaces: HashMap::new(),
     };
 
-    let file = match SwipcParser::parse(Rule::start, &file) {
+    let rule = match SwipcParser::parse(Rule::start, &s) {
         Ok(mut rule) => rule.next().unwrap(),
         Err(err) => {
             panic!("Failed to parse:\n{}", err);
         }
     };
 
-    for def in file.into_inner() {
+    for def in rule.into_inner() {
         match def.as_rule() {
             Rule::def => match parse_def(def.into_inner()) {
                 Def::Type(tydef) => { ctx.types.insert(tydef.name.clone(), tydef); },
