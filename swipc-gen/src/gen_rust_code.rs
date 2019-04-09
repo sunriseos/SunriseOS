@@ -200,7 +200,7 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
     }).count();
 
     writeln!(s, "        let mut msg = Message::<{}, [_; {}], [_; {}], [_; {}]>::new_request(None, {});",
-             in_raw, ipc_count, handle_move_count, handle_copy_count, cmd.num).unwrap();
+             in_raw, ipc_count, handle_copy_count, handle_move_count, cmd.num).unwrap();
 
     if cmd.args.iter().any(|(argty, _)| is_raw(argty)) {
         writeln!(s, "        msg.push_raw(InRaw {{").unwrap();
@@ -282,7 +282,7 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
     };
 
     writeln!(s, "        let mut res: Message<'_, {}, [_; {}], [_; {}], [_; {}]> = Message::unpack(&buf[..]);",
-             out_raw, ipc_count, handle_move_count, handle_copy_count).unwrap();
+             out_raw, ipc_count, handle_copy_count, handle_move_count).unwrap();
     writeln!(s, "        res.error()?;").unwrap();
 
     match named_iterator(&cmd.ret, true).count() {
