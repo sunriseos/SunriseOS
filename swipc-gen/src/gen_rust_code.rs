@@ -1,3 +1,7 @@
+//! Code generation implementation
+//!
+//! Entrypoint is [generate_ipc].
+
 use lazy_static::lazy_static;
 
 use std::fmt::Write;
@@ -23,18 +27,38 @@ lazy_static! {
     };
 }
 
+/// Returns true if the given pattern matches, false otherwise.
+///
+/// # Examples
+///
+/// ```rust
+/// assert!(matches!(let 0..4 = 3) == true);
+/// assert!(matches!(let Option::Some(_) = None) == false);
+/// assert!(matches!(let "test" = "test") == true);
+/// ```
+macro_rules! matches {
+    (let $pat:pat = $x:expr) => { if let $pat = $x { true } else { false } };
+}
+
+/// Internal error type. Raised whenever we fail to generate something, so we
+/// can carry on generating everything else.
 #[derive(Debug)]
 enum Error {
+    /// This generation unit contains an unsupported type. We should skip it.
     UnsupportedStruct,
 }
 
-pub fn is_raw(val: &Alias) -> bool {
+/// Checks if an alias contains a raw data type (as opposed to a special
+/// datatype)
+fn is_raw(val: &Alias) -> bool {
     match val {
         Alias::Bytes(_) | Alias::Align(_, _) | Alias::Other(_) => true,
         _ => false
     }
 }
 
+/// Takes an iterator of potentially unnamed arguments/returns, and returns a
+/// named version (where the unnamed fields are named unknown_idx).
 fn named_iterator<'a, I>(it: I, is_output: bool) -> impl Iterator<Item = (&'a Alias, String)>
 where
     I: IntoIterator<Item = &'a (Alias, Option<String>)>
@@ -45,10 +69,11 @@ where
             _ => true,
         }
     }).enumerate().map(|(idx, (v, name))| {
-        (v, name.clone().unwrap_or(format!("unknown_{}", idx)))
+        (v, name.clone().unwrap_or_else(|| format!("unknown_{}", idx)))
     })
 }
 
+/// Creates an iterator over the raw values from an argument/ret iterator.
 fn raw_iterator<'a, I>(it: I, is_output: bool) -> impl Iterator<Item = (&'a Alias, String)>
 where
     I: IntoIterator<Item = &'a (Alias, Option<String>)>,
@@ -56,7 +81,14 @@ where
     named_iterator(it, is_output).filter(|(v, _name)| is_raw(v))
 }
 
-
+/// Format the arguments of a function.
+///
+/// Return buffers are also formatted in this function, since they will be passed
+/// as mutable references to the function in the generated rust code.
+///
+/// Returns a coma separated list of `name: rust_type`.
+///
+/// See [get_type] to find the mapping of a SwIPC type to a Rust type.
 fn format_args(args: &[(Alias, Option<String>)], ret: &[(Alias, Option<String>)]) -> Result<String, Error> {
     let mut arg_list = Vec::new();
     for (idx, (ty, name)) in args.iter().chain(ret.iter().filter(|(ty, _)| {
@@ -68,6 +100,11 @@ fn format_args(args: &[(Alias, Option<String>)], ret: &[(Alias, Option<String>)]
             continue;
         }
         match name.as_ref().map(|v| &**v) {
+            // TODO: More thorough keyword sanitizer in swipc generator.
+            // BODY: The SwIPC generator does little to no sanitizing of argument
+            // BODY: names that may be keywords in rust. We should have a list of
+            // BODY: keywords and a central function to fix them up.
+            // Rename type to ty since type is a keyword in rust.
             Some("type") => s += "ty",
             Some(name) => s += name,
             None => s += &format!("unknown_{}", idx)
@@ -79,6 +116,19 @@ fn format_args(args: &[(Alias, Option<String>)], ret: &[(Alias, Option<String>)]
     Ok(arg_list.join(", "))
 }
 
+/// Format the return type of a function.
+///
+/// - If there's 0 return types, then the return type will be ().
+/// - If there's only 1 return type, then that type will be passed directly as
+///   the return type.
+/// - If there's 2 or more arguments, then the return type will be a tuple of
+///   those types.
+///
+/// IPC Buffers are skipped from the return types, since they are handled by the
+/// argument formatter instead. Buffers are passed as mutable reference
+/// arguments.
+///
+/// See [get_type] to find the mapping of a SwIPC type to a Rust type.
 fn format_ret_ty(ret: &[(Alias, Option<String>)]) -> Result<String, Error> {
     let mut v = Vec::new();
 
@@ -93,6 +143,10 @@ fn format_ret_ty(ret: &[(Alias, Option<String>)]) -> Result<String, Error> {
     }
 }
 
+/// Get the Rust equivalent of a handle type.
+///
+/// If no equivalent exist or are supported yet, None is returned. The full path
+/// should be returned.
 fn get_handle_type(ty: &Option<KHandleType>) -> Option<&'static str> {
     match ty {
         Some(KHandleType::ClientSession) => Some("kfs_libuser::types::ClientSession"),
@@ -104,16 +158,17 @@ fn get_handle_type(ty: &Option<KHandleType>) -> Option<&'static str> {
     }
 }
 
+/// Generate code to recover a single return value from an output Message.
 fn format_ret(ret: (&Alias, String)) -> Result<String, Error> {
     match ret.0 {
         Alias::Object(ty) => Ok(format!("{}::from(ClientSession(res.pop_handle_move()?))", ty)),
-        Alias::KObject => Ok(format!("res.pop_handle_move()?")),
+        Alias::KObject => Ok("res.pop_handle_move()?".to_string()),
         Alias::KHandle(is_copy, ty) => if let Some(s) = get_handle_type(ty) {
             Ok(format!("{}(res.pop_handle_{}()?)", s, if *is_copy { "copy" } else { "move" }))
         } else {
             Ok(format!("res.pop_handle_{}()?", if *is_copy { "copy" } else { "move" }))
         },
-        Alias::Pid => Ok(format!("res.pop_pid()?")),
+        Alias::Pid => Ok("res.pop_pid()?".to_string()),
         Alias::Bytes(..) |
         Alias::Align(..) |
         Alias::Other(..) => Ok(format!("res.raw().{}", ret.1)),
@@ -121,6 +176,9 @@ fn format_ret(ret: (&Alias, String)) -> Result<String, Error> {
     }
 }
 
+/// Get the Rust type of an [Alias]. If output is true, then the type should be
+/// suitable for a return type (or an output IPC buffer argument). If output is
+/// false, then the type should be suitable for an input argument.
 fn get_type(output: bool, ty: &Alias) -> Result<String, Error> {
     let is_mut = if output { "mut " } else { "" };
     match ty {
@@ -139,13 +197,13 @@ fn get_type(output: bool, ty: &Alias) -> Result<String, Error> {
         // Panic if we get a buffer with an unsupported underlying type.
         Alias::Buffer(underlying, _, _) => panic!("Buffer with underlying type {:?}", underlying),
 
-        Alias::Object(name) => Ok(format!("{}", name)),
+        Alias::Object(name) => Ok(name.clone()),
 
         // Unsized bytes
         Alias::Bytes(0) => Ok("[u8]".to_string()),
         Alias::Bytes(len) => Ok(format!("[u8; {}]", len)),
 
-        // Meh
+        // Deprecated in newer version of SwIPC anyways.
         Alias::Align(_alignment, _underlying) => Err(Error::UnsupportedStruct),
 
         Alias::KObject => Ok("Handle".to_string()),
@@ -160,6 +218,7 @@ fn get_type(output: bool, ty: &Alias) -> Result<String, Error> {
     }
 }
 
+/// Generate code for a single function.
 fn format_cmd(cmd: &Func) -> Result<String, Error> {
     let mut s = String::new();
     for line in cmd.doc.lines() {
@@ -168,7 +227,7 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
     writeln!(s, "    pub fn {}(&mut self, {}) -> Result<{}, Error> {{", &cmd.name, format_args(&cmd.args, &cmd.ret)?, format_ret_ty(&cmd.ret)?).unwrap();
     writeln!(s, "        use kfs_libuser::ipc::Message;").unwrap();
     writeln!(s, "        let mut buf = [0; 0x100];").unwrap();
-    writeln!(s, "").unwrap();
+    writeln!(s).unwrap();
     let in_raw = if cmd.args.iter().any(|(argty, _)| is_raw(argty)) {
         writeln!(s, "        #[repr(C)]").unwrap();
         writeln!(s, "        #[derive(Clone, Copy, Default)]").unwrap();
@@ -212,7 +271,7 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
         Alias::Array(..) | Alias::Buffer(..) => true, _ => false
     })).enumerate()
     {
-        let argname = argname.clone().unwrap_or(format!("unknown_{}", idx));
+        let argname = argname.clone().unwrap_or_else(|| format!("unknown_{}", idx));
         match argty {
             Alias::Array(_alias, _)                    => return Err(Error::UnsupportedStruct),
             Alias::Buffer(_alias, ty, _)               => {
@@ -233,16 +292,14 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
                 }
             },
             Alias::Object(_)                          => writeln!(s, "        msg.push_handle_move({}.into());", argname).unwrap(),
-            Alias::KHandle(false, ty)                 => if let Some(_) = get_handle_type(ty) {
-                writeln!(s, "        msg.push_handle_move({}.0);", argname).unwrap()
-            } else {
-                writeln!(s, "        msg.push_handle_move({});", argname).unwrap()
-            },
-            Alias::KHandle(true, ty)                  => if let Some(_) = get_handle_type(ty) {
-                writeln!(s, "        msg.push_handle_copy({}.0.as_ref());", argname).unwrap()
-            } else {
-                writeln!(s, "        msg.push_handle_copy({});", argname).unwrap()
-            },
+            Alias::KHandle(false, ty) if get_handle_type(ty).is_some() =>
+                writeln!(s, "        msg.push_handle_move({}.0);", argname).unwrap(),
+            Alias::KHandle(false, _) =>
+                writeln!(s, "        msg.push_handle_move({});", argname).unwrap(),
+            Alias::KHandle(true, ty) if get_handle_type(ty).is_some() =>
+                writeln!(s, "        msg.push_handle_copy({}.0.as_ref());", argname).unwrap(),
+            Alias::KHandle(true, _) =>
+                writeln!(s, "        msg.push_handle_copy({});", argname).unwrap(),
             Alias::KObject                            => writeln!(s, "        msg.push_handle_move({});", argname).unwrap(),
             Alias::Pid                                => writeln!(s, "        msg.send_pid(None);").unwrap(),
             _                                         => continue,
@@ -264,7 +321,7 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
         _ => false
     }).count();
 
-    writeln!(s, "").unwrap();
+    writeln!(s).unwrap();
     let out_raw = if cmd.ret.iter().any(|(argty, _)| is_raw(argty)) {
         writeln!(s, "        #[repr(C)]").unwrap();
         writeln!(s, "        #[derive(Clone, Copy, Default)]").unwrap();
@@ -292,7 +349,9 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
     Ok(s)
 }
 
-fn format_struct(struct_name: &str, ty: &TypeDef) -> Result<String, Error> {
+/// Create a new type definition. For a [TypeDef::Struct], this will be a new
+/// struct, For a [TypeDef::]
+fn format_type(struct_name: &str, ty: &TypeDef) -> Result<String, Error> {
     let mut s = String::new();
     for line in ty.doc.lines() {
         writeln!(s, "/// {}", line).unwrap();
@@ -301,8 +360,8 @@ fn format_struct(struct_name: &str, ty: &TypeDef) -> Result<String, Error> {
     match &ty.ty {
         Type::Struct(struc) => {
             writeln!(s, "#[repr(C)]").unwrap();
-            writeln!(s, "struct {} {{", struct_name).unwrap();
-            for (doc, name, ty) in struc.fields.iter() {
+            writeln!(s, "pub struct {} {{", struct_name).unwrap();
+            for (doc, name, ty) in &struc.fields {
                 // TODO: Support nested type
                 for line in doc.lines() {
                     writeln!(s, "    /// {}", line).unwrap();
@@ -317,8 +376,8 @@ fn format_struct(struct_name: &str, ty: &TypeDef) -> Result<String, Error> {
         },
         Type::Enum(enu) => {
             writeln!(s, "#[repr(u32)]").unwrap(); // TODO: Deduce from template
-            writeln!(s, "enum {} {{", struct_name).unwrap();
-            for (doc, name, num) in enu.fields.iter() {
+            writeln!(s, "pub enum {} {{", struct_name).unwrap();
+            for (doc, name, num) in &enu.fields {
                 for line in doc.lines() {
                     writeln!(s, "    /// {}", line).unwrap();
                 }
@@ -328,19 +387,25 @@ fn format_struct(struct_name: &str, ty: &TypeDef) -> Result<String, Error> {
         },
         Type::Alias(alias) => {
             // TODO: Prevent alias of buffer/pid/handles
-            writeln!(s, "type {} = {};", struct_name, get_type(false, &alias)?).unwrap();
+            writeln!(s, "pub type {} = {};", struct_name, get_type(false, &alias)?).unwrap();
         },
     }
     Ok(s)
 }
 
+/// A module hierarchy.
 #[derive(Debug)]
 struct Mod {
+    /// Generated code for the types at the current level of the hierarchy.
     types: Vec<String>,
+    /// Generated code for the ifaces at the current level of the hierarchy.
     ifaces: Vec<String>,
+    /// Mapping from string to submodule hierarchy.
     mods: HashMap<String, Mod>,
 }
 
+/// Generate the module hierarchy. The depth should be set to 0 on the first call
+/// and will be increased on each recursive call.
 fn generate_mod(m: Mod, depth: usize, mod_name: &str, crate_name: &str) -> String {
     let mut s = String::new();
 
@@ -349,27 +414,27 @@ fn generate_mod(m: Mod, depth: usize, mod_name: &str, crate_name: &str) -> Strin
     writeln!(s, "{}pub mod {} {{", depthstr, mod_name).unwrap();
     writeln!(s, "{}    //! Auto-generated documentation", depthstr).unwrap();
     writeln!(s, "{}    use crate as {};", depthstr, crate_name.replace("-", "_")).unwrap();
-    writeln!(s, "").unwrap();
+    writeln!(s).unwrap();
 
-    if m.ifaces.len() != 0 {
+    if !m.ifaces.is_empty() {
         writeln!(s, "{}    use kfs_libuser::types::ClientSession;", depthstr).unwrap();
         writeln!(s, "{}    use kfs_libuser::error::Error;", depthstr).unwrap();
     }
 
     for (mod_name, modinfo) in m.mods {
-        writeln!(s, "").unwrap();
+        writeln!(s).unwrap();
         writeln!(s, "{}", generate_mod(modinfo, depth + 1, &mod_name, crate_name)).unwrap();
     }
 
     for ty in m.types {
-        writeln!(s, "").unwrap();
+        writeln!(s).unwrap();
         for line in ty.lines() {
             writeln!(s, "{}    {}", depthstr, line).unwrap();
         }
     }
 
     for iface in m.ifaces {
-        writeln!(s, "").unwrap();
+        writeln!(s).unwrap();
         for line in iface.lines() {
             writeln!(s, "{}    {}", depthstr, line).unwrap();
         }
@@ -394,6 +459,8 @@ fn generate_mod(m: Mod, depth: usize, mod_name: &str, crate_name: &str) -> Strin
 /// The generated string will contain a module hierarchy.
 ///
 /// # Example
+///
+// TODO: Add an example of what generate_ipc generates.
 pub fn generate_ipc(s: &str, prefix: String, mod_name: String, crate_name: String) -> String {
     // Read and parse the SwIPC file.
     let ctx = swipc_parser::parse(s);
@@ -407,6 +474,8 @@ pub fn generate_ipc(s: &str, prefix: String, mod_name: String, crate_name: Strin
 
     for (typename, ty) in ctx.types {
         let path = typename.split("::");
+
+        // Strip the prefix from the typename.
         let path = if !prefix.is_empty() {
             let mut it = prefix.split("::").zip(path);
             while let Some((item1, item2)) = it.next() {
@@ -420,6 +489,7 @@ pub fn generate_ipc(s: &str, prefix: String, mod_name: String, crate_name: Strin
             path.collect()
         };
 
+        // Find (or create) the appropriate module in the mod hierarchy.
         let mut cur_mod = &mut root_mod;
         if !path.is_empty() {
             for elem in &path[..path.len() - 1] {
@@ -433,7 +503,9 @@ pub fn generate_ipc(s: &str, prefix: String, mod_name: String, crate_name: Strin
 
         let struct_name = typename.split("::").last().unwrap();
 
-        match format_struct(struct_name, &ty) {
+        // Generate the structure and add it to the appropriate module's type
+        // list.
+        match format_type(struct_name, &ty) {
             Ok(s) => cur_mod.types.push(s),
             Err(Error::UnsupportedStruct) => cur_mod.types.push(format!("// struct {}", struct_name))
         }
@@ -441,6 +513,8 @@ pub fn generate_ipc(s: &str, prefix: String, mod_name: String, crate_name: Strin
 
     for (ifacename, interface) in ctx.interfaces {
         let path = ifacename.split("::");
+
+        // Strip the prefix from the ifacename.
         let path = if !prefix.is_empty() {
             let mut it = prefix.split("::").zip(path);
             while let Some((item1, item2)) = it.next() {
@@ -454,6 +528,7 @@ pub fn generate_ipc(s: &str, prefix: String, mod_name: String, crate_name: Strin
             path.collect()
         };
 
+        // Find (or create) the appropriate module in the mod hierarchy.
         let mut cur_mod = &mut root_mod;
         if !path.is_empty() {
             for elem in &path[..path.len() - 1] {
@@ -469,15 +544,18 @@ pub fn generate_ipc(s: &str, prefix: String, mod_name: String, crate_name: Strin
 
         let mut s = String::new();
 
+        for line in interface.doc.lines() {
+            writeln!(s, "/// {}", line).unwrap();
+        }
         writeln!(s, "#[derive(Debug)]").unwrap();
         writeln!(s, "pub struct {}(ClientSession);", struct_name).unwrap();
-        writeln!(s, "").unwrap();
+        writeln!(s).unwrap();
         writeln!(s, "impl From<{}> for ClientSession {{", struct_name).unwrap();
         writeln!(s, "    fn from(sess: {}) -> ClientSession {{", struct_name).unwrap();
         writeln!(s, "        sess.0").unwrap();
         writeln!(s, "    }}").unwrap();
         writeln!(s, "}}").unwrap();
-        writeln!(s, "").unwrap();
+        writeln!(s).unwrap();
         writeln!(s, "impl From<ClientSession> for {} {{", struct_name).unwrap();
         writeln!(s, "    fn from(sess: ClientSession) -> {} {{", struct_name).unwrap();
         writeln!(s, "        {}(sess)", struct_name).unwrap();
@@ -485,19 +563,21 @@ pub fn generate_ipc(s: &str, prefix: String, mod_name: String, crate_name: Strin
         writeln!(s, "}}").unwrap();
 
         if !interface.service_list.is_empty() {
+            // For every service, we'll want to add a raw_new function.
             writeln!(s, "\nimpl {} {{", struct_name).unwrap();
-            for (decorators, service) in interface.service_list.iter() {
+            for (decorators, service) in &interface.service_list {
                 let name = if interface.service_list.len() == 1 {
                     "".to_string()
                 } else {
                     format!("_{}", service.replace(":", "_"))
                 };
 
+                writeln!(s, "    /// Creates a new [{}] by connecting to the `{}` service.", struct_name, service).unwrap();
                 writeln!(s, "    pub fn raw_new{}() -> Result<{}, Error> {{", name, struct_name).unwrap();
                 writeln!(s, "        use kfs_libuser::syscalls;").unwrap();
                 writeln!(s, "        use kfs_libuser::error::KernelError;").unwrap();
 
-                if decorators.iter().find(|v| if let Decorator::ManagedPort = v { true } else { false }).is_some() {
+                if decorators.iter().any(|v| matches!(let Decorator::ManagedPort = v)) {
                     // This service is a kernel-managed port.
                     writeln!(s, "        loop {{").unwrap();
                     let mut service_name = service.to_string();
@@ -540,8 +620,10 @@ pub fn generate_ipc(s: &str, prefix: String, mod_name: String, crate_name: Strin
         }
         writeln!(s, "}}").unwrap();
 
+        // Add the generated interface to the appropriate module's iface list.
         cur_mod.ifaces.push(s);
     }
 
+    // Generate the final module hierarchy
     generate_mod(root_mod, 0, &mod_name, &crate_name)
 }
