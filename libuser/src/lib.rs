@@ -3,7 +3,7 @@
 //! Provides an allocator, various lang items.
 
 #![no_std]
-#![feature(global_asm, asm, start, lang_items, core_intrinsics, const_fn, alloc, box_syntax, untagged_unions, proc_macro_hygiene)]
+#![feature(global_asm, asm, start, lang_items, core_intrinsics, const_fn, alloc, box_syntax, untagged_unions, proc_macro_hygiene, underscore_const_names)]
 
 #![warn(unused)]
 #![warn(missing_debug_implementations)]
