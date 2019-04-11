@@ -44,11 +44,14 @@ pub mod syscalls;
 pub mod mem;
 pub mod types;
 pub mod ipc;
-pub mod sm;
 
+#[gen_ipc(path = "../../ipcdefs/sm.id", prefix = "sunrise_libuser")]
+pub mod sm {}
 #[gen_ipc(path = "../../ipcdefs/vi.id", prefix = "sunrise_libuser")]
 pub mod vi {}
-pub mod ahci;
+#[gen_ipc(path = "../../ipcdefs/ahci.id", prefix = "sunrise_libuser")]
+pub mod ahci {}
+
 pub mod error;
 pub mod allocator;
 pub mod terminal;
