@@ -1,5 +1,5 @@
 # Entry point interface.
-interface libuser::vi::ViInterface is vi {
+interface kfs_libuser::vi::ViInterface is vi {
     # Create a window.
     #
     # This creates a window at the given coordinates, with the given
@@ -14,7 +14,7 @@ interface libuser::vi::ViInterface is vi {
 
 
 # IPC Window object
-interface libuser::vi::IBuffer {
+interface kfs_libuser::vi::IBuffer {
     # Blit the buffer to the framebuffer.
     [0] draw();
 }

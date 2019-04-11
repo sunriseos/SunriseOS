@@ -35,7 +35,7 @@ pub fn gen_ipc(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let root = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into()));
 
-    if item.content.is_some() {
+    if item.content.iter().any(|s| !s.1.is_empty()) {
         return syn::Error::new(item.span(), "gen_ipc expected empty mod.").to_compile_error().into()
     }
 
