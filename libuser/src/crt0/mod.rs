@@ -1,4 +1,3 @@
-
 //! libuser CRT0
 //! This module is a minimal RT0 handling the entry point of the application.
 //! It handles relocation, clean the bss and then finally call start_main.

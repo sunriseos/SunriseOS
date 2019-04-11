@@ -24,7 +24,7 @@ mod module_header {
 #[repr(C)]
 #[derive(Debug)]
 pub struct ModuleHeader {
-    /// The magic value of the MOD header.
+    /// The magic value of the MOD header. "MOD0"
     pub magic: u32,
 
     /// The offset of the dynamic section relative to ModuleHeader address.

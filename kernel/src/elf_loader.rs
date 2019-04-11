@@ -108,6 +108,7 @@ pub fn load_builtin(process_memory: &mut ProcessMemory, module: &MappedGrubModul
 
     // return the entry point
     // TODO: ASLR
+    // BODY: We should generate a random aslr base.
     let entry_point = 0x400000 + elf.header.pt2.entry_point();
     info!("Entry point : {:#x?}", entry_point);
 
@@ -134,7 +135,6 @@ fn load_segment(process_memory: &mut ProcessMemory, segment: ProgramHeader<'_>, 
         flags |= MappingAccessRights::EXECUTABLE
     }
 
-    // TODO: ASLR
     let virtual_addr = 0x400000 + segment.virtual_addr() as usize;
 
     // Create the mapping in UserLand
