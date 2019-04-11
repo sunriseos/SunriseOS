@@ -46,7 +46,7 @@ pub mod types;
 pub mod ipc;
 pub mod sm;
 
-#[gen_ipc(path = "../../ipcdefs/vi.id", prefix = "kfs_libuser")]
+#[gen_ipc(path = "../../ipcdefs/vi.id", prefix = "sunrise_libuser")]
 pub mod vi {}
 pub mod ahci;
 pub mod error;

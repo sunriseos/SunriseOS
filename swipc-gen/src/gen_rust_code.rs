@@ -149,11 +149,11 @@ fn format_ret_ty(ret: &[(Alias, Option<String>)]) -> Result<String, Error> {
 /// should be returned.
 fn get_handle_type(ty: &Option<KHandleType>) -> Option<&'static str> {
     match ty {
-        Some(KHandleType::ClientSession) => Some("kfs_libuser::types::ClientSession"),
-        Some(KHandleType::ServerSession) => Some("kfs_libuser::types::ServerSession"),
-        Some(KHandleType::ClientPort)    => Some("kfs_libuser::types::ClientPort"),
-        Some(KHandleType::ServerPort)    => Some("kfs_libuser::types::ServerPort"),
-        Some(KHandleType::SharedMemory)  => Some("kfs_libuser::types::SharedMemory"),
+        Some(KHandleType::ClientSession) => Some("sunrise_libuser::types::ClientSession"),
+        Some(KHandleType::ServerSession) => Some("sunrise_libuser::types::ServerSession"),
+        Some(KHandleType::ClientPort)    => Some("sunrise_libuser::types::ClientPort"),
+        Some(KHandleType::ServerPort)    => Some("sunrise_libuser::types::ServerPort"),
+        Some(KHandleType::SharedMemory)  => Some("sunrise_libuser::types::SharedMemory"),
         _                                => None
     }
 }
@@ -210,7 +210,7 @@ fn get_type(output: bool, ty: &Alias) -> Result<String, Error> {
         Alias::KHandle(is_copy, ty) => if let Some(s) = get_handle_type(ty) {
             Ok(format!("{}{}", if *is_copy && !output { "&" } else { "" }, s))
         } else {
-            Ok(format!("kfs_libuser::types::{}", if *is_copy && !output { "HandleRef" } else { "Handle" }))
+            Ok(format!("sunrise_libuser::types::{}", if *is_copy && !output { "HandleRef" } else { "Handle" }))
         },
         Alias::Pid => Ok("u64".to_string()),
         Alias::Other(ty) if ty == "unknown" => Err(Error::UnsupportedStruct),
@@ -225,7 +225,7 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
         writeln!(s, "    /// {}", line).unwrap();
     }
     writeln!(s, "    pub fn {}(&mut self, {}) -> Result<{}, Error> {{", &cmd.name, format_args(&cmd.args, &cmd.ret)?, format_ret_ty(&cmd.ret)?).unwrap();
-    writeln!(s, "        use kfs_libuser::ipc::Message;").unwrap();
+    writeln!(s, "        use sunrise_libuser::ipc::Message;").unwrap();
     writeln!(s, "        let mut buf = [0; 0x100];").unwrap();
     writeln!(s).unwrap();
     let in_raw = if cmd.args.iter().any(|(argty, _)| is_raw(argty)) {
@@ -417,8 +417,8 @@ fn generate_mod(m: Mod, depth: usize, mod_name: &str, crate_name: &str) -> Strin
     writeln!(s).unwrap();
 
     if !m.ifaces.is_empty() {
-        writeln!(s, "{}    use kfs_libuser::types::ClientSession;", depthstr).unwrap();
-        writeln!(s, "{}    use kfs_libuser::error::Error;", depthstr).unwrap();
+        writeln!(s, "{}    use sunrise_libuser::types::ClientSession;", depthstr).unwrap();
+        writeln!(s, "{}    use sunrise_libuser::error::Error;", depthstr).unwrap();
     }
 
     for (mod_name, modinfo) in m.mods {
@@ -453,7 +453,7 @@ fn generate_mod(m: Mod, depth: usize, mod_name: &str, crate_name: &str) -> Strin
 /// contains any IPC outside the given prefix, an error will be raised.
 ///
 /// The module name and crate name should be specified. This is used to allow
-/// kfs_libuser to `use` itself - since otherwise it will not be in the
+/// sunrise_libuser to `use` itself - since otherwise it will not be in the
 /// namespace.
 ///
 /// The generated string will contain a module hierarchy.
@@ -574,8 +574,8 @@ pub fn generate_ipc(s: &str, prefix: String, mod_name: String, crate_name: Strin
 
                 writeln!(s, "    /// Creates a new [{}] by connecting to the `{}` service.", struct_name, service).unwrap();
                 writeln!(s, "    pub fn raw_new{}() -> Result<{}, Error> {{", name, struct_name).unwrap();
-                writeln!(s, "        use kfs_libuser::syscalls;").unwrap();
-                writeln!(s, "        use kfs_libuser::error::KernelError;").unwrap();
+                writeln!(s, "        use sunrise_libuser::syscalls;").unwrap();
+                writeln!(s, "        use sunrise_libuser::error::KernelError;").unwrap();
 
                 if decorators.iter().any(|v| matches!(let Decorator::ManagedPort = v)) {
                     // This service is a kernel-managed port.
@@ -590,7 +590,7 @@ pub fn generate_ipc(s: &str, prefix: String, mod_name: String, crate_name: Strin
                     writeln!(s, "        }}").unwrap();
                 } else {
                     // This service is a sm-managed port.
-                    writeln!(s, "         use kfs_libuser::error::SmError;").unwrap();
+                    writeln!(s, "         use sunrise_libuser::error::SmError;").unwrap();
                     writeln!(s, "         ").unwrap();
                     writeln!(s, "         loop {{").unwrap();
                     writeln!(s, "              let svcname = unsafe {{").unwrap();
@@ -598,7 +598,7 @@ pub fn generate_ipc(s: &str, prefix: String, mod_name: String, crate_name: Strin
                     service_name += &"\\0".repeat(8 - service_name.len());
                     writeln!(s, r#"                  core::mem::transmute(*b"{}")"#, service_name).unwrap();
                     writeln!(s, "              }};").unwrap();
-                    writeln!(s, "              let _ = match kfs_libuser::sm::IUserInterface::raw_new()?.get_service(svcname) {{").unwrap();
+                    writeln!(s, "              let _ = match sunrise_libuser::sm::IUserInterface::raw_new()?.get_service(svcname) {{").unwrap();
                     writeln!(s, "                  Ok(s) => return Ok({}(s)),", struct_name).unwrap();
                     writeln!(s, "                  Err(Error::Sm(SmError::ServiceNotRegistered, ..)) => syscalls::sleep_thread(0),").unwrap();
                     writeln!(s, "                  Err(err) => return Err(err)").unwrap();
