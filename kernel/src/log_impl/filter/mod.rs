@@ -368,16 +368,16 @@ fn enabled(directives: &[Directive], level: Level, target: &str) -> bool {
     false
 }
 
-// TODO: Re-enable log-impl tests
-#[cfg(never)]
+#[cfg(test)]
 mod tests {
     use log::{Level, LevelFilter};
+    use alloc::prelude::*;
 
     use super::{Builder, Filter, Directive, parse_spec, enabled};
 
-    fn make_logger_filter(dirs: Vec<Directive>) -> Filter {
+    fn make_logger_filter(mut dirs: Vec<Directive>) -> Filter {
         let mut logger = Builder::new().build();
-        logger.directives = dirs;
+        logger.directives = dirs.drain(..).collect();
         logger
     }
 

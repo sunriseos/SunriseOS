@@ -20,7 +20,7 @@
 #![deny(intra_doc_link_resolution_failure)]
 
 #[macro_use]
-extern crate kfs_libuser as libuser;
+extern crate sunrise_libuser as libuser;
 
 #[macro_use]
 extern crate alloc;
@@ -41,7 +41,7 @@ use crate::libuser::types::*;
 use spin::Mutex;
 use crate::libuser::error::Error;
 use crate::libuser::syscalls::MemoryPermissions;
-use kfs_libutils::align_up;
+use sunrise_libutils::align_up;
 use libuser::mem::{find_free_address, PAGE_SIZE};
 
 /// Entry point interface.
@@ -79,10 +79,13 @@ object! {
             Ok((client.into_handle(),))
         }
 
-        /// Gets the screen resolution.
+        /// Gets the screen (width, height) in pixels.
+        ///
+        /// Cannot fail.
         #[cmdid(1)]
-        fn get_resolution(&mut self,) -> Result<(u32, u32,), Error> {
-            Ok((1280, 800))
+        fn get_screen_resolution(&mut self,) -> Result<(u32, u32,), Error> {
+            let fb = FRAMEBUFFER.lock();
+            Ok((fb.width() as _, fb.height() as _))
         }
     }
 }
@@ -93,7 +96,14 @@ object! {
 static BUFFERS: Mutex<Vec<Weak<Buffer>>> = Mutex::new(Vec::new());
 
 /// The backbuffer to draw into.
-static BACKBUFFER_ARR: Mutex<[VBEColor; 1280 * 800]> = Mutex::new([VBEColor::rgb(0, 0, 0); 1280 * 800]);
+///
+/// This is an array residing in the .bss, big enough to hold a UHD 4K screen.
+///
+/// Most of the time, the actual screen will be much smaller, and only
+/// `BACKBUFFER_ARR[0..(screen_height * screen_width)]` should be accessed.
+///
+/// Its actual size is irrelevant.
+static BACKBUFFER_ARR: Mutex<[VBEColor; 3840 * 2160]> = Mutex::new([VBEColor::rgb(0, 0, 0); 3840 * 2160]);
 
 /// Gets the intersection between two rectangles.
 fn get_intersect((atop, aleft, awidth, aheight): (u32, u32, u32, u32), (btop, bleft, bwidth, bheight): (u32, u32, u32, u32)) -> Option<(u32, u32, u32, u32)> {
@@ -138,7 +148,7 @@ fn draw(buf: &Buffer, framebuffer: &mut Framebuffer<'_>, top: u32, left: u32, wi
                 let mut curleft = left;
                 while curleft < left + width {
                     // This overflows when buf.width * buf.height * 4 >= sizeof(usize)
-                    let dataidx = (((curtop as i32 - buf.top) as u32 * width + (curleft as i32 - buf.left) as u32) * 4) as usize;
+                    let dataidx = (((curtop as i32 - buf.top) as u32 * buf.width + (curleft as i32 - buf.left) as u32) * 4) as usize;
                     let fbidx = framebuffer.get_px_offset(curleft as usize, curtop as usize) as usize;
                     // TODO: Vi: Implement alpha blending
                     // BODY: Vi currently does not do alpha blending at all.
@@ -204,8 +214,14 @@ impl Drop for IBuffer {
     /// Redraw the zone where the buffer was when dropping it, to make sure it
     /// disappears.
     fn drop(&mut self) {
+        let (fullscreen_width, fullscreen_height, bpp) = {
+            let fb = FRAMEBUFFER.lock();
+            (fb.width(), fb.height(), fb.bpp())
+        };
+        // create a fake Framebuffer that writes to BACKBUFFER_ARR,
+        // and copy it to actual screen only when we're done composing all layers in it.
         let mut backbuffer_arr = BACKBUFFER_ARR.lock();
-        let mut framebuffer = Framebuffer::new_buffer(&mut *backbuffer_arr, 1280, 800, 32);
+        let mut framebuffer = Framebuffer::new_buffer(&mut *backbuffer_arr, fullscreen_width, fullscreen_height, bpp);
         let (dtop, dleft, dwidth, dheight) = self.buffer.get_real_bounds(framebuffer.width() as u32, framebuffer.height() as u32);
         framebuffer.clear_at(dleft as _, dtop as _, dwidth as _, dheight as _);
         BUFFERS.lock().retain(|buffer| {
@@ -220,7 +236,9 @@ impl Drop for IBuffer {
                 false
             }
         });
-        FRAMEBUFFER.lock().get_fb().copy_from_slice(framebuffer.get_fb());
+        // BACKBUFFER_ARR is often bigger than our screen, take only the first pixels.
+        let screen_in_backbuffer = &mut framebuffer.get_fb()[0..(fullscreen_width * fullscreen_height)];
+        FRAMEBUFFER.lock().get_fb().copy_from_slice(screen_in_backbuffer);
     }
 }
 
@@ -230,8 +248,14 @@ object! {
         #[cmdid(0)]
         #[inline(never)]
         fn draw(&mut self, ) -> Result<(), Error> {
+            let (fullscreen_width, fullscreen_height, bpp) = {
+                let fb = FRAMEBUFFER.lock();
+                (fb.width(), fb.height(), fb.bpp())
+            };
+            // create a fake Framebuffer that writes to BACKBUFFER_ARR,
+            // and copy it to actual screen only when we're done composing all layers in it.
             let mut backbuffer_arr = BACKBUFFER_ARR.lock();
-            let mut framebuffer = Framebuffer::new_buffer(&mut *backbuffer_arr, 1280, 800, 32);
+            let mut framebuffer = Framebuffer::new_buffer(&mut *backbuffer_arr, fullscreen_width, fullscreen_height, bpp);
             let (dtop, dleft, dwidth, dheight) = self.buffer.get_real_bounds(framebuffer.width() as u32, framebuffer.height() as u32);
             framebuffer.clear_at(dleft as _, dtop as _, dwidth as _, dheight as _);
             BUFFERS.lock().retain(|buffer| {
@@ -242,7 +266,9 @@ object! {
                     false
                 }
             });
-            FRAMEBUFFER.lock().get_fb().copy_from_slice(framebuffer.get_fb());
+            // BACKBUFFER_ARR is often bigger than our screen, take only the first pixels.
+            let screen_in_backbuffer = &mut framebuffer.get_fb()[0..(fullscreen_width * fullscreen_height)];
+            FRAMEBUFFER.lock().get_fb().copy_from_slice(screen_in_backbuffer);
             Ok(())
         }
     }
@@ -257,27 +283,27 @@ fn main() {
 }
 capabilities!(CAPABILITIES = Capabilities {
     svcs: [
-        kfs_libuser::syscalls::nr::SleepThread,
-        kfs_libuser::syscalls::nr::ExitProcess,
-        kfs_libuser::syscalls::nr::CloseHandle,
-        kfs_libuser::syscalls::nr::WaitSynchronization,
-        kfs_libuser::syscalls::nr::OutputDebugString,
+        sunrise_libuser::syscalls::nr::SleepThread,
+        sunrise_libuser::syscalls::nr::ExitProcess,
+        sunrise_libuser::syscalls::nr::CloseHandle,
+        sunrise_libuser::syscalls::nr::WaitSynchronization,
+        sunrise_libuser::syscalls::nr::OutputDebugString,
 
-        kfs_libuser::syscalls::nr::ReplyAndReceiveWithUserBuffer,
-        kfs_libuser::syscalls::nr::AcceptSession,
-        kfs_libuser::syscalls::nr::CreateSession,
+        sunrise_libuser::syscalls::nr::ReplyAndReceiveWithUserBuffer,
+        sunrise_libuser::syscalls::nr::AcceptSession,
+        sunrise_libuser::syscalls::nr::CreateSession,
 
-        kfs_libuser::syscalls::nr::ConnectToNamedPort,
-        kfs_libuser::syscalls::nr::SendSyncRequestWithUserBuffer,
+        sunrise_libuser::syscalls::nr::ConnectToNamedPort,
+        sunrise_libuser::syscalls::nr::SendSyncRequestWithUserBuffer,
 
-        kfs_libuser::syscalls::nr::SetHeapSize,
+        sunrise_libuser::syscalls::nr::SetHeapSize,
 
-        kfs_libuser::syscalls::nr::QueryMemory,
+        sunrise_libuser::syscalls::nr::QueryMemory,
 
-        kfs_libuser::syscalls::nr::MapSharedMemory,
-        kfs_libuser::syscalls::nr::UnmapSharedMemory,
+        sunrise_libuser::syscalls::nr::MapSharedMemory,
+        sunrise_libuser::syscalls::nr::UnmapSharedMemory,
 
-        kfs_libuser::syscalls::nr::MapFramebuffer,
+        sunrise_libuser::syscalls::nr::MapFramebuffer,
     ],
 });
 

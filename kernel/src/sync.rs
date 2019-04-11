@@ -1,4 +1,4 @@
-//! Synchronization primitives used by KFS
+//! Synchronization primitives used by the Sunrise kernel
 
 use spin;
 

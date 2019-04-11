@@ -1,7 +1,7 @@
 //! Shell
 //!
 //! Creates an interactive terminal window, providing a few functions useful to
-//! test KFS. Type help followed by enter to get a list of allowed commands.
+//! test Sunrise. Type help followed by enter to get a list of allowed commands.
 
 #![feature(alloc, asm, naked_functions)]
 #![no_std]
@@ -25,7 +25,7 @@ extern crate log;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
-extern crate kfs_libuser as libuser;
+extern crate sunrise_libuser as libuser;
 
 
 
@@ -199,8 +199,13 @@ fn test_divide_by_zero() {
 
 /// Test function ensuring pagefaults kills only the current process.
 fn test_page_fault() {
-    let ptr: *const u8 = core::ptr::null();
-    let _res = unsafe { *ptr };
+    // dereference the null pointer.
+    // doing this in rust is so UB, it's optimized out, so we do it in asm.
+    unsafe {
+        asm!("
+        mov al, [0]
+        " ::: "eax" : "volatile", "intel")
+    }
 }
 
 /// Meme for KFS1

@@ -2,7 +2,7 @@
 //!
 //! Low-level helpers to assist memory mapping, MMIOs and DMAs.
 
-use kfs_libutils::{align_down, align_up};
+use sunrise_libutils::{align_down, align_up};
 use crate::syscalls;
 use crate::error::{KernelError, LibuserError, Error};
 
@@ -25,8 +25,8 @@ pub fn find_free_address(size: usize, align: usize) -> Result<usize, Error> {
     // Go over the address space.
     loop {
         let (meminfo, _) = syscalls::query_memory(addr)?;
-        if meminfo.memtype == kfs_libkern::MemoryType::Unmapped {
-            let alignedbaseaddr = kfs_libutils::align_up_checked(meminfo.baseaddr, align).ok_or(LibuserError::AddressSpaceExhausted)?;
+        if meminfo.memtype == sunrise_libkern::MemoryType::Unmapped {
+            let alignedbaseaddr = sunrise_libutils::align_up_checked(meminfo.baseaddr, align).ok_or(LibuserError::AddressSpaceExhausted)?;
 
             let alignment = alignedbaseaddr - meminfo.baseaddr;
             if alignment.checked_add(size - 1).ok_or(LibuserError::AddressSpaceExhausted)? < meminfo.size {

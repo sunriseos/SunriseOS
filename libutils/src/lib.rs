@@ -66,7 +66,7 @@ pub fn align_up_checked(addr: usize, align: usize) -> Option<usize> {
 ///
 /// Ex:
 /// ```
-///   # use kfs_libutils::div_ceil;
+///   # use sunrise_libutils::div_ceil;
 ///   # let PAGE_SIZE: usize = 0x1000;
 ///     let pages_count = div_ceil(0x3002, PAGE_SIZE);
 /// ```

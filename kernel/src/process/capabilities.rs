@@ -94,12 +94,12 @@ const HANDLE_TABLE_SIZE: u32 = 15;
 /// Flags allowing app to debug or be debugged.
 const DEBUG_FLAGS: u32 = 16;
 
-// KFS EXTENSION
+// Sunrise extension
 /// IOPorts the process is allowed to talk to
 const IO_PORTS_ALLOWED: u32 = 10;
 
 /// The highest defined svc.
-const MAX_SVC: usize = ::kfs_libkern::nr::MaxSvc;
+const MAX_SVC: usize = ::sunrise_libkern::nr::MaxSvc;
 
 /// Mask of kernel capabilities that cannot appear twice in a KCAP array.
 const KACS_NO_DUPLICATES: u32 = 0

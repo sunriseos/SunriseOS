@@ -6,7 +6,7 @@ use crate::types::{SharedMemory, MappedSharedMemory};
 use crate::vi::{ViInterface, IBuffer};
 use crate::syscalls::MemoryPermissions;
 use crate::mem::{find_free_address, PAGE_SIZE};
-use kfs_libutils::align_up;
+use sunrise_libutils::align_up;
 use crate::error::Error;
 use core::slice;
 
@@ -52,7 +52,6 @@ impl Window {
     /// Creates a window in the vi compositor.
     pub fn new(top: i32, left: i32, width: u32, height: u32) -> Result<Window, Error> {
         let mut vi = ViInterface::raw_new()?;
-
         let bpp = 32;
         let size = height * width * bpp / 8;
 

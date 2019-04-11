@@ -8,7 +8,7 @@ use xmas_elf::ElfFile;
 use xmas_elf::program::{ProgramHeader, Type::Load, SegmentData};
 use crate::paging::{PagingOffPageSet, PAGE_SIZE, PageTablesSet, EntryFlags};
 use crate::address::VirtualAddress;
-use kfs_libutils::align_up;
+use sunrise_libutils::align_up;
 use crate::frame_alloc::FrameAllocator;
 
 /// Loads the kernel in high memory

@@ -4,6 +4,7 @@
 
 pub mod entry;
 pub mod table;
+pub mod lands;
 
 use crate::mem::{VirtualAddress, PhysicalAddress};
 

@@ -27,7 +27,7 @@ extern crate bitfield;
 
 
 #[macro_use]
-extern crate kfs_libutils;
+extern crate sunrise_libutils;
 #[macro_use]
 extern crate failure;
 
@@ -56,13 +56,13 @@ pub mod window;
 pub mod zero_box;
 mod log_impl;
 
-pub use kfs_libutils::io;
+pub use sunrise_libutils::io;
 
-use kfs_libutils as utils;
+use sunrise_libutils as utils;
 
 /// Global allocator. Every implicit allocation in the rust liballoc library (for
 /// instance for Vecs, Arcs, etc...) are allocated with this allocator.
-#[cfg(not(test))]
+#[cfg(all(target_os = "none", not(test)))]
 #[global_allocator]
 static ALLOCATOR: allocator::Allocator = allocator::Allocator::new();
 
@@ -75,12 +75,12 @@ static ALLOCATOR: allocator::Allocator = allocator::Allocator::new();
 /// The exception handling personality function for use in the bootstrap.
 ///
 /// We currently have no userspace exception handling, so make it do nothing.
-#[cfg(target_os = "none")]
+#[cfg(all(target_os = "none", not(test)))]
 #[lang = "eh_personality"] #[no_mangle] pub extern fn eh_personality() {}
 
 /// Function called on `panic!` invocation. Prints the panic information to the
 /// kernel debug logger, and exits the process.
-#[cfg(target_os = "none")]
+#[cfg(all(target_os = "none", not(test)))]
 #[panic_handler] #[no_mangle]
 pub extern fn panic_fmt(p: &core::panic::PanicInfo<'_>) -> ! {
     let _ = syscalls::output_debug_string(&format!("{}", p));
@@ -93,7 +93,7 @@ use core::alloc::Layout;
 // BODY: Panicking may allocate, so calling panic in the OOM handler is a
 // BODY: terrible idea.
 /// OOM handler. Causes a panic.
-#[cfg(target_os = "none")]
+#[cfg(all(target_os = "none", not(test)))]
 #[lang = "oom"]
 #[no_mangle]
 pub fn rust_oom(_: Layout) -> ! {
@@ -102,7 +102,7 @@ pub fn rust_oom(_: Layout) -> ! {
 
 /// Executable entrypoint. Zeroes out the BSS, calls main, and finally exits the
 /// process.
-#[cfg(target_os = "none")]
+#[cfg(all(target_os = "none", not(test)))]
 #[no_mangle]
 pub unsafe extern fn start() -> ! {
     asm!("
@@ -134,7 +134,7 @@ pub unsafe extern fn start() -> ! {
 ///
 /// The default implementations are returning 0 to indicate a successful
 /// execution. In case of a failure, 1 is returned.
-#[cfg(target_os = "none")]
+#[cfg(all(target_os = "none", not(test)))]
 #[lang = "termination"]
 trait Termination {
     /// Is called to get the representation of the value as status code.
@@ -142,13 +142,13 @@ trait Termination {
     fn report(self) -> i32;
 }
 
-#[cfg(target_os = "none")]
+#[cfg(all(target_os = "none", not(test)))]
 impl Termination for () {
     #[inline]
     fn report(self) -> i32 { 0 }
 }
 
-#[cfg(target_os = "none")]
+#[cfg(all(target_os = "none", not(test)))]
 #[lang = "start"]
 #[allow(clippy::unit_arg)]
 fn main<T: Termination>(main: fn(), _argc: isize, _argv: *const *const u8) -> isize {

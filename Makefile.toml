@@ -47,98 +47,98 @@ workspace = false
 description = "Compiles the i386 bootstrap for debug"
 dependencies = ["bootstrap-linker", "install-rust-src"]
 command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-bootstrap" ]
+args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-bootstrap" ]
 
 [tasks.bootstrap-release]
 workspace = false
 description = "Compiles the i386 bootstrap for release"
 dependencies = ["bootstrap-linker", "install-rust-src"]
 command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-bootstrap", "--release" ]
+args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-bootstrap", "--release" ]
 
 [tasks.kernel]
 workspace = false
 description = "Compiles the kernel for debug"
 dependencies = ["kernel-linker", "install-rust-src"]
 command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-kernel", "-Z", "package-features", "--features=panic-on-exception"]
+args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-kernel", "-Z", "package-features", "--features=panic-on-exception"]
 
 [tasks.kernel-release]
 workspace = false
 description = "Compiles the kernel for release"
 dependencies = ["kernel-linker", "install-rust-src"]
 command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-kernel", "--release" ]
+args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-kernel", "--release" ]
 
 [tasks.vi]
 workspace = false
-description = "Compiles kfs-vi"
+description = "Compiles sunrise-vi"
 dependencies = ["userspace-linker", "install-rust-src"]
 command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-vi"]
+args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-vi"]
 
 [tasks.vi-release]
 workspace = false
-description = "Compiles kfs-vi"
+description = "Compiles sunrise-vi"
 dependencies = ["userspace-linker", "install-rust-src"]
 command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-vi", "--release"]
+args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-vi", "--release"]
 
 [tasks.sm]
 workspace = false
-description = "Compiles kfs-sm"
+description = "Compiles sunrise-sm"
 dependencies = ["userspace-linker", "install-rust-src"]
 command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-sm"]
+args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-sm"]
 
 [tasks.sm-release]
 workspace = false
-description = "Compiles kfs-sm"
+description = "Compiles sunrise-sm"
 dependencies = ["userspace-linker", "install-rust-src"]
 command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-sm", "--release"]
+args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-sm", "--release"]
 
 [tasks.shell]
 workspace = false
-description = "Compiles kfs-shell"
+description = "Compiles sunrise-shell"
 dependencies = ["userspace-linker", "install-rust-src"]
 command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-shell"]
+args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-shell"]
 
 [tasks.shell-release]
 workspace = false
-description = "Compiles kfs-shell"
+description = "Compiles sunrise-shell"
 dependencies = ["userspace-linker", "install-rust-src"]
 command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-shell", "--release"]
+args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-shell", "--release"]
 
 [tasks.clock]
 workspace = false
-description = "Compiles kfs-clock"
+description = "Compiles sunrise-clock"
 dependencies = ["userspace-linker", "install-rust-src"]
 command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-clock"]
+args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-clock"]
 
 [tasks.clock-release]
 workspace = false
-description = "Compiles kfs-clock"
+description = "Compiles sunrise-clock"
 dependencies = ["userspace-linker", "install-rust-src"]
 command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-clock", "--release"]
+args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-clock", "--release"]
 
 [tasks.ahci]
 workspace = false
-description = "Compiles kfs-ahci"
+description = "Compiles sunrise-ahci"
 dependencies = ["userspace-linker", "install-rust-src"]
 command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-ahci"]
+args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-ahci"]
 
 [tasks.ahci-release]
 workspace = false
-description = "Compiles kfs-ahci"
+description = "Compiles sunrise-ahci"
 dependencies = ["userspace-linker", "install-rust-src"]
 command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=kfs-ahci", "--release"]
+args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-ahci", "--release"]
 
 [tasks.userspace]
 workspace = false
@@ -156,13 +156,13 @@ description = "Creates a bootable ISO containing the kernel and grub."
 dependencies = ["bootstrap", "kernel", "userspace", "install-mkisofs-rs"]
 script = [
 '''
-cp target/i386-unknown-none/debug/kfs-bootstrap isofiles/boot/
-cp target/i386-unknown-none/debug/kfs-kernel    isofiles/boot/
-cp target/i386-unknown-none/debug/kfs-shell     isofiles/boot/
-cp target/i386-unknown-none/debug/kfs-clock     isofiles/boot/
-cp target/i386-unknown-none/debug/kfs-sm        isofiles/boot/
-cp target/i386-unknown-none/debug/kfs-vi        isofiles/boot/
-cp target/i386-unknown-none/debug/kfs-ahci      isofiles/boot/
+cp target/i386-unknown-none/debug/sunrise-bootstrap isofiles/boot/
+cp target/i386-unknown-none/debug/sunrise-kernel    isofiles/boot/
+cp target/i386-unknown-none/debug/sunrise-shell     isofiles/boot/
+cp target/i386-unknown-none/debug/sunrise-clock     isofiles/boot/
+cp target/i386-unknown-none/debug/sunrise-sm        isofiles/boot/
+cp target/i386-unknown-none/debug/sunrise-vi        isofiles/boot/
+cp target/i386-unknown-none/debug/sunrise-ahci      isofiles/boot/
 mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
 '''
 ]
@@ -173,13 +173,13 @@ description = "Creates a bootable ISO containing the kernel and grub."
 dependencies = ["bootstrap-release", "kernel-release", "userspace-release", "install-mkisofs-rs"]
 script = [
 '''
-cp target/i386-unknown-none/release/kfs-bootstrap isofiles/boot/
-cp target/i386-unknown-none/release/kfs-kernel    isofiles/boot/
-cp target/i386-unknown-none/release/kfs-shell     isofiles/boot/
-cp target/i386-unknown-none/release/kfs-clock     isofiles/boot/
-cp target/i386-unknown-none/release/kfs-sm        isofiles/boot/
-cp target/i386-unknown-none/release/kfs-vi        isofiles/boot/
-cp target/i386-unknown-none/release/kfs-ahci      isofiles/boot/
+cp target/i386-unknown-none/release/sunrise-bootstrap isofiles/boot/
+cp target/i386-unknown-none/release/sunrise-kernel    isofiles/boot/
+cp target/i386-unknown-none/release/sunrise-shell     isofiles/boot/
+cp target/i386-unknown-none/release/sunrise-clock     isofiles/boot/
+cp target/i386-unknown-none/release/sunrise-sm        isofiles/boot/
+cp target/i386-unknown-none/release/sunrise-vi        isofiles/boot/
+cp target/i386-unknown-none/release/sunrise-ahci      isofiles/boot/
 mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
 '''
 ]

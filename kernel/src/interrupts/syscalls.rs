@@ -17,7 +17,7 @@ use crate::ipc;
 use super::check_thread_killed;
 use crate::error::{UserspaceError, KernelError};
 use failure::Backtrace;
-use kfs_libkern::{nr, SYSCALL_NAMES, MemoryInfo, MemoryAttributes, MemoryPermissions};
+use sunrise_libkern::{nr, SYSCALL_NAMES, MemoryInfo, MemoryAttributes, MemoryPermissions};
 use bit_field::BitArray;
 
 /// Resize the heap of a process, just like a brk.
@@ -111,7 +111,7 @@ fn create_interrupt_event(irq_num: usize, _flag: u32) -> Result<usize, Userspace
 /// 1. 0x00000000 (On Horizon it contains the KernelSpace virtual address of this mapping,
 ///    but I don't see any use for it).
 /// 2. The length of the physical region.
-// kfs extension
+// sunrise extension
 /// 3. The offset in the region of the given virtual address.
 ///
 /// # Error
@@ -141,7 +141,7 @@ fn query_physical_address(virtual_address: usize) -> Result<(usize, usize, usize
         MappingType::Regular(regions) => regions,
         MappingType::Shared(arc_regions) => arc_regions.as_ref(),
         MappingType::Available | MappingType::Guarded | MappingType::SystemReserved =>
-            return Err(KernelError::InvalidAddress { address: virtual_address, length: 1, backtrace: Backtrace::new() }.into()),
+            return Err(KernelError::InvalidAddress { address: virtual_address.addr(), backtrace: Backtrace::new() }.into()),
     };
     let offset = virtual_address - mapping.mapping().address();
     let mut i = 0;
@@ -687,7 +687,7 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
         (true, nr::ManageNamedPort) => registers.apply1(manage_named_port(UserSpacePtr(x0 as _), x1 as _)),
         (true, nr::ConnectToPort) => registers.apply1(connect_to_port(x0 as _)),
 
-        // KFS extensions
+        // sunrise extensions
         (true, nr::MapFramebuffer) => registers.apply4(map_framebuffer()),
         (true, nr::MapMmioRegion) => registers.apply0(map_mmio_region(x0, x1, x2, x3 != 0)),
 

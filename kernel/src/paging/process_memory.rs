@@ -23,13 +23,12 @@ use super::lands::{UserLand, VirtualSpaceLand};
 use super::bookkeeping::UserspaceBookkeeping;
 use super::mapping::{Mapping, MappingType};
 use super::cross_process::CrossProcessMapping;
-use super::error::MmError;
 use super::MappingAccessRights;
 use crate::mem::{VirtualAddress, PhysicalAddress};
 use crate::frame_allocator::{FrameAllocator, FrameAllocatorTrait, PhysicalMemRegion};
 use crate::paging::arch::Entry;
 use crate::error::KernelError;
-use crate::utils::{check_aligned, check_nonzero_length};
+use crate::utils::{check_size_aligned, check_nonzero_length};
 use crate::utils::Splittable;
 use alloc::{vec::Vec, sync::Arc};
 use failure::Backtrace;
@@ -194,19 +193,19 @@ impl ProcessMemory {
     /// Maps a single physical regions to a given virtual address.
     /// Used to map mmio regions in UserSpace.
     ///
-    /// # Error
+    /// # Errors
     ///
-    /// Returns a KernelError if length is not page aligned.
-    /// Returns a KernelError if length is 0.
+    /// * `InvalidAddress`:
+    ///     * there was already a mapping in the range.
+    ///     * range does not fall in UserLand.
+    ///     * `address` is not page aligned.
     pub fn map_phys_region_to(&mut self,
                               phys: PhysicalMemRegion,
                               address: VirtualAddress,
                               flags: MappingAccessRights)
                               -> Result<(), KernelError> {
+        address.check_aligned_to(PAGE_SIZE)?;
         let length = phys.size();
-        check_aligned(address.addr(), PAGE_SIZE)?;
-        check_aligned(length, PAGE_SIZE)?;
-        check_nonzero_length(length)?;
         UserLand::check_contains_region(address, length)?;
         self.userspace_bookkeping.check_vacant(address, length)?;
         // ok, everything seems good, from now on treat errors as unexpected
@@ -221,14 +220,19 @@ impl ProcessMemory {
 
     /// Allocates the physical regions, and maps them to specified address.
     ///
-    /// # Error
+    /// # Errors
     ///
-    /// Returns a KernelError if there was already a mapping in the range.
-    /// Returns a KernelError if address does not fall in UserLand.
-    /// Returns a KernelError if address or length is not PAGE_SIZE aligned.
+    /// * `InvalidAddress`:
+    ///     * there was already a mapping in the range.
+    ///     * range does not fall in UserLand.
+    ///     * `address` is not page aligned.
+    /// * `InvalidSize` :
+    ///     * `length` is not page aligned.
+    ///     * `length` is 0.
+    /// * `PhysicalMemoryExhaustion`: Frames could not be allocated.
     pub fn create_regular_mapping(&mut self, address: VirtualAddress, length: usize, flags: MappingAccessRights) -> Result<(), KernelError> {
-        check_aligned(address.addr(), PAGE_SIZE)?;
-        check_aligned(length, PAGE_SIZE)?;
+        address.check_aligned_to(PAGE_SIZE)?;
+        check_size_aligned(length, PAGE_SIZE)?;
         check_nonzero_length(length)?;
         UserLand::check_contains_region(address, length)?;
         self.userspace_bookkeping.check_vacant(address, length)?;
@@ -245,21 +249,25 @@ impl ProcessMemory {
 
     /// Maps a previously created shared mapping to specified address.
     ///
-    /// # Error
+    /// # Errors
     ///
-    /// Returns a KernelError if there was already a mapping in the range.
-    /// Returns a KernelError if address does not fall in UserLand.
-    /// Returns a KernelError if address or length is not PAGE_SIZE aligned.
+    /// * `InvalidAddress`:
+    ///     * there was already a mapping in the range.
+    ///     * range does not fall in UserLand.
+    ///     * `address` is not page aligned.
+    /// * `InvalidSize` :
+    ///     * `length` is not page aligned.
+    ///     * `length` is 0.
     pub fn map_shared_mapping(&mut self,
                               shared_mapping: Arc<Vec<PhysicalMemRegion>>,
                               address: VirtualAddress,
                               flags: MappingAccessRights)
                               -> Result<(), KernelError> {
-        check_aligned(address.addr(), PAGE_SIZE)?;
+        address.check_aligned_to(PAGE_SIZE)?;
         // compute the length
         let length = shared_mapping.iter().flatten().count() * PAGE_SIZE;
         check_nonzero_length(length)?;
-        check_aligned(length, PAGE_SIZE)?;
+        check_size_aligned(length, PAGE_SIZE)?;
         UserLand::check_contains_region(address, length)?;
         self.userspace_bookkeping.check_vacant(address, length)?;
         // ok, everything seems good, from now on treat errors as unexpected
@@ -281,8 +289,11 @@ impl ProcessMemory {
     ///
     /// # Errors
     ///
-    /// Returns a KernelError if parameters do not span exactly the whole mapping.
-    /// Returns a KernelError if address falls in an available mapping.
+    /// * `InvalidAddress`:
+    ///     * `address` does not correspond to the start of a mapping.
+    ///     * `address` points to an Available/Guarded/SystemReserved mapping.
+    /// * `InvalidSize`:
+    ///     * `length` is not the size of the mapping at `address`.
     pub fn share_existing_mapping(&mut self, address: VirtualAddress, length: usize) -> Result<Arc<Vec<PhysicalMemRegion>>, KernelError> {
         let mapping = self.userspace_bookkeping.remove_mapping(address, length)?;
         match mapping.mtype_ref() {
@@ -296,7 +307,7 @@ impl ProcessMemory {
             _ => {
                 self.userspace_bookkeping.add_mapping(mapping)
                     .expect("add_mapping failed in shared_existing_mapping");
-                return Err(KernelError::MmError(MmError::InvalidMapping { backtrace: Backtrace::new() }));
+                return Err(KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new() });
             },
         };
 
@@ -324,11 +335,15 @@ impl ProcessMemory {
 
     /// Guards a range of addresses
     ///
-    /// # Error
+    /// # Errors
     ///
-    /// Returns a KernelError if there was already a mapping in the range.
-    /// Returns a KernelError if address does not fall in UserLand.
-    /// Returns a KernelError if address or length is not PAGE_SIZE aligned.
+    /// * `InvalidAddress`:
+    ///     * there was already a mapping in the range.
+    ///     * range does not fall in UserLand.
+    ///     * `address` is not page aligned.
+    /// * `InvalidSize` :
+    ///     * `length` is not page aligned.
+    ///     * `length` is 0.
     pub fn guard(&mut self, address: VirtualAddress, length: usize) -> Result<(), KernelError>{
         UserLand::check_contains_region(address, length)?;
         let mapping = Mapping::new_guard(address, length)?;
@@ -345,15 +360,16 @@ impl ProcessMemory {
     ///
     /// If the range maps physical memory, it will be de-allocated.
     ///
-    /// # Error
+    /// # Errors
     ///
-    /// Returns a KernelError if there was no mapping corresponding to the range.
-    /// Returns a KernelError if address does not fall in UserLand.
-    /// Returns a KernelError if address or length is not PAGE_SIZE aligned.
+    /// * `InvalidAddress`:
+    ///     * there was no mapping starting at `address`.
+    ///     * range does not fall in UserLand.
+    /// * `InvalidSize`:
+    ///     * `length` is not the size of the mapping at `address`.
     pub fn unmap(&mut self, address: VirtualAddress, length: usize) -> Result<Mapping, KernelError> {
-        check_aligned(address.addr(), PAGE_SIZE)?;
-        check_aligned(length, PAGE_SIZE)?;
         UserLand::check_contains_region(address, length)?;
+        // allow address and length to be unaligned, remove_mapping will just not find anything.
         let mapping = self.userspace_bookkeping.remove_mapping(address, length)?;
         self.get_hierarchy().unmap(address, length, |_| {
             /* leak the mapped frames here, we still have them in `mapping` */
@@ -376,15 +392,21 @@ impl ProcessMemory {
     ///
     /// Because it is reference counted, a Shared mapping cannot be resized.
     ///
-    /// # Error
+    /// # Errors
     ///
-    /// * WasAvailable if `address` does not match any existent mapping.
-    /// * InvalidSize if `new_size` > previous mapping length.
-    /// * InvalidSize if `new_size` is not PAGE_SIZE aligned.
+    /// * `InvalidAddress`:
+    ///     * No mapping was found starting at `address`.
+    /// * `InvalidSize`:
+    ///     * `new_size` > previous mapping length.
+    ///     * `new_size` is not PAGE_SIZE aligned.
+    ///
     /// * SharedMapping if `address` falls in a shared mapping.
     /// * InvalidMapping if `address` falls in a system reserved mapping.
+    // todo shrink_mapping seems extremely fishy
+    // body I should check everything is right with its return types and early returns.
+    // body It should at least check early for Shared and SystemReserved mappings.
     pub fn shrink_mapping(&mut self, address: VirtualAddress, new_size: usize) -> Result<Option<Mapping>, KernelError> {
-        check_aligned(new_size, PAGE_SIZE)?;
+        check_size_aligned(new_size, PAGE_SIZE)?;
         // 1. get the previous mapping's address and size.
         let (start_addr, old_size) = {
             let old_mapping_ref = self.userspace_bookkeping.occupied_mapping_at(address)?;
@@ -425,26 +447,27 @@ impl ProcessMemory {
     ///
     /// Because it is reference counted, a Shared mapping cannot be resized.
     ///
-    /// # Error
+    /// # Errors
     ///
-    /// * WasAvailable if `address` does not match any existent mapping.
-    /// * SharedMapping if `address` falls in a shared mapping.
-    /// * InvalidMapping if `address` falls in a system reserved mapping.
-    /// * InvalidSize if `new_size` < previous mapping length.
-    /// * InvalidSize if `new_size` is not PAGE_SIZE aligned.
-    /// * InvalidSize if \[`address`..`new_size`\] does not fall in UserLand.
-    /// * WasOccupied if a mapping was already present in the expanding area.
+    /// * `InvalidAddress`:
+    ///     * There was already a mapping in the range `address..(address + new_size)`.
+    ///     * `address` does not match any existent mapping.
+    ///     * `address` falls in a shared or system reserved mapping, which cannot be resized.
+    /// * `InvalidSize`:
+    ///     * `address..(address + new_size)` does not fall in UserLand.
+    ///     * `new_size` < previous mapping length.
+    ///     * `new_size` is not page aligned.
     pub fn expand_mapping(&mut self, address: VirtualAddress, new_size: usize) -> Result<(), KernelError> {
-        check_aligned(new_size, PAGE_SIZE)?;
+        check_size_aligned(new_size, PAGE_SIZE)?;
         // 1. get the previous mapping's address and size.
         let (start_addr, old_size) = {
             let old_mapping_ref = self.userspace_bookkeping.occupied_mapping_at(address)?;
-            // check it's not a shared mapping.
+            // check it's not a shared or system reserved mapping.
             if let MappingType::Shared(..) = old_mapping_ref.mtype_ref() {
-                return Err(KernelError::MmError(MmError::SharedMapping { backtrace: Backtrace::new() }));
+                return Err(KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new() });
             }
             if let MappingType::SystemReserved = old_mapping_ref.mtype_ref() {
-                return Err(KernelError::MmError(MmError::InvalidMapping { backtrace: Backtrace::new() }));
+                return Err(KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new() });
             }
             (old_mapping_ref.address(), old_mapping_ref.length())
         };

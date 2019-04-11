@@ -221,7 +221,7 @@ impl Handle {
 /// are randomized, while the top 16 bits are an auto-incrementing counters.
 /// Because of this, it is impossible to have more than 65535 handles.
 ///
-/// In KFS, we do not yet have randomness, so the counter just goes from 1 and
+/// In Sunrise, we do not yet have randomness, so the counter just starts from 1 and
 /// goes up.
 ///
 /// There exists two "meta-handles": 0xFFFF8000 and 0xFFFF8001, which always

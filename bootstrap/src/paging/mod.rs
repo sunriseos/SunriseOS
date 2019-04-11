@@ -112,7 +112,7 @@ pub unsafe fn map_bootstrap(boot_info : &BootInformation) -> PagingOffPageSet {
         }
 
         let from = section.start_address() as usize;
-        let to = from + kfs_libutils::align_up(section.size() as usize, PAGE_SIZE);
+        let to = from + sunrise_libutils::align_up(section.size() as usize, PAGE_SIZE);
         let _ = writeln!(Serial, "= Identity mapping {:#010x}-{:#010x}", from, to);
 
         new_pages.identity_map_region(PhysicalAddress(section.start_address() as usize),
