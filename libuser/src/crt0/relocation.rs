@@ -9,11 +9,11 @@ mod module_header {
     .global module_header
     module_header:
         .ascii "MOD0"
-        .int DYNAMIC - module_header
-        .int BSS_START - module_header
-        .int BSS_END - module_header
-        .int EH_FRAME_HDR_START - module_header
-        .int EH_FRAME_HDR_END - module_header
+        .int _DYNAMIC - module_header
+        .int __bss_start__ - module_header
+        .int __bss_end__ - module_header
+        .int __eh_frame_hdr_start__ - module_header
+        .int __eh_frame_hdr_end__ - module_header
         .int 0 // TODO: runtime-generated module object offset for rtld
     "#);
 }
