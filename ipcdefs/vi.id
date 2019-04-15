@@ -1,5 +1,5 @@
 # Entry point interface.
-interface sunrise_libuser::vi::ViInterface is vi {
+interface sunrise_libuser::vi::ViInterface is vi: {
     # Create a window.
     #
     # This creates a window at the given coordinates, with the given
