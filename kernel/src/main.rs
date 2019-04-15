@@ -220,6 +220,9 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 
     log_impl::init();
 
+    info!("Start ACPI detection");
+    unsafe { i386::acpi::init(); }
+
     unsafe { devices::pit::init_channel_0() };
     info!("Initialized PIT");
 
