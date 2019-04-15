@@ -248,7 +248,7 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
         _ => false
     }).count();
     let handle_move_count = cmd.args.iter().filter(|(argty, _)| match argty {
-        Alias::KObject | Alias::KHandle(false, _) => true,
+        Alias::KObject | Alias::KHandle(false, _) | Alias::Object(_) => true,
         _ => false
     }).count();
     let handle_copy_count = cmd.args.iter().filter(|(argty, _)| match argty {
@@ -313,7 +313,7 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
     // TODO: Handle return C buffers.
     let ipc_count = 0;
     let handle_move_count = cmd.ret.iter().filter(|(argty, _)| match argty {
-        Alias::KObject | Alias::KHandle(false, _) => true,
+        Alias::KObject | Alias::KHandle(false, _) | Alias::Object(_) => true,
         _ => false
     }).count();
     let handle_copy_count = cmd.ret.iter().filter(|(argty, _)| match argty {
