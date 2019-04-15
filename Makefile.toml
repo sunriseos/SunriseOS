@@ -231,14 +231,14 @@ workspace = false
 description = "Generate the project's documentation"
 env = { "RUSTFLAGS" = "--sysroot=${PWD}/target/sysroot",  "RUSTDOCFLAGS" = "--sysroot=${PWD}/target/sysroot"}
 command = "cargo"
-args = ["doc", "--target=i386-unknown-none", "--no-deps" ]
+args = ["doc", "--no-deps" ]
 
 [tasks.doc-full]
 workspace = false
 description = "Generate the project's documentation, including private items"
 env = { "RUSTFLAGS" = "--sysroot=${PWD}/target/sysroot",  "RUSTDOCFLAGS" = "--sysroot=${PWD}/target/sysroot -Z unstable-options --enable-index-page"}
 command = "cargo"
-args = ["doc", "--target=i386-unknown-none", "--no-deps", "--document-private-items"]
+args = ["doc", "--no-deps", "--document-private-items"]
 
 [tasks.deploy-doc]
 workspace = false
@@ -246,7 +246,7 @@ install_crate = { crate_name = "cargo-travis", binary = "cargo", test_arg = "doc
 install_crate_args = ["--git", "https://github.com/roblabla/cargo-travis", "--rev", "doc-upload-target"]
 description = "Upload this project's documentation on github pages. Should only run on CI."
 command = "cargo"
-args = ["doc-upload", "--target=i386-unknown-none", "--clobber-index"]
+args = ["doc-upload", "--clobber-index"]
 
 [tasks.test]
 workspace = false

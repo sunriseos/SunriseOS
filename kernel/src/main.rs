@@ -6,7 +6,7 @@
 //! Currently doesn't do much, besides booting and printing Hello World on the
 //! screen. But hey, that's a start.
 
-#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, allocator_api, alloc, box_syntax, no_more_cas, const_vec_new, range_contains, step_trait, thread_local, nll, underscore_const_names)]
+#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, allocator_api, alloc, box_syntax, no_more_cas, const_vec_new, range_contains, step_trait, thread_local, nll, underscore_const_names, doc_cfg)]
 #![no_std]
 #![cfg_attr(target_os = "none", no_main)]
 #![recursion_limit = "1024"]
@@ -53,7 +53,7 @@ pub mod paging;
 pub mod event;
 pub mod error;
 pub mod log_impl;
-#[cfg(any(target_arch = "x86", test))]
+#[cfg(any(target_arch = "x86", test, rustdoc))]
 #[macro_use]
 pub mod i386;
 pub mod interrupts;
@@ -167,7 +167,7 @@ fn main() {
 /// * mapped grub's multiboot information structure in KernelLand (its address in $ebx),
 ///
 /// What we do is just bzero the .bss, and call a rust function, passing it the content of $ebx.
-#[cfg(target_os = "none")]
+#[cfg(any(target_os = "none", rustdoc))]
 #[no_mangle]
 pub unsafe extern fn start() -> ! {
     asm!("
@@ -189,7 +189,7 @@ pub unsafe extern fn start() -> ! {
 /// CRT0 starts here.
 ///
 /// This function takes care of initializing the kernel, before calling the main function.
-#[cfg(target_os = "none")]
+#[cfg(any(target_os = "none", rustdoc))]
 #[no_mangle]
 pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     use crate::devices::rs232::{SerialAttributes, SerialColor};

@@ -53,11 +53,11 @@ const FRAME_BASE_MASK:   usize = !FRAME_OFFSET_MASK;
 const FRAME_BASE_LOG: usize = 12;
 
 /// The size of the frames_bitmap (~128ko)
-#[cfg(not(test))]
+#[cfg(not(any(test, rustdoc)))]
 const FRAMES_BITMAP_SIZE: usize = usize::max_value() / PAGE_SIZE / 8 + 1;
 
 /// For unit tests we use a much smaller array.
-#[cfg(test)]
+#[cfg(any(test, rustdoc))]
 const FRAMES_BITMAP_SIZE: usize = 32 / 8;
 
 /// Gets the frame number from a physical address
