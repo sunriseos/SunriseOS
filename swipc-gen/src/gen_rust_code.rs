@@ -1,6 +1,6 @@
 //! Code generation implementation
 //!
-//! Entrypoint is [generate_ipc].
+//! Entrypoint is [generate_ipc](crate::gen_rust_code::generate_ipc).
 
 use lazy_static::lazy_static;
 
@@ -10,6 +10,8 @@ use swipc_parser::{Alias, Func, KHandleType, TypeDef, Type, Decorator};
 use bit_field::BitField;
 
 lazy_static! {
+    /// SwIPC builtin type. Associates a SwIPC builtin name with a size/alignment
+    /// and a rust type name.
     static ref BUILTINS: HashMap<&'static str, (u8, &'static str)> = {
         let mut types = HashMap::new();
         types.insert("bool", (1, "bool"));
@@ -349,8 +351,9 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
     Ok(s)
 }
 
-/// Create a new type definition. For a [TypeDef::Struct], this will be a new
-/// struct, For a [TypeDef::]
+/// Create a new type definition. For a `TypeDef::Struct`, this will be a new
+/// struct, For a `TypeDef::Enum`, it will be a new enum, and for a
+/// `TypeDef::Alias`, it will be a rust `type` alias.
 fn format_type(struct_name: &str, ty: &TypeDef) -> Result<String, Error> {
     let mut s = String::new();
     for line in ty.doc.lines() {
@@ -457,10 +460,6 @@ fn generate_mod(m: Mod, depth: usize, mod_name: &str, crate_name: &str) -> Strin
 /// namespace.
 ///
 /// The generated string will contain a module hierarchy.
-///
-/// # Example
-///
-// TODO: Add an example of what generate_ipc generates.
 pub fn generate_ipc(s: &str, prefix: String, mod_name: String, crate_name: String) -> String {
     // Read and parse the SwIPC file.
     let ctx = swipc_parser::parse(s);

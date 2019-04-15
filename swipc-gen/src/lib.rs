@@ -3,7 +3,7 @@
 //! This crate is responsible for generating client code from a [SwIPC
 //! interface definition](https://github.com/reswitched/SwIPC).
 //!
-//! The client code will use [kfs_libuser](kfs_libuser)'s IPC API.
+//! The client code will use [sunrise_libuser](../sunrise_libuser)'s IPC API.
 
 #![feature(box_patterns)]
 

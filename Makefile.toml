@@ -265,9 +265,9 @@ args = ["-c", "kernel/src/main.rs", "bootstrap/src/main.rs",
 	"swipc-parser/src/lib.rs"
 ]
 
-[tasks.clippy-kfs-target]
+[tasks.clippy-sunrise-target]
 workspace = false
-description = "Run clippy on kfs components"
+description = "Run clippy on sunrise components"
 dependencies = ["install-rust-src", "refresh-crates"]
 install_crate = { rustup_component_name = "clippy" }
 command = "cargo"
@@ -293,4 +293,4 @@ args = ["clippy",
 
 [tasks.clippy]
 workspace = false
-dependencies = ["clippy-host-target", "clippy-kfs-target"]
+dependencies = ["clippy-host-target", "clippy-sunrise-target"]

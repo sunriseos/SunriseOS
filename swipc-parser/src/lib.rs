@@ -627,6 +627,16 @@ pub fn parse(s: &str) -> Ctx {
     for def in rule.into_inner() {
         match def.as_rule() {
             Rule::def => match parse_def(def.into_inner()) {
+                // TODO: SwIPC-parser: Merge multiple type/interface definition
+                // BODY: When the parser encounters multiple definitions of a type
+                // BODY: or interface, it should try to merge them into a single
+                // BODY: one.
+                // BODY:
+                // BODY: This will make it easier to implement the logic of
+                // BODY: merging auto.id and switchbrew.id: we can just treat
+                // BODY: them as one big file, merging every entry, keeping the
+                // BODY: "best" information of each, while ensuring they are
+                // BODY: compatible.
                 Def::Type(tydef) => { ctx.types.insert(tydef.name.clone(), tydef); },
                 Def::Interface(iface) => { ctx.interfaces.insert(iface.name.clone(), iface); },
             }

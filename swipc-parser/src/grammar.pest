@@ -81,5 +81,5 @@ unknownDecorator = { name ~ ("(" ~ sname+ ~ ")")? }
 
 funcDef = { comment* ~ decorator* ~ "[" ~ number ~ "]" ~ name ~ namedTuple ~ ("->" ~ (namedType | namedTuple))? ~ ";" }
 
-WHITESPACE = _{ " " | "\n" | "\t" }
+WHITESPACE = _{ " " | NEWLINE | "\t" }
 COMMENT = _{ ("/*" ~ (!"*/" ~ ANY)* ~ "*/") | ("//" ~ (!"\n" ~ ANY)*) }
