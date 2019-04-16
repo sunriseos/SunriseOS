@@ -7,7 +7,7 @@ interface sunrise_libuser::vi::ViInterface is vi: {
     # a framebuffer of type `[[u8; width]; height]`.
     #
     # It is allowed to place the framebuffer outside the field of view.
-    [0] create_buffer(KHandle<copy, shared_memory> framebuffer, i32 top, i32 left, u32 width, u32 height) -> object<sunrise_libuser::vi::IBuffer>;
+    [0] create_buffer(handle<copy, shared_memory> framebuffer, i32 top, i32 left, u32 width, u32 height) -> object<sunrise_libuser::vi::IBuffer>;
     # Gets the screen resolution.
     [1] get_screen_resolution() -> (u32 width, u32 height);
 }

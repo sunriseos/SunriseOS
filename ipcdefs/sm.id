@@ -22,9 +22,9 @@
 interface sunrise_libuser::sm::IUserInterface is @managedport sm: {
     # Returns a handle to the given service. IPC messages may be sent to this
     # handle through `svcSendSyncRequest`.
-    [1] get_service(u64 name) -> KHandle<move, client_session>;
+    [1] get_service(u64 name) -> handle<move, client_session>;
     # Registers a service with the given name. The user can use
     # `svcAcceptSession` on the returned handle to get a new Session handle, and
     # use `svcReplyAndReceive` on those handles to reply to IPC requests.
-    [2] register_service(u64 name, bool is_light, u32 max_handles) -> KHandle<move, server_port>;
+    [2] register_service(u64 name, bool is_light, u32 max_handles) -> handle<move, server_port>;
 }

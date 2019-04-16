@@ -37,8 +37,6 @@
 #![deny(intra_doc_link_resolution_failure)]
 
 // TODO: Bring the SwIPC parser in-line with new upstream format.
-// BODY: KObject should be removed, KHandle should be renamed to handle.
-// BODY: 
 // BODY: Unknown can now carry a size (which behaves like bytes). Unsized unknown
 // BODY: should be treated as an unsupported struct.
 // BODY:
@@ -102,12 +100,12 @@ pub struct Enum {
     pub fields: Vec<(String, String, u64)>
 }
 
-/// Type of a KHandle. Represents all the kernel handle types on the Horizon/NX
+/// Type of a Handle. Represents all the kernel handle types on the Horizon/NX
 /// kernel.
 #[derive(Debug)]
 #[allow(missing_docs)]
 #[allow(clippy::missing_docs_in_private_items)]
-pub enum KHandleType {
+pub enum HandleType {
     Process, Thread, Debug, CodeMemory, TransferMemory, SharedMemory,
     ServerPort, ClientPort, ServerSession, ClientSession,
     ServerLightSession, ClientLightSession, ReadableEvent, WritableEvent,
@@ -135,11 +133,9 @@ pub enum Alias {
     Bytes(u64),
     /// Forces the alignment to the given size for the given underlying type.
     Align(u64, Box<Alias>),
-    /// Same as a KHandle<move, None>
-    KObject,
     /// A Kernel Handle of the given type. If the first argument is true, the
     /// handle is a copy Handle, otherwise it's a move a handle.
-    KHandle(bool, Option<KHandleType>),
+    Handle(bool, Option<HandleType>),
     /// A Pid.
     Pid,
     /// Either a builtin or another structure.
@@ -358,35 +354,34 @@ fn parse_alias(mut ty: Pairs<Rule>) -> Alias {
             assert!(inner.next().is_none(), "Broken parser: alias has more than 2 template args: {:?}", inner);
             Alias::Align(num, Box::new(nextalias))
         },
-        Rule::aliasKObject => { ty.next().unwrap(); Alias::KObject },
-        Rule::aliasKHandle => {
+        Rule::aliasHandle => {
             let mut inner = ty.next().unwrap().into_inner();
             let is_copy_rule = inner.next().unwrap();
-            assert_eq!(is_copy_rule.as_rule(), Rule::khandleIsCopy);
+            assert_eq!(is_copy_rule.as_rule(), Rule::handleIsCopy);
             let is_copy = is_copy_rule.as_str() == "copy";
             let ty = inner.next().map(|v| {
-                assert_eq!(v.as_rule(), Rule::khandleType);
+                assert_eq!(v.as_rule(), Rule::handleType);
                 match v.as_str() {
-                    "process"              => KHandleType::Process,
-                    "thread"               => KHandleType::Thread,
-                    "debug"                => KHandleType::Debug,
-                    "code_memory"          => KHandleType::CodeMemory,
-                    "transfer_memory"      => KHandleType::TransferMemory,
-                    "shared_memory"        => KHandleType::SharedMemory,
-                    "server_port"          => KHandleType::ServerPort,
-                    "client_port"          => KHandleType::ClientPort,
-                    "server_session"       => KHandleType::ServerSession,
-                    "client_session"       => KHandleType::ClientSession,
-                    "server_light_session" => KHandleType::ServerLightSession,
-                    "client_light_session" => KHandleType::ClientLightSession,
-                    "readable_event"       => KHandleType::ReadableEvent,
-                    "writable_event"       => KHandleType::WritableEvent,
-                    "irq_event"            => KHandleType::IrqEvent,
-                    "device_address_space" => KHandleType::DeviceAddressSpace,
+                    "process"              => HandleType::Process,
+                    "thread"               => HandleType::Thread,
+                    "debug"                => HandleType::Debug,
+                    "code_memory"          => HandleType::CodeMemory,
+                    "transfer_memory"      => HandleType::TransferMemory,
+                    "shared_memory"        => HandleType::SharedMemory,
+                    "server_port"          => HandleType::ServerPort,
+                    "client_port"          => HandleType::ClientPort,
+                    "server_session"       => HandleType::ServerSession,
+                    "client_session"       => HandleType::ClientSession,
+                    "server_light_session" => HandleType::ServerLightSession,
+                    "client_light_session" => HandleType::ClientLightSession,
+                    "readable_event"       => HandleType::ReadableEvent,
+                    "writable_event"       => HandleType::WritableEvent,
+                    "irq_event"            => HandleType::IrqEvent,
+                    "device_address_space" => HandleType::DeviceAddressSpace,
                     _ => unreachable!()
                 }
             });
-            Alias::KHandle(is_copy, ty)
+            Alias::Handle(is_copy, ty)
         },
         Rule::aliasPid => { ty.next().unwrap(); Alias::Pid },
         Rule::iname => Alias::Other(parse_name(&mut ty).to_string()),

@@ -6,7 +6,7 @@ use lazy_static::lazy_static;
 
 use std::fmt::Write;
 use std::collections::HashMap;
-use swipc_parser::{Alias, Func, KHandleType, TypeDef, Type, Decorator};
+use swipc_parser::{Alias, Func, HandleType, TypeDef, Type, Decorator};
 use bit_field::BitField;
 
 lazy_static! {
@@ -149,13 +149,13 @@ fn format_ret_ty(ret: &[(Alias, Option<String>)]) -> Result<String, Error> {
 ///
 /// If no equivalent exist or are supported yet, None is returned. The full path
 /// should be returned.
-fn get_handle_type(ty: &Option<KHandleType>) -> Option<&'static str> {
+fn get_handle_type(ty: &Option<HandleType>) -> Option<&'static str> {
     match ty {
-        Some(KHandleType::ClientSession) => Some("sunrise_libuser::types::ClientSession"),
-        Some(KHandleType::ServerSession) => Some("sunrise_libuser::types::ServerSession"),
-        Some(KHandleType::ClientPort)    => Some("sunrise_libuser::types::ClientPort"),
-        Some(KHandleType::ServerPort)    => Some("sunrise_libuser::types::ServerPort"),
-        Some(KHandleType::SharedMemory)  => Some("sunrise_libuser::types::SharedMemory"),
+        Some(HandleType::ClientSession) => Some("sunrise_libuser::types::ClientSession"),
+        Some(HandleType::ServerSession) => Some("sunrise_libuser::types::ServerSession"),
+        Some(HandleType::ClientPort)    => Some("sunrise_libuser::types::ClientPort"),
+        Some(HandleType::ServerPort)    => Some("sunrise_libuser::types::ServerPort"),
+        Some(HandleType::SharedMemory)  => Some("sunrise_libuser::types::SharedMemory"),
         _                                => None
     }
 }
@@ -164,8 +164,7 @@ fn get_handle_type(ty: &Option<KHandleType>) -> Option<&'static str> {
 fn format_ret(ret: (&Alias, String)) -> Result<String, Error> {
     match ret.0 {
         Alias::Object(ty) => Ok(format!("{}::from(ClientSession(res.pop_handle_move()?))", ty)),
-        Alias::KObject => Ok("res.pop_handle_move()?".to_string()),
-        Alias::KHandle(is_copy, ty) => if let Some(s) = get_handle_type(ty) {
+        Alias::Handle(is_copy, ty) => if let Some(s) = get_handle_type(ty) {
             Ok(format!("{}(res.pop_handle_{}()?)", s, if *is_copy { "copy" } else { "move" }))
         } else {
             Ok(format!("res.pop_handle_{}()?", if *is_copy { "copy" } else { "move" }))
@@ -208,8 +207,7 @@ fn get_type(output: bool, ty: &Alias) -> Result<String, Error> {
         // Deprecated in newer version of SwIPC anyways.
         Alias::Align(_alignment, _underlying) => Err(Error::UnsupportedStruct),
 
-        Alias::KObject => Ok("Handle".to_string()),
-        Alias::KHandle(is_copy, ty) => if let Some(s) = get_handle_type(ty) {
+        Alias::Handle(is_copy, ty) => if let Some(s) = get_handle_type(ty) {
             Ok(format!("{}{}", if *is_copy && !output { "&" } else { "" }, s))
         } else {
             Ok(format!("sunrise_libuser::types::{}", if *is_copy && !output { "HandleRef" } else { "Handle" }))
@@ -250,11 +248,11 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
         _ => false
     }).count();
     let handle_move_count = cmd.args.iter().filter(|(argty, _)| match argty {
-        Alias::KObject | Alias::KHandle(false, _) | Alias::Object(_) => true,
+        Alias::Handle(false, _) | Alias::Object(_) => true,
         _ => false
     }).count();
     let handle_copy_count = cmd.args.iter().filter(|(argty, _)| match argty {
-        Alias::KHandle(true, _) => true,
+        Alias::Handle(true, _) => true,
         _ => false
     }).count();
 
@@ -294,15 +292,14 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
                 }
             },
             Alias::Object(_)                          => writeln!(s, "        msg.push_handle_move({}.into());", argname).unwrap(),
-            Alias::KHandle(false, ty) if get_handle_type(ty).is_some() =>
+            Alias::Handle(false, ty) if get_handle_type(ty).is_some() =>
                 writeln!(s, "        msg.push_handle_move({}.0);", argname).unwrap(),
-            Alias::KHandle(false, _) =>
+            Alias::Handle(false, _) =>
                 writeln!(s, "        msg.push_handle_move({});", argname).unwrap(),
-            Alias::KHandle(true, ty) if get_handle_type(ty).is_some() =>
+            Alias::Handle(true, ty) if get_handle_type(ty).is_some() =>
                 writeln!(s, "        msg.push_handle_copy({}.0.as_ref());", argname).unwrap(),
-            Alias::KHandle(true, _) =>
+            Alias::Handle(true, _) =>
                 writeln!(s, "        msg.push_handle_copy({});", argname).unwrap(),
-            Alias::KObject                            => writeln!(s, "        msg.push_handle_move({});", argname).unwrap(),
             Alias::Pid                                => writeln!(s, "        msg.send_pid(None);").unwrap(),
             _                                         => continue,
         }
@@ -315,11 +312,11 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
     // TODO: Handle return C buffers.
     let ipc_count = 0;
     let handle_move_count = cmd.ret.iter().filter(|(argty, _)| match argty {
-        Alias::KObject | Alias::KHandle(false, _) | Alias::Object(_) => true,
+        Alias::Handle(false, _) | Alias::Object(_) => true,
         _ => false
     }).count();
     let handle_copy_count = cmd.ret.iter().filter(|(argty, _)| match argty {
-        Alias::KHandle(true, _) => true,
+        Alias::Handle(true, _) => true,
         _ => false
     }).count();
 

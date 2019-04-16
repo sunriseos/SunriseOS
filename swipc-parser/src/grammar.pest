@@ -32,19 +32,18 @@ aliasBuffer = { "buffer" ~ "<" ~ alias ~ "," ~ number ~ "," ~ number ~ ">" }
 aliasObject = { "object" ~ "<" ~ iname ~ ">" }
 aliasBytes = { "bytes" ~ "<" ~ number ~ ">" }
 aliasAlign = { "align" ~ "<" ~ number ~ "," ~ alias ~ ">" }
-aliasKObject = { "KObject" }
 aliasPid = { "pid" }
 
-khandleIsCopy = { "copy" | "move" }
-khandleType = { "process" | "thread" | "debug"
-              | "code_memory" | "transfer_memory" | "shared_memory"
-              | "server_port" | "client_port"
-              | "server_session" | "client_session"
-              | "server_light_session" | "client_light_session"
-              | "readable_event" | "writable_event" | "irq_event"
-              | "device_address_space"
+handleIsCopy = { "copy" | "move" }
+handleType = { "process" | "thread" | "debug"
+             | "code_memory" | "transfer_memory" | "shared_memory"
+             | "server_port" | "client_port"
+             | "server_session" | "client_session"
+             | "server_light_session" | "client_light_session"
+             | "readable_event" | "writable_event" | "irq_event"
+             | "device_address_space"
 }
-aliasKHandle = { "KHandle" ~ "<" ~ khandleIsCopy ~ ("," ~ khandleType)? ~ ">" }
+aliasHandle = { "handle" ~ "<" ~ handleIsCopy ~ ("," ~ handleType)? ~ ">" }
 
 alias = {
        aliasArray
@@ -53,8 +52,7 @@ alias = {
      | aliasBytes
      | aliasAlign
      | aliasPid
-     | aliasKObject
-     | aliasKHandle
+     | aliasHandle
      | iname
 }
 ty = {
