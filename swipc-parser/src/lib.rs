@@ -647,23 +647,3 @@ pub fn parse(s: &str) -> Ctx {
 
     ctx
 }
-
-/*pub fn merge_two(data: &mut HashMap<Def>, new: HashMap<Def>) {
-    for def in new {
-        // Ensure coherency
-    }
-}
-
-pub fn merge_swipc_defs(swipc_path: &Path) -> Vec<Def> {
-    // First take care of auto.id
-    let auto = parse(fs::read_to_string(swipc_path.join("auto.id")).expect("auto.id to be present in SwIPC"));
-    let switchbrew = parse(fs::read_to_string(swipc_path.join("switchbrew.id")).expect("switchbrew.id to be present in SwIPC"));
-
-    for direntry in fs::read_dir(swipc_path).unwrap() {
-        match direntry.file_name() {
-            "auto.id" | "switchbrew.id" => (),
-            _ => parse(fs::read_to_string(direntry.path()))
-        }
-    }
-}
-*/
