@@ -76,15 +76,6 @@ impl PhysicalMemRegion {
         }
     }
 
-    /// Construct a `PhysicalMemRegion` by circumventing the [FrameAllocator].
-    pub fn new_unchecked(address: PhysicalAddress, length: usize) -> Self {
-        PhysicalMemRegion {
-            start_addr: address.addr(),
-            frames: div_ceil(length, PAGE_SIZE),
-            should_free_on_drop: false
-        }
-    }
-
     /// Constructs a `PhysicalMemRegion` from a physical address, and a len.
     /// Region will be given back to the [FrameAllocator] on drop.
     ///

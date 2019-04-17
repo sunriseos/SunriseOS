@@ -334,6 +334,7 @@ pub fn init(boot_info: &BootInformation) {
                                        0x00000000,
                                        0x00000001);
 
+    // Reserve the first page of the Extended BIOS Data Area
     if log_enabled!(::log::Level::Info) {
         let mut cur = None;
         for (i, bitmap) in allocator.memory_bitmap.iter().enumerate() {
