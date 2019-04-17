@@ -18,7 +18,6 @@ pub fn init_timer() {
         } else {
             info!("Initialized HPET");
         }
-
     } else {
         unsafe { pit::init_channel_0() };
         info!("Initialized PIT");
