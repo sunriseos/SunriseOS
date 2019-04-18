@@ -163,16 +163,16 @@ fn get_handle_type(ty: &Option<HandleType>) -> Option<&'static str> {
 /// Generate code to recover a single return value from an output Message.
 fn format_ret(ret: (&Alias, String)) -> Result<String, Error> {
     match ret.0 {
-        Alias::Object(ty) => Ok(format!("{}::from(ClientSession(res.pop_handle_move()?))", ty)),
+        Alias::Object(ty) => Ok(format!("{}::from(ClientSession(res__.pop_handle_move()?))", ty)),
         Alias::Handle(is_copy, ty) => if let Some(s) = get_handle_type(ty) {
-            Ok(format!("{}(res.pop_handle_{}()?)", s, if *is_copy { "copy" } else { "move" }))
+            Ok(format!("{}(res__.pop_handle_{}()?)", s, if *is_copy { "copy" } else { "move" }))
         } else {
-            Ok(format!("res.pop_handle_{}()?", if *is_copy { "copy" } else { "move" }))
+            Ok(format!("res__.pop_handle_{}()?", if *is_copy { "copy" } else { "move" }))
         },
-        Alias::Pid => Ok("res.pop_pid()?".to_string()),
+        Alias::Pid => Ok("res__.pop_pid()?".to_string()),
         Alias::Bytes(..) |
         Alias::Align(..) |
-        Alias::Other(..) => Ok(format!("res.raw().{}", ret.1)),
+        Alias::Other(..) => Ok(format!("res__.raw().{}", ret.1)),
         _ => unreachable!()
     }
 }
@@ -226,7 +226,7 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
     }
     writeln!(s, "    pub fn {}(&mut self, {}) -> Result<{}, Error> {{", &cmd.name, format_args(&cmd.args, &cmd.ret)?, format_ret_ty(&cmd.ret)?).unwrap();
     writeln!(s, "        use sunrise_libuser::ipc::Message;").unwrap();
-    writeln!(s, "        let mut buf = [0; 0x100];").unwrap();
+    writeln!(s, "        let mut buf__ = [0; 0x100];").unwrap();
     writeln!(s).unwrap();
     let in_raw = if cmd.args.iter().any(|(argty, _)| is_raw(argty)) {
         writeln!(s, "        #[repr(C)]").unwrap();
@@ -256,11 +256,11 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
         _ => false
     }).count();
 
-    writeln!(s, "        let mut msg = Message::<{}, [_; {}], [_; {}], [_; {}]>::new_request(None, {});",
+    writeln!(s, "        let mut msg__ = Message::<{}, [_; {}], [_; {}], [_; {}]>::new_request(None, {});",
              in_raw, ipc_count, handle_copy_count, handle_move_count, cmd.num).unwrap();
 
     if cmd.args.iter().any(|(argty, _)| is_raw(argty)) {
-        writeln!(s, "        msg.push_raw(InRaw {{").unwrap();
+        writeln!(s, "        msg__.push_raw(InRaw {{").unwrap();
         for (_argty, argname) in raw_iterator(&cmd.args, false) {
             writeln!(s, "            {},", argname).unwrap();
         }
@@ -281,9 +281,9 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
                     // B Buffer
                     (2, 1, false) => return Err(Error::UnsupportedStruct),
                     // X Buffer
-                    (1, 2, false) => writeln!(s, "        msg.push_out_pointer({});", argname).unwrap(),
+                    (1, 2, false) => writeln!(s, "        msg__.push_out_pointer({});", argname).unwrap(),
                     // C Buffer
-                    (2, 2, false) => writeln!(s, "        msg.push_in_pointer({}, {});", argname, !ty.get_bit(4)).unwrap(),
+                    (2, 2, false) => writeln!(s, "        msg__.push_in_pointer({}, {});", argname, !ty.get_bit(4)).unwrap(),
                     // Smart A+X
                     (1, 0, true) => return Err(Error::UnsupportedStruct),
                     // Smart B+C
@@ -291,22 +291,22 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
                     _ => panic!("Illegal buffer type: {}", ty)
                 }
             },
-            Alias::Object(_)                          => writeln!(s, "        msg.push_handle_move({}.into());", argname).unwrap(),
+            Alias::Object(_)                          => writeln!(s, "        msg__.push_handle_move({}.into());", argname).unwrap(),
             Alias::Handle(false, ty) if get_handle_type(ty).is_some() =>
-                writeln!(s, "        msg.push_handle_move({}.0);", argname).unwrap(),
+                writeln!(s, "        msg__.push_handle_move({}.0);", argname).unwrap(),
             Alias::Handle(false, _) =>
-                writeln!(s, "        msg.push_handle_move({});", argname).unwrap(),
+                writeln!(s, "        msg__.push_handle_move({});", argname).unwrap(),
             Alias::Handle(true, ty) if get_handle_type(ty).is_some() =>
-                writeln!(s, "        msg.push_handle_copy({}.0.as_ref());", argname).unwrap(),
+                writeln!(s, "        msg__.push_handle_copy({}.0.as_ref());", argname).unwrap(),
             Alias::Handle(true, _) =>
-                writeln!(s, "        msg.push_handle_copy({});", argname).unwrap(),
-            Alias::Pid                                => writeln!(s, "        msg.send_pid(None);").unwrap(),
+                writeln!(s, "        msg__.push_handle_copy({});", argname).unwrap(),
+            Alias::Pid                                => writeln!(s, "        msg__.send_pid(None);").unwrap(),
             _                                         => continue,
         }
     }
 
-    writeln!(s, "        msg.pack(&mut buf[..]);").unwrap();
-    writeln!(s, "        self.0.send_sync_request_with_user_buffer(&mut buf[..])?;").unwrap();
+    writeln!(s, "        msg__.pack(&mut buf__[..]);").unwrap();
+    writeln!(s, "        self.0.send_sync_request_with_user_buffer(&mut buf__[..])?;").unwrap();
 
 
     // TODO: Handle return C buffers.
@@ -335,9 +335,9 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
         "()"
     };
 
-    writeln!(s, "        let mut res: Message<'_, {}, [_; {}], [_; {}], [_; {}]> = Message::unpack(&buf[..]);",
+    writeln!(s, "        let mut res__: Message<'_, {}, [_; {}], [_; {}], [_; {}]> = Message::unpack(&buf__[..]);",
              out_raw, ipc_count, handle_copy_count, handle_move_count).unwrap();
-    writeln!(s, "        res.error()?;").unwrap();
+    writeln!(s, "        res__.error()?;").unwrap();
 
     match named_iterator(&cmd.ret, true).count() {
         0 => writeln!(s, "        Ok(())").unwrap(),
