@@ -8,7 +8,6 @@ use crate::frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTr
 use crate::process::{Handle, ThreadStruct, ProcessStruct};
 use crate::event::{self, Waitable};
 use crate::scheduler::{self, get_current_thread, get_current_process};
-use crate::devices::pit;
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::sync::Arc;
@@ -16,6 +15,7 @@ use alloc::vec::Vec;
 use crate::ipc;
 use super::check_thread_killed;
 use crate::error::{UserspaceError, KernelError};
+use crate::timer;
 use failure::Backtrace;
 use sunrise_libkern::{nr, SYSCALL_NAMES, MemoryInfo, MemoryAttributes, MemoryPermissions};
 use bit_field::BitArray;
@@ -180,7 +180,7 @@ fn wait_synchronization(handles_ptr: UserSpacePtr<[u32]>, timeout_ns: usize) -> 
 
     // Add a waitable for the timeout.
     let timeout_waitable = if timeout_ns != usize::max_value() {
-        Some(pit::wait_ms(timeout_ns / 1_000_000))
+        Some(timer::wait_ns(timeout_ns))
     } else {
         None
     };
@@ -404,7 +404,7 @@ fn sleep_thread(nanos: usize) -> Result<(), UserspaceError> {
         scheduler::schedule();
         Ok(())
     } else {
-        event::wait(Some(&pit::wait_ms(nanos / 1_000_000) as &dyn Waitable)).map(|_| ())
+        event::wait(Some(&timer::wait_ns(nanos) as &dyn Waitable)).map(|_| ())
     }
 }
 

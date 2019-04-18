@@ -55,10 +55,7 @@
 use crate::sync::SpinLock;
 use crate::io::Io;
 use crate::i386::pio::Pio;
-use crate::event::{self, IRQEvent, Waitable};
-use crate::utils::div_ceil;
-
-use core::sync::atomic::{AtomicUsize, Ordering};
+use crate::timer;
 
 /// The oscillator frequency when not divided, in hertz.
 const OSCILLATOR_FREQ: usize = 1193182;
@@ -201,46 +198,6 @@ pub fn spin_wait_ms(ms: usize) {
     chan2.spin_wait_ms(ms);
 }
 
-/// A stream of event that trigger every `ms` amount of milliseconds, by counting Channel 0 interruptions.
-#[derive(Debug)]
-struct WaitFor {
-    /// Approximation of number of ms spent between triggers.
-    every_ms: usize,
-    /// The IRQ that we wait on (IRQ #0).
-    parent_event: IRQEvent,
-    /// Number of IRQ #0 triggers to wait for. Derived from `.every_ms`. This is the exact time amout that is used.
-    spins_needed: AtomicUsize
-}
-
-impl Waitable for WaitFor {
-    fn register(&self) {
-        self.parent_event.register()
-    }
-
-    fn is_signaled(&self) -> bool {
-        // First, reset the spins if necessary
-        let mut new_spin = div_ceil(self.every_ms * CHAN_0_FREQUENCY, 1000);
-        if new_spin == 0 {
-            new_spin = 1;
-        }
-        self.spins_needed.compare_and_swap(0, new_spin, Ordering::SeqCst);
-
-        // Then, check if it's us.
-        self.parent_event.is_signaled()
-            // Then, check if we need more spins.
-            && self.spins_needed.fetch_sub(1, Ordering::SeqCst) == 1
-    }
-}
-
-/// Returns a stream of event that trigger every `ms` amount of milliseconds.
-pub fn wait_ms(ms: usize) -> impl Waitable {
-    WaitFor {
-        every_ms: ms,
-        parent_event: event::wait_event(0),
-        spins_needed: AtomicUsize::new(0)
-    }
-}
-
 /// Initialize the channel 0 to send recurring irqs.
 pub unsafe fn init_channel_0() {
     let mut ports = PIT_PORTS.lock();
@@ -248,4 +205,6 @@ pub unsafe fn init_channel_0() {
         0b00110100 // channel 0, lobyte/hibyte, rate generator
     );
     ports.write_reload_value(ChannelSelector::Channel0, CHAN_0_DIVISOR);
+
+    timer::set_kernel_timer_info(0, OSCILLATOR_FREQ as u64, (CHAN_0_FREQUENCY as u64) * 100_0000);
 }

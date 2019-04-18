@@ -62,6 +62,7 @@ pub mod frame_allocator;
 pub mod heap_allocator;
 pub mod devices;
 pub mod sync;
+pub mod timer;
 pub mod process;
 pub mod scheduler;
 pub mod mem;

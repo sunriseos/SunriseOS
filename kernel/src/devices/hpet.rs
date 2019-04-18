@@ -11,7 +11,7 @@ use core::fmt;
 use core::fmt::Debug;
 use core::fmt::Formatter;
 
-use super::pit;
+use crate::timer;
 
 bitfield!{
     /// Represent the lower part of the General Capabilities and ID Register.
@@ -393,12 +393,14 @@ pub unsafe fn init(hpet: &acpi::Hpet) -> bool {
         return false;
     }
 
-    // Set the tick rate
-    // Kernel needs an update frequency of 10 milliseconds.
-    let tick_rate = pit::CHAN_0_FREQUENCY as u64;
-
+    // Set the tick rate in femtoseconds
+    // Kernel needs an update frequency of 100 nanoseconds.
+    //let tick_rate_nano = (Duration::from_millis(10).as_nanos()) as u64;
+    let tick_rate = 100;
+    let tick_rate_nano = tick_rate * 1000000;
+    let tick_rate_femto = tick_rate_nano * 1000000;
     info!("HPET frequency: {} Hz", hpet_instance.get_frequency());
-    info!("HPET tick rate: {} ms", tick_rate);
+    info!("HPET tick rate: {} fs", tick_rate_femto);
 
     let main_timer = main_timer_opt.unwrap();
 
@@ -408,7 +410,7 @@ pub unsafe fn init(hpet: &acpi::Hpet) -> bool {
         return false;
     }
 
-    let kernel_frequency = hpet_instance.get_frequency() / tick_rate;
+    let kernel_frequency = tick_rate_femto / u64::from(hpet_instance.get_period());
 
     main_timer.set_edge_trigger();
     main_timer.set_periodic_mode();
@@ -437,6 +439,8 @@ pub unsafe fn init(hpet: &acpi::Hpet) -> bool {
 
     // Clear the interrupt state
     hpet_instance.enable();
+
+    timer::set_kernel_timer_info(0, hpet_instance.get_frequency(), tick_rate);
 
     HPET_INSTANCE = Some(hpet_instance);
     true
