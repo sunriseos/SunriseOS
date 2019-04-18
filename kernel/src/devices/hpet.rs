@@ -395,7 +395,6 @@ pub unsafe fn init(hpet: &acpi::Hpet) -> bool {
 
     // Set the tick rate in femtoseconds
     // Kernel needs an update frequency of 100 nanoseconds.
-    //let tick_rate_nano = (Duration::from_millis(10).as_nanos()) as u64;
     let tick_rate = 100;
     let tick_rate_nano = tick_rate * 1000000;
     let tick_rate_femto = tick_rate_nano * 1000000;

@@ -22,10 +22,10 @@ struct KernelTimerInfo {
 /// Stores the information needed for Sunrise's internal timing.
 static KERNEL_TIMER_INFO: Once<KernelTimerInfo> = Once::new();
 
-/// Set the information required for Sunrise timer to work
+/// Set the information required for Sunrise timer to work.
 /// # Panics
 ///
-/// Panics if the module has already been initialized.
+/// Panics if the timer info has already been initialized.
 pub fn set_kernel_timer_info(irq_number: u8, timer_frequency: u64, irq_period_ns: u64) {
     assert!(KERNEL_TIMER_INFO.r#try().is_none(), "Kernel Timer Info is already initialized!");
     KERNEL_TIMER_INFO.call_once(|| {
@@ -49,7 +49,7 @@ pub fn wait_ns(ns: usize) -> impl Waitable {
 #[derive(Debug)]
 /// A stream of event that trigger every `ns` amount of nanoseconds, by counting interruptions.
 pub struct IRQTimer {
-    /// Approximation of number of ms spent between triggers.
+    /// Approximation of number of ns spent between triggers.
     every_ns: usize,
     /// IRQ event period in nanoseconds.
     irq_period_ns: u64,
@@ -60,7 +60,7 @@ pub struct IRQTimer {
 }
 
 impl IRQTimer {
-    /// Create a new IRQ Timer instance from the time to wait (in ns), the irq number and the count of irq in one second.
+    /// Create a new IRQ timer instance from the time to wait (in ns), the irq number and irq event period (in ns).
     pub fn new(ns: usize, irq: u8, irq_period_ns: u64) -> Self {
         IRQTimer {
             every_ns: ns,
@@ -79,7 +79,6 @@ impl Waitable for IRQTimer {
     fn is_signaled(&self) -> bool {
         // First, reset the spins if necessary
         let mut new_spin = div_ceil(self.every_ns as u64, self.irq_period_ns) as usize;
-        //let mut new_spin = div_ceil((self.every_ns as u64 * self.irqs_per_sec) as usize, 1000000000);
         if new_spin == 0 {
             new_spin = 1;
         }
