@@ -184,7 +184,7 @@ mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltori
 workspace = false
 description = "Creates an empty disk image."
 command = "dd"
-args = [ "if=/dev/zero", "of=DISK.img", "count=8388608", "bs=1" ]
+args = [ "if=/dev/zero", "of=DISK.img", "count=8M", "iflag=count_bytes" ]
 
 # because we can't have a dependency on a file ರ_ರ
 [tasks.create-disk-if-not-exist]
@@ -202,8 +202,8 @@ args = [
     "-cdrom", "os.iso",
     "-serial", "stdio",
     "-vnc", "${VNC_PORT}",
-    "-enable-kvm",
     "-no-reboot",
+    "-enable-kvm",
     "-drive", "id=diskA,file=DISK.img,format=raw,if=none", "-device", "ahci,id=ahci", "-device", "ide-drive,drive=diskA,bus=ahci.0",
     ]
 

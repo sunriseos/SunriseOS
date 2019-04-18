@@ -229,8 +229,10 @@ impl HpetTimer {
     /// NOTE: The timer MUST be in periodic mode.
     pub fn set_accumulator_value(&self, value: u64) {
         // We update the accumulator register two times.
-        // BODY: because we are running on i386, this cause issue on qemu.
-        // BODY: In fact, qemu clear the accumulator flag on every partial right.
+        // TODO: Test the hardware behaviour on partial write of the HPET accumulator
+        // BODY: Because we are running on i386, this cause issue on QEMU.
+        // BODY: In fact, QEMU clear the accumulator flag on every partial write.
+        // BODY: The question here is: Is that normal or a bug in QEMU?
         let mut config = unsafe { (*self.inner).config.read() };
         config.set_accumulator_config(true);
         unsafe { (*self.inner).config.write(config) };
