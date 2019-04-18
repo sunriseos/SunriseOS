@@ -1,11 +1,11 @@
 //! HPET driver implementation.
-use static_assertions::assert_eq_size;
-use sunrise_libutils::io::{Io, Mmio};
+use crate::frame_allocator::PhysicalMemRegion;
 use crate::mem::PhysicalAddress;
 use crate::paging;
-use crate::paging::PAGE_SIZE;
 use crate::paging::MappingAccessRights;
-use crate::frame_allocator::PhysicalMemRegion;
+use crate::paging::PAGE_SIZE;
+use static_assertions::assert_eq_size;
+use sunrise_libutils::io::{Io, Mmio};
 
 use core::fmt;
 use core::fmt::Debug;
@@ -13,16 +13,16 @@ use core::fmt::Formatter;
 
 use crate::timer;
 
-bitfield!{
+bitfield! {
     /// Represent the lower part of the General Capabilities and ID Register.
     #[derive(Clone, Copy, Debug)]
     pub struct HpetIdRegister(u32);
-    /// Indicates which revision of the function is implemented; must not be 0. 
+    /// Indicates which revision of the function is implemented; must not be 0.
     pub revision_id, _ : 7, 0;
     /// The amount of timers - 1.
     pub timer_count_minus_one, _ : 12, 8;
 
-    /// If this bit is 1, HPET main counter is capable of operating in 64 bit mode. 
+    /// If this bit is 1, HPET main counter is capable of operating in 64 bit mode.
     pub counter_size_capability, _: 13;
 
     /// If this bit is 1, HPET is capable of using "legacy replacement" mapping.
@@ -56,7 +56,7 @@ bitfield! {
     /// true if this timer is capable of periodic timer.
     pub periodic_interrupt_capability, _: 4;
 
-    /// If this bit is 1, this timer is capable of operating in 64 bit mode. 
+    /// If this bit is 1, this timer is capable of operating in 64 bit mode.
     pub size_capability, _: 5;
 
     /// Set to 1 to allow software to write the accumulator data.
@@ -69,7 +69,7 @@ bitfield! {
 
     /// Timer Interrupt Route: This indicate the routing in the I/O APIC
     /// NOTE: If the LegacyReplacement Route bit is set, then Timers 0 and 1 will have a different routing, and this bit field has no effect for those two timers.
-    /// NOTE: If the Timer FSB Interrupt bit is set, then the interrupt will be delivered directly to the FSB, and this bit field has no effect. 
+    /// NOTE: If the Timer FSB Interrupt bit is set, then the interrupt will be delivered directly to the FSB, and this bit field has no effect.
     pub interrupt_route, set_interrupt_route: 13, 9;
 
     /// Timer FSB Interrupt: force the interrupts to be delivered directly as FSB messages, rather than using the I/O APIC.
@@ -78,7 +78,6 @@ bitfield! {
     /// Timer FSB Interrupt Delivery capability.
     pub fsb_interrupt_capability, _: 15;
 }
-
 
 #[allow(clippy::missing_docs_in_private_items)]
 #[repr(packed)]
@@ -119,7 +118,7 @@ impl Debug for HpetRegister {
 /// Representation of an HPET timer registers.
 pub struct HpetTimerRegister {
     /// The configuration and capabilities register of this timer.
-    pub config : Mmio<HpetTimerConfigurationRegister>,
+    pub config: Mmio<HpetTimerConfigurationRegister>,
     /// Routing capability (IRQ0 to IRQ31 on the I/O APIC).
     pub interrupt_route_capability: Mmio<u32>,
     /// The comparator value register low part.
@@ -142,8 +141,7 @@ pub struct Hpet {
     period: u32,
 
     /// The count of timer of this HPET device.
-    timer_count: u32
-
+    timer_count: u32,
 }
 
 #[derive(Debug)]
@@ -172,12 +170,12 @@ impl HpetTimer {
     /// Create a new HPET timer instance from MMIO registers.
     fn new(inner: *mut HpetTimerRegister) -> Self {
         let mut res = HpetTimer {
-                inner,
-                support_64bit: false,
-                support_periodic_interrupt: false,
-                support_fsb_interrupt: false,
-                interrupt_route_capability: 0
-            };
+            inner,
+            support_64bit: false,
+            support_periodic_interrupt: false,
+            support_fsb_interrupt: false,
+            interrupt_route_capability: 0,
+        };
 
         let config = unsafe { (*inner).config.read() };
 
@@ -215,8 +213,16 @@ impl HpetTimer {
 
     /// Set the timer comparactor value
     pub fn set_comparator_value(&self, value: u64) {
-        unsafe { (*self.inner).comparator_value_low.write((value & 0xFFFF_FFFF) as u32) };
-        unsafe { (*self.inner).comparator_value_high.write((value >> 32) as u32) };
+        unsafe {
+            (*self.inner)
+                .comparator_value_low
+                .write((value & 0xFFFF_FFFF) as u32)
+        };
+        unsafe {
+            (*self.inner)
+                .comparator_value_high
+                .write((value >> 32) as u32)
+        };
     }
 
     /// Set the timer accumulator value.
@@ -228,12 +234,20 @@ impl HpetTimer {
         let mut config = unsafe { (*self.inner).config.read() };
         config.set_accumulator_config(true);
         unsafe { (*self.inner).config.write(config) };
-        unsafe { (*self.inner).comparator_value_low.write((value & 0xFFFF_FFFF) as u32) };
+        unsafe {
+            (*self.inner)
+                .comparator_value_low
+                .write((value & 0xFFFF_FFFF) as u32)
+        };
 
         let mut config = unsafe { (*self.inner).config.read() };
         config.set_accumulator_config(true);
         unsafe { (*self.inner).config.write(config) };
-        unsafe { (*self.inner).comparator_value_high.write((value >> 32) as u32) };
+        unsafe {
+            (*self.inner)
+                .comparator_value_high
+                .write((value >> 32) as u32)
+        };
     }
 
     /// Set Edge Trigger.
@@ -288,7 +302,11 @@ impl HpetTimer {
 impl Hpet {
     /// Create a new HPET device instance from MMIO registers.
     fn new(inner: *mut HpetRegister) -> Self {
-        let mut res = Hpet { inner, timer_count: 1, period: 0 };
+        let mut res = Hpet {
+            inner,
+            timer_count: 1,
+            period: 0,
+        };
         res.timer_count = unsafe { (*res.inner).identifier.read().timer_count_minus_one() } + 1;
         res.period = unsafe { (*res.inner).period.read() };
 
@@ -314,14 +332,22 @@ impl Hpet {
     pub fn enable_legacy_mapping(&self) {
         let mut general_configuration = unsafe { (*self.inner).general_configuration.read() };
         general_configuration.set_legacy_rt_config(true);
-        unsafe { (*self.inner).general_configuration.write(general_configuration) }
+        unsafe {
+            (*self.inner)
+                .general_configuration
+                .write(general_configuration)
+        }
     }
 
     /// Disable the "legacy mapping".
     pub fn disable_legacy_mapping(&self) {
         let mut general_configuration = unsafe { (*self.inner).general_configuration.read() };
         general_configuration.set_legacy_rt_config(false);
-        unsafe { (*self.inner).general_configuration.write(general_configuration) }
+        unsafe {
+            (*self.inner)
+                .general_configuration
+                .write(general_configuration)
+        }
     }
 
     /// Check "legacy mapping" status.
@@ -334,14 +360,22 @@ impl Hpet {
     pub fn enable(&self) {
         let mut general_configuration = unsafe { (*self.inner).general_configuration.read() };
         general_configuration.set_enable_config(true);
-        unsafe { (*self.inner).general_configuration.write(general_configuration) }
+        unsafe {
+            (*self.inner)
+                .general_configuration
+                .write(general_configuration)
+        }
     }
 
     /// Disable HPET (main timer halted, and timer interrupts disabled).
     pub fn disable(&self) {
         let mut general_configuration = unsafe { (*self.inner).general_configuration.read() };
         general_configuration.set_enable_config(false);
-        unsafe { (*self.inner).general_configuration.write(general_configuration) }
+        unsafe {
+            (*self.inner)
+                .general_configuration
+                .write(general_configuration)
+        }
     }
 
     /// Check HPET status.
@@ -369,8 +403,15 @@ static mut HPET_INSTANCE: Option<Hpet> = None;
 
 /// Try to initialize the HPET in legacy mode.
 pub unsafe fn init(hpet: &acpi::Hpet) -> bool {
-    let physical_mem = PhysicalMemRegion::on_fixed_mmio(PhysicalAddress(hpet.base_address.address as usize), PAGE_SIZE).unwrap();
-    let virtual_address = paging::kernel_memory::get_kernel_memory().map_phys_region(physical_mem, MappingAccessRights::READABLE | MappingAccessRights::WRITABLE);
+    let physical_mem = PhysicalMemRegion::on_fixed_mmio(
+        PhysicalAddress(hpet.base_address.address as usize),
+        PAGE_SIZE,
+    )
+    .unwrap();
+    let virtual_address = paging::kernel_memory::get_kernel_memory().map_phys_region(
+        physical_mem,
+        MappingAccessRights::READABLE | MappingAccessRights::WRITABLE,
+    );
     let hpet_mmio = virtual_address.addr() as *mut HpetRegister;
     let hpet_instance = Hpet::new(hpet_mmio);
 
@@ -431,7 +472,6 @@ pub unsafe fn init(hpet: &acpi::Hpet) -> bool {
         rtc_timer.set_accumulator_value(rtc_frequency);
         rtc_timer.set_comparator_value(rtc_frequency);
     }
-
 
     // TODO: switch HPET to normal mode when IO-APIC will be implemented.
     hpet_instance.enable_legacy_mapping();

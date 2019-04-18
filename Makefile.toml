@@ -202,6 +202,7 @@ args = [
     "-cdrom", "os.iso",
     "-serial", "stdio",
     "-vnc", "${VNC_PORT}",
+    "-enable-kvm",
     "-no-reboot",
     "-drive", "id=diskA,file=DISK.img,format=raw,if=none", "-device", "ahci,id=ahci", "-device", "ide-drive,drive=diskA,bus=ahci.0",
     ]
