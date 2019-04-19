@@ -1,0 +1,20 @@
+# Entry point interface.
+interface sunrise_libuser::vi::ViInterface is vi: {
+    # Create a window.
+    #
+    # This creates a window at the given coordinates, with the given
+    # height. The passed handle should be a SharedMemory handle containing
+    # a framebuffer of type `[[u8; width]; height]`.
+    #
+    # It is allowed to place the framebuffer outside the field of view.
+    [0] create_buffer(handle<copy, shared_memory> framebuffer, i32 top, i32 left, u32 width, u32 height) -> object<sunrise_libuser::vi::IBuffer>;
+    # Gets the screen resolution.
+    [1] get_screen_resolution() -> (u32 width, u32 height);
+}
+
+
+# IPC Window object
+interface sunrise_libuser::vi::IBuffer {
+    # Blit the buffer to the framebuffer.
+    [0] draw();
+}

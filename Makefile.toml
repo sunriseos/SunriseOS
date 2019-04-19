@@ -5,6 +5,24 @@ skip_core_tasks = true
 RUST_TARGET_PATH = "${PWD}"
 GDB_PORT = { script = ["echo ${GDB_PORT:-9090}"] }
 VNC_PORT = { script = ["echo ${VNC_PORT:-:0}"] }
+CLIPPY_RULES = """
+-A clippy::redundant_field_names \
+-A clippy::unreadable_literal \
+-A clippy::identity_op \
+-A clippy::zero_prefixed_literal \
+-A clippy::redundant_closure \
+-W clippy::cast_possible_wrap \
+-W clippy::cast_sign_loss \
+-W clippy::default_trait_access \
+-W clippy::explicit_into_iter_loop \
+-W clippy::explicit_iter_loop \
+-W clippy::missing_docs_in_private_items \
+-W clippy::mut_mut \
+-W clippy::replace_consts \
+-W clippy::used_underscore_binding \
+-W clippy::wildcard_dependencies \
+-W clippy::wrong_pub_self_convention"""
+
 
 [tasks.bootstrap-linker]
 workspace = false
@@ -209,14 +227,14 @@ workspace = false
 description = "Generate the project's documentation"
 env = { "RUSTFLAGS" = "--sysroot=${PWD}/target/sysroot",  "RUSTDOCFLAGS" = "--sysroot=${PWD}/target/sysroot"}
 command = "cargo"
-args = ["doc", "--target=i386-unknown-none", "--no-deps" ]
+args = ["doc", "--no-deps" ]
 
 [tasks.doc-full]
 workspace = false
 description = "Generate the project's documentation, including private items"
 env = { "RUSTFLAGS" = "--sysroot=${PWD}/target/sysroot",  "RUSTDOCFLAGS" = "--sysroot=${PWD}/target/sysroot -Z unstable-options --enable-index-page"}
 command = "cargo"
-args = ["doc", "--target=i386-unknown-none", "--no-deps", "--document-private-items"]
+args = ["doc", "--no-deps", "--document-private-items"]
 
 [tasks.deploy-doc]
 workspace = false
@@ -224,7 +242,7 @@ install_crate = { crate_name = "cargo-travis", binary = "cargo", test_arg = "doc
 install_crate_args = ["--git", "https://github.com/roblabla/cargo-travis", "--rev", "doc-upload-target"]
 description = "Upload this project's documentation on github pages. Should only run on CI."
 command = "cargo"
-args = ["doc-upload", "--target=i386-unknown-none", "--clobber-index"]
+args = ["doc-upload", "--clobber-index"]
 
 [tasks.test]
 workspace = false
@@ -232,54 +250,49 @@ description = "Run the tests in 32bit mode"
 command = "cargo"
 args = ["test", "--target=i686-unknown-linux-gnu"]
 
+[tasks.refresh-crates]
+workspace = false
+description = "Make cargo-clippy work..."
+command = "touch"
+args = ["-c", "kernel/src/main.rs", "bootstrap/src/main.rs",
+	"shell/src/main.rs", "libuser/src/lib.rs", "clock/src/main.rs",
+	"sm/src/main.rs", "vi/src/main.rs", "ahci/src/main.rs",
+	"libutils/src/lib.rs", "libkern/src/lib.rs", "swipc-gen/src/lib.rs",
+	"swipc-parser/src/lib.rs"
+]
+
+[tasks.clippy-sunrise-target]
+workspace = false
+description = "Run clippy on sunrise components"
+dependencies = ["install-rust-src", "refresh-crates"]
+install_crate = { rustup_component_name = "clippy" }
+command = "cargo"
+args = ["xclippy", "--target=i386-unknown-none",
+	"--all", "--exclude", "swipc-gen", "--exclude", "swipc-parser",
+	"--",
+	"@@split(CLIPPY_RULES, )",
+	"${@}",
+	]
+
+[tasks.clippy-host-target]
+workspace = false
+description = "Run clippy on host components (relying on std)"
+dependencies = ["install-rust-src", "refresh-crates"]
+install_crate = { rustup_component_name = "clippy" }
+command = "cargo"
+args = ["clippy",
+	"-p", "swipc-gen", "-p", "swipc-parser",
+	"--",
+	"@@split(CLIPPY_RULES, )",
+	"${@}",
+	]
+
 [tasks.clippy]
 workspace = false
-dependencies = ["install-rust-src"]
-install_crate = { rustup_component_name = "clippy" }
-description = "Run clippy"
-command = "cargo"
-args = ["xclippy", "--target=i386-unknown-none", "--",
-	"-A", "clippy::redundant_field_names",
-	"-A", "clippy::unreadable_literal",
-	"-A", "clippy::identity_op",
-	"-A", "clippy::zero_prefixed_literal",
-	"-A", "clippy::redundant_closure",
-	"-W", "clippy::cast_possible_wrap",
-	"-W", "clippy::cast_sign_loss",
-	"-W", "clippy::default_trait_access",
-	"-W", "clippy::explicit_into_iter_loop",
-	"-W", "clippy::explicit_iter_loop",
-	"-W", "clippy::missing_docs_in_private_items",
-	"-W", "clippy::mut_mut",
-	"-W", "clippy::replace_consts",
-	"-W", "clippy::used_underscore_binding",
-	"-W", "clippy::wildcard_dependencies",
-	"-W", "clippy::wrong_pub_self_convention",
-	]
+dependencies = ["clippy-host-target", "clippy-sunrise-target"]
 
-[tasks.clippy-ci]
+[tasks.swipc-gen]
 workspace = false
-dependencies = ["install-rust-src"]
-install_crate = { rustup_component_name = "clippy" }
-description = "Run clippy"
+description = "Get the output of running gen_ipc on an ipcdef file"
 command = "cargo"
-args = ["xclippy", "--target=i386-unknown-none", "--",
-	"-A", "clippy::redundant_field_names",
-	"-A", "clippy::unreadable_literal",
-	"-A", "clippy::identity_op",
-	"-A", "clippy::zero_prefixed_literal",
-	"-A", "clippy::redundant_closure",
-	"-W", "clippy::cast_possible_wrap",
-	"-W", "clippy::cast_sign_loss",
-	"-W", "clippy::default_trait_access",
-	"-W", "clippy::explicit_into_iter_loop",
-	"-W", "clippy::explicit_iter_loop",
-	"-W", "clippy::missing_docs_in_private_items",
-	"-W", "clippy::mut_mut",
-	"-W", "clippy::replace_consts",
-	"-W", "clippy::used_underscore_binding",
-	"-W", "clippy::wildcard_dependencies",
-	"-W", "clippy::wrong_pub_self_convention",
-	"-D", "warnings"
-	]
-
+args = ["run", "--manifest-path", "swipc-gen/Cargo.toml", "--features=binaries", "--", "${@}"]
