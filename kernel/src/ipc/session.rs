@@ -244,10 +244,11 @@ fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mu
         // BODY: reuse it here.
 
         // Map the descriptor in the other process.
-        let mapping = from_mem.share_existing_mapping(VirtualAddress(addr), size)?;
+        return Err(UserspaceError::NotImplemented);
+        /*let mapping = from_mem.share_existing_mapping(VirtualAddress(addr), size)?;
         let to_addr = to_mem.find_available_space(size)?;
         to_mem.map_shared_mapping(mapping, to_addr, MappingAccessRights::u_rw())?;
-        to_addr.addr()
+        to_addr.addr()*/
     };
 
     let loweraddr = to_addr as u32;
