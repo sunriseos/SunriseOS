@@ -313,9 +313,17 @@ pub fn init(boot_info: &BootInformation) {
         if memarea.start_address() > u64::from(u32::max_value()) || memarea.end_address() > u64::from(u32::max_value()) {
             continue;
         }
-        mark_area_free(&mut allocator.memory_bitmap,
-                                       memarea.start_address() as usize,
-                                       memarea.end_address() as usize);
+
+        if memarea.memory_type() == 1 {
+            mark_area_free(&mut allocator.memory_bitmap,
+                                        memarea.start_address() as usize,
+                                        memarea.end_address() as usize);
+        } else {
+            mark_area_reserved(&mut allocator.memory_bitmap,
+                                        memarea.start_address() as usize,
+                                        memarea.end_address() as usize);
+        }
+
     }
 
     // Reserve everything mapped in KernelLand
@@ -334,7 +342,6 @@ pub fn init(boot_info: &BootInformation) {
                                        0x00000000,
                                        0x00000001);
 
-    // Reserve the first page of the Extended BIOS Data Area
     if log_enabled!(::log::Level::Info) {
         let mut cur = None;
         for (i, bitmap) in allocator.memory_bitmap.iter().enumerate() {

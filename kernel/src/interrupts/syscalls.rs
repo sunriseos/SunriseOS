@@ -43,13 +43,13 @@ fn set_heap_size(new_size: usize) -> Result<usize, UserspaceError> {
 
 /// Maps the vga frame buffer mmio in userspace memory
 fn map_framebuffer() -> Result<(usize, usize, usize, usize), UserspaceError> {
-    let tag = i386::multiboot::get_boot_information().framebuffer_info_tag()
+    let tag = i386::multiboot::get_boot_information().framebuffer_tag()
         .expect("Framebuffer to be provided");
-    let framebuffer_size = tag.framebuffer_bpp() as usize
-                                * tag.framebuffer_dimensions().0 as usize
-                                * tag.framebuffer_dimensions().1 as usize / 8;
+    let framebuffer_size = tag.bpp as usize
+                                * tag.width as usize
+                                * tag.height as usize / 8;
     let frame_buffer_phys_region = unsafe {
-        PhysicalMemRegion::on_fixed_mmio(PhysicalAddress(tag.framebuffer_addr()), framebuffer_size)?
+        PhysicalMemRegion::on_fixed_mmio(PhysicalAddress(tag.address as usize), framebuffer_size)?
     };
 
     let process = get_current_process();
@@ -60,9 +60,9 @@ fn map_framebuffer() -> Result<(usize, usize, usize, usize), UserspaceError> {
     memory.map_phys_region_to(frame_buffer_phys_region, framebuffer_vaddr, MappingAccessRights::u_rw())?;
 
     let addr = framebuffer_vaddr.0;
-    let width = tag.framebuffer_dimensions().0 as usize;
-    let height = tag.framebuffer_dimensions().1 as usize;
-    let bpp = tag.framebuffer_bpp() as usize;
+    let width = tag.width as usize;
+    let height = tag.height as usize;
+    let bpp = tag.bpp as usize;
     Ok((addr, width, height, bpp))
 }
 
