@@ -1,0 +1,26 @@
+{
+  "llvm-target": "i386-unknown-none",
+  "data-layout": "e-m:e-p:32:32-f64:32:64-f80:32-n8:16:32-S128",
+  "arch": "x86",
+  "target-endian": "little",
+  "target-pointer-width": "32",
+  "target-c-int-width": "32",
+  "os": "none",
+  "linker": "rust-lld",
+  "linker-flavor": "ld.lld",
+  "linker-is-gnu": true,
+  "pre-link-args": {
+    "ld.lld": [
+      "-Tlinker-scripts/userspace.ld"
+    ]
+  },
+  "executables": true,
+  "env": "user",
+  "position-independent-executables": true,
+  "dynamic-linking": false,
+  "has-elf-tls": false,
+  "has-rpath": false,
+  "features": "-mmx,-sse,+soft-float",
+  "disable-redzone": true,
+  "panic-strategy": "abort"
+}

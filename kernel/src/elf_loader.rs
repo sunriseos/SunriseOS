@@ -107,7 +107,9 @@ pub fn load_builtin(process_memory: &mut ProcessMemory, module: &MappedGrubModul
     }
 
     // return the entry point
-    let entry_point = elf.header.pt2.entry_point();
+    // TODO: ASLR
+    // BODY: We should generate a random aslr base.
+    let entry_point = 0x400000 + elf.header.pt2.entry_point();
     info!("Entry point : {:#x?}", entry_point);
 
     entry_point as usize
@@ -133,8 +135,10 @@ fn load_segment(process_memory: &mut ProcessMemory, segment: ProgramHeader<'_>, 
         flags |= MappingAccessRights::EXECUTABLE
     }
 
+    let virtual_addr = 0x400000 + segment.virtual_addr() as usize;
+
     // Create the mapping in UserLand
-    let userspace_addr = VirtualAddress(segment.virtual_addr() as usize);
+    let userspace_addr = VirtualAddress(virtual_addr);
     process_memory.create_regular_mapping(userspace_addr, mem_size_total, flags)
         .expect("Cannot load segment");
 
@@ -164,7 +168,7 @@ fn load_segment(process_memory: &mut ProcessMemory, segment: ProgramHeader<'_>, 
     }
 
     info!("Loaded segment - VirtAddr {:#010x}, FileSize {:#010x}, MemSize {:#010x} {}{}{}",
-        segment.virtual_addr(), segment.file_size(), segment.mem_size(),
+        virtual_addr, segment.file_size(), segment.mem_size(),
         match segment.flags().is_read()    { true => 'R', false => ' '},
         match segment.flags().is_write()   { true => 'W', false => ' '},
         match segment.flags().is_execute() { true => 'X', false => ' '},
