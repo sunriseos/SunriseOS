@@ -66,7 +66,7 @@ typeDef = { comment* ~ "type" ~ iname ~ "=" ~ ty ~ ";" }
 interface = { comment* ~ "interface" ~ iname ~ ("is" ~ serviceNameList)? ~ "{" ~ funcDef* ~ "}" }
 namedTuple = { "(" ~ (namedType ~ ("," ~ namedType)*)? ~ ","? ~ ")" }
 namedType = { alias ~ name? }
-comment = @{ "#" ~ (!"\n" ~ ANY)* }
+comment = @{ "#" ~ (!NEWLINE ~ ANY)* }
 versionNumber = { number ~ "." ~ number ~ "." ~ number }
 range = { versionNumber? ~ "-" ~ versionNumber? }
 decorator = ${ "@" ~ (versionDecorator | undocumentedDecorator | managedportDecorator | unknownDecorator) }
@@ -80,4 +80,4 @@ unknownDecorator = { name ~ ("(" ~ sname+ ~ ")")? }
 funcDef = { comment* ~ decorator* ~ "[" ~ number ~ "]" ~ name ~ namedTuple ~ ("->" ~ (namedType | namedTuple))? ~ ";" }
 
 WHITESPACE = _{ " " | NEWLINE | "\t" }
-COMMENT = _{ ("/*" ~ (!"*/" ~ ANY)* ~ "*/") | ("//" ~ (!"\n" ~ ANY)*) }
+COMMENT = _{ ("/*" ~ (!"*/" ~ ANY)* ~ "*/") | ("//" ~ (!NEWLINE ~ ANY)*) }
