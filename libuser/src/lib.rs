@@ -3,7 +3,7 @@
 //! Provides an allocator, various lang items.
 
 #![no_std]
-#![feature(global_asm, asm, start, lang_items, core_intrinsics, const_fn, alloc, box_syntax, untagged_unions, proc_macro_hygiene, underscore_const_names, doc_cfg)]
+#![feature(global_asm, asm, start, lang_items, core_intrinsics, const_fn, alloc, box_syntax, untagged_unions, naked_functions, proc_macro_hygiene, underscore_const_names, doc_cfg)]
 
 #![warn(unused)]
 #![warn(missing_debug_implementations)]
@@ -57,6 +57,7 @@ pub mod allocator;
 pub mod terminal;
 pub mod window;
 pub mod zero_box;
+mod crt0;
 mod log_impl;
 
 pub use sunrise_libutils::io;
@@ -103,23 +104,11 @@ pub fn rust_oom(_: Layout) -> ! {
     panic!("OOM")
 }
 
-/// Executable entrypoint. Zeroes out the BSS, calls main, and finally exits the
+/// calls logger initialization, main, and finally exits the
 /// process.
 #[cfg(any(all(target_os = "none", not(test)), rustdoc))]
 #[no_mangle]
-pub unsafe extern fn start() -> ! {
-    asm!("
-        // Memset the bss. Hopefully memset doesn't actually use the bss...
-        lea eax, BSS_END
-        lea ebx, BSS_START
-        sub eax, ebx
-        push eax
-        push 0
-        push ebx
-        call memset
-        add esp, 12
-        " : : : : "intel", "volatile");
-
+pub unsafe extern fn real_start() -> ! {
     extern {
         fn main(argc: isize, argv: *const *const u8) -> i32;
     }

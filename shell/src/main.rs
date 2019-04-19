@@ -123,6 +123,7 @@ fn test_threads(terminal: Terminal) -> Terminal {
     }
 
     #[doc(hidden)]
+    #[no_mangle]
     fn thread_b(terminal: usize) -> ! {
         // Wrap in a block to forcibly call Arc destructor before exiting the thread.
         {
@@ -145,8 +146,8 @@ fn test_threads(terminal: Terminal) -> Terminal {
         unsafe {
             asm!("
             push eax
-            call $0
-            " :: "i"(thread_b as *const u8) :: "intel");
+            call thread_b
+            " :::: "intel");
         }
     }
 
