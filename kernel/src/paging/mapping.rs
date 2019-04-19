@@ -5,13 +5,13 @@ use crate::paging::{PAGE_SIZE, MappingAccessRights};
 use crate::error::KernelError;
 use crate::frame_allocator::PhysicalMemRegion;
 use alloc::{vec::Vec, sync::Arc};
-use crate::utils::{check_size_aligned, check_nonzero_length, Splittable};
+use crate::utils::check_nonzero_length;
 use failure::Backtrace;
-use sunrise_libkern;
+use sunrise_libkern::{MemoryType, MemoryState};
+use crate::sync::RwLock;
 
 /// A memory mapping.
 /// Stores the address, the length, and the type it maps.
-///
 /// A mapping is guaranteed to have page aligned address and length,
 /// and the length will never be zero.
 ///
@@ -27,146 +27,75 @@ pub struct Mapping {
     address: VirtualAddress,
     /// The length of this mapping.
     length: usize,
-    /// The type of this mapping, and frames it maps.
-    mtype: MappingType,
+    /// The type of this mapping.
+    state: MemoryState,
+    /// The frames this mapping is referencing.
+    frames: MappingFrames,
+    /// Physical frame offset of this mapping,
+    offset: usize,
     /// The access rights of this mapping.
     flags: MappingAccessRights,
 }
 
-/// The types that a UserSpace mapping can be in.
-///
-/// If it maps physical memory regions, we hold them in a Vec.
-/// They will be de-allocated when this enum is dropped.
+/// Frames associated with a [Mapping].
 #[derive(Debug)]
-pub enum MappingType {
-    /// Available, nothing is stored there. Accessing to it will page fault.
-    /// An allocation can use this region.
-    Available,
-    /// Guarded, like Available, but nothing can be allocated here.
-    /// Used to implement guard pages.
-    Guarded,
-    /// Regular, a region known only by this process.
-    /// Access rights are stored in Mapping.mtype.
-    Regular(Vec<PhysicalMemRegion>),
-//    Stack(Vec<PhysicalMemRegion>),
-    /// Shared, a region that can be mapped in multiple processes.
-    /// Access rights are stored in Mapping.mtype.
-    Shared(Arc<Vec<PhysicalMemRegion>>),
-    /// SystemReserved, used to denote the KernelLand and other similar regions that the user
-    /// cannot access, and shouldn't know anything more about.
-    /// Cannot be unmapped, nor modified in any way.
-    SystemReserved
-}
-
-impl<'a> From<&'a MappingType> for sunrise_libkern::MemoryType {
-    fn from(ty: &'a MappingType) -> sunrise_libkern::MemoryType {
-        match ty {
-            // TODO: Extend MappingType to cover all MemoryTypes
-            // BODY: Currently, MappingType only covers a very limited view of the mappings.
-            // It should have the ability to understand all the various kind of memory allocations,
-            // such as "Heap", "CodeMemory", "SharedMemory", "TransferMemory", etc...
-
-            MappingType::Available => sunrise_libkern::MemoryType::Unmapped,
-            MappingType::Guarded => sunrise_libkern::MemoryType::Reserved,
-            MappingType::Regular(_) => sunrise_libkern::MemoryType::Normal,
-            MappingType::Shared(_) => sunrise_libkern::MemoryType::SharedMemory,
-            MappingType::SystemReserved => sunrise_libkern::MemoryType::Reserved,
-        }
-    }
+pub enum MappingFrames {
+    /// The frames are Shared between multiple mappings.
+    Shared(Arc<RwLock<Vec<PhysicalMemRegion>>>),
+    /// The frames are Owned by this mapping.
+    Owned(Vec<PhysicalMemRegion>),
+    /// This Mapping has no frames.
+    None,
 }
 
 impl Mapping {
-    /// Tries to construct a regular mapping.
+    /// Tries to construct a mapping.
     ///
     /// # Errors
     ///
     /// * `InvalidAddress`:
     ///     * `address` is not page aligned.
-    ///     * `address` + `frames`'s length would overflow.
+    ///     * `offset` is not page aligned.
+    ///     * `offset` is bigger than the amount of pages in `frames`.
+    ///     * `address` plus `length` would overflow.
     /// * `InvalidSize`:
-    ///     * `frames` is empty.
-    pub fn new_regular(address: VirtualAddress, frames: Vec<PhysicalMemRegion>, flags: MappingAccessRights) -> Result<Mapping, KernelError> {
+    ///     * `length` is bigger than the amount of pages in `frames`, minus the offset.
+    ///     * `length` is zero.
+    ///     * `length` is not page-aligned.
+    /// * `WrongMappingFramesForTy`:
+    ///     * `frames` didnt' contain the variant of [MappingFrames] expected by `ty`.
+    pub fn new(address: VirtualAddress, frames: MappingFrames, offset: usize, length: usize, ty: MemoryType, flags: MappingAccessRights) -> Result<Mapping, KernelError> {
         address.check_aligned_to(PAGE_SIZE)?;
-        let length = frames.iter().flatten().count() * PAGE_SIZE;
-        check_nonzero_length(length)?;
-        address.checked_add(length - 1)
-            .ok_or_else(|| KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new()})?;
-        Ok(Mapping { address, length, mtype: MappingType::Regular(frames), flags })
-    }
+        VirtualAddress(offset).check_aligned_to(PAGE_SIZE)?;
+        let frames_len = match &frames {
+            MappingFrames::Owned(v) => v.iter().flatten().count() * PAGE_SIZE,
+            MappingFrames::Shared(v) => v.read().iter().flatten().count() * PAGE_SIZE,
+            MappingFrames::None => usize::max_value()
+        };
 
-    /// Tries to construct a shared mapping.
-    ///
-    /// # Errors
-    ///
-    /// * `InvalidAddress`:
-    ///     * `address` is not page aligned.
-    ///     * `address` + `frame`'s length would overflow.
-    /// * `InvalidSize`:
-    ///     * `frames` is empty.
-    pub fn new_shared(address: VirtualAddress, frames: Arc<Vec<PhysicalMemRegion>>, flags: MappingAccessRights) -> Result<Mapping, KernelError> {
-        address.check_aligned_to(PAGE_SIZE)?;
-        let length = frames.iter().flatten().count() * PAGE_SIZE;
-        check_nonzero_length(length)?;
-        address.checked_add(length - 1)
-            .ok_or_else(|| KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new()})?;
-        Ok(Mapping { address, length, mtype: MappingType::Shared(frames), flags })
-    }
+        if frames_len < offset {
+            return Err(KernelError::InvalidAddress { address: offset, backtrace: Backtrace::new() });
+        }
 
-    /// Tries to construct a guarded mapping.
-    ///
-    /// # Errors
-    ///
-    /// * `InvalidAddress`:
-    ///     * `address` is not page aligned.
-    ///     * `address + length - 1` would overflow.
-    /// * `InvalidSize`:
-    ///     * `length` is not page aligned.
-    ///     * `length` is 0.
-    pub fn new_guard(address: VirtualAddress, length: usize) -> Result<Mapping, KernelError> {
-        address.check_aligned_to(PAGE_SIZE)?;
-        check_size_aligned(length, PAGE_SIZE)?;
-        check_nonzero_length(length)?;
-        address.checked_add(length - 1)
-            .ok_or_else(|| KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new()})?;
-        Ok(Mapping { address, length, mtype: MappingType::Guarded, flags: MappingAccessRights::empty() })
-    }
+        if frames_len - offset < length {
+            return Err(KernelError::InvalidSize { size: length, backtrace: Backtrace::new() });
+        }
 
-    /// Tries to construct an available mapping.
-    ///
-    /// # Errors
-    ///
-    /// * `InvalidAddress`:
-    ///     * `address` is not page aligned.
-    ///     * `address + length - 1` would overflow.
-    /// * `InvalidSize`:
-    ///     * `length` is not page aligned.
-    ///     * `length` is 0.
-    pub fn new_available(address: VirtualAddress, length: usize) -> Result<Mapping, KernelError> {
-        address.check_aligned_to(PAGE_SIZE)?;
-        check_size_aligned(length, PAGE_SIZE)?;
+        VirtualAddress(length).check_aligned_to(PAGE_SIZE)?;
         check_nonzero_length(length)?;
         address.checked_add(length - 1)
             .ok_or_else(|| KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new()})?;
-        Ok(Mapping { address, length, mtype: MappingType::Available, flags: MappingAccessRights::empty() })
-    }
 
-    /// Tries to construct a system reserved mapping.
-    ///
-    /// # Errors
-    ///
-    /// * `InvalidAddress`:
-    ///     * `address` is not page aligned.
-    ///     * `address + length - 1` would overflow.
-    /// * `InvalidSize`:
-    ///     * `length` is not page aligned.
-    ///     * `length` is 0.
-    pub fn new_system_reserved(address: VirtualAddress, length: usize) -> Result<Mapping, KernelError> {
-        address.check_aligned_to(PAGE_SIZE)?;
-        check_size_aligned(length, PAGE_SIZE)?;
-        check_nonzero_length(length)?;
-        address.checked_add(length - 1)
-            .ok_or_else(|| KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new()})?;
-        Ok(Mapping { address, length, mtype: MappingType::SystemReserved, flags: MappingAccessRights::empty() })
+        let state = ty.get_memory_state();
+        match (&frames, state.is_reference_counted(), ty) {
+            (MappingFrames::None, _, MemoryType::Unmapped) => (),
+            (MappingFrames::None, _, MemoryType::Reserved) => (),
+            (MappingFrames::Shared(_), true, _) => (),
+            (MappingFrames::Owned(_), false, _) => (),
+            _ => return Err(KernelError::WrongMappingFramesForTy { ty, backtrace: Backtrace::new() })
+        }
+
+        Ok(Mapping { address, frames, offset, length, state: ty.get_memory_state(), flags })
     }
 
     /// Returns the address of this mapping.
@@ -179,58 +108,24 @@ impl Mapping {
     /// Because we make guarantees about a mapping being always valid, this field cannot be public.
     pub fn length(&self) -> usize { self.length }
 
-    /// Returns a reference to the type of this mapping.
-    ///
-    /// Because we make guarantees about a mapping being always valid, this field cannot be public.
-    pub fn mtype_ref(&self) -> &MappingType { &self.mtype }
+    /// Returns the frames in this mapping.
+    pub fn frames(&self) -> &MappingFrames { &self.frames }
 
-    /// Returns the type of this mapping.
+    /// Returns the offset in `frames` this mapping starts from.
     ///
-    /// Because we make guarantees about a mapping being always valid, this field cannot be public.
-    pub fn mtype(self) -> MappingType { self.mtype }
+    /// This will be different from 0 when this mapping was created as a partial
+    /// remapping of a different shared memory mapping (such as when creating
+    /// an IPC buffer).
+    pub fn phys_offset(&self) -> usize { self.offset }
+
+    /// Returns the [MemoryState] of this mapping.
+    pub fn state(&self) -> MemoryState { self.state }
 
     /// Returns the type of this mapping.
     ///
     /// Because we make guarantees about a mapping being always valid, this field cannot be public.
     pub fn flags(&self) -> MappingAccessRights { self.flags }
 }
-
-impl Splittable for Mapping {
-    /// Splits a mapping at a given offset.
-    ///
-    /// Because it is reference counted, a Shared mapping cannot be splitted.
-    ///
-    /// # Errors
-    ///
-    /// * `InvalidAddress`:
-    ///     * shared or system reserved mapping, which cannot be split.
-    /// * `InvalidSize`:
-    ///     * `offset` is not page aligned.
-    fn split_at(&mut self, offset: usize) -> Result<Option<Self>, KernelError> {
-        check_size_aligned(offset, PAGE_SIZE)?;
-        match self.mtype_ref() {
-            MappingType::Shared(_) | MappingType::SystemReserved => return Err(KernelError::InvalidAddress { address: self.address.addr(), backtrace: Backtrace::new() }),
-            _ => ()
-        }
-
-        if offset == 0 || offset >= self.length { return Ok(None) };
-        let right = Mapping {
-            address: self.address + offset,
-            length: self.length - offset,
-            flags: self.flags,
-            mtype: match &mut self.mtype {
-                MappingType::Shared(_) | MappingType::SystemReserved => unreachable!(),
-                MappingType::Available => MappingType::Available,
-                MappingType::Guarded => MappingType::Guarded,
-                MappingType::Regular(ref mut frames) => MappingType::Regular(frames.split_at(offset)?.unwrap()),
-            },
-        };
-        // split succeeded, now modify left part
-        self.length = offset;
-        Ok(Some(right))
-    }
-}
-
 
 #[cfg(test)]
 mod test {

@@ -19,6 +19,7 @@ use xmas_elf::ElfFile;
 use xmas_elf::program::{ProgramHeader, Type::Load, SegmentData};
 use crate::mem::{VirtualAddress, PhysicalAddress};
 use crate::paging::{PAGE_SIZE, MappingAccessRights, process_memory::ProcessMemory, kernel_memory::get_kernel_memory};
+use sunrise_libkern::MemoryType;
 use crate::frame_allocator::PhysicalMemRegion;
 use crate::utils::{self, align_up};
 use crate::error::KernelError;
@@ -125,10 +126,12 @@ fn load_segment(process_memory: &mut ProcessMemory, segment: ProgramHeader<'_>, 
 
     // Map as readonly if specified
     let mut flags = MappingAccessRights::USER_ACCESSIBLE;
+    let mut ty = MemoryType::CodeStatic;
     if segment.flags().is_read() {
         flags |= MappingAccessRights::READABLE
     };
     if segment.flags().is_write() {
+        ty = MemoryType::CodeMutable;
         flags |= MappingAccessRights::WRITABLE
     };
     if segment.flags().is_execute() {
@@ -139,7 +142,7 @@ fn load_segment(process_memory: &mut ProcessMemory, segment: ProgramHeader<'_>, 
 
     // Create the mapping in UserLand
     let userspace_addr = VirtualAddress(virtual_addr);
-    process_memory.create_regular_mapping(userspace_addr, mem_size_total, flags)
+    process_memory.create_regular_mapping(userspace_addr, mem_size_total, ty, flags)
         .expect("Cannot load segment");
 
     // Mirror it in KernelLand

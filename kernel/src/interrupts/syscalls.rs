@@ -3,8 +3,9 @@
 use crate::i386;
 use crate::mem::{VirtualAddress, PhysicalAddress};
 use crate::mem::{UserSpacePtr, UserSpacePtrMut};
-use crate::paging::{MappingAccessRights, mapping::MappingType};
+use crate::paging::MappingAccessRights;
 use crate::frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
+use crate::paging::mapping::MappingFrames;
 use crate::process::{Handle, ThreadStruct, ProcessStruct};
 use crate::event::{self, Waitable};
 use crate::scheduler::{self, get_current_thread, get_current_process};
@@ -16,8 +17,9 @@ use alloc::vec::Vec;
 use crate::ipc;
 use super::check_thread_killed;
 use crate::error::{UserspaceError, KernelError};
+use crate::sync::RwLock;
 use failure::Backtrace;
-use sunrise_libkern::{nr, SYSCALL_NAMES, MemoryInfo, MemoryAttributes, MemoryPermissions};
+use sunrise_libkern::{nr, SYSCALL_NAMES, MemoryInfo, MemoryAttributes, MemoryPermissions, MemoryType};
 use bit_field::BitArray;
 
 /// Resize the heap of a process, just like a brk.
@@ -57,7 +59,8 @@ fn map_framebuffer() -> Result<(usize, usize, usize, usize), UserspaceError> {
     //let framebuffer_vaddr = memory.find_virtual_space::<UserLand>(frame_buffer_phys_region.size())?;
     // todo make user provide the address
     let framebuffer_vaddr = VirtualAddress(0x40000000);
-    memory.map_phys_region_to(frame_buffer_phys_region, framebuffer_vaddr, MappingAccessRights::u_rw())?;
+    // Bleigh.
+    memory.map_phys_region_to(frame_buffer_phys_region, framebuffer_vaddr, MemoryType::Normal, MappingAccessRights::u_rw())?;
 
     let addr = framebuffer_vaddr.0;
     let width = tag.framebuffer_dimensions().0 as usize;
@@ -137,10 +140,11 @@ fn query_physical_address(virtual_address: usize) -> Result<(usize, usize, usize
     let proc = scheduler::get_current_process();
     let mem = proc.pmemory.lock();
     let mapping = mem.query_memory(virtual_address);
-    let frames = match mapping.mapping().mtype_ref() {
-        MappingType::Regular(regions) => regions,
-        MappingType::Shared(arc_regions) => arc_regions.as_ref(),
-        MappingType::Available | MappingType::Guarded | MappingType::SystemReserved =>
+    let keep_region;
+    let frames = match mapping.mapping().frames() {
+        MappingFrames::Owned(regions) => regions,
+        MappingFrames::Shared(arc_regions) => { keep_region = arc_regions.read(); keep_region.as_ref() },
+        MappingFrames::None =>
             return Err(KernelError::InvalidAddress { address: virtual_address.addr(), backtrace: Backtrace::new() }.into()),
     };
     let offset = virtual_address - mapping.mapping().address();
@@ -426,7 +430,7 @@ fn create_port(max_sessions: u32, _is_light: bool, _name_ptr: UserSpacePtr<[u8; 
 /// care.
 fn create_shared_memory(size: u32, _myperm: u32, _otherperm: u32) -> Result<usize, UserspaceError> {
     let frames = FrameAllocator::allocate_frames_fragmented(size as usize)?;
-    let handle = Arc::new(Handle::SharedMemory(Arc::new(frames)));
+    let handle = Arc::new(Handle::SharedMemory(Arc::new(RwLock::new(frames))));
     let curproc = get_current_process();
     let hnd = curproc.phandles.lock().add_handle(handle);
     Ok(hnd as _)
@@ -443,10 +447,10 @@ fn map_shared_memory(handle: u32, addr: usize, size: usize, perm: u32) -> Result
     let curproc = get_current_process();
     let mem = curproc.phandles.lock().get_handle(handle)?.as_shared_memory()?;
     // TODO: RE the switch: can we map a subsection of a shared memory?
-    if size != mem.iter().map(|v| v.size()).sum() {
+    if size != mem.read().iter().map(|v| v.size()).sum() {
         return Err(UserspaceError::InvalidSize)
     }
-    curproc.pmemory.lock().map_shared_mapping(mem, VirtualAddress(addr), perm.into())?;
+    curproc.pmemory.lock().map_partial_shared_mapping(mem, VirtualAddress(addr), 0, size, MemoryType::SharedMemory, perm.into())?;
     Ok(())
 }
 
@@ -479,8 +483,9 @@ fn unmap_shared_memory(handle: u32, addr: usize, size: usize) -> Result<(), User
         }
 
         // Check that we have the correct shared mapping.
-        match mapping.mtype_ref() {
-            MappingType::Shared(ref cmem) if Arc::ptr_eq(&hmem, cmem) => (),
+        match (mapping.state().ty(), mapping.frames()) {
+            (MemoryType::SharedMemory, MappingFrames::Shared(frames))
+                if Arc::ptr_eq(frames, &hmem) => (),
             _ => return Err(UserspaceError::InvalidAddress)
         }
     }
@@ -503,7 +508,7 @@ fn query_memory(mut meminfo: UserSpacePtrMut<MemoryInfo>, _unk: usize, addr: usi
     *meminfo = MemoryInfo {
         baseaddr: mapping.address().addr(),
         size: mapping.length(),
-        memtype: mapping.mtype_ref().into(),
+        memtype: mapping.state().into(),
         // TODO: Handle MemoryAttributes and refcounts in query_memory
         // BODY: QueryMemory gives userspace the ability to query if a memory
         // area is being used as an IPC buffer or a device address space. We
@@ -553,7 +558,7 @@ pub fn map_mmio_region(physical_address: usize, size: usize, virtual_address: us
     let region = unsafe { PhysicalMemRegion::on_fixed_mmio(PhysicalAddress(physical_address), size)? };
     let curproc = scheduler::get_current_process();
     let mut mem = curproc.pmemory.lock();
-    mem.map_phys_region_to(region, VirtualAddress(virtual_address), if writable { MappingAccessRights::u_rw() } else { MappingAccessRights::u_r() })?;
+    mem.map_phys_region_to(region, VirtualAddress(virtual_address), MemoryType::Io, if writable { MappingAccessRights::u_rw() } else { MappingAccessRights::u_r() })?;
     Ok(())
 }
 

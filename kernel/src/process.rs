@@ -18,6 +18,7 @@ use crate::ipc::{ServerPort, ClientPort, ServerSession, ClientSession};
 use crate::mem::VirtualAddress;
 use failure::Backtrace;
 use crate::frame_allocator::PhysicalMemRegion;
+use crate::sync::RwLock;
 
 mod capabilities;
 pub use self::capabilities::ProcessCapabilities;
@@ -145,7 +146,7 @@ pub enum Handle {
     /// A shared memory region. The handle holds on to the underlying physical
     /// memory, which means the memory will only get freed once all handles to
     /// it are dropped.
-    SharedMemory(Arc<Vec<PhysicalMemRegion>>),
+    SharedMemory(Arc<RwLock<Vec<PhysicalMemRegion>>>),
 }
 
 impl Handle {
@@ -195,9 +196,9 @@ impl Handle {
         }
     }
 
-    /// Casts the handle as an Arc<Vec<[PhysicalMemRegion]>, or returns a
+    /// Casts the handle as an Arc<RwLock<Vec<[PhysicalMemRegion]>>>, or returns a
     /// `UserspaceError`.
-    pub fn as_shared_memory(&self) -> Result<Arc<Vec<PhysicalMemRegion>>, UserspaceError> {
+    pub fn as_shared_memory(&self) -> Result<Arc<RwLock<Vec<PhysicalMemRegion>>>, UserspaceError> {
         if let Handle::SharedMemory(ref s) = *self {
             Ok((*s).clone())
         } else {

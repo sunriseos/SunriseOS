@@ -86,6 +86,7 @@ use crate::i386::stack;
 use crate::paging::{PAGE_SIZE, MappingAccessRights};
 use crate::mem::VirtualAddress;
 use crate::process::{ProcessStruct, ThreadStruct};
+use sunrise_libkern::MemoryType;
 
 /// Forces a double fault by stack overflowing.
 ///
@@ -140,8 +141,8 @@ fn main() {
 
                 let stack = pmemlock.find_available_space(5 * PAGE_SIZE)
                     .unwrap_or_else(|_| panic!("Cannot create a stack for process {:?}", proc));
-                pmemlock.guard(stack, PAGE_SIZE).unwrap();
-                pmemlock.create_regular_mapping(stack + PAGE_SIZE, 4 * PAGE_SIZE, MappingAccessRights::u_rw()).unwrap();
+                pmemlock.guard(stack, PAGE_SIZE, MemoryType::Reserved).unwrap();
+                pmemlock.create_regular_mapping(stack + PAGE_SIZE, 4 * PAGE_SIZE, MemoryType::Stack, MappingAccessRights::u_rw()).unwrap();
 
                 (VirtualAddress(ep), stack + 5 * PAGE_SIZE)
         };
