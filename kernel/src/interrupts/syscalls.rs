@@ -508,7 +508,7 @@ fn query_memory(mut meminfo: UserSpacePtrMut<MemoryInfo>, _unk: usize, addr: usi
     *meminfo = MemoryInfo {
         baseaddr: mapping.address().addr(),
         size: mapping.length(),
-        memtype: mapping.state().into(),
+        memtype: mapping.state(),
         // TODO: Handle MemoryAttributes and refcounts in query_memory
         // BODY: QueryMemory gives userspace the ability to query if a memory
         // area is being used as an IPC buffer or a device address space. We

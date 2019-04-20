@@ -233,7 +233,7 @@ fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mu
 
     let to_addr = if addr == 0 {
         // Null pointers shouldn't be mapped.
-        0
+        0usize
     } else {
         // TODO: buf_map: Check that from_mem has the right permissions
         // BODY: buf_map currently remaps without checking the permissions. This
