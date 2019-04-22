@@ -17,6 +17,7 @@ failure = { version = "0.1", default-features = false, features = ["derive"] }
 font-rs = { git = "https://github.com/orycterope/font-rs" }
 log = "0.4"
 lazy_static = "1.3"
+getset = { git = "https://github.com/razican/getset", branch = "deref" }
 
 [dependencies.byteorder]
 default-features = false
