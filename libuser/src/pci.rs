@@ -116,6 +116,8 @@ pub struct GeneralPciHeader {
     /// CardBus and PCI.
     #[get] #[deref]
     cardbus_cis_ptr: u32,
+    /// Subsystem ID
+    #[get = "pub"] #[deref]
     subsystem_id: u16,
     subsystem_vendor_id: u16,
     expansion_rom_base_address: u32,
@@ -250,8 +252,9 @@ impl PciDevice {
                 let mut register = 4;
                 let mut bars = [None; 6];
                 while register < 10 {
+                    let bar = &mut bars[register as usize - 4];
                     let (addr, length) = decode_bar(bus, slot, function, register);
-                    bars[register as usize - 4] = match (addr.get_bit(0), addr.get_bits(1..3)) {
+                    *bar = match (addr.get_bit(0), addr.get_bits(1..3)) {
                         (false, 0) => {
                             // memory space bar
                             Some(BAR::Memory(addr & 0xFFFF_FFF0, (!(length & 0xFFFF_FFF0)).wrapping_add(1)))
@@ -261,7 +264,7 @@ impl PciDevice {
                             register += 1;
                             let (addrhigh, lengthhigh) = decode_bar(bus, slot, function, register);
                             let addr = (addr as u64 & 0xFFFF_FFF0) | ((addrhigh as u64) << 32);
-                            let length = ((length as u64 & 0xFFFF_FFF0) | ((lengthhigh as u64) << 32)).wrapping_add(1);
+                            let length = (!((length as u64 & 0xFFFF_FFF0) | ((lengthhigh as u64) << 32))).wrapping_add(1);
                             Some(BAR::Memory64(addr, length))
                         },
                         (true, _) => {
