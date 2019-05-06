@@ -9,14 +9,18 @@ use crate::utils::check_nonzero_length;
 use failure::Backtrace;
 use sunrise_libkern::{MemoryType, MemoryState};
 use crate::sync::RwLock;
+use core::ops::Range;
+use core::iter::StepBy;
+use crate::mem::PhysicalAddress;
 
 /// A memory mapping.
 /// Stores the address, the length, and the type it maps.
-/// A mapping is guaranteed to have page aligned address and length,
+/// A mapping is guaranteed to have page aligned address, length and offset,
 /// and the length will never be zero.
 ///
-/// If the mapping maps physical frames, we also guarantee that the
-/// the virtual length of the mapping is equal to the physical length it maps.
+/// If the mapping maps physical frames, we also guarantee that the mapping
+/// contains enough physical frames to cover the whole virtual mapping (taking
+/// into account length and offset).
 ///
 /// Getting the last address of this mapping (length - 1 + address) is guaranteed to not overflow.
 /// However we do not make any assumption on address + length, which falls outside of the mapping.
@@ -67,6 +71,9 @@ impl Mapping {
     pub fn new(address: VirtualAddress, frames: MappingFrames, offset: usize, length: usize, ty: MemoryType, flags: MappingAccessRights) -> Result<Mapping, KernelError> {
         address.check_aligned_to(PAGE_SIZE)?;
         VirtualAddress(offset).check_aligned_to(PAGE_SIZE)?;
+        VirtualAddress(length).check_aligned_to(PAGE_SIZE)?;
+        check_nonzero_length(length)?;
+
         let frames_len = match &frames {
             MappingFrames::Owned(v) => v.iter().flatten().count() * PAGE_SIZE,
             MappingFrames::Shared(v) => v.read().iter().flatten().count() * PAGE_SIZE,
@@ -81,8 +88,6 @@ impl Mapping {
             return Err(KernelError::InvalidSize { size: length, backtrace: Backtrace::new() });
         }
 
-        VirtualAddress(length).check_aligned_to(PAGE_SIZE)?;
-        check_nonzero_length(length)?;
         address.checked_add(length - 1)
             .ok_or_else(|| KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new()})?;
 
@@ -111,6 +116,48 @@ impl Mapping {
 
     /// Returns the frames in this mapping.
     pub fn frames(&self) -> &MappingFrames { &self.frames }
+
+    /// Returns an iterator over the Physical Addresses mapped by this region.
+    /// This takes into account the physical offset and the length of the
+    /// mapping.
+    pub fn frames_it(&self) -> impl Iterator<Item = PhysicalAddress> + Clone + core::fmt::Debug + '_ {
+        /// Anonymous iterator over mapping frames' PhysicalAddresses.
+        #[derive(Debug, Clone)]
+        struct MappingFramesIt<'a>(&'a MappingFrames, usize, StepBy<Range<usize>>);
+        impl<'a> Iterator for MappingFramesIt<'a> {
+            type Item = PhysicalAddress;
+            fn next(&mut self) -> Option<Self::Item> {
+                if let Some(s) = self.2.next().map(PhysicalAddress) {
+                    Some(s)
+                } else {
+                    match self.0 {
+                        MappingFrames::Owned(frames) if self.1 < frames.len() => {
+                            let curframe = &frames[self.1];
+                            self.2 = (curframe.address().0..curframe.address().0 + curframe.size()).step_by(PAGE_SIZE);
+                            self.1 += 1;
+                            self.2.next().map(PhysicalAddress)
+                        },
+                        MappingFrames::Shared(frames) => {
+                            let frames = frames.read();
+                            if self.1 < frames.len() {
+                                let curframe = &frames[self.1];
+                                self.2 = (curframe.address().0..curframe.address().0 + curframe.size()).step_by(PAGE_SIZE);
+                                self.1 += 1;
+                                self.2.next().map(PhysicalAddress)
+                            } else {
+                                None
+                            }
+                        },
+                        _ => None
+                    }
+                }
+            }
+        }
+
+        MappingFramesIt(self.frames(), 0, (0..0).step_by(PAGE_SIZE))
+            .skip(self.phys_offset() / PAGE_SIZE)
+            .take(self.length() / PAGE_SIZE)
+    }
 
     /// Returns the offset in `frames` this mapping starts from.
     ///
