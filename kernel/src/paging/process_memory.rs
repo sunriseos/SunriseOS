@@ -401,13 +401,11 @@ impl ProcessMemory {
         Ok(Some(spill))
     }*/
 
-    /// Expand the mapping at `address` to `new_size`.
+    /// Expand the Heap at `address` to `new_size`.
     ///
-    /// If the mapping used to map physical memory, new frames are allocated to match `new_size`.
+    /// New frames are allocated to match `new_size`.
     ///
     /// If `new_size` is equal to old size, nothing is done.
-    ///
-    /// Because it is reference counted, a Shared mapping cannot be resized.
     ///
     /// # Errors
     ///
@@ -419,11 +417,13 @@ impl ProcessMemory {
     ///     * `address..(address + new_size)` does not fall in UserLand.
     ///     * `new_size` < previous mapping length.
     ///     * `new_size` is not page aligned.
+    /// * `InvalidMemState`:
+    ///     * `address` does not point to a Heap memory mapping.
     pub fn expand_mapping(&mut self, address: VirtualAddress, new_size: usize) -> Result<(), KernelError> {
         check_size_aligned(new_size, PAGE_SIZE)?;
         // 1. get the previous mapping's address and size.
+        let old_mapping_ref = self.userspace_bookkeping.occupied_mapping_at(address)?;
         let (start_addr, old_size) = {
-            let old_mapping_ref = self.userspace_bookkeping.occupied_mapping_at(address)?;
             // Check we're resizing the heap.
             if old_mapping_ref.state().ty() != MemoryType::Heap {
                 return Err(KernelError::InvalidMemState { address: address, ty: old_mapping_ref.state().ty(), backtrace: Backtrace::new() });
@@ -434,6 +434,8 @@ impl ProcessMemory {
             }
             (old_mapping_ref.address(), old_mapping_ref.length())
         };
+
+        // 2. Check the area we're extending to is available.
         UserLand::check_contains_region(start_addr, new_size)?;
         if new_size < old_size {
             return Err(KernelError::InvalidSize { size: new_size, backtrace: Backtrace::new() });
@@ -443,20 +445,22 @@ impl ProcessMemory {
         }
         let added_length = new_size - old_size;
         self.userspace_bookkeping.check_vacant(start_addr + old_size, added_length)?;
-        // 2. remove it from the bookkeeping.
+
+        // 3. allocate the new frames.
+        let mut new_frames = FrameAllocator::allocate_frames_fragmented(added_length)?;
+
+        // 4. remove old mapping from the bookkeeping.
         let old_mapping = self.userspace_bookkeping.remove_mapping(start_addr, old_size)
             .expect("expand_mapping: removing the mapping failed.");
         let flags = old_mapping.flags();
-        // 3. construct a new bigger mapping, with the same type and flags.
-        // 4. map the added part accordingly.
+
+        // 5. construct a new bigger mapping, with the same type and flags.
         let new_mapping = if let MappingFrames::Shared(frames) = old_mapping.frames() {
-            // allocate the new frames.
-            let mut new_frames = FrameAllocator::allocate_frames_fragmented(added_length)?;
-            // map them.
+            // 6. map the added part accordingly.
             self.get_hierarchy().map_to_from_iterator(new_frames.iter().flatten(), start_addr + old_size, flags);
-            // create a mapping from the two parts.
+            // create a mapping from the freshly allocated frames and the flags.
             frames.write().append(&mut new_frames);
-            Mapping::new(start_addr, MappingFrames::Shared(frames.clone()), 0, new_size, MemoryType::Normal, flags)
+            Mapping::new(start_addr, MappingFrames::Shared(frames.clone()), 0, new_size, MemoryType::Heap, flags)
                 .expect("expand_mapping: couldn't recreate mapping")
         } else {
             unreachable!("We checked we could only get a MappingFrames earlier.");
