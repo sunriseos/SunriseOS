@@ -147,7 +147,7 @@ fn query_physical_address(virtual_address: usize) -> Result<(usize, usize, usize
         MappingFrames::None =>
             return Err(KernelError::InvalidAddress { address: virtual_address.addr(), backtrace: Backtrace::new() }.into()),
     };
-    let offset = virtual_address - mapping.mapping().address();
+    let offset = virtual_address - mapping.mapping().address() + mapping.mapping().phys_offset();
     let mut i = 0;
     let pos = frames.iter().position(|region| { i += region.size(); i > offset })
         .expect("Mapping region count is corrupted");
