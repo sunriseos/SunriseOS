@@ -145,6 +145,9 @@ impl KernelMemory {
     where I: Iterator<Item=PhysicalAddress> + Clone
     {
         let length = iterator.clone().count() * PAGE_SIZE;
+        // TODO: Don't unwrap on OOM in map_frame_iterator.
+        // BODY: map_frame_iterator should return an error on OOM instead of
+        // BODY: making the whole kernel panic...
         let va = self.find_virtual_space(length).unwrap();
         self.tables.map_to_from_iterator(iterator, va, flags);
         va
