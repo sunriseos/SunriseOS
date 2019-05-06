@@ -359,4 +359,27 @@ mod test {
         let flags = MappingAccessRights::u_rw();
         let _mapping_err = Mapping::new(VirtualAddress(usize::max_value() - 2 * PAGE_SIZE), MappingFrames::Shared(frames), 0, 2 * PAGE_SIZE, MemoryType::Stack, flags).unwrap_err();
     }
+
+    #[test]
+    fn mapping_shared_offset() {
+        let _f = crate::frame_allocator::init();
+        let frames = FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap();
+
+        // Get the address that will get mapped
+        let test_addr = frames.iter().flatten().last().unwrap();
+
+        let frames = Arc::new(RwLock::new(frames));
+        let flags = MappingAccessRights::u_rw();
+        let mapping = Mapping::new(VirtualAddress(0), MappingFrames::Shared(frames), 1 * PAGE_SIZE, 1 * PAGE_SIZE, MemoryType::Stack, flags).unwrap();
+        assert!(mapping.frames_it().count() == 1, "Frames_it has the wrong size.");
+        assert!(mapping.frames_it().next().unwrap() == test_addr, "Frames_it has the wrong value.");
+    }
+
+    #[test]
+    fn mapping_shared_offset_overflow() {
+        let _f = crate::frame_allocator::init();
+        let frames = Arc::new(RwLock::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap()));
+        let flags = MappingAccessRights::u_rw();
+        let _mapping_err = Mapping::new(VirtualAddress(0), MappingFrames::Shared(frames), 1 * PAGE_SIZE, 2 * PAGE_SIZE, MemoryType::Stack, flags).unwrap_err();
+    }
 }
