@@ -23,6 +23,7 @@ struct KernelTimerInfo {
 static KERNEL_TIMER_INFO: Once<KernelTimerInfo> = Once::new();
 
 /// Set the information required for Sunrise timer to work.
+/// 
 /// # Panics
 ///
 /// Panics if the timer info has already been initialized.
@@ -38,9 +39,12 @@ pub fn set_kernel_timer_info(irq_number: u8, timer_frequency: u64, irq_period_ns
 }
 
 /// Returns a stream of event that trigger every `ns` amount of nanoseconds.
-/// NOTE: if the timer resolution cannot handle it, this is not going to be accurate.
-/// NOTE: Minimal resolution for HPET (10Mhz) / HPET QEMU (100Mhz): 100ns / 10ns
-/// NOTE: Minimal resolution for PIC (~1Mhz): 10ms
+/// 
+/// # Note
+/// 
+/// - If the timer resolution cannot handle it, this is not going to be accurate.
+/// - Minimal resolution for HPET (10Mhz) / HPET QEMU (100Mhz): 100ns / 10ns
+/// - Minimal resolution for PIC (~1Mhz): 10ms
 pub fn wait_ns(ns: usize) -> impl Waitable {
     let timer_info = KERNEL_TIMER_INFO.r#try().expect("Kernel Timer Info is not initialized!");
     IRQTimer::new(ns, timer_info.irq_number, timer_info.irq_period_ns)

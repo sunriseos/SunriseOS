@@ -1,4 +1,4 @@
-//! ACPI dectection
+//! ACPI detection
 //!
 //! This module is in charge of detecting the presence of ACPI and provide other part of the kernel with the data about the system.
 
@@ -35,7 +35,7 @@ pub fn get_acpi_information() -> &'static Acpi {
     ACPI_INFO.r#try().expect("Acpi is not availaible")
 }
 
-/// Tries to get a pointer to the multiboot information structure.
+/// Tries to get a pointer to the acpi information structure.
 ///
 /// Returns `None` if the module hasn't been inited yet or if ACPI isn't availaible.
 pub fn try_get_acpi_information() -> Option<&'static Acpi> {
@@ -102,11 +102,12 @@ pub unsafe fn init() {
         if let Some(rsdp_v1_info) = multiboot_info.rsdp_v1_tag() {
             info!("Found RSDP v1 multiboot2 tag at address {:x}", rsdp_v1_info.rsdt_address());
 
+            // Multiboot2 hold a copy of the RSDP but have two extra fields at the begining, we are ignoring them.
             let rsdp_virtual_address = (rsdp_v1_info as *const _ as usize) + 0x8;
             is_init = parse_rsdp_tag(&mut handler, rsdp_virtual_address);
         }
         else if let Some(rsdp_v2_info) = multiboot_info.rsdp_v2_tag() {
-            info!("Found RSDP v2 multiboot2 targ");
+            info!("Found RSDP v2 multiboot2 tag at address {:x}", rsdp_v2_info.xsdt_address());
 
             let rsdp_virtual_address = (rsdp_v2_info as *const _ as usize) + 0x8;
             is_init = parse_rsdp_tag(&mut handler, rsdp_virtual_address);
@@ -127,7 +128,6 @@ pub unsafe fn init() {
 
     if !is_init {
         info!("ACPI is not supported by this system");
-        panic!()
     } else {
         info!("ACPI is supported by this system")
     }

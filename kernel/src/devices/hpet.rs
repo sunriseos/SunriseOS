@@ -436,14 +436,6 @@ pub unsafe fn init(hpet: &acpi::Hpet) -> bool {
         return false;
     }
 
-    // Set the tick rate in femtoseconds
-    // Kernel needs an update frequency of 100 nanoseconds.
-    let tick_rate = 100;
-    let tick_rate_nano = tick_rate * 1000000;
-    let tick_rate_femto = tick_rate_nano * 1000000;
-    info!("HPET frequency: {} Hz", hpet_instance.get_frequency());
-    info!("HPET tick rate: {} fs", tick_rate_femto);
-
     let main_timer = main_timer_opt.unwrap();
 
     // The timer must support periodic interrupt otherwise we cannot use it!
@@ -452,7 +444,18 @@ pub unsafe fn init(hpet: &acpi::Hpet) -> bool {
         return false;
     }
 
-    let kernel_frequency = tick_rate_femto / u64::from(hpet_instance.get_period());
+    // Set the tick rate in femtoseconds
+    // Kernel needs an update frequency of 1 milliseconds.
+    // TODO: Switch to a lower update frequency in HPET
+    // BODY: We will maybe prefer to have a better resolution for kernel time.
+    // BODY: For that to be possible, we need to take care of the sleep_thread logic in userland first (sleep_thread(0) shouldn't be used).
+
+    let irq_period_ns = 1 * 1_000_000;
+    let irq_period_fs = irq_period_ns * 1_000_000;
+    info!("HPET frequency: {} Hz", hpet_instance.get_frequency());
+    info!("HPET IRQ period: {} fs", irq_period_fs);
+
+    let kernel_frequency = irq_period_fs / u64::from(hpet_instance.get_period());
 
     main_timer.set_edge_trigger();
     main_timer.set_periodic_mode();
@@ -481,7 +484,7 @@ pub unsafe fn init(hpet: &acpi::Hpet) -> bool {
     // Clear the interrupt state
     hpet_instance.enable();
 
-    timer::set_kernel_timer_info(0, hpet_instance.get_frequency(), tick_rate);
+    timer::set_kernel_timer_info(0, hpet_instance.get_frequency(), irq_period_ns);
 
     HPET_INSTANCE = Some(hpet_instance);
     true

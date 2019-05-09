@@ -206,5 +206,5 @@ pub unsafe fn init_channel_0() {
     );
     ports.write_reload_value(ChannelSelector::Channel0, CHAN_0_DIVISOR);
 
-    timer::set_kernel_timer_info(0, OSCILLATOR_FREQ as u64, (CHAN_0_FREQUENCY as u64) * 100_0000);
+    timer::set_kernel_timer_info(0, OSCILLATOR_FREQ as u64, 1_000_000_000 / (CHAN_0_FREQUENCY as u64));
 }
