@@ -285,11 +285,9 @@ impl ProcessMemory {
         self.userspace_bookkeping.check_vacant(address, length)?;
         // ok, everything seems good, from now on treat errors as unexpected
 
-        self.get_hierarchy().map_to_from_iterator(shared_mapping.read().iter().flatten()
-                                                  .skip(phys_offset / PAGE_SIZE)
-                                                  .take(length / PAGE_SIZE), address, flags);
         let mapping = Mapping::new(address, MappingFrames::Shared(shared_mapping), phys_offset, length, ty, flags)
             .expect("We checked everything, but bookkeeping refuses to create the mapping");
+        self.get_hierarchy().map_to_from_iterator(mapping.frames_it(), address, flags);
         self.userspace_bookkeping.add_mapping(mapping)
             .expect("We checked everything, but bookkeeping refuses to add the mapping");
         Ok(())
