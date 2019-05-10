@@ -47,6 +47,14 @@ impl CrossProcessMapping {
     ///
     /// Remaps a subsection of the mapping in KernelLand.
     ///
+    /// The offset is a byte offset in the Mapping's underlying physical frames.
+    /// If the mapping already had an offset, those are summed. For instance,
+    /// a mapping with 3 frames and an offset at 0x1000, mirror_mapped with an
+    /// offset of 0x1000, will result in mirror mapping from the third frame.
+    ///
+    /// The length is a byte length to mirror map. It's allowed to be smaller
+    /// than the length of the underlying mapping.
+    ///
     /// # Error
     ///
     /// * Error if the mapping is not Shared, as only refcounted mappings can be owned.
