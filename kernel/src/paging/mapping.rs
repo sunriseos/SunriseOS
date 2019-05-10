@@ -8,7 +8,7 @@ use alloc::{vec::Vec, sync::Arc};
 use crate::utils::check_nonzero_length;
 use failure::Backtrace;
 use sunrise_libkern::{MemoryType, MemoryState};
-use crate::sync::RwLock;
+use crate::sync::{RwLock, RwLockReadGuard};
 use core::ops::Range;
 use core::iter::StepBy;
 use crate::mem::PhysicalAddress;
@@ -122,39 +122,54 @@ impl Mapping {
     /// mapping.
     pub fn frames_it(&self) -> impl Iterator<Item = PhysicalAddress> + Clone + core::fmt::Debug + '_ {
         /// Anonymous iterator over mapping frames' PhysicalAddresses.
-        #[derive(Debug, Clone)]
-        struct MappingFramesIt<'a>(&'a MappingFrames, usize, StepBy<Range<usize>>);
+        #[derive(Debug)]
+        enum MappingFramesIt<'a> {
+            None,
+            Owned(&'a [PhysicalMemRegion], usize, StepBy<Range<usize>>),
+            Shared(&'a Arc<RwLock<Vec<PhysicalMemRegion>>>, RwLockReadGuard<'a, Vec<PhysicalMemRegion>>, usize, StepBy<Range<usize>>),
+        }
         impl<'a> Iterator for MappingFramesIt<'a> {
             type Item = PhysicalAddress;
             fn next(&mut self) -> Option<Self::Item> {
-                if let Some(s) = self.2.next().map(PhysicalAddress) {
+                let (frames, curframe, rangeit) = match self {
+                    MappingFramesIt::Owned(ref frames, ref mut curframe, ref mut rangeit) => {
+                        (*frames, curframe, rangeit)
+                    },
+                    MappingFramesIt::Shared(_, frames, ref mut curframe, ref mut rangeit) => {
+                        (&***frames, curframe, rangeit)
+                    },
+                    _ => return None
+                };
+
+                if let Some(s) = rangeit.next().map(PhysicalAddress) {
                     Some(s)
+                } else if *curframe < frames.len() {
+                    let frame = &frames[*curframe];
+                    *rangeit = (frame.address().0..frame.address().0 + frame.size()).step_by(PAGE_SIZE);
+                    *curframe += 1;
+                    rangeit.next().map(PhysicalAddress)
                 } else {
-                    match self.0 {
-                        MappingFrames::Owned(frames) if self.1 < frames.len() => {
-                            let curframe = &frames[self.1];
-                            self.2 = (curframe.address().0..curframe.address().0 + curframe.size()).step_by(PAGE_SIZE);
-                            self.1 += 1;
-                            self.2.next().map(PhysicalAddress)
-                        },
-                        MappingFrames::Shared(frames) => {
-                            let frames = frames.read();
-                            if self.1 < frames.len() {
-                                let curframe = &frames[self.1];
-                                self.2 = (curframe.address().0..curframe.address().0 + curframe.size()).step_by(PAGE_SIZE);
-                                self.1 += 1;
-                                self.2.next().map(PhysicalAddress)
-                            } else {
-                                None
-                            }
-                        },
-                        _ => None
-                    }
+                    None
                 }
             }
         }
 
-        MappingFramesIt(self.frames(), 0, (0..0).step_by(PAGE_SIZE))
+        impl<'a> Clone for MappingFramesIt<'a> {
+            fn clone(&self) -> MappingFramesIt<'a> {
+                match self {
+                    MappingFramesIt::Owned(frames, curframe, rangeit) => MappingFramesIt::Owned(frames, *curframe, rangeit.clone()),
+                    MappingFramesIt::Shared(frames, _lock, curframe, rangeit) => MappingFramesIt::Shared(frames, frames.read(), *curframe, rangeit.clone()),
+                    MappingFramesIt::None => MappingFramesIt::None,
+                }
+            }
+        }
+
+        let it = match self.frames() {
+            MappingFrames::Owned(frames) => MappingFramesIt::Owned(&frames[..], 0, (0..0).step_by(1)),
+            MappingFrames::Shared(frames) => MappingFramesIt::Shared(frames, frames.read(), 0, (0..0).step_by(1)),
+            MappingFrames::None => MappingFramesIt::None,
+        };
+        it
             .skip(self.phys_offset() / PAGE_SIZE)
             .take(self.length() / PAGE_SIZE)
     }
