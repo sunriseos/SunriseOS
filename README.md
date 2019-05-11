@@ -2,7 +2,7 @@
 
 [![Travis Build](https://img.shields.io/travis/sunriseos/SunriseOS.svg?logo=travis)](https://travis-ci.org/sunriseos/SunriseOS) [![Dependabot Status](https://api.dependabot.com/badges/status?host=github&repo=sunriseos/SunriseOS)](https://dependabot.com)
 
-[![synthwave sunrise](.github/res/sunrise_fm84_256x256.jpg)](https://fm84.bandcamp.com/album/atlas)
+![synthwave sunrise](.github/res/sunrise_256.png)
 
 A microkernel based on Horizon/NX. Go to [switchbrew](https://switchbrew.org/) for more information.
 
