@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="3.33333in"
+   height="3.33333in"
+   viewBox="0 0 1000 1000"
+   version="1.1"
+   id="svg3789"
+   sodipodi:docname="sunrise.svg"
+   inkscape:version="0.92.4 5da689c313, 2019-01-14">
+  <metadata
+     id="metadata3795">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <defs
+     id="defs3793">
+    <linearGradient
+       inkscape:collect="always"
+       id="sunrise_outline_gradient">
+      <stop
+         style="stop-color:#fc1ab7;stop-opacity:1"
+         offset="0"
+         id="stop6235" />
+      <stop
+         style="stop-color:#723bff;stop-opacity:1"
+         offset="1"
+         id="stop6237" />
+    </linearGradient>
+    <linearGradient
+       inkscape:collect="always"
+       id="sunrise_fill_gradient">
+      <stop
+         style="stop-color:#fffc39;stop-opacity:1"
+         offset="0"
+         id="stop3797" />
+      <stop
+         style="stop-color:#fc1ab7;stop-opacity:1"
+         offset="1"
+         id="stop3799" />
+    </linearGradient>
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#sunrise_fill_gradient"
+       id="linearGradient3803"
+       x1="500.00327"
+       y1="99.5"
+       x2="500.00327"
+       y2="900.57452"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#sunrise_outline_gradient"
+       id="linearGradient6245"
+       gradientUnits="userSpaceOnUse"
+       x1="500.00327"
+       y1="99.5"
+       x2="500.00327"
+       y2="900.57452" />
+    <filter
+       inkscape:collect="always"
+       style="color-interpolation-filters:sRGB"
+       id="filter6455"
+       x="-0.035999344"
+       width="1.0719987"
+       y="-0.036000656"
+       height="1.0720013">
+      <feGaussianBlur
+         inkscape:collect="always"
+         stdDeviation="12.001335"
+         id="feGaussianBlur6457" />
+    </filter>
+  </defs>
+  <sodipodi:namedview
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1"
+     objecttolerance="10"
+     gridtolerance="10"
+     guidetolerance="20"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:window-width="1920"
+     inkscape:window-height="1015"
+     id="namedview3791"
+     showgrid="false"
+     inkscape:snap-bbox="true"
+     inkscape:bbox-paths="true"
+     inkscape:bbox-nodes="false"
+     inkscape:snap-bbox-edge-midpoints="true"
+     inkscape:snap-bbox-midpoints="true"
+     inkscape:snap-grids="false"
+     inkscape:object-paths="false"
+     inkscape:snap-nodes="true"
+     inkscape:snap-to-guides="false"
+     inkscape:zoom="0.70710678"
+     inkscape:cx="-238.93109"
+     inkscape:cy="-205.55807"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg3789" />
+  <path
+     style="opacity:0.7;fill:url(#linearGradient6245);fill-opacity:1;stroke:none;stroke-width:3.75000381;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers;filter:url(#filter6455)"
+     d="m 125,641 c 0,0 750,0 750,0 0,0 8.58,-27 8.58,-27 5.26,-18.02 9.41,-36.43 12.15,-55 10.74,-72.93 1.4,-146.94 -27.15,-215 C 848.2,295.45 818.16,252.16 781,215 755.99,189.99 724.15,166.16 693,149.31 643.78,122.69 592.61,107.22 537,101.83 c 0,0 -24,-1.83 -24,-1.83 0,0 -28,0 -28,0 0,0 -22,1.83 -22,1.83 -98.28,9.52 -188.33,52.63 -255.91,125.17 -48.16,51.69 -82.43,117.01 -97.67,186 -7.72,34.96 -9.83,66.35 -9.42,102 0,0 0.91,10 0.91,10 1.96,28.52 5.75,53.32 13.24,81 0,0 10.85,35 10.85,35 z m 20,43 c 6.92,16.07 22.67,39.63 33.15,54 2.9,3.98 9.53,13.77 13.86,15.4 1.89,0.71 4.94,0.6 6.99,0.6 0,0 602,0 602,0 2.05,0 5.1,0.11 6.99,-0.6 4.33,-1.63 10.96,-11.42 13.86,-15.4 10.48,-14.37 26.23,-37.93 33.15,-54 0,0 -710,0 -710,0 z m 81,107 c 6.95,9.27 34.45,29.91 45,37.28 8.86,6.19 12.97,10.7 24,10.72 0,0 410,0 410,0 11.03,-0.02 15.14,-4.53 24,-10.72 10.55,-7.37 38.05,-28.01 45,-37.28 0,0 -548,0 -548,0 z m 126,80 c 5.14,3.72 14.77,6.26 21,8.33 16.12,5.38 32.33,9.74 49,13.07 54.36,10.87 110.87,10.13 165,-1.82 22.12,-4.89 40.81,-12.23 61.99,-19.58 0,0 -296.99,0 -296.99,0 z"
+     id="path6243"
+     inkscape:label="sun_outline"
+     inkscape:connector-curvature="0" />
+  <path
+     id="Sun"
+     d="M 125.00,641.00            C 125.00,641.00 875.00,641.00 875.00,641.00              875.00,641.00 883.58,614.00 883.58,614.00              888.84,595.98 892.99,577.57 895.73,559.00              906.47,486.07 897.13,412.06 868.58,344.00              848.20,295.45 818.16,252.16 781.00,215.00              755.99,189.99 724.15,166.16 693.00,149.31              643.78,122.69 592.61,107.22 537.00,101.83              537.00,101.83 513.00,100.00 513.00,100.00              513.00,100.00 485.00,100.00 485.00,100.00              485.00,100.00 463.00,101.83 463.00,101.83              364.72,111.35 274.67,154.46 207.09,227.00              158.93,278.69 124.66,344.01 109.42,413.00              101.70,447.96 99.59,479.35 100.00,515.00              100.00,515.00 100.91,525.00 100.91,525.00              102.87,553.52 106.66,578.32 114.15,606.00              114.15,606.00 125.00,641.00 125.00,641.00 Z            M 145.00,684.00            C 151.92,700.07 167.67,723.63 178.15,738.00              181.05,741.98 187.68,751.77 192.01,753.40              193.90,754.11 196.95,754.00 199.00,754.00              199.00,754.00 801.00,754.00 801.00,754.00              803.05,754.00 806.10,754.11 807.99,753.40              812.32,751.77 818.95,741.98 821.85,738.00              832.33,723.63 848.08,700.07 855.00,684.00              855.00,684.00 145.00,684.00 145.00,684.00 Z            M 226.00,791.00            C 232.95,800.27 260.45,820.91 271.00,828.28              279.86,834.47 283.97,838.98 295.00,839.00              295.00,839.00 705.00,839.00 705.00,839.00              716.03,838.98 720.14,834.47 729.00,828.28              739.55,820.91 767.05,800.27 774.00,791.00              774.00,791.00 226.00,791.00 226.00,791.00 Z            M 352.00,871.00            C 357.14,874.72 366.77,877.26 373.00,879.33              389.12,884.71 405.33,889.07 422.00,892.40              476.36,903.27 532.87,902.53 587.00,890.58              609.12,885.69 627.81,878.35 648.99,871.00              648.99,871.00 352.00,871.00 352.00,871.00 Z"
+     style="fill-opacity:1;fill:url(#linearGradient3803);stroke:none;stroke-opacity:1;stroke-width:3.75000393;stroke-miterlimit:4;stroke-dasharray:none;paint-order:stroke fill markers;opacity:1;stroke-linejoin:round;stroke-linecap:butt"
+     stroke-width="1"
+     stroke="black"
+     fill="none" />
+</svg>
