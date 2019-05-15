@@ -123,6 +123,7 @@ impl Mapping {
     pub fn frames_it(&self) -> impl Iterator<Item = PhysicalAddress> + Clone + core::fmt::Debug + '_ {
         /// Anonymous iterator over mapping frames' PhysicalAddresses.
         #[derive(Debug)]
+        #[allow(clippy::missing_docs_in_private_items)]
         enum MappingFramesIt<'a> {
             None,
             Owned(&'a [PhysicalMemRegion], usize, StepBy<Range<usize>>),
