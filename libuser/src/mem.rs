@@ -25,7 +25,7 @@ pub fn find_free_address(size: usize, align: usize) -> Result<usize, Error> {
     // Go over the address space.
     loop {
         let (meminfo, _) = syscalls::query_memory(addr)?;
-        if meminfo.memtype == sunrise_libkern::MemoryType::Unmapped {
+        if meminfo.memtype.ty() == sunrise_libkern::MemoryType::Unmapped {
             let alignedbaseaddr = sunrise_libutils::align_up_checked(meminfo.baseaddr, align).ok_or(LibuserError::AddressSpaceExhausted)?;
 
             let alignment = alignedbaseaddr - meminfo.baseaddr;

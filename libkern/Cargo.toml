@@ -8,6 +8,7 @@ edition = "2018"
 [dependencies]
 sunrise-libutils = { path = "../libutils" }
 bitflags = "1.0"
+bitfield = "0.13"
 
 [dependencies.lazy_static]
 features = ["spin_no_std"]

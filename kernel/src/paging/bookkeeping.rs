@@ -2,6 +2,9 @@
 
 use crate::mem::VirtualAddress;
 use crate::paging::lands::{KernelLand, RecursiveTablesLand, VirtualSpaceLand};
+use crate::paging::mapping::MappingFrames;
+use crate::paging::MappingAccessRights;
+use sunrise_libkern::MemoryType;
 use alloc::collections::BTreeMap;
 use crate::error::KernelError;
 use crate::utils::check_nonzero_length;
@@ -48,9 +51,9 @@ impl UserspaceBookkeeping {
     /// Initially contains only SystemReserved regions for KernelLand and RecursiveTableLand
     pub fn new() -> Self {
         let mut mappings = BTreeMap::new();
-        let kl = Mapping::new_system_reserved(KernelLand::start_addr(), KernelLand::length())
+        let kl = Mapping::new(KernelLand::start_addr(), MappingFrames::None, 0, KernelLand::length(), MemoryType::Reserved, MappingAccessRights::empty())
             .expect("Cannot create KernelLand system_reserved mapping");
-        let rtl = Mapping::new_system_reserved(RecursiveTablesLand::start_addr(), RecursiveTablesLand::length())
+        let rtl = Mapping::new(RecursiveTablesLand::start_addr(), MappingFrames::None, 0, RecursiveTablesLand::length(), MemoryType::Reserved, MappingAccessRights::empty())
             .expect("Cannot create RecursiveTableLand system_reserved mapping");
         mappings.insert(kl.address(), kl);
         mappings.insert(rtl.address(), rtl);
@@ -89,7 +92,7 @@ impl UserspaceBookkeeping {
             // todo this could overflow for 0x00000000-0xffffffff.
         };
         QueryMemory::Available(
-            Mapping::new_available(start_addr, length)
+            Mapping::new(start_addr, MappingFrames::None, 0, length, MemoryType::Unmapped, MappingAccessRights::empty())
                 .expect("Failed creating an available mapping")
         )
     }

@@ -1,6 +1,7 @@
 //! Types shared by user and kernel
 
 #![no_std]
+#![recursion_limit="128"]
 
 // rustc warnings
 #![warn(unused)]
@@ -25,66 +26,229 @@ extern crate lazy_static;
 
 pub mod error;
 
-enum_with_val! {
-    /// The type of this memory area.
+use core::fmt;
+use bitfield::bitfield;
+
+bitfield! {
+    /// Represents the current state of a memory region: why is it allocated, and
+    /// what operations are allowed.
+    #[derive(Clone, Copy, Default, PartialEq, Eq)]
+    pub struct MemoryState(u32);
+    /// [MemoryType] this state represents.
+    ty_inner, _: 7, 0;
+    /// Allows the use of `svcSetMemoryPermissions` on this memory region.
+    pub permission_change_allowed, _: 8;
+    /// Allow writing to read-only segments with debug syscalls.
+    // TODO: Investigate usage of force_read_writable_by_debug_syscalls
+    // BODY: I suspect it's used in debug syscalls to allow writing to read-only
+    // BODY: segments, but I'd need to double check.
+    pub force_read_writable_by_debug_syscalls, _: 9;
+    /// Allows sending this region over IPC.
+    pub ipc_send_allowed, _: 10;
+    /// Allows sending this region over IPC with buffer flag set to 1.
+    pub non_device_ipc_send_allowed, _: 11;
+    /// Allows sending this region over IPC with buffer flag set to 3.
+    pub non_secure_ipc_send_allowed, _: 12;
+    /// Allows the use of `svcSetProcessMemoryPermission` on this memory region.
+    pub process_permission_change_allowed, _: 14;
+    /// Allows remapping this memory region with `svcMapMemory`.
+    pub map_allowed, _: 15;
+    /// Allows unmapping this memory region through `svcUnmapProcessCodeMemory`.
+    pub unmap_process_code_memory_allowed, _: 16;
+    /// Allows creating Transfer Memory from this memory region with
+    /// `svcCreateTransferMemory`.
+    pub transfer_memory_allowed, _: 17;
+    /// Allows using [query_physical_memory] on this memory region.
     ///
-    /// May be used to figure out how the memory area was created.
-    #[derive(Default, Clone, Copy, PartialEq, Eq)]
-    pub struct MemoryType(u32) {
-        /// An unmapped memory region. Reading will lead to a data abort.
-        Unmapped = 0,
-        /// Mapped by kernel capability parsing in `create_process` syscall.
-        Io = 0x00002001,
-        /// Mapped by kernel capability parsing in `create_process` syscall.
-        Normal = 0x00042002,
-        /// Mapped during create_process
-        CodeStatic = 0x00DC7E03,
-        // 1.0.0-3.1.0 0x01FEBD04
-        // 4.0.0+
-        /// Transition from MemoryType::CodeStatic performed by
-        /// `set_process_memory_permission` syscall.
-        CodeMutable = 0x03FEBD04,
-        // 1.0.0-3.1.0 0x017EBD05
-        /// Mapped using `set_heap_size` syscall.
-        Heap = 0x037EBD05,
-        /// Mapped using `map_shared_memory` syscall.
-        SharedMemory = 0x00402006,
-        /// Mapped using `map_memory` syscall.
-        // 1.0.0 only
-        Alias = 0x00482907,
-        /// Mapped using `map_process_code_memory` syscall.
-        ModuleCodeStatic = 0x00DD7E08,
-        // 1.0.0-3.1.0: 0x01FFBD09
-        /// Transition from MemoryType::ModuleCodeStatic by
-        /// `set_process_memory_permission` syscall.
-        ModuleCodeMutable = 0x03FFBD09,
-        /// IPC buffers with descriptor flags=0.
-        IpcBuffer0 = 0x005C3C0A,
-        /// Mapped using `map_memory` syscall.
-        Stack = 0x005C3C0B,
-        /// Mapped during `create_thread` syscall.
-        ThreadLocal = 0x0040200C,
-        /// Mapped using `map_transfer_memory` syscall when the owning process
-        /// has `perm = 0`.
-        TransferMemoryIsolated = 0x015C3C0D,
-        /// Mapped using `map_transfer_memory` syscall when the owning process
-        /// has `perm != 0`.
-        TransferMemory = 0x005C380E,
-        /// Mapped using `map_process_memory` syscall.
-        ProcessMemory = 0x0040380F,
-        /// Reserved memory area, used internally by kernel, should not be
-        /// observable.
-        Reserved = 0x00000010,
-        /// IPC buffers with descriptor flags=1.
-        IpcBuffer1 = 0x005C3811,
-        /// IPC buffers with descriptor flags=3.
-        IpcBuffer3 = 0x004C2812,
-        /// Mapped in kernel during `create_thread`. Should not be observable.
-        KernelStack = 0x00002013,
-        /// Mapped using `control_code_memory` syscall.
-        CodeReadOnly = 0x00402214,
-        /// Mapped using `control_code_memory` syscall.
-        CodeWritable = 0x00402015,
+    /// [query_physical_memory]: crate::interrupts::syscalls::query_physical_address
+    pub query_physical_address_allowed, _: 18;
+    /// Allows mapping this memory region to a DeviceAddressSpace through either
+    /// `svcMapDeviceAddressSpace` or `svcMapDeviceAddressSpaceByForce`.
+    pub map_device_allowed, _: 19;
+    /// Allows mapping this memory region to a DeviceAddressSpace through
+    /// `svcMapDeviceAddressSpaceAligned`.
+    pub map_device_aligned_allowed, _: 20;
+    /// Allows using this memory region as an IPC Command Buffer.
+    pub ipc_buffer_allowed, _: 21;
+    /// If true, this memory region is reference counted/pool-allocated.
+    pub is_reference_counted, _: 22;
+    /// Allows mapping this region accross process boundary through
+    /// `svcMapProcessMemory`
+    pub map_process_allowed, _: 23;
+    /// Allows using the `svcSetMemoryAttribute` syscall on this memory region.
+    pub attribute_change_allowed, _: 24;
+    /// Allows creating a CodeMemory backed by this memory region.
+    pub code_memory_allowed, _: 25;
+}
+
+// Implement debug ourselves so we can show ty instead of ty_inner.
+impl fmt::Debug for MemoryState {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("MemoryState")
+            .field("0", &self.0)
+            .field("ty", &self.ty())
+            .field("permission_change_allowed", &self.permission_change_allowed())
+            .field("force_read_writable_by_debug_syscalls", &self.force_read_writable_by_debug_syscalls())
+            .field("ipc_send_allowed", &self.ipc_send_allowed())
+            .field("non_device_ipc_send_allowed", &self.non_device_ipc_send_allowed())
+            .field("non_secure_ipc_send_allowed", &self.non_secure_ipc_send_allowed())
+            .field("process_permission_change_allowed", &self.process_permission_change_allowed())
+            .field("map_allowed", &self.map_allowed())
+            .field("unmap_process_code_memory_allowed", &self.unmap_process_code_memory_allowed())
+            .field("transfer_memory_allowed", &self.transfer_memory_allowed())
+            .field("query_physical_address_allowed", &self.query_physical_address_allowed())
+            .field("map_device_allowed", &self.map_device_allowed())
+            .field("map_device_aligned_allowed", &self.map_device_aligned_allowed())
+            .field("ipc_buffer_allowed", &self.ipc_buffer_allowed())
+            .field("is_reference_counted", &self.is_reference_counted())
+            .field("map_process_allowed", &self.map_process_allowed())
+            .field("attribute_change_allowed", &self.attribute_change_allowed())
+            .field("code_memory_allowed", &self.code_memory_allowed())
+            .finish()
+    }
+}
+
+impl MemoryState {
+    /// [MemoryType] this state represents.
+    pub fn ty(self) -> MemoryType {
+        match self.ty_inner() {
+            0x00 => MemoryType::Unmapped,
+            0x01 => MemoryType::Io,
+            0x02 => MemoryType::Normal,
+            0x03 => MemoryType::CodeStatic,
+            0x04 => MemoryType::CodeMutable,
+            0x05 => MemoryType::Heap,
+            0x06 => MemoryType::SharedMemory,
+            0x07 => MemoryType::Alias,
+            0x08 => MemoryType::ModuleCodeStatic,
+            0x09 => MemoryType::ModuleCodeMutable,
+            0x0A => MemoryType::Ipc,
+            0x0B => MemoryType::Stack,
+            0x0C => MemoryType::ThreadLocal,
+            0x0D => MemoryType::TransferMemoryIsolated,
+            0x0E => MemoryType::TransferMemory,
+            0x0F => MemoryType::ProcessMemory,
+            0x10 => MemoryType::Reserved,
+            0x11 => MemoryType::NonSecureIpc,
+            0x12 => MemoryType::NonDeviceIpc,
+            0x13 => MemoryType::KernelStack,
+            0x14 => MemoryType::CodeReadOnly,
+            0x15 => MemoryType::CodeWritable,
+
+            // Assume unknown MemoryState are reserved for kernel use. AKA we
+            // can't read/write/execute them, nor unmap or do anything on them.
+            _    => MemoryType::Reserved,
+        }
+    }
+}
+
+/// The type of this memory area.
+///
+/// May be used to figure out how the memory area was created.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemoryType {
+    /// Nothing is stored there. Accessing it will page fault. An allocation can
+    /// use this region.
+    Unmapped = 0,
+    /// Mapped by the kernel during process creation, for every IO region in the
+    /// NPDM.
+    Io = 1,
+    /// Mapped by the kernel during process creation, for every Normal region in
+    /// the NPDM.
+    Normal = 2,
+    /// Mapped by the kernel during process creation, at the address and of the
+    /// size given by the user in the `CreateProcessInfo`.
+    CodeStatic = 3,
+    /// Transitioned from CodeStatic in `svcSetProcessMemoryPermission`.
+    CodeMutable = 4,
+    /// Mapped using `svcSetHeapSize`.
+    Heap = 5,
+    /// Mapped using `svcMapSharedMemory`.
+    SharedMemory = 6,
+    /// Mapped by using `svcMapMemory` to remap memory into the Alias region.
+    ///
+    /// 1.0.0 only!
+    Alias = 7,
+    /// Mapped using `svcMapProcessCodeMemory`.
+    ModuleCodeStatic = 8,
+    /// Transitioned from ModuleCodeStatic in `svcSetProcessMemoryPermission`.
+    ModuleCodeMutable = 9,
+    /// IPC buffers with descriptor flags=0.
+    Ipc = 0xA,
+    /// Mapped by using `svcMapMemory` to remap memory into the Stack region.
+    Stack = 0xB,
+    /// Mapped by the kernel during process creation. The TLS region is allocated
+    /// there.
+    ThreadLocal = 0xC,
+    /// Mapped using `svcMapTransferMemory` when the owning process has perm = 0.
+    TransferMemoryIsolated = 0xD,
+    /// Mapped using `svcMapTransferMemory` when the owning process has perm != 0.
+    TransferMemory = 0xE,
+    /// Mapped using `svcMapProcessMemory`.
+    ProcessMemory = 0xF,
+    /// Reserved for kernel use.
+    Reserved = 0x10,
+    /// IPC buffers with descriptor flags=1.
+    NonSecureIpc = 0x11,
+    /// IPC buffers with descriptor flags=3.
+    NonDeviceIpc = 0x12,
+    /// Mapped by the kernel during svcCreateThread. Unused.
+    KernelStack = 0x13,
+    /// Mapped with `svcControlCodeMemory`.
+    CodeReadOnly = 0x14,
+    /// Mapped with `svcControlCodeMemory`.
+    CodeWritable = 0x15,
+}
+
+impl MemoryType {
+    /// Get the [MemoryState] associated with a [MemoryType].
+    pub fn get_memory_state(self) -> MemoryState {
+        match self {
+            //
+            MemoryType::Unmapped               => MemoryState(0x00000000),
+            //
+            MemoryType::Io                     => MemoryState(0x00002001),
+            // QUERY_PHYSICAL
+            MemoryType::Normal                 => MemoryState(0x00042002),
+            // DEBUG | IPC_SEND0 | IPC_SEND1 | IPC_SEND3 | PROCESS_PERM_CHANGE | QUERY_PHYSICAL | MAP_DEVICE | MAP_DEVICE_ALIGNED | REFCNT | MAP_PROCESS
+            MemoryType::CodeStatic             => MemoryState(0x00DC7E03),
+            // PERM_CHANGE | IPC_SEND0 | IPC_SEND1 | IPC_SEND3 | MAP | TRANSFER | QUERY_PHYSICAL | MAP_DEVICE | MAP_DEVICE_ALIGNED | IPC_CMD | REFCNT | MAP_PROCESS | ATTR_CHANGE | CODE_MEM
+            MemoryType::CodeMutable            => MemoryState(0x03FEBD04),
+            // PERM_CHANGE | IPC_SEND0 | IPC_SEND1 | IPC_SEND3 | MAP | TRANSFER | QUERY_PHYSICAL | MAP_DEVICE | MAP_DEVICE_ALIGNED | IPC_CMD | REFCNT | ATTR_CHANGE | CODE_MEM
+            MemoryType::Heap                   => MemoryState(0x037EBD05),
+            // REFCNT
+            MemoryType::SharedMemory           => MemoryState(0x00402006),
+            // PERM_CHANGE | IPC_SEND1 | MAP_DEVICE | REFCNT
+            MemoryType::Alias                  => MemoryState(0x00482907),
+            // DEBUG | IPC_SEND0 | IPC_SEND1 | IPC_SEND3 | PROCESS_PERM_CHANGE | UNMAP_PROCESS | QUERY_PHYSICAL | MAP_DEVICE | MAP_DEVICE_ALIGNED | REFCNT | MAP_PROCESS
+            MemoryType::ModuleCodeStatic       => MemoryState(0x00DD7E08),
+            // PERM_CHANGE | IPC_SEND0 | IPC_SEND1 | IPC_SEND3 | MAP | UNMAP_PROCESS | TRANSFER | QUERY_PHYSICAL | MAP_DEVICE | MAP_DEVICE_ALIGNED | IPC_CMD | REFCNT | MAP_PROCESS | ATTR_CHANGE | CODE_MEM
+            MemoryType::ModuleCodeMutable      => MemoryState(0x03FFBD09),
+            // IPC_SEND0 | IPC_SEND1 | IPC_SEND3 | QUERY_PHYSICAL | MAP_DEVICE | MAP_DEVICE_ALIGNED | REFCNT
+            MemoryType::Ipc                    => MemoryState(0x005C3C0A),
+            // IPC_SEND0 | IPC_SEND1 | IPC_SEND3 | QUERY_PHYSICAL | MAP_DEVICE | MAP_DEVICE_ALIGNED | REFCNT
+            MemoryType::Stack                  => MemoryState(0x005C3C0B),
+            // REFCNT
+            MemoryType::ThreadLocal            => MemoryState(0x0040200C),
+            // IPC_SEND0 | IPC_SEND1 | IPC_SEND3 | QUERY_PHYSICAL | MAP_DEVICE | MAP_DEVICE_ALIGNED | REFCNT | ATTR_CHANGE
+            MemoryType::TransferMemoryIsolated => MemoryState(0x015C3C0D),
+            // IPC_SEND1 | IPC_SEND3 | QUERY_PHYSICAL | MAP_DEVICE | MAP_DEVICE_ALIGNED | REFCNT
+            MemoryType::TransferMemory         => MemoryState(0x005C380E),
+            // IPC_SEND1 | IPC_SEND3 | REFCNT
+            MemoryType::ProcessMemory          => MemoryState(0x0040380F),
+            //
+            MemoryType::Reserved               => MemoryState(0x00000010),
+            // IPC_SEND1 | IPC_SEND3 | QUERY_PHYSICAL | MAP_DEVICE | MAP_DEVICE_ALIGNED | REFCNT
+            MemoryType::NonSecureIpc           => MemoryState(0x005C3811),
+            // IPC_SEND1 | QUERY_PHYSICAL | MAP_DEVICE | REFCNT
+            MemoryType::NonDeviceIpc           => MemoryState(0x004C2812),
+            //
+            MemoryType::KernelStack            => MemoryState(0x00002013),
+            // DEBUG | REFCNT
+            MemoryType::CodeReadOnly           => MemoryState(0x00402214),
+            // REFCNT
+            MemoryType::CodeWritable           => MemoryState(0x00402015),
+        }
     }
 }
 
@@ -131,7 +295,7 @@ pub struct MemoryInfo {
     /// The type of this mapping.
     ///
     /// Used to figure out how this mapping was created.
-    pub memtype: MemoryType,
+    pub memtype: MemoryState,
     /// The attributes of this mapping.
     pub memattr: MemoryAttributes,
     /// The permissions of this mapping.

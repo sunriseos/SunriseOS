@@ -5,18 +5,22 @@ use crate::paging::{PAGE_SIZE, MappingAccessRights};
 use crate::error::KernelError;
 use crate::frame_allocator::PhysicalMemRegion;
 use alloc::{vec::Vec, sync::Arc};
-use crate::utils::{check_size_aligned, check_nonzero_length, Splittable};
+use crate::utils::check_nonzero_length;
 use failure::Backtrace;
-use sunrise_libkern;
+use sunrise_libkern::{MemoryType, MemoryState};
+use crate::sync::{RwLock, RwLockReadGuard};
+use core::ops::Range;
+use core::iter::StepBy;
+use crate::mem::PhysicalAddress;
 
 /// A memory mapping.
 /// Stores the address, the length, and the type it maps.
-///
-/// A mapping is guaranteed to have page aligned address and length,
+/// A mapping is guaranteed to have page aligned address, length and offset,
 /// and the length will never be zero.
 ///
-/// If the mapping maps physical frames, we also guarantee that the
-/// the virtual length of the mapping is equal to the physical length it maps.
+/// If the mapping maps physical frames, we also guarantee that the mapping
+/// contains enough physical frames to cover the whole virtual mapping (taking
+/// into account length and offset).
 ///
 /// Getting the last address of this mapping (length - 1 + address) is guaranteed to not overflow.
 /// However we do not make any assumption on address + length, which falls outside of the mapping.
@@ -27,146 +31,77 @@ pub struct Mapping {
     address: VirtualAddress,
     /// The length of this mapping.
     length: usize,
-    /// The type of this mapping, and frames it maps.
-    mtype: MappingType,
+    /// The type of this mapping.
+    state: MemoryState,
+    /// The frames this mapping is referencing.
+    frames: MappingFrames,
+    /// Physical frame offset of this mapping,
+    offset: usize,
     /// The access rights of this mapping.
     flags: MappingAccessRights,
 }
 
-/// The types that a UserSpace mapping can be in.
-///
-/// If it maps physical memory regions, we hold them in a Vec.
-/// They will be de-allocated when this enum is dropped.
+/// Frames associated with a [Mapping].
 #[derive(Debug)]
-pub enum MappingType {
-    /// Available, nothing is stored there. Accessing to it will page fault.
-    /// An allocation can use this region.
-    Available,
-    /// Guarded, like Available, but nothing can be allocated here.
-    /// Used to implement guard pages.
-    Guarded,
-    /// Regular, a region known only by this process.
-    /// Access rights are stored in Mapping.mtype.
-    Regular(Vec<PhysicalMemRegion>),
-//    Stack(Vec<PhysicalMemRegion>),
-    /// Shared, a region that can be mapped in multiple processes.
-    /// Access rights are stored in Mapping.mtype.
-    Shared(Arc<Vec<PhysicalMemRegion>>),
-    /// SystemReserved, used to denote the KernelLand and other similar regions that the user
-    /// cannot access, and shouldn't know anything more about.
-    /// Cannot be unmapped, nor modified in any way.
-    SystemReserved
-}
-
-impl<'a> From<&'a MappingType> for sunrise_libkern::MemoryType {
-    fn from(ty: &'a MappingType) -> sunrise_libkern::MemoryType {
-        match ty {
-            // TODO: Extend MappingType to cover all MemoryTypes
-            // BODY: Currently, MappingType only covers a very limited view of the mappings.
-            // It should have the ability to understand all the various kind of memory allocations,
-            // such as "Heap", "CodeMemory", "SharedMemory", "TransferMemory", etc...
-
-            MappingType::Available => sunrise_libkern::MemoryType::Unmapped,
-            MappingType::Guarded => sunrise_libkern::MemoryType::Reserved,
-            MappingType::Regular(_) => sunrise_libkern::MemoryType::Normal,
-            MappingType::Shared(_) => sunrise_libkern::MemoryType::SharedMemory,
-            MappingType::SystemReserved => sunrise_libkern::MemoryType::Reserved,
-        }
-    }
+pub enum MappingFrames {
+    /// The frames are Shared between multiple mappings.
+    Shared(Arc<RwLock<Vec<PhysicalMemRegion>>>),
+    /// The frames are Owned by this mapping.
+    Owned(Vec<PhysicalMemRegion>),
+    /// This Mapping has no frames.
+    None,
 }
 
 impl Mapping {
-    /// Tries to construct a regular mapping.
+    /// Tries to construct a mapping.
     ///
     /// # Errors
     ///
     /// * `InvalidAddress`:
     ///     * `address` is not page aligned.
-    ///     * `address` + `frames`'s length would overflow.
+    ///     * `offset` is not page aligned.
+    ///     * `offset` is bigger than the amount of pages in `frames`.
+    ///     * `address` plus `length` would overflow.
     /// * `InvalidSize`:
-    ///     * `frames` is empty.
-    pub fn new_regular(address: VirtualAddress, frames: Vec<PhysicalMemRegion>, flags: MappingAccessRights) -> Result<Mapping, KernelError> {
+    ///     * `length` is bigger than the amount of pages in `frames`, minus the offset.
+    ///     * `length` is zero.
+    ///     * `length` is not page-aligned.
+    /// * `WrongMappingFramesForTy`:
+    ///     * `frames` didnt' contain the variant of [MappingFrames] expected by `ty`.
+    pub fn new(address: VirtualAddress, frames: MappingFrames, offset: usize, length: usize, ty: MemoryType, flags: MappingAccessRights) -> Result<Mapping, KernelError> {
         address.check_aligned_to(PAGE_SIZE)?;
-        let length = frames.iter().flatten().count() * PAGE_SIZE;
+        VirtualAddress(offset).check_aligned_to(PAGE_SIZE)?;
+        VirtualAddress(length).check_aligned_to(PAGE_SIZE)?;
         check_nonzero_length(length)?;
-        address.checked_add(length - 1)
-            .ok_or_else(|| KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new()})?;
-        Ok(Mapping { address, length, mtype: MappingType::Regular(frames), flags })
-    }
 
-    /// Tries to construct a shared mapping.
-    ///
-    /// # Errors
-    ///
-    /// * `InvalidAddress`:
-    ///     * `address` is not page aligned.
-    ///     * `address` + `frame`'s length would overflow.
-    /// * `InvalidSize`:
-    ///     * `frames` is empty.
-    pub fn new_shared(address: VirtualAddress, frames: Arc<Vec<PhysicalMemRegion>>, flags: MappingAccessRights) -> Result<Mapping, KernelError> {
-        address.check_aligned_to(PAGE_SIZE)?;
-        let length = frames.iter().flatten().count() * PAGE_SIZE;
-        check_nonzero_length(length)?;
-        address.checked_add(length - 1)
-            .ok_or_else(|| KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new()})?;
-        Ok(Mapping { address, length, mtype: MappingType::Shared(frames), flags })
-    }
+        let frames_len = match &frames {
+            MappingFrames::Owned(v) => v.iter().flatten().count() * PAGE_SIZE,
+            MappingFrames::Shared(v) => v.read().iter().flatten().count() * PAGE_SIZE,
+            MappingFrames::None => usize::max_value()
+        };
 
-    /// Tries to construct a guarded mapping.
-    ///
-    /// # Errors
-    ///
-    /// * `InvalidAddress`:
-    ///     * `address` is not page aligned.
-    ///     * `address + length - 1` would overflow.
-    /// * `InvalidSize`:
-    ///     * `length` is not page aligned.
-    ///     * `length` is 0.
-    pub fn new_guard(address: VirtualAddress, length: usize) -> Result<Mapping, KernelError> {
-        address.check_aligned_to(PAGE_SIZE)?;
-        check_size_aligned(length, PAGE_SIZE)?;
-        check_nonzero_length(length)?;
-        address.checked_add(length - 1)
-            .ok_or_else(|| KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new()})?;
-        Ok(Mapping { address, length, mtype: MappingType::Guarded, flags: MappingAccessRights::empty() })
-    }
+        if frames_len < offset {
+            return Err(KernelError::InvalidAddress { address: offset, backtrace: Backtrace::new() });
+        }
 
-    /// Tries to construct an available mapping.
-    ///
-    /// # Errors
-    ///
-    /// * `InvalidAddress`:
-    ///     * `address` is not page aligned.
-    ///     * `address + length - 1` would overflow.
-    /// * `InvalidSize`:
-    ///     * `length` is not page aligned.
-    ///     * `length` is 0.
-    pub fn new_available(address: VirtualAddress, length: usize) -> Result<Mapping, KernelError> {
-        address.check_aligned_to(PAGE_SIZE)?;
-        check_size_aligned(length, PAGE_SIZE)?;
-        check_nonzero_length(length)?;
-        address.checked_add(length - 1)
-            .ok_or_else(|| KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new()})?;
-        Ok(Mapping { address, length, mtype: MappingType::Available, flags: MappingAccessRights::empty() })
-    }
+        if frames_len - offset < length {
+            return Err(KernelError::InvalidSize { size: length, backtrace: Backtrace::new() });
+        }
 
-    /// Tries to construct a system reserved mapping.
-    ///
-    /// # Errors
-    ///
-    /// * `InvalidAddress`:
-    ///     * `address` is not page aligned.
-    ///     * `address + length - 1` would overflow.
-    /// * `InvalidSize`:
-    ///     * `length` is not page aligned.
-    ///     * `length` is 0.
-    pub fn new_system_reserved(address: VirtualAddress, length: usize) -> Result<Mapping, KernelError> {
-        address.check_aligned_to(PAGE_SIZE)?;
-        check_size_aligned(length, PAGE_SIZE)?;
-        check_nonzero_length(length)?;
         address.checked_add(length - 1)
             .ok_or_else(|| KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new()})?;
-        Ok(Mapping { address, length, mtype: MappingType::SystemReserved, flags: MappingAccessRights::empty() })
+
+        let state = ty.get_memory_state();
+        match (&frames, state.is_reference_counted(), ty) {
+            (MappingFrames::None, _, MemoryType::Unmapped) => (),
+            (MappingFrames::None, _, MemoryType::Reserved) => (),
+            (MappingFrames::None, _, MemoryType::KernelStack) => (),
+            (MappingFrames::Shared(_), true, _) => (),
+            (MappingFrames::Owned(_), false, _) => (),
+            _ => return Err(KernelError::WrongMappingFramesForTy { ty, backtrace: Backtrace::new() })
+        }
+
+        Ok(Mapping { address, frames, offset, length, state: ty.get_memory_state(), flags })
     }
 
     /// Returns the address of this mapping.
@@ -179,15 +114,76 @@ impl Mapping {
     /// Because we make guarantees about a mapping being always valid, this field cannot be public.
     pub fn length(&self) -> usize { self.length }
 
-    /// Returns a reference to the type of this mapping.
-    ///
-    /// Because we make guarantees about a mapping being always valid, this field cannot be public.
-    pub fn mtype_ref(&self) -> &MappingType { &self.mtype }
+    /// Returns the frames in this mapping.
+    pub fn frames(&self) -> &MappingFrames { &self.frames }
 
-    /// Returns the type of this mapping.
+    /// Returns an iterator over the Physical Addresses mapped by this region.
+    /// This takes into account the physical offset and the length of the
+    /// mapping.
+    pub fn frames_it(&self) -> impl Iterator<Item = PhysicalAddress> + Clone + core::fmt::Debug + '_ {
+        /// Anonymous iterator over mapping frames' PhysicalAddresses.
+        #[derive(Debug)]
+        #[allow(clippy::missing_docs_in_private_items)]
+        enum MappingFramesIt<'a> {
+            None,
+            Owned(&'a [PhysicalMemRegion], usize, StepBy<Range<usize>>),
+            Shared(&'a Arc<RwLock<Vec<PhysicalMemRegion>>>, RwLockReadGuard<'a, Vec<PhysicalMemRegion>>, usize, StepBy<Range<usize>>),
+        }
+        impl<'a> Iterator for MappingFramesIt<'a> {
+            type Item = PhysicalAddress;
+            fn next(&mut self) -> Option<Self::Item> {
+                let (frames, curframe, rangeit) = match self {
+                    MappingFramesIt::Owned(ref frames, ref mut curframe, ref mut rangeit) => {
+                        (*frames, curframe, rangeit)
+                    },
+                    MappingFramesIt::Shared(_, frames, ref mut curframe, ref mut rangeit) => {
+                        (&***frames, curframe, rangeit)
+                    },
+                    _ => return None
+                };
+
+                if let Some(s) = rangeit.next().map(PhysicalAddress) {
+                    Some(s)
+                } else if *curframe < frames.len() {
+                    let frame = &frames[*curframe];
+                    *rangeit = (frame.address().0..frame.address().0 + frame.size()).step_by(PAGE_SIZE);
+                    *curframe += 1;
+                    rangeit.next().map(PhysicalAddress)
+                } else {
+                    None
+                }
+            }
+        }
+
+        impl<'a> Clone for MappingFramesIt<'a> {
+            fn clone(&self) -> MappingFramesIt<'a> {
+                match self {
+                    MappingFramesIt::Owned(frames, curframe, rangeit) => MappingFramesIt::Owned(frames, *curframe, rangeit.clone()),
+                    MappingFramesIt::Shared(frames, _lock, curframe, rangeit) => MappingFramesIt::Shared(frames, frames.read(), *curframe, rangeit.clone()),
+                    MappingFramesIt::None => MappingFramesIt::None,
+                }
+            }
+        }
+
+        let it = match self.frames() {
+            MappingFrames::Owned(frames) => MappingFramesIt::Owned(&frames[..], 0, (0..0).step_by(1)),
+            MappingFrames::Shared(frames) => MappingFramesIt::Shared(frames, frames.read(), 0, (0..0).step_by(1)),
+            MappingFrames::None => MappingFramesIt::None,
+        };
+        it
+            .skip(self.phys_offset() / PAGE_SIZE)
+            .take(self.length() / PAGE_SIZE)
+    }
+
+    /// Returns the offset in `frames` this mapping starts from.
     ///
-    /// Because we make guarantees about a mapping being always valid, this field cannot be public.
-    pub fn mtype(self) -> MappingType { self.mtype }
+    /// This will be different from 0 when this mapping was created as a partial
+    /// remapping of a different shared memory mapping (such as when creating
+    /// an IPC buffer).
+    pub fn phys_offset(&self) -> usize { self.offset }
+
+    /// Returns the [MemoryState] of this mapping.
+    pub fn state(&self) -> MemoryState { self.state }
 
     /// Returns the type of this mapping.
     ///
@@ -195,48 +191,12 @@ impl Mapping {
     pub fn flags(&self) -> MappingAccessRights { self.flags }
 }
 
-impl Splittable for Mapping {
-    /// Splits a mapping at a given offset.
-    ///
-    /// Because it is reference counted, a Shared mapping cannot be splitted.
-    ///
-    /// # Errors
-    ///
-    /// * `InvalidAddress`:
-    ///     * shared or system reserved mapping, which cannot be split.
-    /// * `InvalidSize`:
-    ///     * `offset` is not page aligned.
-    fn split_at(&mut self, offset: usize) -> Result<Option<Self>, KernelError> {
-        check_size_aligned(offset, PAGE_SIZE)?;
-        match self.mtype_ref() {
-            MappingType::Shared(_) | MappingType::SystemReserved => return Err(KernelError::InvalidAddress { address: self.address.addr(), backtrace: Backtrace::new() }),
-            _ => ()
-        }
-
-        if offset == 0 || offset >= self.length { return Ok(None) };
-        let right = Mapping {
-            address: self.address + offset,
-            length: self.length - offset,
-            flags: self.flags,
-            mtype: match &mut self.mtype {
-                MappingType::Shared(_) | MappingType::SystemReserved => unreachable!(),
-                MappingType::Available => MappingType::Available,
-                MappingType::Guarded => MappingType::Guarded,
-                MappingType::Regular(ref mut frames) => MappingType::Regular(frames.split_at(offset)?.unwrap()),
-            },
-        };
-        // split succeeded, now modify left part
-        self.length = offset;
-        Ok(Some(right))
-    }
-}
-
-
 #[cfg(test)]
 mod test {
     use super::Mapping;
     use super::MappingAccessRights;
-    use super::MappingType;
+    use super::MappingFrames;
+    use super::MemoryType;
     use crate::mem::{VirtualAddress, PhysicalAddress};
     use crate::paging::PAGE_SIZE;
     use crate::frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
@@ -244,8 +204,9 @@ mod test {
     use std::vec::Vec;
     use crate::utils::Splittable;
     use crate::error::KernelError;
+    use crate::sync::RwLock;
 
-    /// Applies the same tests to guard, available and system_reserved.
+    /// Applies the same tests to Unmapped, Reserved and KernelStack.
     macro_rules! test_empty_mapping {
         ($($x:ident),*) => {
             mashup! {
@@ -263,54 +224,54 @@ mod test {
                 $(
                 #[test]
                 fn "mapping_ok_" $x () {
-                    Mapping:: "new_" $x (VirtualAddress(0x40000000), 3 * PAGE_SIZE).unwrap();
+                    Mapping::new(VirtualAddress(0x40000000), MappingFrames::None, 0, 3 * PAGE_SIZE, MemoryType::$x, MappingAccessRights::empty()).unwrap();
                 }
 
                 #[test]
                 fn "mapping_zero_length_" $x () {
-                    Mapping:: "new_" $x (VirtualAddress(0x40000000), 0).unwrap_err();
+                    Mapping::new(VirtualAddress(0x40000000), MappingFrames::None, 0, 0, MemoryType::$x, MappingAccessRights::empty()).unwrap_err();
                 }
 
                 #[test]
                 fn "mapping_non_aligned_addr_" $x () {
-                    Mapping::"new_" $x (VirtualAddress(0x40000007), 3 * PAGE_SIZE).unwrap_err();
+                    Mapping::new(VirtualAddress(0x40000007), MappingFrames::None, 0, 3 * PAGE_SIZE, MemoryType::$x, MappingAccessRights::empty()).unwrap_err();
                 }
 
                 #[test]
                 fn "mapping_non_aligned_length_" $x () {
-                    Mapping::"new_" $x (VirtualAddress(0x40000000), 3).unwrap_err();
+                    Mapping::new(VirtualAddress(0x40000000), MappingFrames::None, 0, 3, MemoryType::$x, MappingAccessRights::empty()).unwrap_err();
                 }
 
                 #[test]
                 fn "mapping_length_threshold_" $x () {
-                    Mapping::"new_" $x (VirtualAddress(usize::max_value() - 2 * PAGE_SIZE + 1), 2 * PAGE_SIZE).unwrap();
+                    Mapping::new(VirtualAddress(usize::max_value() - 2 * PAGE_SIZE + 1), MappingFrames::None, 0, 2 * PAGE_SIZE, MemoryType::$x, MappingAccessRights::empty()).unwrap();
                 }
 
                 #[test]
                 fn "mapping_length_overflow_" $x () {
-                    Mapping::"new_" $x (VirtualAddress(usize::max_value() - 2 * PAGE_SIZE + 1), 3 * PAGE_SIZE).unwrap_err();
+                    Mapping::new(VirtualAddress(usize::max_value() - 2 * PAGE_SIZE + 1), MappingFrames::None, 0, 3 * PAGE_SIZE, MemoryType::$x, MappingAccessRights::empty()).unwrap_err();
                 }
                 )*
             }
         }
     }
 
-    test_empty_mapping!(guard, available, system_reserved);
+    test_empty_mapping!(Unmapped, Reserved, KernelStack);
 
     #[test]
     fn mapping_regular_ok() {
         let _f = crate::frame_allocator::init();
         let frames = FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap();
         let flags = MappingAccessRights::u_rw();
-        let _mapping = Mapping::new_regular(VirtualAddress(0x40000000), frames, flags).unwrap();
+        let _mapping = Mapping::new(VirtualAddress(0x40000000), MappingFrames::Owned(frames), 0, 2 * PAGE_SIZE, MemoryType::Normal, flags).unwrap();
     }
 
     #[test]
     fn mapping_shared_ok() {
         let _f = crate::frame_allocator::init();
-        let frames = Arc::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap());
+        let frames = Arc::new(RwLock::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap()));
         let flags = MappingAccessRights::u_rw();
-        let _mapping = Mapping::new_shared(VirtualAddress(0x40000000), frames, flags).unwrap();
+        let _mapping = Mapping::new(VirtualAddress(0x40000000), MappingFrames::Shared(frames), 0, 2 * PAGE_SIZE, MemoryType::Stack, flags).unwrap();
     }
 
     #[test]
@@ -318,15 +279,15 @@ mod test {
         let _f = crate::frame_allocator::init();
         let frames = Vec::new();
         let flags = MappingAccessRights::u_rw();
-        let _mapping_err = Mapping::new_regular(VirtualAddress(0x40000000), frames, flags).unwrap_err();
+        let _mapping = Mapping::new(VirtualAddress(0x40000000), MappingFrames::Owned(frames), 0, 2 * PAGE_SIZE, MemoryType::Normal, flags).unwrap_err();
     }
 
     #[test]
     fn mapping_shared_empty_vec() {
         let _f = crate::frame_allocator::init();
-        let frames = Arc::new(Vec::new());
+        let frames = Arc::new(RwLock::new(Vec::new()));
         let flags = MappingAccessRights::u_rw();
-        let _mapping_err = Mapping::new_shared(VirtualAddress(0x40000000), frames, flags).unwrap_err();
+        let _mapping = Mapping::new(VirtualAddress(0x40000000), MappingFrames::Shared(frames), 0, 2 * PAGE_SIZE, MemoryType::Stack, flags).unwrap_err();
     }
 
     #[test]
@@ -335,7 +296,7 @@ mod test {
         let region = unsafe { PhysicalMemRegion::reconstruct_no_dealloc(PhysicalAddress(PAGE_SIZE), 0) };
         let frames = vec![region];
         let flags = MappingAccessRights::u_rw();
-        let _mapping_err = Mapping::new_regular(VirtualAddress(0x40000000), frames, flags).unwrap_err();
+        let _mapping_err = Mapping::new(VirtualAddress(0x40000000), MappingFrames::Owned(frames), 0, 0, MemoryType::Normal, flags).unwrap_err();
     }
 
     #[test]
@@ -345,7 +306,7 @@ mod test {
         let region2 = unsafe { PhysicalMemRegion::reconstruct_no_dealloc(PhysicalAddress(PAGE_SIZE), 0) };
         let frames = vec![region1, region2];
         let flags = MappingAccessRights::u_rw();
-        let _mapping_err = Mapping::new_regular(VirtualAddress(0x40000000), frames, flags).unwrap_err();
+        let _mapping_err = Mapping::new(VirtualAddress(0x40000000), MappingFrames::Owned(frames), 0, 0, MemoryType::Normal, flags).unwrap_err();
     }
 
     #[test]
@@ -353,15 +314,15 @@ mod test {
         let _f = crate::frame_allocator::init();
         let frames = FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap();
         let flags = MappingAccessRights::u_rw();
-        let _mapping_err = Mapping::new_regular(VirtualAddress(0x40000007), frames, flags).unwrap_err();
+        let _mapping_err = Mapping::new(VirtualAddress(0x40000007), MappingFrames::Owned(frames), 0, 2 * PAGE_SIZE, MemoryType::Normal, flags).unwrap_err();
     }
 
     #[test]
     fn mapping_shared_unaligned_addr() {
         let _f = crate::frame_allocator::init();
-        let frames = Arc::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap());
+        let frames = Arc::new(RwLock::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap()));
         let flags = MappingAccessRights::u_rw();
-        let _mapping_err = Mapping::new_shared(VirtualAddress(0x40000007), frames, flags).unwrap_err();
+        let _mapping_err = Mapping::new(VirtualAddress(0x40000007), MappingFrames::Shared(frames), 0, 2 * PAGE_SIZE, MemoryType::Stack, flags).unwrap_err();
     }
 
 
@@ -371,16 +332,16 @@ mod test {
         let _f = crate::frame_allocator::init();
         let frames = FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE + 7).unwrap();
         let flags = MappingAccessRights::u_rw();
-        let _mapping = Mapping::new_regular(VirtualAddress(0x40000000), frames, flags).unwrap();
+        let _mapping = Mapping::new(VirtualAddress(0x40000000), MappingFrames::Owned(frames), 0, 2 * PAGE_SIZE + 7, MemoryType::Normal, flags).unwrap();
     }
 
     #[test]
     #[should_panic]
     fn mapping_shared_unaligned_len() {
         let _f = crate::frame_allocator::init();
-        let frames = Arc::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE + 7).unwrap());
+        let frames = Arc::new(RwLock::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE + 7).unwrap()));
         let flags = MappingAccessRights::u_rw();
-        let _mapping = Mapping::new_shared(VirtualAddress(0x40000000), frames, flags).unwrap();
+        let _mapping = Mapping::new(VirtualAddress(0x40000000), MappingFrames::Shared(frames), 0, 2 * PAGE_SIZE + 7, MemoryType::Stack, flags).unwrap();
     }
 
     #[test]
@@ -388,15 +349,15 @@ mod test {
         let _f = crate::frame_allocator::init();
         let frames = FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap();
         let flags = MappingAccessRights::u_rw();
-        let _mapping = Mapping::new_regular(VirtualAddress(usize::max_value() - 2 * PAGE_SIZE + 1), frames, flags).unwrap();
+        let _mapping = Mapping::new(VirtualAddress(usize::max_value() - 2 * PAGE_SIZE + 1), MappingFrames::Owned(frames), 0, 2 * PAGE_SIZE, MemoryType::Normal, flags).unwrap();
     }
 
     #[test]
     fn mapping_shared_threshold() {
         let _f = crate::frame_allocator::init();
-        let frames = Arc::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap());
+        let frames = Arc::new(RwLock::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap()));
         let flags = MappingAccessRights::u_rw();
-        let _mapping = Mapping::new_shared(VirtualAddress(usize::max_value() - 2 * PAGE_SIZE + 1), frames, flags).unwrap();
+        let _mapping = Mapping::new(VirtualAddress(usize::max_value() - 2 * PAGE_SIZE + 1), MappingFrames::Shared(frames), 0, 2 * PAGE_SIZE, MemoryType::Stack, flags).unwrap();
     }
 
     #[test]
@@ -404,131 +365,37 @@ mod test {
         let _f = crate::frame_allocator::init();
         let frames = FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap();
         let flags = MappingAccessRights::u_rw();
-        let _mapping_err = Mapping::new_regular(VirtualAddress(usize::max_value() - 2 * PAGE_SIZE), frames, flags).unwrap_err();
+        let _mapping_err = Mapping::new(VirtualAddress(usize::max_value() - 2 * PAGE_SIZE), MappingFrames::Owned(frames), 0, 2 * PAGE_SIZE, MemoryType::Normal, flags).unwrap_err();
     }
 
     #[test]
     fn mapping_shared_overflow() {
         let _f = crate::frame_allocator::init();
-        let frames = Arc::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap());
+        let frames = Arc::new(RwLock::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap()));
         let flags = MappingAccessRights::u_rw();
-        let _mapping_err = Mapping::new_shared(VirtualAddress(usize::max_value() - 2 * PAGE_SIZE), frames, flags).unwrap_err();
+        let _mapping_err = Mapping::new(VirtualAddress(usize::max_value() - 2 * PAGE_SIZE), MappingFrames::Shared(frames), 0, 2 * PAGE_SIZE, MemoryType::Stack, flags).unwrap_err();
     }
 
-    /// Splitting a mapping should only be valid for a PAGE_SIZE aligned offset.
     #[test]
-    fn splittable_unaligned() {
+    fn mapping_shared_offset() {
         let _f = crate::frame_allocator::init();
-        let frames = vec![FrameAllocator::allocate_region(3 * PAGE_SIZE).unwrap()];
-        let mut mapping = Mapping::new_regular(VirtualAddress(2 * PAGE_SIZE), frames, MappingAccessRights::k_r()).unwrap();
-        match mapping.split_at(PAGE_SIZE + 1).unwrap_err() {
-            KernelError::InvalidSize { .. } => (),
-            unexpected_err => panic!("test failed, error {:?}", unexpected_err)
-        }
-        // check mapping was untouched
-        assert_eq!(mapping.address(), VirtualAddress(2 * PAGE_SIZE));
-        assert_eq!(mapping.length(), 3 * PAGE_SIZE);
-        if let MappingType::Regular(held_frames) = mapping.mtype_ref() {
-            assert_eq!(held_frames.iter().flatten().count(), 3)
-        } else {
-            panic!("test failed, splitting changed type")
-        }
+        let frames = FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap();
+
+        // Get the address that will get mapped
+        let test_addr = frames.iter().flatten().last().unwrap();
+
+        let frames = Arc::new(RwLock::new(frames));
+        let flags = MappingAccessRights::u_rw();
+        let mapping = Mapping::new(VirtualAddress(0), MappingFrames::Shared(frames), 1 * PAGE_SIZE, 1 * PAGE_SIZE, MemoryType::Stack, flags).unwrap();
+        assert!(mapping.frames_it().count() == 1, "Frames_it has the wrong size.");
+        assert!(mapping.frames_it().next().unwrap() == test_addr, "Frames_it has the wrong value.");
     }
 
-    /// Splitting a shared mapping should unconditionally fail.
     #[test]
-    fn splittable_shared() {
+    fn mapping_shared_offset_overflow() {
         let _f = crate::frame_allocator::init();
-        let frames = Arc::new(vec![FrameAllocator::allocate_region(3 * PAGE_SIZE).unwrap()]);
-        let mut mapping = Mapping::new_shared(VirtualAddress(2 * PAGE_SIZE), frames, MappingAccessRights::k_r()).unwrap();
-        match mapping.split_at(0).unwrap_err() {
-            KernelError::InvalidAddress { .. } => (),
-            unexpected_err => panic!("test failed, error {:?}", unexpected_err)
-        }
-        // check mapping was untouched
-        assert_eq!(mapping.address(), VirtualAddress(2 * PAGE_SIZE));
-        assert_eq!(mapping.length(), 3 * PAGE_SIZE);
-        if let MappingType::Shared(held_frames) = mapping.mtype_ref() {
-            assert_eq!(held_frames.iter().flatten().count(), 3)
-        } else {
-            panic!("test failed, splitting changed type")
-        }
-    }
-
-    /// Splitting a system reserved mapping should unconditionally fail.
-    #[test]
-    fn splittable_system_reserved() {
-        let mut mapping = Mapping::new_system_reserved(VirtualAddress(2 * PAGE_SIZE), 3 * PAGE_SIZE).unwrap();
-        match mapping.split_at(0).unwrap_err() {
-            KernelError::InvalidAddress { .. } => (),
-            unexpected_err => panic!("test failed, error {:?}", unexpected_err)
-        }
-        // check mapping was untouched
-        assert_eq!(mapping.address(), VirtualAddress(2 * PAGE_SIZE));
-        assert_eq!(mapping.length(), 3 * PAGE_SIZE);
-        if let MappingType::SystemReserved = mapping.mtype_ref() {
-            // ok
-        } else {
-            panic!("test failed, splitting changed type")
-        }
-    }
-
-    #[test]
-    fn splittable_split_at_zero() {
-        let _f = crate::frame_allocator::init();
-        let frames = vec![FrameAllocator::allocate_region(3 * PAGE_SIZE).unwrap()];
-        let mut mapping = Mapping::new_regular(VirtualAddress(2 * PAGE_SIZE), frames, MappingAccessRights::k_r()).unwrap();
-        let right = mapping.split_at(0).unwrap();
-        assert!(right.is_none());
-        // check mapping was untouched
-        assert_eq!(mapping.address(), VirtualAddress(2 * PAGE_SIZE));
-        assert_eq!(mapping.length(), 3 * PAGE_SIZE);
-        if let MappingType::Regular(held_frames) = mapping.mtype_ref() {
-            assert_eq!(held_frames.iter().flatten().count(), 3)
-        } else {
-            panic!("test failed, splitting changed type")
-        }
-    }
-
-    #[test]
-    fn splittable_split_at_too_big() {
-        let _f = crate::frame_allocator::init();
-        let frames = vec![FrameAllocator::allocate_region(3 * PAGE_SIZE).unwrap()];
-        let mut mapping = Mapping::new_regular(VirtualAddress(2 * PAGE_SIZE), frames, MappingAccessRights::k_r()).unwrap();
-        let right = mapping.split_at(3 * PAGE_SIZE).unwrap();
-        assert!(right.is_none());
-        // check mapping was untouched
-        assert_eq!(mapping.address(), VirtualAddress(2 * PAGE_SIZE));
-        assert_eq!(mapping.length(), 3 * PAGE_SIZE);
-        if let MappingType::Regular(held_frames) = mapping.mtype_ref() {
-            assert_eq!(held_frames.iter().flatten().count(), 3)
-        } else {
-            panic!("test failed, splitting changed type")
-        }
-    }
-
-    #[test]
-    fn splittable_split_at() {
-        let _f = crate::frame_allocator::init();
-        let frames = vec![FrameAllocator::allocate_region(3 * PAGE_SIZE).unwrap()];
-        let mut left = Mapping::new_regular(VirtualAddress(5 * PAGE_SIZE), frames, MappingAccessRights::k_r()).unwrap();
-        // 3 -> 2 + 1
-        let right = left.split_at(2 * PAGE_SIZE).unwrap().unwrap();
-
-        assert_eq!(left.address(), VirtualAddress(5 * PAGE_SIZE));
-        assert_eq!(left.length(), 2 * PAGE_SIZE);
-        if let MappingType::Regular(held_frames) = left.mtype_ref() {
-            assert_eq!(held_frames.iter().flatten().count(), 2)
-        } else {
-            panic!("test failed, splitting changed type")
-        }
-
-        assert_eq!(right.address(), VirtualAddress((5 + 2) * PAGE_SIZE));
-        assert_eq!(right.length(), 1 * PAGE_SIZE);
-        if let MappingType::Regular(held_frames) = right.mtype_ref() {
-            assert_eq!(held_frames.iter().flatten().count(), 1)
-        } else {
-            panic!("test failed, splitting changed type")
-        }
+        let frames = Arc::new(RwLock::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap()));
+        let flags = MappingAccessRights::u_rw();
+        let _mapping_err = Mapping::new(VirtualAddress(0), MappingFrames::Shared(frames), 1 * PAGE_SIZE, 2 * PAGE_SIZE, MemoryType::Stack, flags).unwrap_err();
     }
 }

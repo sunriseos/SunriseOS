@@ -26,7 +26,8 @@ enum_with_val! {
         MemoryFull = 104,
         /// The process' handle table is full.
         HandleTableFull = 105,
-        // InvalidMemState = 106,
+        /// The memory state is invalid for this action.
+        InvalidMemState = 106,
         /// The memory permissions passed are wrong.
         InvalidMemPerms = 108,
         // InvalidMemRange = 110,
