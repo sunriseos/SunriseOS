@@ -76,6 +76,23 @@ impl PhysicalMemRegion {
         }
     }
 
+    /// Construct a `PhysicalMemRegion` by circumventing the [FrameAllocator].
+    /// # Panic
+    ///
+    /// * Panics when the address is not framesize-aligned
+    /// * Panics when the len is not framesize-aligned
+    pub unsafe fn new_unchecked(physical_addr: PhysicalAddress, len: usize) -> Self {
+        assert_eq!(physical_addr.addr() % PAGE_SIZE, 0,
+                   "PhysicalMemRegion must be constructed from a framesize-aligned pointer");
+        assert_eq!(len % PAGE_SIZE, 0,
+                   "PhysicalMemRegion must have a framesize-aligned length");
+        PhysicalMemRegion {
+            start_addr: physical_addr.addr(),
+            frames: div_ceil(len, PAGE_SIZE),
+            should_free_on_drop: false,
+        }
+    }
+
     /// Constructs a `PhysicalMemRegion` from a physical address, and a len.
     /// Region will be given back to the [FrameAllocator] on drop.
     ///
