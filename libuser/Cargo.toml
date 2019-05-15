@@ -6,7 +6,7 @@ license = "Apache-2.0 OR MIT"
 edition = "2018"
 
 [dependencies]
-linked_list_allocator = "0.6.2"
+linked_list_allocator = "0.6.4"
 bitfield = "0.13"
 bit_field = "0.9"
 spin = "0.5"

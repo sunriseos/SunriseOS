@@ -296,3 +296,7 @@ workspace = false
 description = "Get the output of running gen_ipc on an ipcdef file"
 command = "cargo"
 args = ["run", "--manifest-path", "swipc-gen/Cargo.toml", "--features=binaries", "--", "${@}"]
+
+[tasks.default]
+workspace = false
+run_task = "qemu"

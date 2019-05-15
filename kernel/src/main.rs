@@ -62,6 +62,7 @@ pub mod frame_allocator;
 pub mod heap_allocator;
 pub mod devices;
 pub mod sync;
+pub mod timer;
 pub mod process;
 pub mod scheduler;
 pub mod mem;
@@ -221,8 +222,10 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 
     log_impl::init();
 
-    unsafe { devices::pit::init_channel_0() };
-    info!("Initialized PIT");
+    info!("Start ACPI detection");
+    unsafe { i386::acpi::init(); }
+
+    devices::init_timer();
 
     info!("Enabling interrupts");
     unsafe { interrupts::init(); }
