@@ -1,6 +1,6 @@
 # SunriseOS
 
-[![Travis Build](https://img.shields.io/travis/sunriseos/SunriseOS.svg?logo=travis)](https://travis-ci.org/sunriseos/SunriseOS) [![Dependabot Status](https://api.dependabot.com/badges/status?host=github&repo=sunriseos/SunriseOS)](https://dependabot.com)
+[![Travis Build](https://img.shields.io/travis/sunriseos/SunriseOS.svg?logo=travis)](https://travis-ci.org/sunriseos/SunriseOS) [![Dependabot Status](https://api.dependabot.com/badges/status?host=github&repo=sunriseos/SunriseOS)](https://dependabot.com) [![Built with cargo-make](https://sagiegurari.github.io/cargo-make/assets/badges/cargo-make.svg)](https://sagiegurari.github.io/cargo-make) [![TodoBot enabled](.github/res/todobot_is_awesome.svg)](https://todo.jasonet.co/)
 
 ![synthwave sunrise](.github/res/sunrise_256.png)
 
