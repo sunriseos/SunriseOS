@@ -9,8 +9,10 @@ use super::utils::div_ceil;
 
 /// This represent the information to derive all internal timing in Sunrise.
 struct KernelTimerInfo {
-    /// The frequency used on the timer.
-    pub timer_frequency: u64,
+    /// The frequency of the oscillator used as primary source of this timer, when not divided, in Hertz.
+    ///
+    /// The value here is only informative, you should use `.irq_periode_ns`.
+    oscillator_frequency: u64,
 
     /// The IRQ period used on this timer in nanoseconds.
     pub irq_period_ns: u64,
@@ -27,12 +29,12 @@ static KERNEL_TIMER_INFO: Once<KernelTimerInfo> = Once::new();
 /// # Panics
 ///
 /// Panics if the timer info has already been initialized.
-pub fn set_kernel_timer_info(irq_number: u8, timer_frequency: u64, irq_period_ns: u64) {
+pub fn set_kernel_timer_info(irq_number: u8, oscillator_frequency: u64, irq_period_ns: u64) {
     assert!(KERNEL_TIMER_INFO.r#try().is_none(), "Kernel Timer Info is already initialized!");
     KERNEL_TIMER_INFO.call_once(|| {
         KernelTimerInfo {
             irq_number,
-            timer_frequency,
+            oscillator_frequency,
             irq_period_ns
         }
     });
