@@ -312,15 +312,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "pest"
 version = "2.1.0"
-source = "git+https://github.com/pest-parser/pest#70b5ae08eb71c73077bdc29827f2939ea8d7a4a5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "ucd-trie 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "pest"
-version = "2.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
+version = "2.1.1"
+source = "git+https://github.com/pest-parser/pest#915335d9fac52b0bd501c7b9581721656fc07882"
 dependencies = [
  "ucd-trie 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -617,7 +617,7 @@ dependencies = [
 name = "swipc-parser"
 version = "0.1.0"
 dependencies = [
- "pest 2.1.0 (git+https://github.com/pest-parser/pest)",
+ "pest 2.1.1 (git+https://github.com/pest-parser/pest)",
  "pest_derive 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -765,8 +765,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum multiboot2 0.7.1 (git+https://github.com/sunriseos/multiboot2-elf64.git)" = "<none>"
 "checksum nodrop 0.1.13 (registry+https://github.com/rust-lang/crates.io-index)" = "2f9667ddcc6cc8a43afc9b7917599d7216aa09c463919ea32c59ed6cac8bc945"
 "checksum num-traits 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)" = "0b3a5d7cc97d6d30d8b9bc8fa19bf45349ffe46241e8816f50f62f6d6aaabee1"
-"checksum pest 2.1.0 (git+https://github.com/pest-parser/pest)" = "<none>"
 "checksum pest 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "54f0c72a98d8ab3c99560bfd16df8059cc10e1f9a8e83e6e3b97718dd766e9c3"
+"checksum pest 2.1.1 (git+https://github.com/pest-parser/pest)" = "<none>"
 "checksum pest_derive 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "833d1ae558dc601e9a60366421196a8d94bc0ac980476d0b67e1d0988d72b2d0"
 "checksum pest_generator 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "63120576c4efd69615b5537d3d052257328a4ca82876771d6944424ccfd9f646"
 "checksum pest_meta 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "f5a3492a4ed208ffc247adcdcc7ba2a95be3104f58877d0d02f0df39bf3efb5e"
