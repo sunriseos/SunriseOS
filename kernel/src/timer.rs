@@ -59,18 +59,26 @@ pub struct IRQTimer {
     irq_period_ns: u64,
     /// The IRQ that we wait on.
     parent_event: IRQEvent,
+    /// The reset value of ``.countdown_value``.
+    reset_value: usize,
     /// Number of IRQ triggers to wait for. Derived from `.every_ns`. This is the exact time amout that is used.
-    spins_needed: AtomicUsize
+    countdown_value: AtomicUsize
 }
 
 impl IRQTimer {
     /// Create a new IRQ timer instance from the time to wait (in ns), the irq number and irq event period (in ns).
     pub fn new(ns: usize, irq: u8, irq_period_ns: u64) -> Self {
+        let mut reset_value = div_ceil(ns as u64, irq_period_ns) as usize;
+        if reset_value == 0 {
+            reset_value = 1;
+        }
+
         IRQTimer {
             every_ns: ns,
             irq_period_ns,
             parent_event: event::wait_event(irq),
-            spins_needed: AtomicUsize::new(0)
+            reset_value,
+            countdown_value: AtomicUsize::new(0)
         }
     }
 }
@@ -82,16 +90,12 @@ impl Waitable for IRQTimer {
 
     fn is_signaled(&self) -> bool {
         // First, reset the spins if necessary
-        let mut new_spin = div_ceil(self.every_ns as u64, self.irq_period_ns) as usize;
-        if new_spin == 0 {
-            new_spin = 1;
-        }
-        self.spins_needed.compare_and_swap(0, new_spin, Ordering::SeqCst);
+        self.countdown_value.compare_and_swap(0, self.reset_value, Ordering::SeqCst);
 
         // Then, check if it's us.
         self.parent_event.is_signaled()
             // Then, check if we need more spins.
-            && self.spins_needed.fetch_sub(1, Ordering::SeqCst) == 1
+            && self.countdown_value.fetch_sub(1, Ordering::SeqCst) == 1
     }
 }
 

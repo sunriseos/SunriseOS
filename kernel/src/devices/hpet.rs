@@ -60,16 +60,26 @@ bitfield! {
     pub size_capability, _: 5;
 
     /// Set to 1 to allow software to write the accumulator data.
-    /// NOTE: this auto-clear.
+    ///
+    /// # Note
+    ///
+    /// This auto-clear.
     pub accumulator_config, set_accumulator_config: 6;
 
     /// Set to 1 to force a 64 bit timer to operate as 32 bit one
-    /// NOTE: this as no effect on a 32 bit timer.
+    ///
+    /// # Note
+    ///
+    /// This as no effect on a 32 bit timer.
     pub is_32bit_mode, set_32bit_mode: 8;
 
     /// Timer Interrupt Route: This indicate the routing in the I/O APIC
-    /// NOTE: If the LegacyReplacement Route bit is set, then Timers 0 and 1 will have a different routing, and this bit field has no effect for those two timers.
-    /// NOTE: If the Timer FSB Interrupt bit is set, then the interrupt will be delivered directly to the FSB, and this bit field has no effect.
+    ///
+    /// # Note
+    ///
+    /// If the LegacyReplacement Route bit is set, then Timers 0 and 1 will have a different routing, and this bit field has no effect for those two timers.
+    ///
+    /// If the Timer FSB Interrupt bit is set, then the interrupt will be delivered directly to the FSB, and this bit field has no effect.
     pub interrupt_route, set_interrupt_route: 13, 9;
 
     /// Timer FSB Interrupt: force the interrupts to be delivered directly as FSB messages, rather than using the I/O APIC.
@@ -226,7 +236,10 @@ impl HpetTimer {
     }
 
     /// Set the timer accumulator value.
-    /// NOTE: The timer MUST be in periodic mode.
+    ///
+    /// # Note
+    ///
+    /// The timer MUST be in periodic mode.
     pub fn set_accumulator_value(&self, value: u64) {
         // We update the accumulator register two times.
         // TODO: Test the hardware behaviour on partial write of the HPET accumulator
@@ -274,7 +287,10 @@ impl HpetTimer {
     }
 
     /// Set the timer in Periodic mode.
-    /// NOTE: the timer must support periodic mode.
+    ///
+    /// # Note
+    ///
+    /// The timer must support periodic mode.
     pub fn set_periodic_mode(&self) {
         let mut config = unsafe { (*self.inner).config.read() };
         config.set_timer_type(true);
@@ -369,6 +385,20 @@ impl Hpet {
         }
     }
 
+    /// Set HPET main counter value.
+    pub fn set_main_counter_value(&self, value: u64) {
+        unsafe {
+            (*self.inner)
+                .main_counter_value
+                .write(value)
+        }
+    }
+
+    /// Get HPET main counter value.
+    pub fn get_main_counter_value(&self) -> u64 {
+        unsafe { (*self.inner).main_counter_value.read() }
+    }
+
     /// Disable HPET (main timer halted, and timer interrupts disabled).
     pub fn disable(&self) {
         let mut general_configuration = unsafe { (*self.inner).general_configuration.read() };
@@ -420,6 +450,7 @@ pub unsafe fn init(hpet: &acpi::Hpet) -> bool {
     // First disable the hpet if it's running.
     if hpet_instance.is_enabled() {
         hpet_instance.disable();
+        hpet_instance.set_main_counter_value(0);
     }
 
     // We don't need the HPET has it's useless for us.
@@ -455,13 +486,13 @@ pub unsafe fn init(hpet: &acpi::Hpet) -> bool {
     info!("HPET frequency: {} Hz", hpet_instance.get_frequency());
     info!("HPET IRQ period: {} fs", irq_period_fs);
 
-    let kernel_frequency = irq_period_fs / u64::from(hpet_instance.get_period());
+    let irq_period_tick = irq_period_fs / u64::from(hpet_instance.get_period());
 
     main_timer.set_edge_trigger();
     main_timer.set_periodic_mode();
     main_timer.enable_interrupt();
-    main_timer.set_accumulator_value(kernel_frequency);
-    main_timer.set_comparator_value(kernel_frequency);
+    main_timer.set_accumulator_value(irq_period_tick);
+    main_timer.set_comparator_value(irq_period_tick);
 
     // Fake the RTC as in legacy mode it's taking it's IRQ.
     // TODO: remove this when IO-APIC will be implemented
@@ -470,12 +501,12 @@ pub unsafe fn init(hpet: &acpi::Hpet) -> bool {
     if !rtc_timer.support_periodic_interrupt() {
         warn!("RTC irq cannot be faked, clock will be broken!");
     } else {
-        let rtc_frequency = hpet_instance.get_frequency();
+        let rtc_period_in_ticks = hpet_instance.get_frequency();
         rtc_timer.set_edge_trigger();
         rtc_timer.set_periodic_mode();
         rtc_timer.enable_interrupt();
-        rtc_timer.set_accumulator_value(rtc_frequency);
-        rtc_timer.set_comparator_value(rtc_frequency);
+        rtc_timer.set_accumulator_value(rtc_period_in_ticks);
+        rtc_timer.set_comparator_value(rtc_period_in_ticks);
     }
 
     // TODO: switch HPET to normal mode when IO-APIC will be implemented.
