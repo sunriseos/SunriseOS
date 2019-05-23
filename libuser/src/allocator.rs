@@ -27,7 +27,7 @@ impl Allocator {
         if heap.bottom() == 0 {
             unsafe { **heap = Heap::new(heap_bottom, total) };
         } else {
-            unsafe { heap.extend(total) };
+            unsafe { heap.extend(align_up(by, 0x200_000)) };
         }
         Ok(())
     }
