@@ -5,6 +5,9 @@ pub mod pic;
 pub mod pit;
 pub mod rs232;
 
+pub mod apic;
+pub mod ioapic;
+
 use crate::i386::acpi;
 
 /// Initialize a timer to be used by the OS.
@@ -27,5 +30,8 @@ pub fn init_timer() {
     if use_pit {
         unsafe { pit::init_channel_0() };
         info!("Initialized PIT");
+    } else {
+        unsafe { pit::disable() };
+        info!("Disabled PIT");
     }
 }

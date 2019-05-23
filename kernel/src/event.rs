@@ -180,7 +180,8 @@ pub fn dispatch_event(irq: usize) {
 
 /// Creates an IRQEvent waiting for the given IRQ number.
 pub fn wait_event(irq: u8) -> IRQEvent {
-    crate::devices::pic::get().unmask(irq);
+    debug!("Waiting for {}", irq);
+    crate::i386::interrupt::unmask(irq);
     IRQEvent {
         state: &IRQ_STATES[irq as usize], ack: AtomicUsize::new(IRQ_STATES[irq as usize].counter.load(Ordering::SeqCst))
     }
@@ -214,8 +215,8 @@ impl IRQState {
 
 /// Global state for all the IRQ handled by the PIC.
 static IRQ_STATES: [IRQState; 16] = [
-    IRQState::new(20), IRQState::new(21), IRQState::new(22), IRQState::new(23),
-    IRQState::new(24), IRQState::new(25), IRQState::new(26), IRQState::new(27),
-    IRQState::new(28), IRQState::new(29), IRQState::new(30), IRQState::new(31),
-    IRQState::new(32), IRQState::new(33), IRQState::new(34), IRQState::new(35),
+    IRQState::new(0x20), IRQState::new(0x21), IRQState::new(0x22), IRQState::new(0x23),
+    IRQState::new(0x24), IRQState::new(0x25), IRQState::new(0x26), IRQState::new(0x27),
+    IRQState::new(0x28), IRQState::new(0x29), IRQState::new(0x2A), IRQState::new(0x2B),
+    IRQState::new(0x2C), IRQState::new(0x2D), IRQState::new(0x2E), IRQState::new(0x2F),
 ];
