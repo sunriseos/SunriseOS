@@ -212,8 +212,16 @@ fn wait_synchronization(handles_ptr: UserSpacePtr<[u32]>, timeout_ns: usize) -> 
 }
 
 /// Print the passed string to the serial port.
-fn output_debug_string(s: UserSpacePtr<[u8]>) -> Result<(), UserspaceError> {
-    info!("{}", String::from_utf8_lossy(&*s));
+fn output_debug_string(msg: UserSpacePtr<[u8]>, level: usize, target: UserSpacePtr<[u8]>) -> Result<(), UserspaceError> {
+    let level = match level {
+        00..20    => log::Level::Error,
+        20..40    => log::Level::Warn,
+        40..60    => log::Level::Info,
+        60..80    => log::Level::Debug,
+        _         => log::Level::Trace,
+    };
+
+    log!(target: &*String::from_utf8_lossy(&*target), level, "{}", String::from_utf8_lossy(&*msg));
     Ok(())
 }
 
@@ -681,7 +689,7 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
         (true, nr::WaitSynchronization) => registers.apply1(wait_synchronization(UserSpacePtr::from_raw_parts(x0 as _, x1), x2)),
         (true, nr::ConnectToNamedPort) => registers.apply1(connect_to_named_port(UserSpacePtr(x0 as _))),
         (true, nr::SendSyncRequestWithUserBuffer) => registers.apply0(send_sync_request_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), x2 as _)),
-        (true, nr::OutputDebugString) => registers.apply0(output_debug_string(UserSpacePtr::from_raw_parts(x0 as _, x1))),
+        (true, nr::OutputDebugString) => registers.apply0(output_debug_string(UserSpacePtr::from_raw_parts(x0 as _, x1), x2, UserSpacePtr::from_raw_parts(x3 as _, x4))),
         (true, nr::CreateSession) => registers.apply2(create_session(x0 != 0, x1 as _)),
         (true, nr::AcceptSession) => registers.apply1(accept_session(x0 as _)),
         (true, nr::ReplyAndReceiveWithUserBuffer) => registers.apply1(reply_and_receive_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), UserSpacePtr::from_raw_parts(x2 as _, x3), x4 as _, x5)),

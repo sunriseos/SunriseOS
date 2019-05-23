@@ -20,11 +20,19 @@ impl Log for Logger {
     }
 
     fn log(&self, record: &Record<'_>) {
+        use crate::devices::rs232::{SerialAttributes, SerialColor};
+        let color = SerialAttributes::fg(match record.level() {
+            log::Level::Error => SerialColor::Red,
+            log::Level::Warn  => SerialColor::Yellow,
+            log::Level::Info  => SerialColor::Green,
+            log::Level::Debug => SerialColor::Cyan,
+            log::Level::Trace => SerialColor::White,
+        });
         if self.filter.read().matches(record) {
             if let Some(thread) = scheduler::try_get_current_thread() {
-                writeln!(SerialLogger, "[{}] - {} - {} - {}", record.level(), record.target(), thread.process.name, record.args());
+                writeln!(SerialLogger, "[{}{}{}] - {} - {} - {}", color, record.level(), SerialAttributes::default(), record.target(), thread.process.name, record.args());
             } else {
-                writeln!(SerialLogger, "[{}] - {} - {}", record.level(), record.target(), record.args());
+                writeln!(SerialLogger, "[{}{}{}] - {} - {}", color, record.level(), SerialAttributes::default(), record.target(), record.args());
             }
         }
     }

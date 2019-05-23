@@ -31,9 +31,11 @@ extern crate sunrise_libutils;
 #[macro_use]
 extern crate failure;
 
-
+// Marked public for use in the object macro.
 #[macro_use]
-extern crate log;
+#[doc(hidden)]
+pub extern crate log as __log;
+
 #[macro_use]
 extern crate lazy_static;
 
@@ -87,7 +89,7 @@ static ALLOCATOR: allocator::Allocator = allocator::Allocator::new();
 #[cfg(any(all(target_os = "none", not(test)), rustdoc))]
 #[panic_handler] #[no_mangle]
 pub extern fn panic_fmt(p: &core::panic::PanicInfo<'_>) -> ! {
-    let _ = syscalls::output_debug_string(&format!("{}", p));
+    let _ = syscalls::output_debug_string(&format!("{}", p), 10, "sunrise_libuser::panic_fmt");
     syscalls::exit_process();
 }
 
