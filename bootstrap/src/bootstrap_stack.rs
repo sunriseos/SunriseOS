@@ -28,12 +28,13 @@
 //!
 //! Must be consistent with KernelStack, as kernel considers it's already running on a KernelStack.
 
-use ::core::mem::size_of;
+use core::mem::size_of;
 use crate::paging::*;
 use crate::address::VirtualAddress;
+use sunrise_libutils::log2_ceil;
 
 /// The size of a kernel stack in pages, not accounting for the page guard
-// Make sure this value is the same as the one in bootstrap, or bad things happen.
+// Make sure this value is the same as the one in kernel, or bad things happen.
 pub const STACK_SIZE: usize            = 8;
 /// The size of a kernel stack in pages, with the page guard.
 pub const STACK_SIZE_WITH_GUARD: usize = STACK_SIZE + 1;
@@ -42,8 +43,8 @@ pub const STACK_SIZE_WITH_GUARD: usize = STACK_SIZE + 1;
 /// Used to calculate alignment.
 const STACK_SIZE_WITH_GUARD_IN_BYTES: usize = STACK_SIZE_WITH_GUARD * PAGE_SIZE;
 
-/// The alignment of the stack. ceil(log2(STACK_SIZE_WITH_GUARD * PAGE_SIZE))
-const STACK_ALIGNMENT: usize = size_of::<usize>() * 8 - (STACK_SIZE_WITH_GUARD_IN_BYTES).leading_zeros() as usize - (STACK_SIZE_WITH_GUARD_IN_BYTES&(STACK_SIZE_WITH_GUARD_IN_BYTES-1) == 0) as usize;
+/// The alignment of the stack.
+const STACK_ALIGNMENT: usize = log2_ceil(STACK_SIZE_WITH_GUARD_IN_BYTES);
 
 /// A structure representing a kernel stack
 #[derive(Debug)]

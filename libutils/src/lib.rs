@@ -226,3 +226,51 @@ pub fn bit_array_first_count_one(bitarray: &[u8], count: usize) -> Option<usize>
     None
 }
 
+/// Returns the floored base 2 logarithm of the number.
+///
+/// # Panics
+///
+/// Panics if val is 0.
+pub const fn log2_floor(val: usize) -> usize {
+    core::mem::size_of::<usize>() * 8 - val.leading_zeros() as usize - 1
+}
+
+/// Returns the ceiled base 2 logarithm of the number.
+///
+/// # Panics
+///
+/// Panics if val is 0.
+pub const fn log2_ceil(val: usize) -> usize {
+    core::mem::size_of::<usize>() * 8 - val.leading_zeros() as usize - (val & (val - 1) == 0) as usize
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_log2_floor() {
+        for i in 1..512 {
+            assert_eq!((i as f32).log2().floor() as usize, log2_floor(i));
+        }
+    }
+
+    #[test]
+    fn test_log2_ceil() {
+        for i in 1..512 {
+            assert_eq!((i as f32).log2().ceil() as usize, log2_ceil(i));
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_log2_floor_panic() {
+        log2_floor(0);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_log2_ceil_panic() {
+        log2_ceil(0);
+    }
+}
