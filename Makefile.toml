@@ -110,19 +110,19 @@ dependencies = ["install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-shell", "--release"]
 
-[tasks.clock]
+[tasks.wall-clock]
 workspace = false
-description = "Compiles sunrise-clock"
+description = "Compiles sunrise-wall-clock"
 dependencies = ["install-rust-src"]
 command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-clock"]
+args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-wall-clock"]
 
-[tasks.clock-release]
+[tasks.wall-clock-release]
 workspace = false
-description = "Compiles sunrise-clock"
+description = "Compiles sunrise-wall-clock"
 dependencies = ["install-rust-src"]
 command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-clock", "--release"]
+args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-wall-clock", "--release"]
 
 [tasks.ahci]
 workspace = false
@@ -141,12 +141,12 @@ args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-ahci", "
 [tasks.userspace]
 workspace = false
 description = "Compiles userspace apps"
-dependencies = ["shell", "clock", "sm", "vi", "ahci"]
+dependencies = ["shell", "wall-clock", "sm", "vi", "ahci"]
 
 [tasks.userspace-release]
 workspace = false
 description = "Compiles userspace apps"
-dependencies = ["shell-release", "clock-release", "sm-release", "vi-release", "ahci-release"]
+dependencies = ["shell-release", "wall-clock-release", "sm-release", "vi-release", "ahci-release"]
 
 [tasks.iso]
 workspace = false
@@ -155,13 +155,13 @@ dependencies = ["bootstrap", "kernel", "userspace", "install-mkisofs-rs"]
 script_runner = "@shell"
 script = [
 '''
-cp target/i386-unknown-none/debug/sunrise-bootstrap isofiles/boot/
-cp target/i386-unknown-none/debug/sunrise-kernel    isofiles/boot/
-cp target/i386-unknown-none-user/debug/sunrise-shell     isofiles/boot/
-cp target/i386-unknown-none-user/debug/sunrise-clock     isofiles/boot/
-cp target/i386-unknown-none-user/debug/sunrise-sm        isofiles/boot/
-cp target/i386-unknown-none-user/debug/sunrise-vi        isofiles/boot/
-cp target/i386-unknown-none-user/debug/sunrise-ahci      isofiles/boot/
+cp target/i386-unknown-none/debug/sunrise-bootstrap           isofiles/boot/
+cp target/i386-unknown-none/debug/sunrise-kernel              isofiles/boot/
+cp target/i386-unknown-none-user/debug/sunrise-shell          isofiles/boot/
+cp target/i386-unknown-none-user/debug/sunrise-wall-clock     isofiles/boot/
+cp target/i386-unknown-none-user/debug/sunrise-sm             isofiles/boot/
+cp target/i386-unknown-none-user/debug/sunrise-vi             isofiles/boot/
+cp target/i386-unknown-none-user/debug/sunrise-ahci           isofiles/boot/
 mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
 '''
 ]
@@ -173,13 +173,13 @@ dependencies = ["bootstrap-release", "kernel-release", "userspace-release", "ins
 script_runner = "@shell"
 script = [
 '''
-cp target/i386-unknown-none/release/sunrise-bootstrap isofiles/boot/
-cp target/i386-unknown-none/release/sunrise-kernel    isofiles/boot/
-cp target/i386-unknown-none-user/release/sunrise-shell     isofiles/boot/
-cp target/i386-unknown-none-user/release/sunrise-clock     isofiles/boot/
-cp target/i386-unknown-none-user/release/sunrise-sm        isofiles/boot/
-cp target/i386-unknown-none-user/release/sunrise-vi        isofiles/boot/
-cp target/i386-unknown-none-user/release/sunrise-ahci      isofiles/boot/
+cp target/i386-unknown-none/release/sunrise-bootstrap           isofiles/boot/
+cp target/i386-unknown-none/release/sunrise-kernel              isofiles/boot/
+cp target/i386-unknown-none-user/release/sunrise-shell          isofiles/boot/
+cp target/i386-unknown-none-user/release/sunrise-wall-clock     isofiles/boot/
+cp target/i386-unknown-none-user/release/sunrise-sm             isofiles/boot/
+cp target/i386-unknown-none-user/release/sunrise-vi             isofiles/boot/
+cp target/i386-unknown-none-user/release/sunrise-ahci           isofiles/boot/
 mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
 '''
 ]
