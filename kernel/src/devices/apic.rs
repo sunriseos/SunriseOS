@@ -28,7 +28,7 @@ pub enum DeliveryMode {
     /// should be set to 0x00 for future compatibility.
     SMI,
     /// Delivers an NMI interrupt to the processor. The vector information is
-    /// ignored. 
+    /// ignored.
     NMI,
 
     /// Delivers an INIT request to the processor core, which causes the
@@ -390,53 +390,53 @@ struct LocalApicInternal {
     ///
     /// See chapter 10.9: Spurious Interrupt
     spurious_interrupt_vector: LocalApicRegister<SpuriousInterrupt>,
-    /// See [Self::in_service] documentation.
+    /// See [LocalApic::in_service()] documentation.
     in_service0: LocalApicRegister,
-    /// See [Self::in_service] documentation.
+    /// See [LocalApic::in_service()] documentation.
     in_service1: LocalApicRegister,
-    /// See [Self::in_service] documentation.
+    /// See [LocalApic::in_service()] documentation.
     in_service2: LocalApicRegister,
-    /// See [Self::in_service] documentation.
+    /// See [LocalApic::in_service()] documentation.
     in_service3: LocalApicRegister,
-    /// See [Self::in_service] documentation.
+    /// See [LocalApic::in_service()] documentation.
     in_service4: LocalApicRegister,
-    /// See [Self::in_service] documentation.
+    /// See [LocalApic::in_service()] documentation.
     in_service5: LocalApicRegister,
-    /// See [Self::in_service] documentation.
+    /// See [LocalApic::in_service()] documentation.
     in_service6: LocalApicRegister,
-    /// See [Self::in_service] documentation.
+    /// See [LocalApic::in_service()] documentation.
     in_service7: LocalApicRegister,
-    /// See [Self::trigger_mode] documentation.
+    /// See [LocalApic::trigger_mode()] documentation.
     trigger_mode0: LocalApicRegister,
-    /// See [Self::trigger_mode] documentation.
+    /// See [LocalApic::trigger_mode()] documentation.
     trigger_mode1: LocalApicRegister,
-    /// See [Self::trigger_mode] documentation.
+    /// See [LocalApic::trigger_mode()] documentation.
     trigger_mode2: LocalApicRegister,
-    /// See [Self::trigger_mode] documentation.
+    /// See [LocalApic::trigger_mode()] documentation.
     trigger_mode3: LocalApicRegister,
-    /// See [Self::trigger_mode] documentation.
+    /// See [LocalApic::trigger_mode()] documentation.
     trigger_mode4: LocalApicRegister,
-    /// See [Self::trigger_mode] documentation.
+    /// See [LocalApic::trigger_mode()] documentation.
     trigger_mode5: LocalApicRegister,
-    /// See [Self::trigger_mode] documentation.
+    /// See [LocalApic::trigger_mode()] documentation.
     trigger_mode6: LocalApicRegister,
-    /// See [Self::trigger_mode] documentation.
+    /// See [LocalApic::trigger_mode()] documentation.
     trigger_mode7: LocalApicRegister,
-    /// See [Self::interrupt_request] documentation.
+    /// See [LocalApic::interrupt_request_register()] documentation.
     interrupt_request0: LocalApicRegister,
-    /// See [Self::interrupt_request] documentation.
+    /// See [LocalApic::interrupt_request_register()] documentation.
     interrupt_request1: LocalApicRegister,
-    /// See [Self::interrupt_request] documentation.
+    /// See [LocalApic::interrupt_request_register()] documentation.
     interrupt_request2: LocalApicRegister,
-    /// See [Self::interrupt_request] documentation.
+    /// See [LocalApic::interrupt_request_register()] documentation.
     interrupt_request3: LocalApicRegister,
-    /// See [Self::interrupt_request] documentation.
+    /// See [LocalApic::interrupt_request_register()] documentation.
     interrupt_request4: LocalApicRegister,
-    /// See [Self::interrupt_request] documentation.
+    /// See [LocalApic::interrupt_request_register()] documentation.
     interrupt_request5: LocalApicRegister,
-    /// See [Self::interrupt_request] documentation.
+    /// See [LocalApic::interrupt_request_register()] documentation.
     interrupt_request6: LocalApicRegister,
-    /// See [Self::interrupt_request] documentation.
+    /// See [LocalApic::interrupt_request_register()] documentation.
     interrupt_request7: LocalApicRegister,
     /// The local APIC records errors detected during interrupt handling in the
     /// error status register (ESR).
@@ -457,9 +457,9 @@ struct LocalApicInternal {
     ///
     /// See Section 10.5.1, "Local Vector Table".
     lvt_corrected_machine_interrupt: LocalApicRegister<LocalVector>,
-    /// See [Self::send_interrupt_command] documentation.
+    /// See [LocalApic::send_interrupt_command()] documentation.
     interrupt_command_register0: LocalApicRegister,
-    /// See [Self::send_interrupt_command] documentation.
+    /// See [LocalApic::send_interrupt_command()] documentation.
     interrupt_command_register1: LocalApicRegister,
     /// Specifies interrupt delivery when the APIC timer signals an interrupt.
     ///

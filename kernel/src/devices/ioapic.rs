@@ -32,7 +32,7 @@ struct IoApicInternal {
     data_reg: Mmio<u32>,
 }
 
-/// See [module level documentation](crate::device::ioapic)
+/// See [module level documentation](crate::devices::ioapic)
 pub struct IoApic {
     /// Pointer to the IO-APIC device registers.
     internal: &'static UnsafeCell<IoApicInternal>,
