@@ -26,7 +26,7 @@
 //!  Since the stack is several pages long, we must ensure the stack respects some alignment
 //!  in order to be able to find its bottom from any page.
 
-use ::core::mem::size_of;
+use core::mem::size_of;
 use crate::paging::lands::{VirtualSpaceLand, UserLand, KernelLand};
 use crate::paging::{PAGE_SIZE, process_memory::QueryMemory, MappingAccessRights, PageState, kernel_memory::get_kernel_memory};
 use crate::frame_allocator::{FrameAllocator, FrameAllocatorTrait};
@@ -36,14 +36,20 @@ use xmas_elf::ElfFile;
 use xmas_elf::symbol_table::{Entry32, Entry};
 use rustc_demangle::demangle as rustc_demangle;
 use crate::scheduler;
+use sunrise_libutils::log2_ceil;
 
-/// The size of a kernel stack in pages, not accounting for the page guard.
-pub const STACK_SIZE: usize            = 4;
+/// The size of a kernel stack in pages, not accounting for the page guard
+// Make sure this value is the same as the one in bootstrap, or bad things happen.
+pub const STACK_SIZE: usize            = 8;
 /// The size of a kernel stack in pages, with the page guard.
 pub const STACK_SIZE_WITH_GUARD: usize = STACK_SIZE + 1;
 
-/// The alignment of the stack. ceil(log2(STACK_SIZE_WITH_GUARD * PAGE_SIZE))
-const STACK_ALIGNMENT: usize = 15;
+/// The size of the kernel stack, with the page guard, as a byte count instead of a page count.
+/// Used to calculate alignment.
+const STACK_SIZE_WITH_GUARD_IN_BYTES: usize = STACK_SIZE_WITH_GUARD * PAGE_SIZE;
+
+/// The alignment of the stack.
+const STACK_ALIGNMENT: usize = log2_ceil(STACK_SIZE_WITH_GUARD_IN_BYTES);
 
 /// A structure representing a kernel stack.
 #[derive(Debug)]
