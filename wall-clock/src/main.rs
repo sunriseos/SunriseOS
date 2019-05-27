@@ -26,6 +26,8 @@ use sunrise_libuser::io::{self, Io};
 use sunrise_libuser::syscalls;
 use core::fmt::Write;
 
+use sunrise_libuser::time::{StaticService, TimeZoneRule};
+
 /// IBM Real Time Clock provides access to the current date and time (at second
 /// precision). The Real Time Clock is actually part of the CMOS on
 /// usual IBM/PC setups.
@@ -122,6 +124,12 @@ fn get_month(month: u8) -> &'static str {
 }
 
 fn main() {
+    let mut time = StaticService::raw_new_time_u().unwrap();
+    let mut timezone_service = time.get_timezone_service().unwrap();
+
+    let mut tz_rules = [0x0; 0x4000];
+    let location = b"Europe/Paris\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+    timezone_service.load_timezone_rule(*location, &mut tz_rules).unwrap();
     let mut rtc = Rtc::new();
 
     let irq = syscalls::create_interrupt_event(0x08, 0).unwrap();

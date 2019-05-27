@@ -138,15 +138,29 @@ dependencies = ["install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-ahci", "--release"]
 
+[tasks.time]
+workspace = false
+description = "Compiles sunrise-time"
+dependencies = ["install-rust-src"]
+command = "cargo"
+args = ["xrustc", "--target=i386-unknown-none-user", "--package=sunrise-time", "--", "-Zexternal-macro-backtrace"]
+
+[tasks.time-release]
+workspace = false
+description = "Compiles sunrise-time"
+dependencies = ["install-rust-src"]
+command = "cargo"
+args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-time", "--release"]
+
 [tasks.userspace]
 workspace = false
 description = "Compiles userspace apps"
-dependencies = ["shell", "wall-clock", "sm", "vi", "ahci"]
+dependencies = ["shell", "wall-clock", "sm", "vi", "ahci", "time"]
 
 [tasks.userspace-release]
 workspace = false
 description = "Compiles userspace apps"
-dependencies = ["shell-release", "wall-clock-release", "sm-release", "vi-release", "ahci-release"]
+dependencies = ["shell-release", "wall-clock-release", "sm-release", "vi-release", "ahci-release", "time-release"]
 
 [tasks.iso]
 workspace = false
@@ -158,6 +172,7 @@ script = [
 cp target/i386-unknown-none/debug/sunrise-bootstrap           isofiles/boot/
 cp target/i386-unknown-none/debug/sunrise-kernel              isofiles/boot/
 cp target/i386-unknown-none-user/debug/sunrise-shell          isofiles/boot/
+cp target/i386-unknown-none-user/debug/sunrise-time           isofiles/boot/
 cp target/i386-unknown-none-user/debug/sunrise-wall-clock     isofiles/boot/
 cp target/i386-unknown-none-user/debug/sunrise-sm             isofiles/boot/
 cp target/i386-unknown-none-user/debug/sunrise-vi             isofiles/boot/
@@ -176,6 +191,7 @@ script = [
 cp target/i386-unknown-none/release/sunrise-bootstrap           isofiles/boot/
 cp target/i386-unknown-none/release/sunrise-kernel              isofiles/boot/
 cp target/i386-unknown-none-user/release/sunrise-shell          isofiles/boot/
+cp target/i386-unknown-none-user/release/sunrise-time           isofiles/boot/
 cp target/i386-unknown-none-user/release/sunrise-wall-clock     isofiles/boot/
 cp target/i386-unknown-none-user/release/sunrise-sm             isofiles/boot/
 cp target/i386-unknown-none-user/release/sunrise-vi             isofiles/boot/
@@ -272,7 +288,7 @@ workspace = false
 description = "Make cargo-clippy work..."
 command = "touch"
 args = ["-c", "kernel/src/main.rs", "bootstrap/src/main.rs",
-	"shell/src/main.rs", "libuser/src/lib.rs", "clock/src/main.rs",
+	"shell/src/main.rs", "libuser/src/lib.rs", "wall-clock/src/main.rs",
 	"sm/src/main.rs", "vi/src/main.rs", "ahci/src/main.rs",
 	"libutils/src/lib.rs", "libkern/src/lib.rs", "swipc-gen/src/lib.rs",
 	"swipc-parser/src/lib.rs"

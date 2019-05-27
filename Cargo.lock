@@ -554,6 +554,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "sunrise-libtimezone"
+version = "0.1.0"
+dependencies = [
+ "num-traits 0.2.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "static_assertions 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "sunrise-libuser"
 version = "0.1.0"
 dependencies = [

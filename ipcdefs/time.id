@@ -5,7 +5,7 @@ type sunrise_libuser::time::TimeZoneRule = bytes<0x4000>;
 type sunrise_libuser::time::LocationName = bytes<0x24>;
 
 # Represent a POSIX Timestamp
-type sunrise_libuser::time::PosixTime = u64;
+type sunrise_libuser::time::PosixTime = i64;
 
 # Represent the basic informations of a local time.
 type sunrise_libuser::time::CalendarTime = struct<0x8> {

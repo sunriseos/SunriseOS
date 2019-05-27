@@ -280,3 +280,16 @@ mod test {
         log2_ceil(0);
     }
 }
+
+#[macro_export]
+macro_rules! initialize_to_zero {
+    ($ty:ty) => {{
+        #[doc(hidden)]
+        union ZeroedTypeUnion {
+            data: $ty,
+            arr: [u8; core::mem::size_of::<$ty>()]
+        }
+
+        ZeroedTypeUnion { arr: [0; core::mem::size_of::<$ty>()] }.data
+    }}
+}
