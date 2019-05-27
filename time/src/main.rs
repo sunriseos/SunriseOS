@@ -23,6 +23,9 @@ extern crate sunrise_libuser;
 #[macro_use]
 extern crate alloc;
 
+#[macro_use]
+extern crate log;
+
 mod timezone;
 
 use alloc::prelude::v1::*;

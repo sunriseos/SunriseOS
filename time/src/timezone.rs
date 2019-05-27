@@ -58,7 +58,15 @@ pub static TZ_MANAGER: Mutex<TimeZoneManager> = Mutex::new(unsafe { initialize_t
 
 /// TimeZone service object.
 #[derive(Default, Debug)]
-pub struct TimeZoneService;
+pub struct TimeZoneService {
+    pub unknown: u64
+}
+
+impl Drop for TimeZoneService {
+    fn drop(&mut self) {
+        info!("DROP TZ");
+    }
+}
 
 fn calendar_to_tzlib(ipc_calendar: &CalendarTime) -> sunrise_libtimezone::CalendarTimeInfo {
     let mut res = sunrise_libtimezone::CalendarTimeInfo::default();
@@ -123,6 +131,12 @@ impl sunrise_libuser::time::TimeZoneService for TimeZoneService {
         };
 
         *tz_rules = TimeZoneRule::default();
+        Ok(())
+    }
+
+    #[inline(never)]
+    fn test(&mut self, _manager: &WaitableManager, test: &mut LocationName, ) -> Result<(), Error> {
+        test[0] = b'A';
         Ok(())
     }
 
