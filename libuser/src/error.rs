@@ -129,6 +129,8 @@ enum_with_val! {
         InvalidIpcBufferCount = 5,
         /// Invalid IPCBuffer
         InvalidIpcBuffer = 6,
+        /// Specified BAR does not exist in this PCI device.
+        MissingBAR = 7,
     }
 }
 

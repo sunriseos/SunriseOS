@@ -108,7 +108,7 @@ fn main() {
             match device.header() {
                 PciHeader::GeneralDevice(header00) => {
                     match header00.bar(5) {
-                        Some(BAR::Memory(addr, size)) => (*addr, *size),
+                        Ok(BAR::Memory(memory)) => (memory.phys_addr(), memory.size()),
                         _ => panic!("PCI device with unexpected BAR 5")
                     }
                 },
