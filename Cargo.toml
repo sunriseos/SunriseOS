@@ -1,5 +1,5 @@
 [workspace]
-members = ["kernel", "bootstrap", "shell", "libuser", "clock", "sm", "vi", "ahci", "libutils", "libkern", "swipc-gen", "swipc-parser"]
+members = ["kernel", "bootstrap", "shell", "libuser", "clock", "sm", "vi", "ahci", "libutils", "libkern", "swipc-gen", "swipc-parser", "virtio"]
 
 [profile.release]
 debug = true

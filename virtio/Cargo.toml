@@ -1,0 +1,25 @@
+[package]
+name = "sunrise-virtio"
+version = "0.1.0"
+authors = ["roblabla <unfiltered@roblab.la>"]
+edition = "2018"
+
+[dependencies]
+sunrise-libuser = { path = "../libuser" }
+log = "0.4"
+bit_field = "0.9.0"
+bitflags = "1.0.4"
+bitfield = "0.13"
+
+[dependencies.static_assertions]
+version  = "0.3.1"
+features = ["nightly"]
+
+[dependencies.byteorder]
+default-features = false
+version = "1.3.1"
+
+[dependencies.smoltcp]
+git = "https://github.com/roblabla/smoltcp"
+default-features = false
+features = ["alloc", "proto-ipv4", "proto-igmp", "proto-ipv6", "socket-raw", "socket-icmp", "socket-udp", "socket-tcp", "log"]
