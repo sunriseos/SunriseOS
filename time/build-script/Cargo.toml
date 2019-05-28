@@ -1,0 +1,10 @@
+[package]
+name = "build-script"
+version = "0.1.0"
+authors = ["Thomas Guillemard <me@thog.eu>"]
+edition = "2018"
+
+[dependencies]
+reqwest = "0.9.17"
+tar = "0.4"
+flate2 = "1.0"
