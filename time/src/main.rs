@@ -76,7 +76,6 @@ impl sunrise_libuser::time::StaticService for StaticService {
     }
 }
 
-
 fn main() {
     let man = WaitableManager::new();
     let user_handler = Box::new(PortHandler::new("time:u\0", StaticService::dispatch).unwrap());

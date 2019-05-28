@@ -24,6 +24,45 @@ use sunrise_libutils::initialize_to_zero;
 /// Used to get arround Default requirement of the IPC layer
 type IpcResult<T> = Result<T, Error>;
 
+
+// TODO: Move to FileSystem interface after implementation
+include!(concat!(env!("OUT_DIR"), "/timezone_data.rs"));
+
+/// Represent the file I/O interface with tzdata.
+struct TimeZoneFileSystem;
+
+/// Represent a file inside a TimeZoneFileSystem.
+struct TimeZoneFile {
+    data: &'static [u8]
+}
+
+impl TimeZoneFile {
+    /// Create a TimeZoneFile instance from a raw slice.
+    pub fn from_raw(data: &'static [u8]) -> Self {
+        TimeZoneFile {
+            data
+        }
+    }
+
+    // Read the whole file.
+    pub fn read_full(&self) -> &[u8] {
+        self.data
+    }
+}
+
+impl TimeZoneFileSystem {
+    pub fn open_file(path: &[u8]) -> Option<TimeZoneFile> {
+        for (file_path, data) in TIMEZONE_ARCHIVE.iter() {
+            if *file_path == path {
+                return Some(TimeZoneFile::from_raw(data))
+            }
+        }
+
+        None
+    }
+}
+
+
 /// Global instance handling I/O and storage of the device rules.
 pub struct TimeZoneManager {
     location: LocationName,
