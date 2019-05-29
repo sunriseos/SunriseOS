@@ -15,4 +15,4 @@ sunrise-libutils = { path = "../libutils" }
 sunrise-libtimezone = { path = "../libtimezone" }
 
 [build-dependencies]
-cargo-5730 = { git = "https://github.com/auxoncorp/cargo-5730.git", branch = "master" }
+cargo-5730 = { git = "https://github.com/Thog/cargo-5730.git", branch = "master" }
