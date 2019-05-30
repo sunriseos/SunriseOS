@@ -6,7 +6,7 @@ license = "Apache-2.0 OR MIT"
 edition = "2018"
 
 [dependencies]
-gif = { git = "https://github.com/roblabla/image-gif" }
+gif = { git = "https://github.com/SunriseOS/image-gif" }
 log = "0.4.6"
 sunrise-libuser = { path = "../libuser" }
 spin = "0.5"

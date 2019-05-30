@@ -14,7 +14,7 @@ use core::fmt::{self, Debug, Formatter};
 use core::mem::size_of;
 use core::cmp::min;
 use core::time::Duration;
-use alloc::prelude::*;
+use alloc::vec::Vec;
 use crate::fis::*;
 use crate::disk::Disk;
 use static_assertions::assert_eq_size;

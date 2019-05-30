@@ -4,7 +4,7 @@
 //!
 //! Currently only handles printing, but will eventually support reading as well.
 
-use alloc::prelude::*;
+use alloc::vec::Vec;
 use font_rs::{font, font::{Font, GlyphBitmap}};
 use hashbrown::HashMap;
 use crate::window::{Window, Color};

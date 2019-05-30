@@ -36,7 +36,8 @@
 use crate::syscalls;
 use crate::types::{HandleRef, ServerPort, ServerSession};
 use core::marker::PhantomData;
-use alloc::prelude::*;
+use alloc::vec::Vec;
+use alloc::boxed::Box;
 use spin::Mutex;
 use core::ops::{Deref, DerefMut, Index};
 use core::fmt::{self, Debug};

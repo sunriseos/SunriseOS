@@ -39,7 +39,7 @@
 //! simultaneously. Unfortunately we can't take advantage of that until we manage to
 //! make command-completion interrupts work.
 
-#![feature(alloc, maybe_uninit, box_syntax, untagged_unions, const_vec_new, underscore_const_names)]
+#![feature(box_syntax, untagged_unions, const_vec_new, underscore_const_names)]
 #![no_std]
 
 // rustc warnings
@@ -71,7 +71,8 @@ mod disk;
 
 use crate::hba::HbaMemoryRegisters;
 use crate::disk::{Disk, IDisk};
-use alloc::prelude::*;
+use alloc::boxed::Box;
+use alloc::vec::Vec;
 use alloc::sync::Arc;
 use sunrise_libuser::error::{Error, AhciError};
 use sunrise_libuser::ipc::server::{WaitableManager, PortHandler, IWaitable};

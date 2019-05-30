@@ -66,7 +66,8 @@
 //use std::env;
 use core::mem;
 use core::fmt::{self, Write};
-use alloc::prelude::*;
+use alloc::vec::Vec;
+use alloc::string::{ToString, String};
 use log::{Level, LevelFilter, Record, Metadata};
 use crate::devices::rs232::SerialLogger;
 use smallvec::SmallVec;
@@ -371,7 +372,8 @@ fn enabled(directives: &[Directive], level: Level, target: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use log::{Level, LevelFilter};
-    use alloc::prelude::*;
+    use alloc::vec::Vec;
+    use alloc::string::ToString;
 
     use super::{Builder, Filter, Directive, parse_spec, enabled};
 

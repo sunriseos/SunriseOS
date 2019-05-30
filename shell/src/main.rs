@@ -3,7 +3,7 @@
 //! Creates an interactive terminal window, providing a few functions useful to
 //! test Sunrise. Type help followed by enter to get a list of allowed commands.
 
-#![feature(alloc, asm, naked_functions)]
+#![feature(asm, naked_functions)]
 #![no_std]
 
 // rustc warnings
@@ -36,7 +36,8 @@ use crate::libuser::window::{Window, Color};
 use crate::libuser::terminal::{Terminal, WindowSize};
 
 use core::fmt::Write;
-use alloc::prelude::*;
+use alloc::vec::Vec;
+use alloc::boxed::Box;
 use alloc::sync::Arc;
 use byteorder::{ByteOrder, LE};
 use spin::Mutex;

@@ -4,7 +4,7 @@
 
 use sunrise_libutils::io::{Io, Pio};
 use spin::Mutex;
-use alloc::prelude::*;
+use alloc::vec::Vec;
 
 /// The CONFIG_ADDRESS I/O location.
 pub const CONFIG_ADDRESS: u16 = 0xCF8;
