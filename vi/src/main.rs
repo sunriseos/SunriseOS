@@ -4,7 +4,7 @@
 //! In the future, it will also be capable of talking to the GPU to provide an
 //! OpenGL abstraction layer.
 
-#![feature(alloc, const_vec_new)]
+#![feature(const_vec_new)]
 #![no_std]
 
 // rustc warnings
@@ -33,7 +33,8 @@ mod vbe;
 
 use crate::vbe::{VBEColor, FRAMEBUFFER, Framebuffer};
 use core::cmp::{min, max};
-use alloc::prelude::*;
+use alloc::vec::Vec;
+use alloc::boxed::Box;
 use alloc::sync::{Arc, Weak};
 use crate::libuser::syscalls;
 use crate::libuser::ipc::server::{WaitableManager, PortHandler, IWaitable, SessionWrapper};

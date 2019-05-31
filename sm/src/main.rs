@@ -21,7 +21,6 @@
 //! by an unprivileged process.
 //! Service Manager
 
-#![feature(alloc)]
 #![no_std]
 
 // rustc warnings
@@ -45,7 +44,7 @@ extern crate alloc;
 #[macro_use]
 extern crate lazy_static;
 
-use alloc::prelude::*;
+use alloc::boxed::Box;
 use crate::libuser::syscalls;
 use crate::libuser::ipc::server::{WaitableManager, PortHandler, IWaitable};
 use crate::libuser::types::*;

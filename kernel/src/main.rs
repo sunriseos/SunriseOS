@@ -6,7 +6,7 @@
 //! Currently doesn't do much, besides booting and printing Hello World on the
 //! screen. But hey, that's a start.
 
-#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, allocator_api, alloc, box_syntax, no_more_cas, const_vec_new, range_contains, step_trait, thread_local, nll, underscore_const_names, doc_cfg)]
+#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, allocator_api, box_syntax, no_more_cas, const_vec_new, step_trait, thread_local, nll, underscore_const_names, doc_cfg)]
 #![no_std]
 #![cfg_attr(target_os = "none", no_main)]
 #![recursion_limit = "1024"]
@@ -46,7 +46,7 @@ extern crate bitfield;
 extern crate mashup;
 
 use core::fmt::Write;
-use alloc::prelude::*;
+use alloc::string::String;
 use crate::utils::io;
 
 pub mod paging;

@@ -237,8 +237,6 @@ impl DescriptorTable {
 
     /// Fill the current DescriptorTable with a copy of the currently loaded entries.
     pub fn set_from_loaded(&mut self) {
-        use core::slice;
-
         let loaded_ptr = sgdt();
         let loaded_table = unsafe {
             slice::from_raw_parts(loaded_ptr.base as *mut DescriptorTableEntry, loaded_ptr.limit as usize / size_of::<DescriptorTableEntry>())
