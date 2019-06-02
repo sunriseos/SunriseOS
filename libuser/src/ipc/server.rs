@@ -144,13 +144,95 @@ impl<T, Idx> Index<Idx> for Align16<T> where T: Index<Idx> {
     }
 }
 
+/// Encode an 8-character service string into an u64
+fn encode_bytes(s: &str) -> u64 {
+    assert!(s.len() < 8);
+    let s = s.as_bytes();
+    0
+        | (u64::from(*s.get(0).unwrap_or(&0))) << 00 | (u64::from(*s.get(1).unwrap_or(&0))) <<  8
+        | (u64::from(*s.get(2).unwrap_or(&0))) << 16 | (u64::from(*s.get(3).unwrap_or(&0))) << 24
+        | (u64::from(*s.get(4).unwrap_or(&0))) << 32 | (u64::from(*s.get(5).unwrap_or(&0))) << 40
+        | (u64::from(*s.get(6).unwrap_or(&0))) << 48 | (u64::from(*s.get(7).unwrap_or(&0))) << 56
+}
+
+/// A wrapper around a Server Port that implements the IWaitable trait. Waits
+/// for connection requests, and creates a new SessionWrapper around the
+/// incoming connections, which gets registered on the WaitableManager.
+///
+/// The DISPATCH function will usually be found on the interface trait. See, for
+/// instance, [sunrise_libuser::sm::IUserInterface::dispatch()].
+pub struct PortHandler<T, DISPATCH> {
+    handle: ServerPort,
+    dispatch: DISPATCH,
+    phantom: PhantomData<T>,
+}
+
+impl<T, DISPATCH> Debug for PortHandler<T, DISPATCH> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PortHandler")
+            .field("handle", &self.handle)
+            .finish()
+    }
+}
+
+impl<T, DISPATCH> PortHandler<T, DISPATCH> {
+    /// Registers a new PortHandler of the given name to the sm: service.
+    pub fn new(server_name: &str, dispatch: DISPATCH) -> Result<PortHandler<T, DISPATCH>, Error> {
+        use crate::sm::IUserInterface;
+        let port = IUserInterface::raw_new()?.register_service(encode_bytes(server_name), false, 0)?;
+        Ok(PortHandler {
+            handle: port,
+            dispatch,
+            phantom: PhantomData,
+        })
+    }
+
+    /// Registers a new PortHandler of the given name to the kernel. Note that
+    /// this interface should not be used by most services. Only the service
+    /// manager should register itself through this interface, as kernel managed
+    /// services do not implement any access controls.
+    pub fn new_managed(server_name: &str, dispatch: DISPATCH) -> Result<PortHandler<T, DISPATCH>, Error> {
+        let port = syscalls::manage_named_port(server_name, 0)?;
+        Ok(PortHandler {
+            handle: port,
+            dispatch,
+            phantom: PhantomData,
+        })
+    }
+}
+
+impl<T: Default + Debug + 'static, DISPATCH: Clone + 'static> IWaitable for PortHandler<T, DISPATCH>
+where
+    DISPATCH: FnMut(&mut T, &WaitableManager, u32, &mut [u8]) -> Result<(), Error>
+{
+    fn get_handle(&self) -> HandleRef<'_> {
+        self.handle.0.as_ref()
+    }
+
+    fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<bool, Error> {
+        let session = Box::new(SessionWrapper {
+            object: T::default(),
+            handle: self.handle.accept()?,
+            buf: Align16([0; 0x100]),
+            pointer_buf: [0; 0x300],
+            dispatch: self.dispatch.clone(),
+        });
+        manager.add_waitable(session);
+        Ok(false)
+    }
+}
+
 /// A wrapper around an Object backed by an IPC Session that implements the
-/// IWaitable trait.
-pub struct SessionWrapper<T: Object> {
+/// IWaitable trait. The DISPATCH function will usually be found on the
+/// interface trait. See, for instance, [sunrise_libuser::sm::IUserInterface::dispatch()].
+pub struct SessionWrapper<T, DISPATCH> {
     /// Kernel Handle backing this object.
     handle: ServerSession,
     /// Object instance.
     object: T,
+
+    /// Dispatch function
+    dispatch: DISPATCH,
 
     /// Command buffer for this session.
     /// Ensure 16 bytes of alignment so the raw data is properly aligned.
@@ -164,8 +246,22 @@ pub struct SessionWrapper<T: Object> {
     pointer_buf: [u8; 0x300]
 }
 
-impl<T: Object + Debug> Debug for SessionWrapper<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl<T, DISPATCH> SessionWrapper<T, DISPATCH> {
+    /// Create a new SessionWrapper from an open ServerSession and a backing
+    /// Object.
+    pub fn new(handle: ServerSession, object: T, dispatch: DISPATCH) -> SessionWrapper<T, DISPATCH> {
+        SessionWrapper {
+            handle,
+            object,
+            dispatch,
+            buf: Align16([0; 0x100]),
+            pointer_buf: [0; 0x300],
+        }
+    }
+}
+
+impl<T: Debug, DISPATCH> Debug for SessionWrapper<T, DISPATCH> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SessionWrapper")
             .field("handle", &self.handle)
             .field("object", &self.object)
@@ -175,20 +271,10 @@ impl<T: Object + Debug> Debug for SessionWrapper<T> {
     }
 }
 
-impl<T: Object> SessionWrapper<T> {
-    /// Create a new SessionWrapper from an open ServerSession and a backing
-    /// Object.
-    pub fn new(handle: ServerSession, object: T) -> SessionWrapper<T> {
-        SessionWrapper {
-            handle,
-            object,
-            buf: Align16([0; 0x100]),
-            pointer_buf: [0; 0x300],
-        }
-    }
-}
-
-impl<T: Object + Debug> IWaitable for SessionWrapper<T> {
+impl<T: Debug, DISPATCH> IWaitable for SessionWrapper<T, DISPATCH>
+where
+    DISPATCH: FnMut(&mut T, &WaitableManager, u32, &mut [u8]) -> Result<(), Error>
+{
     fn get_handle(&self) -> HandleRef<'_> {
         self.handle.0.as_ref()
     }
@@ -204,83 +290,12 @@ impl<T: Object + Debug> IWaitable for SessionWrapper<T> {
         match super::find_ty_cmdid(&self.buf[..]) {
             // TODO: Handle other types.
             Some((4, cmdid)) | Some((6, cmdid)) => {
-                self.object.dispatch(manager, cmdid, &mut self.buf[..])?;
+                (self.dispatch)(&mut self.object, manager, cmdid, &mut self.buf[..])?;
                 self.handle.reply(&mut self.buf[..])?;
                 Ok(false)
             },
             Some((2, _)) => Ok(true),
             _ => Ok(true)
         }
-    }
-}
-
-/// A wrapper around a Server Port that implements the IWaitable trait. Waits for
-/// connection requests, and creates a new SessionWrapper around the incoming
-/// connections, which gets registered on the WaitableManager.
-pub struct PortHandler<T: Object + Default + Debug> {
-    /// The kernel object backing this Port Handler.
-    handle: ServerPort,
-    /// Type of the Object this port creates.
-    phantom: PhantomData<T>
-}
-
-impl<T: Object + Default + Debug> Debug for PortHandler<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("PortHandler")
-            .field("handle", &self.handle)
-            .field("phantom", &self.phantom)
-            .finish()
-    }
-}
-
-impl<T: Object + Default + Debug + 'static> IWaitable for PortHandler<T> {
-    fn get_handle(&self) -> HandleRef<'_> {
-        self.handle.0.as_ref()
-    }
-
-    fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<bool, Error> {
-        let session = Box::new(SessionWrapper {
-            object: T::default(),
-            handle: self.handle.accept()?,
-            buf: Align16([0; 0x100]),
-            pointer_buf: [0; 0x300]
-        });
-        manager.add_waitable(session);
-        Ok(false)
-    }
-}
-
-/// Encode an 8-character service string into an u64
-fn encode_bytes(s: &str) -> u64 {
-    assert!(s.len() <= 8);
-    let s = s.as_bytes();
-    0
-        | (u64::from(*s.get(0).unwrap_or(&0))) << 00 | (u64::from(*s.get(1).unwrap_or(&0))) <<  8
-        | (u64::from(*s.get(2).unwrap_or(&0))) << 16 | (u64::from(*s.get(3).unwrap_or(&0))) << 24
-        | (u64::from(*s.get(4).unwrap_or(&0))) << 32 | (u64::from(*s.get(5).unwrap_or(&0))) << 40
-        | (u64::from(*s.get(6).unwrap_or(&0))) << 48 | (u64::from(*s.get(7).unwrap_or(&0))) << 56
-}
-
-impl<T: Object + Default + Debug> PortHandler<T> {
-    /// Registers a new PortHandler of the given name to the sm: service.
-    pub fn new(server_name: &str) -> Result<PortHandler<T>, Error> {
-        use crate::sm::IUserInterface;
-        let port = IUserInterface::raw_new()?.register_service(encode_bytes(server_name), false, 0)?;
-        Ok(PortHandler {
-            handle: port,
-            phantom: PhantomData
-        })
-    }
-
-    /// Registers a new PortHandler of the given name to the kernel. Note that
-    /// this interface should not be used by most services. Only the service
-    /// manager should register itself through this interface, as kernel managed
-    /// services do not implement any access controls.
-    pub fn new_managed(server_name: &str) -> Result<PortHandler<T>, Error> {
-        let port = syscalls::manage_named_port(server_name, 0)?;
-        Ok(PortHandler {
-            handle: port,
-            phantom: PhantomData
-        })
     }
 }

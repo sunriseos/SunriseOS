@@ -49,6 +49,7 @@ use crate::libuser::ipc::server::{WaitableManager, PortHandler, IWaitable};
 use crate::libuser::types::*;
 use crate::libuser::error::Error;
 use crate::libuser::error::SmError;
+use crate::libuser::ipc::server::Object;
 use hashbrown::hash_map::{HashMap, Entry};
 use spin::Mutex;
 
@@ -137,7 +138,7 @@ object! {
 
 fn main() {
     let man = WaitableManager::new();
-    let handler = Box::new(PortHandler::<UserInterface>::new_managed("sm:\0").unwrap());
+    let handler = Box::new(PortHandler::new_managed("sm:\0", UserInterface::dispatch).unwrap());
     man.add_waitable(handler as Box<dyn IWaitable>);
 
     man.run();

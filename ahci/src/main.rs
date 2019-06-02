@@ -80,6 +80,7 @@ use spin::Mutex;
 use sunrise_libuser::types::Handle;
 use sunrise_libuser::syscalls;
 use sunrise_libuser::ipc::server::SessionWrapper;
+use sunrise_libuser::ipc::server::Object;
 
 /// Array of discovered disk.
 ///
@@ -113,7 +114,7 @@ fn main() {
 
     // event loop
     let man = WaitableManager::new();
-    let handler = Box::new(PortHandler::<AhciInterface>::new("ahci:\0").unwrap());
+    let handler = Box::new(PortHandler::new("ahci:\0", AhciInterface::dispatch).unwrap());
     man.add_waitable(handler as Box<dyn IWaitable>);
     man.run();
 }
@@ -154,7 +155,7 @@ object! {
                 .ok_or(AhciError::InvalidArg)?
             ));
             let (server, client) = syscalls::create_session(false, 0)?;
-            let wrapper = SessionWrapper::new(server, idisk);
+            let wrapper = SessionWrapper::new(server, idisk, IDisk::dispatch);
             manager.add_waitable(Box::new(wrapper) as Box<dyn IWaitable>);
             Ok((client.into_handle(),))
         }

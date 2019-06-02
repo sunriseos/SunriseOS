@@ -43,6 +43,7 @@ use crate::libuser::error::Error;
 use crate::libuser::syscalls::MemoryPermissions;
 use sunrise_libutils::align_up;
 use libuser::mem::{find_free_address, PAGE_SIZE};
+use crate::libuser::ipc::server::Object;
 
 /// Entry point interface.
 #[derive(Default, Debug)]
@@ -74,7 +75,7 @@ object! {
             };
             BUFFERS.lock().push(Arc::downgrade(&buf.buffer));
             let (server, client) = syscalls::create_session(false, 0)?;
-            let wrapper = SessionWrapper::new(server, buf);
+            let wrapper = SessionWrapper::new(server, buf, IBuffer::dispatch);
             manager.add_waitable(Box::new(wrapper) as Box<dyn IWaitable>);
             Ok((client.into_handle(),))
         }
@@ -276,7 +277,7 @@ object! {
 
 fn main() {
     let man = WaitableManager::new();
-    let handler = Box::new(PortHandler::<ViInterface>::new("vi:\0").unwrap());
+    let handler = Box::new(PortHandler::new("vi:\0", ViInterface::dispatch).unwrap());
     man.add_waitable(handler as Box<dyn IWaitable>);
 
     man.run();
