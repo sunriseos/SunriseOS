@@ -72,8 +72,8 @@ enum_with_val! {
 impl KernelError {
     /// Transforms a KernelError into the encoding acceptable for a syscall
     /// return value.
-    pub fn make_ret(self) -> usize {
-        ((self.0 as usize) << 9) | 1
+    pub fn make_ret(self) -> u32 {
+        (self.0 << 9) | 1
     }
 
     /// Turns a syscall return value into a Kernel Error.
