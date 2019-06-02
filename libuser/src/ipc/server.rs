@@ -110,16 +110,6 @@ impl WaitableManager {
     }
 }
 
-/// An IPC object.
-///
-/// Deriving this function manually is not recommended. Instead, users should use
-/// the [object] macro to derive the Object implementation
-/// from its external interface.
-pub trait Object {
-    /// Handle a request with the given cmdid.
-    fn dispatch(&mut self, manager: &WaitableManager, cmdid: u32, buf: &mut [u8]) -> Result<(), Error>;
-}
-
 /// Wrapper struct that forces the alignment to 0x10. Somewhat necessary for the
 /// IPC command buffer.
 #[repr(C, align(16))]
@@ -178,8 +168,8 @@ impl<T, DISPATCH> Debug for PortHandler<T, DISPATCH> {
 impl<T, DISPATCH> PortHandler<T, DISPATCH> {
     /// Registers a new PortHandler of the given name to the sm: service.
     pub fn new(server_name: &str, dispatch: DISPATCH) -> Result<PortHandler<T, DISPATCH>, Error> {
-        use crate::sm::IUserInterface;
-        let port = IUserInterface::raw_new()?.register_service(encode_bytes(server_name), false, 0)?;
+        use crate::sm::IUserInterfaceProxy;
+        let port = IUserInterfaceProxy::raw_new()?.register_service(encode_bytes(server_name), false, 0)?;
         Ok(PortHandler {
             handle: port,
             dispatch,

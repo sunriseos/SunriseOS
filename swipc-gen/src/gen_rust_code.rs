@@ -6,7 +6,7 @@ use lazy_static::lazy_static;
 
 use std::fmt::Write;
 use std::collections::HashMap;
-use swipc_parser::{Alias, Func, HandleType, TypeDef, Type, Decorator};
+use swipc_parser::{Alias, Func, HandleType, TypeDef, Type, Decorator, Interface};
 use bit_field::BitField;
 
 lazy_static! {
@@ -91,15 +91,17 @@ where
 /// Returns a coma separated list of `name: rust_type`.
 ///
 /// See [get_type] to find the mapping of a SwIPC type to a Rust type.
-fn format_args(args: &[(Alias, Option<String>)], ret: &[(Alias, Option<String>)]) -> Result<String, Error> {
+fn format_args(args: &[(Alias, Option<String>)], ret: &[(Alias, Option<String>)], server: bool) -> Result<String, Error> {
     let mut arg_list = Vec::new();
     for (idx, (ty, name)) in args.iter().chain(ret.iter().filter(|(ty, _)| {
         match ty { Alias::Array(..) | Alias::Buffer(..) => true, _ => false }
     })).enumerate()
     {
         let mut s = String::new();
-        if let Alias::Pid = ty {
-            continue;
+        if !server {
+            if let Alias::Pid = ty {
+                continue;
+            }
         }
         match name.as_ref().map(|v| &**v) {
             // TODO: More thorough keyword sanitizer in swipc generator.
@@ -112,7 +114,7 @@ fn format_args(args: &[(Alias, Option<String>)], ret: &[(Alias, Option<String>)]
             None => s += &format!("unknown_{}", idx)
         }
         s += ": ";
-        s += &get_type(idx >= args.len(), ty)?;
+        s += &get_type(idx >= args.len(), ty, server)?;
         arg_list.push(s);
     }
     Ok(arg_list.join(", "))
@@ -135,7 +137,7 @@ fn format_ret_ty(ret: &[(Alias, Option<String>)]) -> Result<String, Error> {
     let mut v = Vec::new();
 
     for (ty, _name) in named_iterator(ret, true) {
-        v.push(get_type(true, ty)?);
+        v.push(get_type(true, ty, false)?);
     }
 
     match v.len() {
@@ -163,7 +165,7 @@ fn get_handle_type(ty: &Option<HandleType>) -> Option<&'static str> {
 /// Generate code to recover a single return value from an output Message.
 fn format_ret(ret: (&Alias, String)) -> Result<String, Error> {
     match ret.0 {
-        Alias::Object(ty) => Ok(format!("{}::from(ClientSession(res__.pop_handle_move()?))", ty)),
+        Alias::Object(ty) => Ok(format!("{}Proxy::from(ClientSession(res__.pop_handle_move()?))", ty)),
         Alias::Handle(is_copy, ty) => if let Some(s) = get_handle_type(ty) {
             Ok(format!("{}(res__.pop_handle_{}()?)", s, if *is_copy { "copy" } else { "move" }))
         } else {
@@ -180,25 +182,31 @@ fn format_ret(ret: (&Alias, String)) -> Result<String, Error> {
 /// Get the Rust type of an [Alias]. If output is true, then the type should be
 /// suitable for a return type (or an output IPC buffer argument). If output is
 /// false, then the type should be suitable for an input argument.
-fn get_type(output: bool, ty: &Alias) -> Result<String, Error> {
+fn get_type(output: bool, ty: &Alias, is_server: bool) -> Result<String, Error> {
     let is_mut = if output { "mut " } else { "" };
     match ty {
         // actually a special kind of buffer
-        Alias::Array(underlying, _) => Ok(format!("&{}[{}]", is_mut, get_type(output, underlying)?)),
+        Alias::Array(underlying, _) => Ok(format!("&{}[{}]", is_mut, get_type(output, underlying, is_server)?)),
 
         // Blow up if we don't know the size or type
         Alias::Buffer(box Alias::Other(name), _, 0) if name == "unknown" => Err(Error::UnsupportedStruct),
         // Treat unknown but sized types as an opaque byte array
         Alias::Buffer(box Alias::Other(name), _, size) if name == "unknown" => Ok(format!("&{}[u8; {:#x}]", is_mut, size)),
         // 0-sized buffer means it takes an array
-        Alias::Buffer(inner @ box Alias::Other(_), _, 0) => Ok(format!("&{}[{}]", is_mut, get_type(output, inner)?)),
+        Alias::Buffer(inner @ box Alias::Other(_), _, 0) => Ok(format!("&{}[{}]", is_mut, get_type(output, inner, is_server)?)),
         // Typed buffers are just references to the underlying raw object
         Alias::Buffer(inner @ box Alias::Bytes(_), _, _) |
-        Alias::Buffer(inner @ box Alias::Other(_), _, _) => Ok(format!("&{}{}", is_mut, get_type(output, inner)?)),
+        Alias::Buffer(inner @ box Alias::Other(_), _, _) => Ok(format!("&{}{}", is_mut, get_type(output, inner, is_server)?)),
         // Panic if we get a buffer with an unsupported underlying type.
         Alias::Buffer(underlying, _, _) => panic!("Buffer with underlying type {:?}", underlying),
 
-        Alias::Object(name) => Ok(name.clone()),
+        Alias::Object(name) => {
+            if output {
+                Ok(name.clone() + "Proxy")
+            } else {
+                Ok(format!("impl {}", name))
+            }
+        },
 
         // Unsized bytes
         Alias::Bytes(0) => Ok("[u8]".to_string()),
@@ -208,13 +216,45 @@ fn get_type(output: bool, ty: &Alias) -> Result<String, Error> {
         Alias::Align(_alignment, _underlying) => Err(Error::UnsupportedStruct),
 
         Alias::Handle(is_copy, ty) => if let Some(s) = get_handle_type(ty) {
-            Ok(format!("{}{}", if *is_copy && !output { "&" } else { "" }, s))
+            Ok(format!("{}{}", if *is_copy && !is_server && !output { "&" } else { "" }, s))
         } else {
-            Ok(format!("sunrise_libuser::types::{}", if *is_copy && !output { "HandleRef" } else { "Handle" }))
+            Ok(format!("sunrise_libuser::types::{}", if *is_copy && !is_server && !output { "HandleRef" } else { "Handle" }))
         },
         Alias::Pid => Ok("u64".to_string()),
         Alias::Other(ty) if ty == "unknown" => Err(Error::UnsupportedStruct),
         Alias::Other(ty) => Ok(ty.clone()),
+    }
+}
+
+fn gen_in_raw(s: &mut String, cmd: &Func) -> Result<&'static str, Error>  {
+    if cmd.args.iter().any(|(argty, _)| is_raw(argty)) {
+        writeln!(s, "        #[repr(C)]").unwrap();
+        writeln!(s, "        #[derive(Clone, Copy)]").unwrap();
+        writeln!(s, "        #[allow(clippy::missing_docs_in_private_items)]").unwrap();
+        writeln!(s, "        struct InRaw {{").unwrap();
+        for (argty, argname) in raw_iterator(&cmd.args, false) {
+            writeln!(s, "            {}: {},", argname, get_type(false, argty, false)?).unwrap();
+        }
+        writeln!(s, "        }}").unwrap();
+        Ok("InRaw")
+    } else {
+        Ok("()")
+    }
+}
+
+fn gen_out_raw(s: &mut String, cmd: &Func) -> Result<&'static str, Error> {
+    if cmd.ret.iter().any(|(argty, _)| is_raw(argty)) {
+        writeln!(s, "        #[repr(C)]").unwrap();
+        writeln!(s, "        #[derive(Clone, Copy)]").unwrap();
+        writeln!(s, "        #[allow(clippy::missing_docs_in_private_items)]").unwrap();
+        writeln!(s, "        struct OutRaw {{").unwrap();
+        for (argty, argname) in raw_iterator(&cmd.ret, true) {
+            writeln!(s, "            {}: {},", argname, get_type(true, argty, false)?).unwrap();
+        }
+        writeln!(s, "        }}").unwrap();
+        Ok("OutRaw")
+    } else {
+        Ok("()")
     }
 }
 
@@ -224,24 +264,11 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
     for line in cmd.doc.lines() {
         writeln!(s, "    /// {}", line).unwrap();
     }
-    writeln!(s, "    pub fn {}(&mut self, {}) -> Result<{}, Error> {{", &cmd.name, format_args(&cmd.args, &cmd.ret)?, format_ret_ty(&cmd.ret)?).unwrap();
+    writeln!(s, "    pub fn {}(&mut self, {}) -> Result<{}, Error> {{", &cmd.name, format_args(&cmd.args, &cmd.ret, false)?, format_ret_ty(&cmd.ret)?).unwrap();
     writeln!(s, "        use sunrise_libuser::ipc::Message;").unwrap();
     writeln!(s, "        let mut buf__ = [0; 0x100];").unwrap();
     writeln!(s).unwrap();
-    let in_raw = if cmd.args.iter().any(|(argty, _)| is_raw(argty)) {
-        writeln!(s, "        #[repr(C)]").unwrap();
-        writeln!(s, "        #[derive(Clone, Copy)]").unwrap();
-        writeln!(s, "        #[allow(clippy::missing_docs_in_private_items)]").unwrap();
-        writeln!(s, "        struct InRaw {{").unwrap();
-        for (argty, argname) in raw_iterator(&cmd.args, false) {
-            writeln!(s, "            {}: {},", argname, get_type(false, argty)?).unwrap();
-        }
-        writeln!(s, "        }}").unwrap();
-        "InRaw"
-    } else {
-        "()"
-    };
-
+    let in_raw = gen_in_raw(&mut s, cmd)?;
 
     let ipc_count = cmd.args.iter().chain(&cmd.ret).filter(|(argty, _)| match argty {
         Alias::Array(..) | Alias::Buffer(..) => true,
@@ -337,19 +364,7 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
     }).count();
 
     writeln!(s).unwrap();
-    let out_raw = if cmd.ret.iter().any(|(argty, _)| is_raw(argty)) {
-        writeln!(s, "        #[repr(C)]").unwrap();
-        writeln!(s, "        #[derive(Clone, Copy)]").unwrap();
-        writeln!(s, "        #[allow(clippy::missing_docs_in_private_items)]").unwrap();
-        writeln!(s, "        struct OutRaw {{").unwrap();
-        for (argty, argname) in raw_iterator(&cmd.ret, true) {
-            writeln!(s, "            {}: {},", argname, get_type(true, argty)?).unwrap();
-        }
-        writeln!(s, "        }}").unwrap();
-        "OutRaw"
-    } else {
-        "()"
-    };
+    let out_raw = gen_out_raw(&mut s, cmd)?;
 
     writeln!(s, "        let mut res__: Message<'_, {}, [_; {}], [_; {}], [_; {}]> = Message::unpack(&buf__[..]);",
              out_raw, ipc_count, handle_copy_count, handle_move_count).unwrap();
@@ -384,7 +399,7 @@ fn format_type(struct_name: &str, ty: &TypeDef) -> Result<String, Error> {
                     writeln!(s, "    /// {}", line).unwrap();
                 }
                 let tyname = match ty {
-                    Type::Alias(alias) => get_type(false, alias)?,
+                    Type::Alias(alias) => get_type(false, alias, false)?,
                     _ => unimplemented!()
                 };
                 writeln!(s, "    pub {}: {},", name, tyname).unwrap();
@@ -405,7 +420,7 @@ fn format_type(struct_name: &str, ty: &TypeDef) -> Result<String, Error> {
         },
         Type::Alias(alias) => {
             // TODO: Prevent alias of buffer/pid/handles
-            writeln!(s, "pub type {} = {};", struct_name, get_type(false, &alias)?).unwrap();
+            writeln!(s, "pub type {} = {};", struct_name, get_type(false, &alias, false)?).unwrap();
         },
     }
     Ok(s)
@@ -459,6 +474,277 @@ fn generate_mod(m: Mod, depth: usize, mod_name: &str, crate_name: &str) -> Strin
     }
 
     writeln!(s, "{}}}", depthstr).unwrap();
+
+    s
+}
+
+/// Parse an incoming request, call the appropriate function from the trait
+/// we're currently generating (see [gen_trait]), and fill the byte buffer with
+/// the response data.
+fn gen_call(cmd: &Func) -> Result<String, Error> {
+    let mut s = String::new();
+    let in_raw = gen_in_raw(&mut s, cmd)?;
+    let ipc_count = cmd.args.iter().chain(&cmd.ret).filter(|(argty, _)| match argty {
+        Alias::Array(..) | Alias::Buffer(..) => true,
+        _ => false
+    }).count();
+    let handle_move_count = cmd.args.iter().filter(|(argty, _)| match argty {
+        Alias::Handle(false, _) | Alias::Object(_) => true,
+        _ => false
+    }).count();
+    let handle_copy_count = cmd.args.iter().filter(|(argty, _)| match argty {
+        Alias::Handle(true, _) => true,
+        _ => false
+    }).count();
+
+    writeln!(s, "                let mut msg__ = Message::<{}, [_; {}], [_; {}], [_; {}]>::unpack(buf);",
+         in_raw, ipc_count, handle_copy_count, handle_move_count).unwrap();
+
+    let mut args = String::new();
+    for (item, name) in named_iterator(&cmd.args, false)
+        .chain(named_iterator(&cmd.ret, false).filter(|(ty, _)| 
+            match ty { Alias::Array(..) | Alias::Buffer(..) => true, _ => false }))
+    {
+        match item {
+            Alias::Array(_, bufty) | Alias::Buffer(_, bufty, _) => {
+                let (ismut,direction, ty) = match (bufty.get_bits(0..2), bufty.get_bits(2..4)) {
+                    (0b01, 0b01) => ("", "in", "buffer"),
+                    (0b01, 0b10) => ("", "in", "pointer"),
+                    (0b10, 0b01) => ("mut", "out", "buffer"),
+                    (0b10, 0b10) => ("mut", "out", "pointer"),
+                    _ => panic!("Invalid bufty")
+                };
+                args += &format!("&{} *msg__.pop_{}_{}().unwrap(), ", ismut, direction, ty);
+            },
+            Alias::Object(ty) => {
+                args += &format!("{}Proxy(sunrise_libuser::types::ClientSession(msg__.pop_handle_move().unwrap())), ", ty);
+            },
+            Alias::Handle(is_copy, ty) => {
+                let handle = if *is_copy {
+                    "msg__.pop_handle_copy().unwrap()"
+                } else {
+                    "msg__.pop_handle_move().unwrap()"
+                };
+                let to_add = match get_handle_type(ty) {
+                    Some(ty) => format!("{}({}), ", ty, handle),
+                    _ => format!("{}, ", handle)
+                };
+
+                args += &to_add;
+            },
+            Alias::Pid => {
+                args += "msg__.pop_pid().unwrap(), ";
+            },
+            Alias::Align(..) | Alias::Bytes(..) | Alias::Other(..) => {
+                args += &format!("msg__.raw().{}, ", name);
+            },
+        }
+    }
+    writeln!(s, "                let ret__ = self.{}(manager, {});", &cmd.name, args).unwrap();
+
+    let out_raw = gen_out_raw(&mut s, cmd)?;
+    let handle_move_count = cmd.ret.iter().filter(|(argty, _)| match argty {
+        Alias::Handle(false, _) | Alias::Object(_) => true,
+        _ => false
+    }).count();
+    let handle_copy_count = cmd.ret.iter().filter(|(argty, _)| match argty {
+        Alias::Handle(true, _) => true,
+        _ => false
+    }).count();
+
+    writeln!(s, "                let mut msg__ = Message::<{}, [_; 0], [_; {}], [_; {}]>::new_response(None);",
+         out_raw, handle_copy_count, handle_move_count).unwrap();
+
+    writeln!(s, "                match  ret__ {{").unwrap();
+    writeln!(s, "                    Ok(ret) => {{").unwrap();
+
+    let retcount = named_iterator(&cmd.ret, false).count();
+    for (idx, (item, _)) in named_iterator(&cmd.ret, true).enumerate().filter(|(_, (ty, _))| !is_raw(ty))
+    {
+        let ret = if retcount == 1 {
+            "ret".to_string()
+        } else {
+            format!("ret.{}", idx)
+        };
+        match item {
+            Alias::Object(_) => {
+                writeln!(s, "msg__.push_handle_move({}.0.into_handle());", ret).unwrap();
+            },
+            Alias::Handle(is_copy, ty) => {
+                let (is_ref, handle) = if *is_copy {
+                    ("&", "copy")
+                } else {
+                    ("", "move")
+                };
+                match (get_handle_type(ty), ty) {
+                    (_, Some(HandleType::ClientSession)) => writeln!(s, "msg__.push_handle_{}({}({}).into_handle());", handle, is_ref, ret).unwrap(),
+                    (Some(_), _) => writeln!(s, "msg__.push_handle_{}({}({}).0);", handle, is_ref, ret).unwrap(),
+                    _ => writeln!(s, "msg__.push_handle_{}({}{})", handle, is_ref, ret).unwrap(),
+                };
+            },
+            Alias::Pid => {
+                writeln!(s, "msg__.push_pid().unwrap();").unwrap();
+            },
+            _ => unreachable!()
+        }
+    }
+
+    if raw_iterator(&cmd.ret, false).count() > 0 {
+        if named_iterator(&cmd.ret, false).count() == 1 {
+            let (_, name) = raw_iterator(&cmd.ret, false).next().unwrap();
+            writeln!(s, "msg__.push_raw({} {{ {}: ret }});", out_raw, name).unwrap();
+        } else {
+            writeln!(s, "msg__.push_raw({} {{", out_raw).unwrap();
+            for (idx, (_, name)) in named_iterator(&cmd.ret, true).enumerate().filter(|(_, (ty, _))| is_raw(ty))
+            {
+                writeln!(s, "{}: ret.{},", name, idx).unwrap();
+            }
+            writeln!(s, "}});").unwrap();
+        }
+    }
+
+    writeln!(s, "                    }},").unwrap();
+    writeln!(s, "                    Err(err) => {{ msg__.set_error(err.as_code()); }}").unwrap();
+    writeln!(s, "                }}").unwrap();
+    writeln!(s, "").unwrap();
+    writeln!(s, "                msg__.pack(buf);").unwrap();
+    writeln!(s, "                Ok(())").unwrap();
+    Ok(s)
+}
+
+/// Generate a trait representing an IPC interface. Implementors of this trait
+/// may then create IPC Server objects through libuser's SessionWrapper and
+/// PortHandler.
+pub fn generate_trait(ifacename: &str, interface: &Interface) -> String {
+    let mut s = String::new();
+
+    let trait_name = ifacename.split("::").last().unwrap().to_string();
+
+    for line in interface.doc.lines() {
+        writeln!(s, "/// {}", line).unwrap();
+    }
+    writeln!(s, "pub trait {} {{", trait_name).unwrap();
+    for cmd in &interface.funcs {
+        match format_args(&cmd.args, &cmd.ret, true).and_then(|v| format_ret_ty(&cmd.ret).map(|u| (v, u))) {
+            Ok((args, ret)) => {
+                for line in cmd.doc.lines() {
+                    writeln!(s, "/// {}", line).unwrap();
+                }
+                writeln!(s, "    fn {}(&mut self, manager: &sunrise_libuser::ipc::server::WaitableManager, {}) -> Result<{}, Error>;", &cmd.name, args, ret).unwrap();
+            },
+            Err(_) => writeln!(s, "    // fn {}(&mut self) -> Result<(), Error>;", &cmd.name).unwrap()
+        }
+    }
+
+    writeln!(s, "    /// Handle an incoming IPC request.").unwrap();
+    writeln!(s, "    fn dispatch(&mut self, manager: &sunrise_libuser::ipc::server::WaitableManager, cmdid: u32, buf: &mut [u8]) -> Result<(), Error> {{").unwrap();
+    writeln!(s, "        use sunrise_libuser::ipc::Message;").unwrap();
+    writeln!(s, "        match cmdid {{").unwrap();
+    for func in &interface.funcs {
+        if let Ok(val) = gen_call(&func) {
+            writeln!(s, "            {} => {{", func.num).unwrap();
+            writeln!(s, "{}", val).unwrap();
+            writeln!(s, "            }},").unwrap();
+        } else {
+            writeln!(s, "            // Unsupported: {}", func.num).unwrap();
+        }
+    }
+    writeln!(s, "            _ => {{").unwrap();
+    writeln!(s, "                let mut msg__ = Message::<(), [_; 0], [_; 0], [_; 0]>::new_response(None);").unwrap();
+    writeln!(s, "                msg__.set_error(sunrise_libkern::error::KernelError::PortRemoteDead.make_ret() as u32);").unwrap();
+    writeln!(s, "                msg__.pack(buf);").unwrap();
+    writeln!(s, "                Ok(())").unwrap();
+    writeln!(s, "            }}").unwrap();
+    writeln!(s, "        }}").unwrap();
+    writeln!(s, "    }}").unwrap();
+
+    writeln!(s, "}}").unwrap();
+
+    s
+}
+
+/// Generate a "proxy" interface (nomenclature shamelessly stolen from binder).
+/// A "proxy" is a client interface to a remote IPC object.
+pub fn generate_proxy(ifacename: &str, interface: &Interface) -> String {
+    let struct_name = ifacename.split("::").last().unwrap().to_string() + "Proxy";
+
+    let mut s = String::new();
+
+    for line in interface.doc.lines() {
+        writeln!(s, "/// {}", line).unwrap();
+    }
+    writeln!(s, "#[derive(Debug)]").unwrap();
+    writeln!(s, "pub struct {}(ClientSession);", struct_name).unwrap();
+    writeln!(s).unwrap();
+    writeln!(s, "impl From<{}> for ClientSession {{", struct_name).unwrap();
+    writeln!(s, "    fn from(sess: {}) -> ClientSession {{", struct_name).unwrap();
+    writeln!(s, "        sess.0").unwrap();
+    writeln!(s, "    }}").unwrap();
+    writeln!(s, "}}").unwrap();
+    writeln!(s).unwrap();
+    writeln!(s, "impl From<ClientSession> for {} {{", struct_name).unwrap();
+    writeln!(s, "    fn from(sess: ClientSession) -> {} {{", struct_name).unwrap();
+    writeln!(s, "        {}(sess)", struct_name).unwrap();
+    writeln!(s, "    }}").unwrap();
+    writeln!(s, "}}").unwrap();
+
+    if !interface.service_list.is_empty() {
+        // For every service, we'll want to add a raw_new function.
+        writeln!(s, "\nimpl {} {{", struct_name).unwrap();
+        for (decorators, service) in &interface.service_list {
+            let name = if interface.service_list.len() == 1 {
+                "".to_string()
+            } else {
+                format!("_{}", service.replace(":", "_"))
+            };
+
+            writeln!(s, "    /// Creates a new [{}] by connecting to the `{}` service.", struct_name, service).unwrap();
+            writeln!(s, "    pub fn raw_new{}() -> Result<{}, Error> {{", name, struct_name).unwrap();
+            writeln!(s, "        use sunrise_libuser::syscalls;").unwrap();
+            writeln!(s, "        use sunrise_libuser::error::KernelError;").unwrap();
+
+            if decorators.iter().any(|v| matches!(let Decorator::ManagedPort = v)) {
+                // This service is a kernel-managed port.
+                writeln!(s, "        loop {{").unwrap();
+                let mut service_name = service.to_string();
+                service_name += &"\\0";
+                writeln!(s, r#"            let _ = match syscalls::connect_to_named_port("{}") {{"#, service_name).unwrap();
+                writeln!(s, "                Ok(s) => return Ok({}(s)),", struct_name).unwrap();
+                writeln!(s, "                Err(KernelError::NoSuchEntry) => syscalls::sleep_thread(0),").unwrap();
+                writeln!(s, "                Err(err) => Err(err)?").unwrap();
+                writeln!(s, "            }};").unwrap();
+                writeln!(s, "        }}").unwrap();
+            } else {
+                // This service is a sm-managed port.
+                writeln!(s, "         use sunrise_libuser::error::SmError;").unwrap();
+                writeln!(s, "         ").unwrap();
+                writeln!(s, "         loop {{").unwrap();
+                writeln!(s, "              let svcname = unsafe {{").unwrap();
+                let mut service_name = service.to_string();
+                service_name += &"\\0".repeat(8 - service_name.len());
+                writeln!(s, r#"                  core::mem::transmute(*b"{}")"#, service_name).unwrap();
+                writeln!(s, "              }};").unwrap();
+                writeln!(s, "              let _ = match sunrise_libuser::sm::IUserInterfaceProxy::raw_new()?.get_service(svcname) {{").unwrap();
+                writeln!(s, "                  Ok(s) => return Ok({}(s)),", struct_name).unwrap();
+                writeln!(s, "                  Err(Error::Sm(SmError::ServiceNotRegistered, ..)) => syscalls::sleep_thread(0),").unwrap();
+                writeln!(s, "                  Err(err) => return Err(err)").unwrap();
+                writeln!(s, "              }};").unwrap();
+                writeln!(s, "         }}").unwrap();
+            }
+
+            writeln!(s, "    }}").unwrap();
+        }
+        writeln!(s, "}}").unwrap();
+    }
+
+    writeln!(s, "impl {} {{", struct_name).unwrap();
+    for cmd in &interface.funcs {
+        match format_cmd(&cmd) {
+            Ok(out) => write!(s, "{}", out).unwrap(),
+            Err(_) => writeln!(s, "    // pub fn {}(&mut self) -> Result<(), Error>", &cmd.name).unwrap()
+        }
+    }
+    writeln!(s, "}}").unwrap();
 
     s
 }
@@ -554,88 +840,9 @@ pub fn generate_ipc(s: &str, prefix: String, mod_name: String, crate_name: Strin
             }
         }
 
-        let struct_name = ifacename.split("::").last().unwrap();
-
-        let mut s = String::new();
-
-        for line in interface.doc.lines() {
-            writeln!(s, "/// {}", line).unwrap();
-        }
-        writeln!(s, "#[derive(Debug)]").unwrap();
-        writeln!(s, "pub struct {}(ClientSession);", struct_name).unwrap();
-        writeln!(s).unwrap();
-        writeln!(s, "impl From<{}> for ClientSession {{", struct_name).unwrap();
-        writeln!(s, "    fn from(sess: {}) -> ClientSession {{", struct_name).unwrap();
-        writeln!(s, "        sess.0").unwrap();
-        writeln!(s, "    }}").unwrap();
-        writeln!(s, "}}").unwrap();
-        writeln!(s).unwrap();
-        writeln!(s, "impl From<ClientSession> for {} {{", struct_name).unwrap();
-        writeln!(s, "    fn from(sess: ClientSession) -> {} {{", struct_name).unwrap();
-        writeln!(s, "        {}(sess)", struct_name).unwrap();
-        writeln!(s, "    }}").unwrap();
-        writeln!(s, "}}").unwrap();
-
-        if !interface.service_list.is_empty() {
-            // For every service, we'll want to add a raw_new function.
-            writeln!(s, "\nimpl {} {{", struct_name).unwrap();
-            for (decorators, service) in &interface.service_list {
-                let name = if interface.service_list.len() == 1 {
-                    "".to_string()
-                } else {
-                    format!("_{}", service.replace(":", "_"))
-                };
-
-                writeln!(s, "    /// Creates a new [{}] by connecting to the `{}` service.", struct_name, service).unwrap();
-                writeln!(s, "    pub fn raw_new{}() -> Result<{}, Error> {{", name, struct_name).unwrap();
-                writeln!(s, "        use sunrise_libuser::syscalls;").unwrap();
-                writeln!(s, "        use sunrise_libuser::error::KernelError;").unwrap();
-
-                if decorators.iter().any(|v| matches!(let Decorator::ManagedPort = v)) {
-                    // This service is a kernel-managed port.
-                    writeln!(s, "        loop {{").unwrap();
-                    let mut service_name = service.to_string();
-                    service_name += &"\\0";
-                    writeln!(s, r#"            let _ = match syscalls::connect_to_named_port("{}") {{"#, service_name).unwrap();
-                    writeln!(s, "                Ok(s) => return Ok({}(s)),", struct_name).unwrap();
-                    writeln!(s, "                Err(KernelError::NoSuchEntry) => syscalls::sleep_thread(0),").unwrap();
-                    writeln!(s, "                Err(err) => Err(err)?").unwrap();
-                    writeln!(s, "            }};").unwrap();
-                    writeln!(s, "        }}").unwrap();
-                } else {
-                    // This service is a sm-managed port.
-                    writeln!(s, "         use sunrise_libuser::error::SmError;").unwrap();
-                    writeln!(s, "         ").unwrap();
-                    writeln!(s, "         loop {{").unwrap();
-                    writeln!(s, "              let svcname = unsafe {{").unwrap();
-                    let mut service_name = service.to_string();
-                    service_name += &"\\0".repeat(8 - service_name.len());
-                    writeln!(s, r#"                  core::mem::transmute(*b"{}")"#, service_name).unwrap();
-                    writeln!(s, "              }};").unwrap();
-                    writeln!(s, "              let _ = match sunrise_libuser::sm::IUserInterface::raw_new()?.get_service(svcname) {{").unwrap();
-                    writeln!(s, "                  Ok(s) => return Ok({}(s)),", struct_name).unwrap();
-                    writeln!(s, "                  Err(Error::Sm(SmError::ServiceNotRegistered, ..)) => syscalls::sleep_thread(0),").unwrap();
-                    writeln!(s, "                  Err(err) => return Err(err)").unwrap();
-                    writeln!(s, "              }};").unwrap();
-                    writeln!(s, "         }}").unwrap();
-                }
-
-                writeln!(s, "    }}").unwrap();
-            }
-            writeln!(s, "}}").unwrap();
-        }
-
-        writeln!(s, "impl {} {{", struct_name).unwrap();
-        for cmd in interface.funcs {
-            match format_cmd(&cmd) {
-                Ok(out) => write!(s, "{}", out).unwrap(),
-                Err(_) => writeln!(s, "    // pub fn {}(&mut self) -> Result<(), Error>", &cmd.name).unwrap()
-            }
-        }
-        writeln!(s, "}}").unwrap();
-
         // Add the generated interface to the appropriate module's iface list.
-        cur_mod.ifaces.push(s);
+        cur_mod.ifaces.push(generate_proxy(&ifacename, &interface));
+        cur_mod.ifaces.push(generate_trait(&ifacename, &interface));
     }
 
     // Generate the final module hierarchy
