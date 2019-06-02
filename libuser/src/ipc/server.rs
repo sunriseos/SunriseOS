@@ -15,19 +15,18 @@
 //! Here's a very simple example server:
 //!
 //! ```
+//! #[derive(Debug, Default)]
 //! struct IExample;
-//! object! {
-//!     impl IExample {
-//!         #[cmdid(0)]
-//!         fn hello(&mut self, ) -> Result<([u8; 5]), Error> {
-//!              Ok(b"hello")
-//!         }
+//!
+//! impl sunrise_libuser::example::IExample for IExample {
+//!     fn hello(&mut self, _manager: &WaitableManager) -> Result<([u8; 5]), Error> {
+//!          Ok(b"hello")
 //!     }
 //! }
 //!
 //! fn main() {
 //!      let man = WaitableManager::new();
-//!      let handler = Box::new(PortHandler::<IExample>::new("hello\0").unwrap());
+//!      let handler = Box::new(PortHandler::<IExample>::new("hello\0", IExample::dispatch).unwrap());
 //!      man.add_waitable(handler as Box<dyn IWaitable>);
 //!      man.run()
 //! }

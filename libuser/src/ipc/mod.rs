@@ -23,8 +23,6 @@ use crate::types::{Handle, HandleRef, Pid};
 use bit_field::BitField;
 use crate::error::{Error, LibuserError};
 
-#[macro_use]
-pub mod macros;
 pub mod server;
 mod buffer;
 pub use buffer::*;

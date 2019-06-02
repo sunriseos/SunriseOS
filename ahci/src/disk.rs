@@ -8,7 +8,8 @@ use spin::Mutex;
 use sunrise_libuser::error::{Error, AhciError};
 use sunrise_libuser::types::SharedMemory;
 use sunrise_libuser::syscalls::MemoryPermissions;
-use sunrise_libuser::types::Handle;
+use sunrise_libuser::ahci::IDisk as IDiskInterface;
+use sunrise_libuser::ipc::server::WaitableManager;
 use sunrise_libuser::zero_box::ZeroBox;
 
 use crate::hba::*;
@@ -164,62 +165,55 @@ impl IDisk {
     }
 }
 
-object! {
-    impl IDisk {
-        /// Returns the number of addressable 512-octet sectors for this disk.
-        #[cmdid(0)]
-        fn sector_count(&mut self,) -> Result<(u64,), Error> {
-            Ok((self.0.lock().sectors,))
-        }
+impl IDiskInterface for IDisk {
+    /// Returns the number of addressable 512-octet sectors for this disk.
+    fn sector_count(&mut self, _manager: &WaitableManager) -> Result<u64, Error> {
+        Ok(self.0.lock().sectors)
+    }
 
-        /// Reads sectors from disk.
-        ///
-        /// Reads `sector_count` sectors starting from `lba`.
-        ///
-        /// # Error
-        ///
-        /// - InvalidArg:
-        ///     - `mapping_size` does not reflect the passed handle's size, or mapping it failed,
-        ///     - `lba`, `sector_count`, or `lba + sector_count` is higher than the number of
-        ///        addressable sectors on this disk,
-        ///     - `sector_count` == 0.
-        /// - BufferTooScattered:
-        ///     - The passed handle points to memory that is so physically scattered it overflows
-        ///       the PRDT. This can only happen for read/writes of 1985 sectors or more.
-        ///       You should consider retrying with a smaller `sector_count`.
-        #[cmdid(1)]
-        fn read_dma(&mut self, handle: Handle<copy>, mapping_size: u64, lba: u64, sector_count: u64,) -> Result<(), Error> {
-            let sharedmem = SharedMemory(handle);
-            let addr = sunrise_libuser::mem::find_free_address(mapping_size as _, 0x1000)?;
-            let mapped = sharedmem.map(addr, mapping_size as _, MemoryPermissions::empty())
-            // no need for permission, only the disk will dma to it.
-                .map_err(|_| AhciError::InvalidArg)?;
-            self.0.lock().read_dma(mapped.as_mut_ptr(), mapped.len(), lba, sector_count)
-        }
+    /// Reads sectors from disk.
+    ///
+    /// Reads `sector_count` sectors starting from `lba`.
+    ///
+    /// # Error
+    ///
+    /// - InvalidArg:
+    ///     - `mapping_size` does not reflect the passed handle's size, or mapping it failed,
+    ///     - `lba`, `sector_count`, or `lba + sector_count` is higher than the number of
+    ///        addressable sectors on this disk,
+    ///     - `sector_count` == 0.
+    /// - BufferTooScattered:
+    ///     - The passed handle points to memory that is so physically scattered it overflows
+    ///       the PRDT. This can only happen for read/writes of 1985 sectors or more.
+    ///       You should consider retrying with a smaller `sector_count`.
+    fn read_dma(&mut self, _manager: &WaitableManager, sharedmem: SharedMemory, mapping_size: u64, lba: u64, sector_count: u64) -> Result<(), Error> {
+        let addr = sunrise_libuser::mem::find_free_address(mapping_size as _, 0x1000)?;
+        let mapped = sharedmem.map(addr, mapping_size as _, MemoryPermissions::empty())
+        // no need for permission, only the disk will dma to it.
+            .map_err(|_| AhciError::InvalidArg)?;
+        self.0.lock().read_dma(mapped.as_mut_ptr(), mapped.len(), lba, sector_count)
+    }
 
-        /// Writes sectors to disk.
-        ///
-        /// Writes `sector_count` sectors starting from `lba`.
-        ///
-        /// # Error
-        ///
-        /// - InvalidArg:
-        ///     - `mapping_size` does not reflect the passed handle's size, or mapping it failed,
-        ///     - `lba`, `sector_count`, or `lba + sector_count` is higher than the number of
-        ///        addressable sectors on this disk,
-        ///     - `sector_count` == 0.
-        /// - BufferTooScattered:
-        ///     - The passed handle points to memory that is so physically scattered it overflows
-        ///       the PRDT. This can only happen for read/writes of 1985 sectors or more.
-        ///       You should consider retrying with a smaller `sector_count`.
-        #[cmdid(2)]
-        fn write_dma(&mut self, handle: Handle<copy>, mapping_size: u64, lba: u64, sector_count: u64,) -> Result<(), Error> {
-            let sharedmem = SharedMemory(handle);
-            let addr = sunrise_libuser::mem::find_free_address(mapping_size as _, 0x1000)?;
-            let mapped = sharedmem.map(addr, mapping_size as _, MemoryPermissions::empty())
-            // no need for permission, only the disk will dma to it.
-                .map_err(|_| AhciError::InvalidArg)?;
-            self.0.lock().write_dma(mapped.as_mut_ptr(), mapped.len(), lba, sector_count)
-        }
+    /// Writes sectors to disk.
+    ///
+    /// Writes `sector_count` sectors starting from `lba`.
+    ///
+    /// # Error
+    ///
+    /// - InvalidArg:
+    ///     - `mapping_size` does not reflect the passed handle's size, or mapping it failed,
+    ///     - `lba`, `sector_count`, or `lba + sector_count` is higher than the number of
+    ///        addressable sectors on this disk,
+    ///     - `sector_count` == 0.
+    /// - BufferTooScattered:
+    ///     - The passed handle points to memory that is so physically scattered it overflows
+    ///       the PRDT. This can only happen for read/writes of 1985 sectors or more.
+    ///       You should consider retrying with a smaller `sector_count`.
+    fn write_dma(&mut self, _manager: &WaitableManager, sharedmem: SharedMemory, mapping_size: u64, lba: u64, sector_count: u64) -> Result<(), Error> {
+        let addr = sunrise_libuser::mem::find_free_address(mapping_size as _, 0x1000)?;
+        let mapped = sharedmem.map(addr, mapping_size as _, MemoryPermissions::empty())
+        // no need for permission, only the disk will dma to it.
+            .map_err(|_| AhciError::InvalidArg)?;
+        self.0.lock().write_dma(mapped.as_mut_ptr(), mapped.len(), lba, sector_count)
     }
 }

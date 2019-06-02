@@ -43,51 +43,46 @@ use crate::libuser::error::Error;
 use crate::libuser::syscalls::MemoryPermissions;
 use sunrise_libutils::align_up;
 use libuser::mem::{find_free_address, PAGE_SIZE};
-use crate::libuser::ipc::server::Object;
+use crate::libuser::vi::{IBuffer as IBufferInterface, IBufferProxy, ViInterface as IViInterface};
 
 /// Entry point interface.
 #[derive(Default, Debug)]
 struct ViInterface;
 
-object! {
-    impl ViInterface {
-        /// Create a window.
-        ///
-        /// This creates a window at the given coordinates, with the given
-        /// height. The passed handle should be a SharedMemory handle containing
-        /// a framebuffer of type `[[u8; width]; height]`.
-        ///
-        /// It is allowed to place the framebuffer outside the field of view.
-        #[cmdid(0)]
-        fn create_buffer(&mut self, manager: &WaitableManager, handle: Handle<copy>, top: i32, left: i32, width: u32, height: u32,) -> Result<(Handle,), Error> {
-            let sharedmem = SharedMemory(handle);
-            let size = align_up(width * height * 4, PAGE_SIZE as _);
-            let addr = find_free_address(size as _, PAGE_SIZE)?;
-            let mapped = sharedmem.map(addr, size as _, MemoryPermissions::READABLE)?;
-            let buf = IBuffer {
-                buffer: Arc::new(Buffer {
-                    mem: mapped,
-                    top,
-                    left,
-                    width,
-                    height
-                })
-            };
-            BUFFERS.lock().push(Arc::downgrade(&buf.buffer));
-            let (server, client) = syscalls::create_session(false, 0)?;
-            let wrapper = SessionWrapper::new(server, buf, IBuffer::dispatch);
-            manager.add_waitable(Box::new(wrapper) as Box<dyn IWaitable>);
-            Ok((client.into_handle(),))
-        }
+impl IViInterface for ViInterface {
+    /// Create a window.
+    ///
+    /// This creates a window at the given coordinates, with the given
+    /// height. The passed handle should be a SharedMemory handle containing
+    /// a framebuffer of type `[[u8; width]; height]`.
+    ///
+    /// It is allowed to place the framebuffer outside the field of view.
+    fn create_buffer(&mut self, manager: &WaitableManager, sharedmem: SharedMemory, top: i32, left: i32, width: u32, height: u32,) -> Result<IBufferProxy, Error> {
+        let size = align_up(width * height * 4, PAGE_SIZE as _);
+        let addr = find_free_address(size as _, PAGE_SIZE)?;
+        let mapped = sharedmem.map(addr, size as _, MemoryPermissions::READABLE)?;
+        let buf = IBuffer {
+            buffer: Arc::new(Buffer {
+                mem: mapped,
+                top,
+                left,
+                width,
+                height
+            })
+        };
+        BUFFERS.lock().push(Arc::downgrade(&buf.buffer));
+        let (server, client) = syscalls::create_session(false, 0)?;
+        let wrapper = SessionWrapper::new(server, buf, IBuffer::dispatch);
+        manager.add_waitable(Box::new(wrapper) as Box<dyn IWaitable>);
+        Ok(IBufferProxy::from(client))
+    }
 
-        /// Gets the screen (width, height) in pixels.
-        ///
-        /// Cannot fail.
-        #[cmdid(1)]
-        fn get_screen_resolution(&mut self,) -> Result<(u32, u32,), Error> {
-            let fb = FRAMEBUFFER.lock();
-            Ok((fb.width() as _, fb.height() as _))
-        }
+    /// Gets the screen (width, height) in pixels.
+    ///
+    /// Cannot fail.
+    fn get_screen_resolution(&mut self, _manager: &WaitableManager) -> Result<(u32, u32,), Error> {
+        let fb = FRAMEBUFFER.lock();
+        Ok((fb.width() as _, fb.height() as _))
     }
 }
 
@@ -243,35 +238,32 @@ impl Drop for IBuffer {
     }
 }
 
-object! {
-    impl IBuffer {
-        /// Blit the buffer to the framebuffer.
-        #[cmdid(0)]
-        #[inline(never)]
-        fn draw(&mut self, ) -> Result<(), Error> {
-            let (fullscreen_width, fullscreen_height, bpp) = {
-                let fb = FRAMEBUFFER.lock();
-                (fb.width(), fb.height(), fb.bpp())
-            };
-            // create a fake Framebuffer that writes to BACKBUFFER_ARR,
-            // and copy it to actual screen only when we're done composing all layers in it.
-            let mut backbuffer_arr = BACKBUFFER_ARR.lock();
-            let mut framebuffer = Framebuffer::new_buffer(&mut *backbuffer_arr, fullscreen_width, fullscreen_height, bpp);
-            let (dtop, dleft, dwidth, dheight) = self.buffer.get_real_bounds(framebuffer.width() as u32, framebuffer.height() as u32);
-            framebuffer.clear_at(dleft as _, dtop as _, dwidth as _, dheight as _);
-            BUFFERS.lock().retain(|buffer| {
-                if let Some(buffer) = buffer.upgrade() {
-                    draw(&*buffer, &mut framebuffer, dtop, dleft, dwidth, dheight);
-                    true
-                } else {
-                    false
-                }
-            });
-            // BACKBUFFER_ARR is often bigger than our screen, take only the first pixels.
-            let screen_in_backbuffer = &mut framebuffer.get_fb()[0..(fullscreen_width * fullscreen_height)];
-            FRAMEBUFFER.lock().get_fb().copy_from_slice(screen_in_backbuffer);
-            Ok(())
-        }
+impl IBufferInterface for IBuffer {
+    /// Blit the buffer to the framebuffer.
+    #[inline(never)]
+    fn draw(&mut self, _manager: &WaitableManager) -> Result<(), Error> {
+        let (fullscreen_width, fullscreen_height, bpp) = {
+            let fb = FRAMEBUFFER.lock();
+            (fb.width(), fb.height(), fb.bpp())
+        };
+        // create a fake Framebuffer that writes to BACKBUFFER_ARR,
+        // and copy it to actual screen only when we're done composing all layers in it.
+        let mut backbuffer_arr = BACKBUFFER_ARR.lock();
+        let mut framebuffer = Framebuffer::new_buffer(&mut *backbuffer_arr, fullscreen_width, fullscreen_height, bpp);
+        let (dtop, dleft, dwidth, dheight) = self.buffer.get_real_bounds(framebuffer.width() as u32, framebuffer.height() as u32);
+        framebuffer.clear_at(dleft as _, dtop as _, dwidth as _, dheight as _);
+        BUFFERS.lock().retain(|buffer| {
+            if let Some(buffer) = buffer.upgrade() {
+                draw(&*buffer, &mut framebuffer, dtop, dleft, dwidth, dheight);
+                true
+            } else {
+                false
+            }
+        });
+        // BACKBUFFER_ARR is often bigger than our screen, take only the first pixels.
+        let screen_in_backbuffer = &mut framebuffer.get_fb()[0..(fullscreen_width * fullscreen_height)];
+        FRAMEBUFFER.lock().get_fb().copy_from_slice(screen_in_backbuffer);
+        Ok(())
     }
 }
 
