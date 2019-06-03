@@ -137,7 +137,7 @@ pub fn exit_process() -> ! {
     unsafe {
         match syscall(nr::ExitProcess, 0, 0, 0, 0, 0, 0) {
             Ok(_) => (),
-            Err(err) => { let _ = output_debug_string(&format!("Failed to exit: {}", err)); },
+            Err(err) => { let _ = output_debug_string(&format!("Failed to exit: {}", err), 10, "sunrise_libuser::syscalls::exit_process"); },
         }
         #[allow(clippy::empty_loop)]
         loop {} // unreachable, but we can't panic, as panic! calls exit_process
@@ -303,9 +303,9 @@ pub fn send_sync_request_with_user_buffer(buf: &mut [u8], handle: &ClientSession
 /// Print the given string to the kernel's debug output.
 ///
 /// Currently, this prints the string to the serial port.
-pub fn output_debug_string(s: &str) -> Result<(), KernelError> {
+pub fn output_debug_string(s: &str, level: usize, target: &str) -> Result<(), KernelError> {
     unsafe {
-        syscall(nr::OutputDebugString, s.as_ptr() as _, s.len(), 0, 0, 0, 0)?;
+        syscall(nr::OutputDebugString, s.as_ptr() as _, s.len(), level, target.as_ptr() as _, target.len(), 0)?;
         Ok(())
     }
 }

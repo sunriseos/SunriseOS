@@ -102,7 +102,7 @@ impl WaitableManager {
                 Ok(false) => (),
                 Ok(true) => { waitables.remove(idx); },
                 Err(err) => {
-                    let _ = syscalls::output_debug_string(&format!("Error: {}", err));
+                    error!("Error: {}", err);
                     waitables.remove(idx);
                 }
             }

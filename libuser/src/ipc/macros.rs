@@ -206,7 +206,7 @@ macro_rules! object {
         match $cmdid {
             $($fcmdid => $fcmd,)*
             cmd => {
-                let _ = $crate::syscalls::output_debug_string(&format!("Unknown cmdid: {}", cmd));
+                let _ = $crate::__log::warn!("Unknown cmdid: {}", cmd);
                 Err($crate::error::KernelError::PortRemoteDead.into())
             }
         }

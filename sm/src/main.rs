@@ -37,7 +37,6 @@
 
 #[macro_use]
 extern crate sunrise_libuser as libuser;
-#[macro_use]
 extern crate alloc;
 
 
