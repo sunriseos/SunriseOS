@@ -19,8 +19,6 @@
 #[macro_use]
 extern crate sunrise_libuser;
 #[macro_use]
-extern crate alloc;
-#[macro_use]
 extern crate log;
 
 use sunrise_libuser::terminal::{Terminal, WindowSize};
@@ -156,7 +154,7 @@ fn main() {
                 year = (year & 0x0F) + ((year / 16) * 10);
             }
 
-            let _ = info!("{:02}:{:02}:{:02} {} {:02} {} {}", hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year);
+            info!("{:02}:{:02}:{:02} {} {:02} {} {}", hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year);
             let _ = write!(&mut logger, "\n{:02}:{:02}:{:02} {} {:02} {} {}", hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year);
         }
     }

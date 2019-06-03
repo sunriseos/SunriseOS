@@ -36,9 +36,6 @@ extern crate failure;
 #[doc(hidden)]
 pub extern crate log as __log;
 
-#[macro_use]
-extern crate lazy_static;
-
 use swipc_gen::gen_ipc;
 
 pub mod caps;

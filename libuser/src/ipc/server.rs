@@ -102,7 +102,7 @@ impl WaitableManager {
                 Ok(false) => (),
                 Ok(true) => { waitables.remove(idx); },
                 Err(err) => {
-                    let _ = error!("Error: {}", err);
+                    error!("Error: {}", err);
                     waitables.remove(idx);
                 }
             }

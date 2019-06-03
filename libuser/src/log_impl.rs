@@ -3,21 +3,13 @@
 //! Redirects all logs to the kernel logger (output_debug_string syscall). No
 //! filtering is done, so everything will be sent.
 
-use spin::Mutex;
-use arrayvec::ArrayString;
 use log::{self, Log, LevelFilter, Metadata, Record};
 use crate::syscalls::output_debug_string;
-use core::fmt::{self, Write};
 
 /// Log implementation structure.
 ///
 /// See module documentation for more information.
 struct Logger;
-
-struct LogItem<'a> {
-    cur_level: u64,
-    cur_target: &'a str,
-}
 
 impl Log for Logger {
     fn enabled(&self, _metadata: &Metadata<'_>) -> bool {
@@ -32,7 +24,7 @@ impl Log for Logger {
             log::Level::Debug => 70,
             log::Level::Trace => 90,
         };
-        output_debug_string(&*format!("{}", record.args()), level, record.target());
+        let _ = output_debug_string(&*format!("{}", record.args()), level, record.target());
     }
 
     fn flush(&self) {}
