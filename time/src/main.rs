@@ -32,7 +32,7 @@ use alloc::prelude::v1::*;
 
 use sunrise_libuser::syscalls;
 use sunrise_libuser::ipc::server::{WaitableManager, PortHandler, IWaitable, SessionWrapper};
-use sunrise_libuser::time::{TimeZoneServiceProxy, StaticService as _, TimeZoneService as _};
+use sunrise_libuser::time::{TimeZoneServiceProxy, StaticService as _, TimeZoneService as _, RTCManager as _};
 use sunrise_libuser::types::*;
 use sunrise_libuser::io::{self, Io};
 use sunrise_libuser::error::Error;
@@ -52,17 +52,18 @@ capabilities!(CAPABILITIES = Capabilities {
         sunrise_libuser::syscalls::nr::CreateSession,
 
         sunrise_libuser::syscalls::nr::ConnectToNamedPort,
+        sunrise_libuser::syscalls::nr::CreateInterruptEvent,
         sunrise_libuser::syscalls::nr::SendSyncRequestWithUserBuffer,
 
         sunrise_libuser::syscalls::nr::SetHeapSize,
 
         sunrise_libuser::syscalls::nr::QueryMemory,
-
-        sunrise_libuser::syscalls::nr::MapSharedMemory,
-        sunrise_libuser::syscalls::nr::UnmapSharedMemory,
-
-        sunrise_libuser::syscalls::nr::MapFramebuffer,
     ],
+    raw_caps: [
+        sunrise_libuser::caps::irq_pair(0x08, 0x3FF),
+        sunrise_libuser::caps::ioport(0x70),
+        sunrise_libuser::caps::ioport(0x71),
+    ]
 });
 
 /// Entry point interface.
@@ -88,20 +89,47 @@ impl sunrise_libuser::time::StaticService for StaticService {
 /// register, then either read or write the data register to read/write to that
 /// data address. This is implemented and abstracted away by [Rtc::read_reg] and
 /// [Rtc::write_reg].
+#[derive(Debug)]
 struct Rtc {
     /// Command Register.
     command: io::Pio<u8>,
     /// Data Register.
-    data: io::Pio<u8>
+    data: io::Pio<u8>,
+    
+    /// Last RTC time value.
+    timestamp: Mutex<i64>,
+
+    /// The RTC event.
+    irq_event: Option<ReadableEvent>
 }
 
 impl Rtc {
     /// Create a new RTC with the default IBM PC values.
     pub fn new() -> Rtc {
-        Rtc {
+        let irq = syscalls::create_interrupt_event(0x08, 0).expect("IRQ cannot be acquired");
+
+        let mut rtc = Rtc {
             command: io::Pio::new(0x70),
-            data: io::Pio::new(0x71)
+            data: io::Pio::new(0x71),
+            timestamp: Mutex::default(),
+            irq_event: Some(irq)
+        };
+
+        rtc.enable_update_ended_int();
+        rtc
+    }
+
+    /// Get the last timestamp of the RTC.
+    pub fn get_time(&self) -> i64 {
+        *self.timestamp.lock()
+    }
+
+    /// Get the update event of the RTC.
+    pub fn get_irq_event_hanle(&self) -> HandleRef<'static> {
+        if let Some(irq_event) = &self.irq_event {
+            return irq_event.0.as_ref_static()
         }
+        panic!("RTC irq event cannot be uninialized");
     }
 
     /// Read from a CMOS register.
@@ -129,7 +157,7 @@ impl Rtc {
 
     /// Acknowledges an interrupt from the RTC. Necessary to receive further
     /// interrupts.
-    pub fn read_interrupt_kind(&mut self) -> u8 {
+    fn read_interrupt_kind(&mut self) -> u8 {
         self.read_reg(0xC)
     }
 
@@ -141,27 +169,78 @@ impl Rtc {
     }
 }
 
-/// Global instance of Rtc
-static RTC_INSTANCE: Mutex<Rtc> = Mutex::new(unsafe { initialize_to_zero!(Rtc) });
+/// Global instance of Rtc. It's safe to actually access it as it isn't modified concurently
+static mut RTC_INSTANCE: Rtc = unsafe { initialize_to_zero!(Rtc) };
 
 /// RTC interface.
 #[derive(Default, Debug)]
-struct RTCManager {
-    /// Last RTC time value.
-    timestamp: Mutex<u64>
+struct RTCManager;
+
+impl IWaitable for Rtc {
+    fn get_handle(&self) -> HandleRef<'_> {
+        if let Some(irq_event) = &self.irq_event {
+            return irq_event.0.as_ref_static()
+        }
+        panic!("RTC irq event cannot be uninialized");
+    }
+
+    fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<bool, Error> {
+        let intkind = self.read_interrupt_kind();
+        if intkind & (1 << 4) != 0 {
+            // Time changed. Let's update.
+            let mut seconds = i64::from(self.read_reg(0));
+            let mut minutes = i64::from(self.read_reg(2));
+            let mut hours = i64::from(self.read_reg(4));
+            let mut dayofweek = i64::from(self.read_reg(6));
+            let mut day = i64::from(self.read_reg(7));
+            let mut month = i64::from(self.read_reg(8));
+            let mut year = i64::from(self.read_reg(9));
+
+            // IBM sometimes uses BCD. Why? God knows.
+            if !self.is_12hr_clock() {
+                seconds = (seconds & 0x0F) + ((seconds / 16) * 10);
+                minutes = (minutes & 0x0F) + ((minutes / 16) * 10);
+                hours = ( (hours & 0x0F) + (((hours & 0x70) / 16) * 10) ) | (hours & 0x80);
+                day = (day & 0x0F) + ((day / 16) * 10);
+                dayofweek = (dayofweek & 0x0F) + ((dayofweek / 16) * 10);
+                month = (month & 0x0F) + ((month / 16) * 10);
+                year = (year & 0x0F) + ((year / 16) * 10);
+            }
+
+            let mut value = self.timestamp.lock();
+
+            // Taken from https://en.wikipedia.org/wiki/Julian_day
+            let a = (14 - month) / 12;
+            let y = (year + 2000) + 4800 - a;
+            let m = month + (12 * a) - 3;
+
+            let mut julian_day_number = dayofweek + 1;
+
+            julian_day_number += (153 * m + 2) / 5;
+            julian_day_number += 365 * y;
+            julian_day_number += y / 4;
+            julian_day_number += -y / 100;
+            julian_day_number += y / 400;
+            julian_day_number -= 32045;
+            julian_day_number -= 2440588; // Unix epoch in julian date
+            julian_day_number *= 86400; // days to seconds
+            julian_day_number += hours * 3600; // hours to seconds
+            julian_day_number += minutes * 60;
+            julian_day_number += seconds;
+
+            *value = julian_day_number;
+        }
+        Ok(false)
+    }
 }
 
 impl sunrise_libuser::time::RTCManager for RTCManager {
     fn get_rtc_time(&mut self, _manager: &WaitableManager) -> Result<i64, Error> {
-        Ok((*self.timestamp.lock()) as i64)
-    }
-
-    fn set_rtc_time(&mut self, _manager: &WaitableManager, rtc_time: i64) -> Result<(), Error> {
-        unimplemented!()
+        Ok(unsafe {RTC_INSTANCE.get_time() })
     }
 
     fn get_rtc_event(&mut self, _manager: &WaitableManager) -> Result<HandleRef<'static>, Error> {
-        unimplemented!()
+        Ok(unsafe {RTC_INSTANCE.get_irq_event_hanle() })
     }
 }
 
@@ -173,15 +252,21 @@ fn main() {
     let device_location_name = b"Europe/Paris\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
     timezone::TZ_MANAGER.lock().set_device_location_name(*device_location_name).unwrap();
 
-    //let irq = syscalls::create_interrupt_event(0x08, 0).unwrap();
+    unsafe { RTC_INSTANCE = Rtc::new() };
+
     let man = WaitableManager::new();
     let user_handler = Box::new(PortHandler::new("time:u\0", StaticService::dispatch).unwrap());
     let applet_handler = Box::new(PortHandler::new("time:a\0", StaticService::dispatch).unwrap());
     let system_handler = Box::new(PortHandler::new("time:s\0", StaticService::dispatch).unwrap());
+    let rtc_handler = Box::new(PortHandler::new("rtc\0", RTCManager::dispatch).unwrap());
+
+    let rtc_instance = unsafe { Box::from_raw(&mut RTC_INSTANCE as *mut Rtc) };
 
     man.add_waitable(user_handler as Box<dyn IWaitable>);
     man.add_waitable(applet_handler as Box<dyn IWaitable>);
     man.add_waitable(system_handler as Box<dyn IWaitable>);
+    man.add_waitable(rtc_handler as Box<dyn IWaitable>);
+    man.add_waitable(rtc_instance as Box<dyn IWaitable>);
 
     man.run();
 }

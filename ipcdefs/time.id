@@ -55,13 +55,10 @@ interface sunrise_libuser::time::StaticService is time:u, time:a, time:s {
 # RTC interface
 interface sunrise_libuser::time::RTCManager is rtc {
 	# Get the current RTC time
-	[0] get_rtc_time() -> sunrise_libuser::time::PosixTime;
-
-	# Get the current RTC time
-	[1] set_rtc_time(sunrise_libuser::time::PosixTime);
+	[1] get_rtc_time() -> sunrise_libuser::time::PosixTime;
 
 	# Event triggered on RTC time update
-	[2] get_rtc_event() -> handle<copy>;
+	[3] get_rtc_event() -> handle<copy>;
 }
 
 # TimeZone service object
