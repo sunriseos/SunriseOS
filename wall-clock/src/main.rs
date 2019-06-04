@@ -138,11 +138,15 @@ fn main() {
     let mut timezone_service = time.get_timezone_service().unwrap();
     //let mut tz_rules = [0x0; 0x4000];
     debug!("Hello");
-    let mut location = [0x0; 0x24]; // b"Europe/Paris\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
+    let mut location = timezone_service.get_device_location_name().unwrap();
+    debug!("Hello {:?}", unsafe { core::str::from_utf8_unchecked(&location) });
+
     let mut rule = TIMEZONE_RULE.lock();
-    let res = timezone_service.test(&mut location).err();
-    debug!("Hello {:?}", res);
+    //let res = timezone_service.load_timezone_rule(location, &mut rule).err();
+    //debug!("Hello {:?}", res);
     //
+    let res = timezone_service.to_calendar_time_with_my_rule(0).unwrap();
+    debug!("Hello {:?}", res);
 
     loop {
         syscalls::wait_synchronization(&[irq.0.as_ref()], None).unwrap();

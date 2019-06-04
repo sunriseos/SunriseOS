@@ -76,7 +76,14 @@ impl sunrise_libuser::time::StaticService for StaticService {
     }
 }
 
+use generic_array::GenericArray;
+use generic_array::typenum::consts::U36;
+
 fn main() {
+    // Setup a default device location
+    let device_location_name = b"Europe/Paris\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+    timezone::TZ_MANAGER.lock().set_device_location_name(*device_location_name).unwrap();
+
     let man = WaitableManager::new();
     let user_handler = Box::new(PortHandler::new("time:u\0", StaticService::dispatch).unwrap());
     let applet_handler = Box::new(PortHandler::new("time:a\0", StaticService::dispatch).unwrap());
