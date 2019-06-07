@@ -312,12 +312,6 @@ impl InactiveHierarchyTrait for InactiveHierarchy {
     fn is_currently_active(&self) -> bool {
         super::read_cr3() == self.directory_physical_address
     }
-
-    unsafe fn from_currently_active() -> Self {
-        InactiveHierarchy {
-            directory_physical_address: super::read_cr3(),
-        }
-    }
 }
 
 /* ********************************************************************************************** */
