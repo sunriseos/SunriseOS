@@ -17,6 +17,8 @@
 #![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
 #![deny(intra_doc_link_resolution_failure)]
 
+#![feature(underscore_const_names)]
+
 #[macro_use]
 extern crate sunrise_libutils;
 #[macro_use]
@@ -28,6 +30,8 @@ pub mod error;
 
 use core::fmt;
 use bitfield::bitfield;
+use static_assertions::assert_eq_size;
+use core::mem::size_of;
 
 bitfield! {
     /// Represents the current state of a memory region: why is it allocated, and
@@ -305,6 +309,50 @@ pub struct MemoryInfo {
     /// Unknown.
     pub device_ref_count: u32,
 }
+
+/// Buffer used for Inter Process Communication.
+/// Kernel reads, interprets, and copies data from/to it.
+///
+/// Found in the [TLS] of every thread.
+pub type IpcBuffer = [u8; 0x100];
+
+/// Thread Local Storage region.
+///
+/// The kernel allocates one for every thread, and makes a register point (indirectly) to it
+/// so that the userspace can access it at any time.
+///
+/// * x86_32: Stored at `gs:0x00..gs:0x200`.
+/// * x86_64: Stored at `fs:0x00..fs:0x200`.
+#[repr(C, align(16))]
+pub struct TLS {
+    /// Pointer pointing to this TLS region (i.e pointing to itself). Set by the kernel.
+    ///
+    /// x86 uses the segmentation for accessing the TLS, and it has no way to translate `gs:0x0`
+    /// to an address in the flat segmentation model that every other segment uses.
+    ///
+    /// This pointer serves as a translation.
+    pub ptr_self: *mut TLS,
+    /// reserved or unknown.
+    _reserved0: [u8; 16 - size_of::<*mut u8>()],
+    /// Buffer used for IPC. Kernel reads, interprets, and copies data from/to it.
+    pub ipc_command_buffer: IpcBuffer,
+    /// reserved or unknown.
+    _reserved1: [u8; 0x200 - size_of::<IpcBuffer>() - 2 * size_of::<usize>() - (16 - size_of::<*mut u8>())],
+    /// User controlled pointer to thread context. Not observed by the kernel.
+    pub ptr_thread_context: usize,
+}
+
+impl fmt::Debug for TLS {
+    /// Debug on TLS displays only the address of the IPC command buffer, and `ptr_thread_context`.
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        f.debug_struct("TLS")
+            .field("ipc_command_buffer_address", &(&self.ipc_command_buffer as *const u8))
+            .field("ptr_thread_context", &(self.ptr_thread_context as *const u8))
+            .finish()
+    }
+}
+
+assert_eq_size!(TLS, [u8; 0x200]);
 
 macro_rules! syscalls {
     (

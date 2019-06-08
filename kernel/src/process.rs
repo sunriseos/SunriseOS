@@ -20,9 +20,11 @@ use failure::Backtrace;
 use crate::frame_allocator::PhysicalMemRegion;
 use crate::sync::RwLock;
 
+pub mod thread_local_storage;
 mod capabilities;
 pub use self::capabilities::ProcessCapabilities;
 use crate::paging::{InactiveHierarchy, InactiveHierarchyTrait};
+use self::thread_local_storage::TLSManager;
 
 /// The struct representing a process. There's one for every process.
 ///
@@ -52,6 +54,9 @@ pub struct ProcessStruct {
 
     /// Permissions of this process.
     pub capabilities:             ProcessCapabilities,
+
+    /// Tracks used and free allocated Thread Local Storage regions of this process.
+    pub tls_manager: Mutex<TLSManager>,
 
     /// An array of the created but not yet started threads.
     ///
@@ -107,6 +112,9 @@ pub struct ThreadStruct {
     ///
     /// The currently running process is indirectly kept alive by the `CURRENT_THREAD` global in scheduler.
     pub process: Arc<ProcessStruct>,
+
+    /// Pointer to the Thread Local Storage region of this thread.
+    pub tls: VirtualAddress,
 
     /// Argument passed to the entrypoint on first schedule.
     pub arg: usize
@@ -418,6 +426,7 @@ impl ProcessStruct {
                 threads: SpinLockIRQ::new(Vec::new()),
                 phandles: SpinLockIRQ::new(HandleTable::default()),
                 killed: AtomicBool::new(false),
+                tls_manager: Mutex::new(TLSManager::default()),
                 thread_maternity: SpinLock::new(Vec::new()),
                 capabilities
             }
@@ -465,6 +474,7 @@ impl ProcessStruct {
                 phandles: SpinLockIRQ::new(HandleTable::default()),
                 killed: AtomicBool::new(false),
                 thread_maternity: SpinLock::new(Vec::new()),
+                tls_manager: Mutex::new(TLSManager::default()),
                 capabilities: ProcessCapabilities::default(),
             }
         )
@@ -517,6 +527,8 @@ impl ThreadStruct {
     /// The thread's only strong reference is stored in the process' maternity,
     /// and we return only a weak to it, that can directly be put in a thread_handle.
     pub fn new(belonging_process: &Arc<ProcessStruct>, ep: VirtualAddress, stack: VirtualAddress, arg: usize) -> Result<Weak<Self>, KernelError> {
+        // get its process memory
+        let mut pmemory = belonging_process.pmemory.lock();
 
         // allocate its kernel stack
         let kstack = KernelStack::allocate_stack()?;
@@ -527,12 +539,16 @@ impl ThreadStruct {
         // the state of the process, Stopped
         let state = ThreadStateAtomic::new(ThreadState::Stopped);
 
+        // allocate its thread local storage region
+        let tls = belonging_process.tls_manager.lock().allocate_tls(&mut pmemory)?;
+
         let t = Arc::new(
             ThreadStruct {
                 state,
                 kstack,
                 hwcontext : empty_hwcontext,
                 process: Arc::clone(belonging_process),
+                tls,
                 arg
             }
         );
@@ -599,12 +615,20 @@ impl ThreadStruct {
         // the saved esp will be overwritten on schedule-out anyway
         let hwcontext = SpinLockIRQ::new(ThreadHardwareContext::default());
 
+        // create our thread local storage region
+        let tls = {
+            let mut pmemory = process.pmemory.lock();
+            let mut tls_manager = process.tls_manager.lock();
+            tls_manager.allocate_tls(&mut pmemory).expect("Failed to allocate TLS for first thread")
+        };
+
         let t = Arc::new(
             ThreadStruct {
                 state,
                 kstack,
                 hwcontext,
                 process: Arc::clone(&process),
+                tls,
                 arg: 0
             }
         );
@@ -668,7 +692,14 @@ impl ThreadStruct {
 }
 
 impl Drop for ThreadStruct {
+    /// Late thread death notifications:
+    ///
+    /// * notifies our process that our TLS can be re-used.
     fn drop(&mut self) {
+        unsafe {
+            // safe: we're being dropped, our TLS will not be reused by us.
+            self.process.tls_manager.lock().free_tls(self.tls);
+        }
         // todo this should be a debug !
         info!("💀 Dropped a thread : {}", self.process.name)
     }
