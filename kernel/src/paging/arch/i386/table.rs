@@ -314,6 +314,35 @@ impl InactiveHierarchyTrait for InactiveHierarchy {
     }
 }
 
+impl Drop for InactiveHierarchy {
+    /// When a process dies, its InactiveHierarchy is dropped.
+    /// The pages themselves have already been freed by the bookkeeping,
+    /// we just have to free the tables and the directory of this hierarchy.
+    ///
+    /// However we must free only the tables that map UserLand memory, as the ones mapping
+    /// KernelLand are shared with other processes and are still in use.
+    fn drop(&mut self) {
+        debug_assert!(!self.is_currently_active(), "Dropped the currently active paging hierarchy");
+
+        // free the userland tables
+        {
+            for table_entry in &self.get_top_level_table().entries()[USERLAND_START_TABLE..=USERLAND_END_TABLE] {
+                match table_entry.pointed_frame() {
+                    PageState::Available | PageState::Guarded => (),
+                    PageState::Present(paddr) => unsafe {
+                        // safe because they were existing frames, and not tracked by any one except the page tables.
+                        PhysicalMemRegion::reconstruct(paddr, PAGE_SIZE);
+                        // dropping the region deallocates it
+                    }
+                }
+            }
+        }
+        // and finally the directory
+        unsafe {
+            PhysicalMemRegion::reconstruct(self.directory_physical_address, PAGE_SIZE);
+        }
+    }
+}
 /* ********************************************************************************************** */
 
 /// When passing this struct the TLB will be flushed. Used by [ActivePageTable].

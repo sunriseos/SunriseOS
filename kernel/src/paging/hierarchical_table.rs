@@ -2,11 +2,9 @@
 
 // what the architecture code still has define
 use super::arch::{PAGE_SIZE, ENTRY_COUNT};
-use super::lands::{RecursiveTablesLand, VirtualSpaceLand};
 use super::MappingAccessRights;
 
 use crate::mem::{VirtualAddress, PhysicalAddress};
-use crate::frame_allocator::{PhysicalMemRegion};
 use crate::utils::align_up_checked;
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
@@ -596,36 +594,32 @@ pub trait TableHierarchy {
     }
 }
 
-/// A trait implemented by innactive table hierarchies.
-/// Enables creating a
+/// A trait implemented by inactive table hierarchies.
+///
+/// Extends the [TableHierarchy] trait by adding functions to switch to this hierarchy,
+/// when process-switching.
+///
+/// # Drop
+///
+/// When a process dies, the InactiveHierarchy stored in its [ProcessMemory] is dropped.
+/// The pages used by this process have already been freed by the bookkeeping, but the
+/// implementer of this trait is responsible for freeing the tables owned by this hierarchy.
+///
+/// However, it must not free the tables pointing to KernelLand memory, as they are shared
+/// with other processes, and are still in use.
+///
+/// [ProcessMemory]: crate::paging::process_memory::ProcessMemory
 pub trait InactiveHierarchyTrait : TableHierarchy {
     /// Creates a hierarchy. Allocates at least a top level directory,
-    /// make all its entries unmapped, and make its last entry recursive.
+    /// makes all its entries unmapped, and makes its last entry recursive.
     fn new() -> Self;
 
-    /// Switches to this hierarchy,
+    /// Switches to this hierarchy.
     ///
     /// Since all process are supposed to have the same view of kernelspace,
     /// this function will copy the part of the active directory that is mapping kernel space tables
-    /// to the directory being switched to, and then performs the switch
+    /// to the directory being switched to, and then performs the switch.
     fn switch_to(&mut self);
-
-    /// De-allocates all physical memory used by tables of this hierarchy,
-    /// by iterating in RecursiveTablesLand, and freeing every entry.
-    ///
-    /// Does not unmap UserLand and KernelLand memory,
-    /// this should be done before calling this function, otherwise they will be leaked.
-    ///
-    /// This might be called by the Drop of the struct it's implemented on.
-    unsafe fn destroy(&mut self) {
-        self.unmap(RecursiveTablesLand::start_addr(), RecursiveTablesLand::length(), |paddr| {
-            unsafe {
-                // safe because they were existing frames, and not tracked by any one except the page tables.
-                PhysicalMemRegion::reconstruct(paddr, PAGE_SIZE);
-                // dropping the region deallocates it
-            }
-        });
-    }
 
     /// Performs a shallow copy of the top level-directory section that maps KernelLand tables.
     ///
