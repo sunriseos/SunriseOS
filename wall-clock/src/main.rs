@@ -70,26 +70,30 @@ fn main() {
     let mut rtc = RTCManager::raw_new().unwrap();
     let mut timezone_service = time.get_timezone_service().unwrap();
 
-    let rtc_event = rtc.get_rtc_event().unwrap();
-    //let mut tz_rules = [0x0; 0x4000];
-    debug!("Hello");
+    //let rtc_event = rtc.get_rtc_event().unwrap();
     let mut location = timezone_service.get_device_location_name().unwrap();
-    debug!("Hello {:?}", unsafe { core::str::from_utf8_unchecked(&location) });
 
     let mut rule = TIMEZONE_RULE.lock();
-    //let res = timezone_service.load_timezone_rule(location, &mut rule).err();
-    //debug!("Hello {:?}", res);
-    //
-
     loop {
-        syscalls::wait_synchronization(&[rtc_event.as_ref()], None).unwrap();
+        // TODO: Use get_rtc_event event handle
+        // BODY: We need CreateEvent, SignalEvent and ClearEvent syscalls before using this.
+        syscalls::sleep_thread(1000000000);
+        //syscalls::wait_synchronization(&[rtc_event.as_ref()], None).unwrap();
+
         let timestamp = rtc.get_rtc_time().unwrap();
         let res = timezone_service.to_calendar_time_with_my_rule(timestamp).unwrap();
-        debug!("Hello {:?}", res);
-        loop {}
+        let calendar = res.0;
 
-        //let _ = syscalls::output_debug_string(&format!("{:02}:{:02}:{:02} {} {:02} {} {}", hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year));
-        //let _ = write!(&mut logger, "\n{:02}:{:02}:{:02} {} {:02} {} {}", hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year);
+        let hours = calendar.hour;
+        let minutes = calendar.minute;
+        let seconds = calendar.second;
+        let day = calendar.day;
+        let dayofweek = res.1.day_of_week as u8 + 1;
+        let month = calendar.month as u8 + 1;
+        let year = calendar.year;
+
+        let _ = syscalls::output_debug_string(&format!("{:02}:{:02}:{:02} {} {:02} {} {}", hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year));
+        let _ = write!(&mut logger, "\n{:02}:{:02}:{:02} {} {:02} {} {}", hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year);
     }
 }
 
