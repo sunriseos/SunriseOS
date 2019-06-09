@@ -3,6 +3,7 @@
 //! Permit to manipulate timezone data.
 
 #![no_std]
+#![feature(underscore_const_names)]
 #![allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
 
 #[macro_use]
@@ -170,7 +171,7 @@ impl PartialEq<TimeTypeInfo> for TimeTypeInfo {
     }
 }
 
-assert_eq_size!(tti; TimeTypeInfo, [u8; 0x10]);
+assert_eq_size!(TimeTypeInfo, [u8; 0x10]);
 
 impl Default for TimeTypeInfo {
     fn default() -> Self {
@@ -215,7 +216,7 @@ pub struct TimeZoneRule {
     reserved: [u8; 0x12c4],
 }
 
-assert_eq_size!(tzrule; TimeZoneRule, [u8; 0x4000]);
+assert_eq_size!(TimeZoneRule, [u8; 0x4000]);
 
 /// Represent the basic informations of a local time.
 #[repr(C, align(8))]
@@ -287,7 +288,7 @@ impl Default for CalendarAdditionalInfo {
     }
 }
 
-assert_eq_size!(calendaradditionalinfo; CalendarAdditionalInfo, [u8; 0x18]);
+assert_eq_size!(CalendarAdditionalInfo, [u8; 0x18]);
 
 /// Represent a local time.
 #[repr(C, align(8))]

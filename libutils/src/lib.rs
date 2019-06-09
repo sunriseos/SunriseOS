@@ -282,6 +282,7 @@ mod test {
 }
 
 #[macro_export]
+/// A macro to initialize a struct directly in global.
 macro_rules! initialize_to_zero {
     ($ty:ty) => {{
         #[doc(hidden)]

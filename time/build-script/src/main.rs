@@ -25,10 +25,6 @@ fn main() -> Result<(), Box<std::error::Error>> {
 
     let mut res = reqwest::get("https://thog.eu/sunrise/tzdata-2017c.tar.gz")?;
 
-    println!("Status: {}", res.status());
-    println!("Headers:\n{:?}", res.headers());
-
-
     // copy the response body directly to stdout
     std::io::copy(&mut res, &mut tz_data_file)?;
     tz_data_file.seek(SeekFrom::Start(0)).unwrap();
@@ -62,6 +58,7 @@ fn main() -> Result<(), Box<std::error::Error>> {
         file.unpack(include_path)?;
     }
 
+    dest_file.write_all(b"/// The internal timezone filesystem content.\n");
     dest_file.write_fmt(format_args!("static TIMEZONE_ARCHIVE: [(&[u8], &[u8]); {}] = [\n", lines.len()))?;
 
     for line in lines {

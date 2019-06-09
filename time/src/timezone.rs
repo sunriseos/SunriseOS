@@ -1,3 +1,6 @@
+//! TimeZone module
+//! 
+//! This module takes care of anything related with timezone.
 use core::ops::Deref;
 
 use spin::Mutex;
@@ -20,8 +23,7 @@ use sunrise_libuser::ipc::server::WaitableManager;
 
 use sunrise_libutils::initialize_to_zero;
 
-/// Type representing a LocationName.
-/// Used to get arround Default requirement of the IPC layer
+/// A IPC result.
 type IpcResult<T> = Result<T, Error>;
 
 
@@ -33,6 +35,7 @@ struct TimeZoneFileSystem;
 
 /// Represent a file inside a TimeZoneFileSystem.
 struct TimeZoneFile {
+    /// The content of the file.
     data: &'static [u8]
 }
 
@@ -44,13 +47,14 @@ impl TimeZoneFile {
         }
     }
 
-    // Read the whole file.
+    /// Read the whole file.
     pub fn read_full(&self) -> &[u8] {
         self.data
     }
 }
 
 impl TimeZoneFileSystem {
+    /// Open a file at the given path in the TimeZone virtual filesystem.
     pub fn open_file(path: &[u8]) -> Option<TimeZoneFile> {
         for (file_path, data) in TIMEZONE_ARCHIVE.iter() {
             if *file_path == path {
@@ -61,6 +65,7 @@ impl TimeZoneFileSystem {
         None
     }
 
+    /// Check for a file existance at the given path in the TimeZone virtual filesystem.
     pub fn file_exist(path: &[u8]) -> bool {
         for (file_path, _) in TIMEZONE_ARCHIVE.iter() {
             if *file_path == path {
@@ -70,6 +75,7 @@ impl TimeZoneFileSystem {
         false
     }
 
+    /// Return the total amount of files in the TimeZone virtual filesystem.
     pub fn file_count() -> u32 {
         TIMEZONE_ARCHIVE.len() as u32
     }
@@ -87,11 +93,17 @@ pub struct TimeZoneManager {
 }
 
 impl TimeZoneManager {
-    pub fn get_device_location_name(&self) -> LocationName {
+    /// Get the time zone name used on this devie.
+    pub fn get_device_location_name(&self) -> LocationNane {
         self.location
     }
 
-    pub fn set_device_location_name(&mut self, location: LocationName) -> IpcResult<()> {
+    /// Set the time zone name used on this devie.
+    /// 
+    /// Note:
+    /// 
+    /// This also load the new timezone rule.
+    pub fn set_device_location_name(&mut self, location: LocationNane) -> IpcResult<()> {
         let path = format!("zoneinfo/{}", unsafe { core::str::from_utf8_unchecked(&location) });
 
         let path_trim = path.trim_matches(char::from(0));
@@ -103,24 +115,23 @@ impl TimeZoneManager {
         self.load_timezone_rule(location, None)
     }
 
-    pub fn set_device_location_name_unchecked(&mut self, location: LocationName) {
+    /// Set the time zone name used on this devie.
+    pub fn set_device_location_name_unchecked(&mut self, location: LocationNane) {
         self.location = location;
     }
 
-    pub fn get_total_location_name_count(&self) -> IpcResult<u32> {
+    /// Get the total count of location name available
+    pub fn get_total_location_name_count(&self) -> IpcResult<(u32, )> {
         // FIXME: use binaryList.txt
         Ok(TimeZoneFileSystem::file_count())
     }
 
-    pub fn load_timezone_rule(&mut self, location: LocationName, timezone_rule: Option<&mut TimeZoneRule>) -> IpcResult<()> {
+    /// Load a time zone rule.
+    pub fn load_timezone_rule(&mut self, location: LocationNane, timezone_rule: Option<&mut TimeZoneRule>) -> IpcResult<()> {
         let path = format!("zoneinfo/{}", unsafe { core::str::from_utf8_unchecked(&location) });
 
-        let path_trim = path.trim_matches(char::from(0));
-
-        // FIXME: use binaryList.txt
         let file = TimeZoneFileSystem::open_file(path_trim.as_bytes());
         if file.is_none() {
-            // TODO 0x7BA74 - not found
             panic!()
         }
 
@@ -149,6 +160,7 @@ impl TimeZoneManager {
         Ok(())
     }
 
+    /// Get the device timezone rule.
     pub fn get_my_rules(&self) -> &TimeZoneRule {
         &self.my_rules
     }
@@ -162,7 +174,8 @@ pub static TZ_MANAGER: Mutex<TimeZoneManager> = Mutex::new(unsafe { initialize_t
 /// TimeZone service object.
 #[derive(Default, Debug)]
 pub struct TimeZoneService {
-    pub unknown: u64
+    /// A dummy field present to just avoid having a zero sized type.
+    pub dummy: u64
 }
 
 impl Drop for TimeZoneService {
@@ -171,10 +184,11 @@ impl Drop for TimeZoneService {
     }
 }
 
-fn calendar_to_tzlib(ipc_calendar: &CalendarTime) -> sunrise_libtimezone::CalendarTimeInfo {
+/// Convert a IPC CalendarTime type to a libtimezone CalendarInfo.
+fn calendar_to_tzlib(ipc_calendar: CalendarTime) -> sunrise_libtimezone::CalendarTimeInfo {
     let mut res = sunrise_libtimezone::CalendarTimeInfo::default();
 
-    res.year = ipc_calendar.year as i64;
+    res.year = i64::from(ipc_calendar.year);
     res.month = ipc_calendar.month;
     res.day = ipc_calendar.day;
     res.hour = ipc_calendar.hour;
@@ -184,6 +198,7 @@ fn calendar_to_tzlib(ipc_calendar: &CalendarTime) -> sunrise_libtimezone::Calend
     res
 }
 
+/// Convert a libtimezone CalendarInfo to a IPC CalendarTime and CalendarAdditionalInfo type.
 fn calendar_to_ipc(tzlib_calendar: sunrise_libtimezone::CalendarTime) -> (CalendarTime, CalendarAdditionalInfo) {
     let calendar_time = CalendarTime {
         year: tzlib_calendar.time.year as i16,

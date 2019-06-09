@@ -62,7 +62,7 @@ struct TzifHeader {
     pub char_count: [u8; 4],
 }
 
-assert_eq_size!(tzhead; TzifHeader, [u8; 0x2c]);
+assert_eq_size!(TzifHeader, [u8; 0x2c]);
 
 /// Represent a rule type of a POSIX TimeZone name.
 enum RuleType {

@@ -18,16 +18,13 @@
 
 #[macro_use]
 extern crate sunrise_libuser;
-#[macro_use]
-extern crate log;
 
 use sunrise_libuser::terminal::{Terminal, WindowSize};
-use sunrise_libuser::io::{self, Io};
 use sunrise_libuser::syscalls;
 use core::fmt::Write;
+use log::info;
 
-use sunrise_libuser::time::{RTCManager, StaticService, TimeZoneRule};
-use spin::Mutex;
+use sunrise_libuser::time::{RTCManager, StaticService};
 
 /// Turns a day of week number from RTC into an english string.
 fn get_day_of_week(dow: u8) -> &'static str {
@@ -62,8 +59,7 @@ fn get_month(month: u8) -> &'static str {
     }
 }
 
-pub static TIMEZONE_RULE: Mutex<TimeZoneRule> = Mutex::new([0x0; 0x4000]);
-
+#[allow(clippy::cast_sign_loss)]
 fn main() {
     let mut logger = Terminal::new(WindowSize::FontLines(1, true)).unwrap();
     let mut time = StaticService::raw_new_time_u().unwrap();
@@ -71,13 +67,11 @@ fn main() {
     let mut timezone_service = time.get_timezone_service().unwrap();
 
     //let rtc_event = rtc.get_rtc_event().unwrap();
-    let mut location = timezone_service.get_device_location_name().unwrap();
 
-    let mut rule = TIMEZONE_RULE.lock();
     loop {
         // TODO: Use get_rtc_event event handle
         // BODY: We need CreateEvent, SignalEvent and ClearEvent syscalls before using this.
-        syscalls::sleep_thread(1000000000);
+        syscalls::sleep_thread(1000000000).unwrap();
         //syscalls::wait_synchronization(&[rtc_event.as_ref()], None).unwrap();
 
         let timestamp = rtc.get_rtc_time().unwrap();
@@ -92,7 +86,7 @@ fn main() {
         let month = calendar.month as u8 + 1;
         let year = calendar.year;
 
-        let _ = syscalls::output_debug_string(&format!("{:02}:{:02}:{:02} {} {:02} {} {}", hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year));
+        let _ = info!("{:02}:{:02}:{:02} {} {:02} {} {}", hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year);
         let _ = write!(&mut logger, "\n{:02}:{:02}:{:02} {} {:02} {} {}", hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year);
     }
 }

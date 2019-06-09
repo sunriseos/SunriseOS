@@ -78,10 +78,7 @@ interface sunrise_libuser::time::TimeZoneService {
     # Load a time zone rule
     [4] load_timezone_rule(sunrise_libuser::time::LocationName) -> buffer<sunrise_libuser::time::TimeZoneRule, 0x16, 0x4000>;
 
-	# Some dumb test
-	[5] test() -> buffer<sunrise_libuser::time::LocationName, 0x6, 0x24>;
-
-	# Conver a PosixTime to a local time using a TimeZoneRule
+	# Convert a PosixTime to a local time using a TimeZoneRule
     [100] to_calendar_time(sunrise_libuser::time::PosixTime, buffer<sunrise_libuser::time::TimeZoneRule, 0x15, 0x4000>) -> (sunrise_libuser::time::CalendarTime, sunrise_libuser::time::CalendarAdditionalInfo);
 
     # Convert a PosixTime to a local time using the device TimeZoneRule
