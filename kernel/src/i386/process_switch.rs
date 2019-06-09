@@ -7,6 +7,7 @@ use crate::i386::gdt;
 use alloc::sync::Arc;
 use core::mem::size_of;
 use crate::i386::TssStruct;
+use crate::i386::gdt::update_userspace_tls;
 
 /// The hardware context of a paused thread. It contains just enough registers to get the thread
 /// running again.
@@ -100,6 +101,9 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
 
         // Switch the memory pages
         thread_b_lock_pmemory.switch_to();
+
+        // Reload the TLS
+        update_userspace_tls(thread_b.tls);
 
         let current_esp: usize;
         asm!("mov $0, esp" : "=r"(current_esp) : : : "intel", "volatile");
@@ -317,7 +321,8 @@ fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize, arg: usize) -> ! {
         mov ds,ax
         mov es,ax
         mov fs,ax
-        mov gs,ax
+        // gs is set to the userspace TLS region earlier in the call stack (see process_switch's
+        // call to update_userspace_tls.
 
         // Build the fake stack for IRET
         push 0x33   // Userland Stack, Ring 3

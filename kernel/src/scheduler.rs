@@ -319,7 +319,9 @@ pub fn scheduler_first_schedule<F: FnOnce()>(current_thread: Arc<ThreadStruct>, 
     // we do it here so don't have to CrossProcessMap it earlier.
     unsafe {
         // safe: we manage this memory, ptr is aligned, and 0 is valid for every field of the TLS.
-        core::ptr::write_bytes(get_current_thread().tls.addr() as *mut TLS, 0u8, 1);
+        let tls_ptr = get_current_thread().tls.addr() as *mut TLS;
+        core::ptr::write_bytes(tls_ptr, 0u8, 1);
+        (*tls_ptr).ptr_self = tls_ptr
     }
 
     jump_to_entrypoint()

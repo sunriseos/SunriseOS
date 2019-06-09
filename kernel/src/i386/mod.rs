@@ -129,6 +129,41 @@ pub mod instructions {
             unsafe { asm!("mov %cs, $0" : "=r" (segment) ) };
             SegmentSelector(segment)
         }
+
+        /// Read the value of the stack segment register.
+        pub fn ss() -> SegmentSelector {
+            let segment: u16;
+            unsafe { asm!("mov %ss, $0" : "=r" (segment) ) };
+            SegmentSelector(segment)
+        }
+
+        /// Read the value of the data segment register.
+        pub fn ds() -> SegmentSelector {
+            let segment: u16;
+            unsafe { asm!("mov %ds, $0" : "=r" (segment) ) };
+            SegmentSelector(segment)
+        }
+
+        /// Read the value of the es segment register.
+        pub fn es() -> SegmentSelector {
+            let segment: u16;
+            unsafe { asm!("mov %es, $0" : "=r" (segment) ) };
+            SegmentSelector(segment)
+        }
+
+        /// Read the value of the fs segment register.
+        pub fn fs() -> SegmentSelector {
+            let segment: u16;
+            unsafe { asm!("mov %fs, $0" : "=r" (segment) ) };
+            SegmentSelector(segment)
+        }
+
+        /// Read the value of the gs segment register.
+        pub fn gs() -> SegmentSelector {
+            let segment: u16;
+            unsafe { asm!("mov %gs, $0" : "=r" (segment) ) };
+            SegmentSelector(segment)
+        }
     }
     pub mod interrupts {
         //! Interrupt disabling functionality.

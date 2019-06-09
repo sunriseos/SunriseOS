@@ -7,22 +7,23 @@
 
 use crate::sync::{SpinLock, Once};
 use bit_field::BitField;
-use core::mem::{self, size_of};
+use core::mem::size_of;
 use core::ops::{Deref, DerefMut};
 use core::slice;
 use core::fmt;
 
 use crate::i386::{PrivilegeLevel, TssStruct};
 use crate::i386::structures::gdt::SegmentSelector;
-use crate::i386::instructions::tables::{lgdt, sgdt, DescriptorTablePointer};
+use crate::i386::instructions::tables::{lgdt, lldt, ltr, DescriptorTablePointer};
 use crate::i386::instructions::segmentation::*;
 
 use crate::paging::PAGE_SIZE;
 use crate::paging::{MappingAccessRights, kernel_memory::get_kernel_memory};
 use crate::frame_allocator::{FrameAllocator, FrameAllocatorTrait};
 use crate::mem::VirtualAddress;
-use alloc::vec::Vec;
 use crate::utils::align_up;
+use sunrise_libkern::TLS;
+use crate::paging::lands::{UserLand, VirtualSpaceLand};
 
 /// The global GDT. Needs to be initialized with init_gdt().
 static GDT: Once<SpinLock<GdtManager>> = Once::new();
@@ -30,87 +31,118 @@ static GDT: Once<SpinLock<GdtManager>> = Once::new();
 /// The global LDT used by all the processes.
 static GLOBAL_LDT: Once<DescriptorTable> = Once::new();
 
+/// The index in the GDT of the null descriptor.
+const GDT_NULL:   usize = 0;
+/// The index in the GDT of the Kernel code segment descriptor.
+const GDT_KCODE:  usize = 1;
+/// The index in the GDT of the Kernel data segment descriptor.
+const GDT_KDATA:  usize = 2;
+/// The index in the GDT of the Kernel stack segment descriptor.
+const GDT_KSTACK: usize = 3;
+/// The index in the GDT of the Userland code segment descriptor.
+const GDT_UCODE:  usize = 4;
+/// The index in the GDT of the Userland data segment descriptor.
+const GDT_UDATA:  usize = 5;
+/// The index in the GDT of the Userland stack segment descriptor.
+const GDT_USTACK: usize = 6;
+/// The index in the GDT of the Userland thread local storage segment descriptor.
+const GDT_UTLS:   usize = 7;
+/// The index in the GDT of the LDT descriptor.
+const GDT_LDT:    usize = 8;
+/// The index in the GDT of the main TSS descriptor.
+const GDT_TSS:    usize = 9;
+/// The number of descriptors in the GDT.
+const GDT_DESC_COUNT: usize = 10;
+
 /// Initializes the GDT.
 ///
 /// Creates a GDT with a flat memory segmentation model. It will create 3 kernel
-/// segments (code, data, stack), three user segments (code, data, stack), an
+/// segments (code, data, stack), four user segments (code, data, stack, tls), an
 /// LDT, and a TSS for the main task.
 ///
 /// This function should only be called once. Further calls will be silently
 /// ignored.
 pub fn init_gdt() {
-    use crate::i386::instructions::tables::{lldt, ltr};
 
-    let ldt = GLOBAL_LDT.call_once(DescriptorTable::new);
+    // fill LDT with null descriptors
+    GLOBAL_LDT.call_once(Default::default);
 
     GDT.call_once(|| {
-        let mut gdt = DescriptorTable::new();
+        let mut gdt = GdtManager::default();
         // Push the null descriptor
-        gdt.push(DescriptorTableEntry::null_descriptor());
+        gdt.set(GDT_NULL, DescriptorTableEntry::null_descriptor());
         // Push a kernel code segment
-        gdt.push(DescriptorTableEntry::new(
+        let cs = gdt.set(GDT_KCODE, DescriptorTableEntry::new(
             0,
             0xffffffff,
             true,
             PrivilegeLevel::Ring0,
         ));
         // Push a kernel data segment
-        gdt.push(DescriptorTableEntry::new(
+        let ds = gdt.set(GDT_KDATA, DescriptorTableEntry::new(
             0,
             0xffffffff,
             false,
             PrivilegeLevel::Ring0,
         ));
         // Push a kernel stack segment
-        gdt.push(DescriptorTableEntry::new(
+        let ss = gdt.set(GDT_KSTACK, DescriptorTableEntry::new(
             0,
             0xffffffff,
             false,
             PrivilegeLevel::Ring0,
         ));
         // Push a userland code segment
-        gdt.push(DescriptorTableEntry::new(
+        gdt.set(GDT_UCODE, DescriptorTableEntry::new(
             0,
             0xffffffff,
             true,
             PrivilegeLevel::Ring3,
         ));
         // Push a userland data segment
-        gdt.push(DescriptorTableEntry::new(
+        gdt.set(GDT_UDATA, DescriptorTableEntry::new(
             0,
             0xffffffff,
             false,
             PrivilegeLevel::Ring3,
         ));
         // Push a userland stack segment
-        gdt.push(DescriptorTableEntry::new(
+        gdt.set(GDT_USTACK, DescriptorTableEntry::new(
             0,
             0xffffffff,
             false,
             PrivilegeLevel::Ring3,
         ));
+        // Push a userland thread local storage segment
+        let gs = gdt.set(GDT_UTLS, DescriptorTableEntry::new(
+            0,
+            (size_of::<TLS>() - 1) as u32,
+            false,
+            PrivilegeLevel::Ring3,
+        ));
+
         // Global LDT
-        gdt.push(DescriptorTableEntry::new_ldt(ldt, PrivilegeLevel::Ring0));
+        let ldt_ss = gdt.set(GDT_LDT, DescriptorTableEntry::new_ldt(&GLOBAL_LDT.r#try().unwrap(), PrivilegeLevel::Ring0));
 
         let main_task = unsafe {
             (MAIN_TASK.addr() as *mut TssStruct).as_ref().unwrap()
         };
 
         // Main task
-        gdt.push(DescriptorTableEntry::new_tss(main_task, PrivilegeLevel::Ring0, 0x2001));
+        let tss_ss = gdt.set(GDT_TSS, DescriptorTableEntry::new_tss(main_task, PrivilegeLevel::Ring0, 0x2001));
 
-        info!("Loading GDT");
-        let gdt = SpinLock::new(GdtManager::load(gdt, 0x8, 0x10, 0x18));
-
+        gdt.commit(Some(cs), Some(ds), Some(ds), Some(ds), Some(gs), Some(ss));
 
         unsafe {
-            info!("Loading LDT");
-            lldt(SegmentSelector(7 << 3));
-            info!("Loading Task");
-            ltr(SegmentSelector(8 << 3));
+            debug!("Loading LDT");
+            lldt(ldt_ss);
+            debug!("Loading Task");
+            ltr(tss_ss);
         }
 
-        gdt
+        info!("Loaded GDT {:#?}\ncs: {:?}\nds: {:?}\nss: {:?}\ngs: {:?}\nldt: {:?}\ntss: {:?}", gdt.deref().table, cs, ds, ss, gs, ldt_ss, tss_ss);
+
+        SpinLock::new(gdt)
     });
 }
 
@@ -120,66 +152,86 @@ pub fn init_gdt() {
 /// "live" is probably a terrible idea. To work around this, the GdtManager keeps
 /// two copies of the DescriptorTable, one being the currently active one (loaded
 /// in the GDTR), and the other being where the changes to the GDT go to until
-/// they are commited.
+/// they are committed.
 ///
 /// When `commit` is called, the internal GDT and current GDTR are swapped.
+///
+/// This struct's implementation of `Deref` and `DerefMut` will always give a reference to the table
+/// currently not in use, so you can make modifications to it, and call `commit` afterwards.
+#[derive(Debug, Default)]
 struct GdtManager {
-    /// Inactive descriptor table. Changes to the GDT are done on this table, but
-    /// will not be active until the table is commited.
-    unloaded_table: Option<DescriptorTable>,
+    /// One of the two tables.
+    table_a: DescriptorTable,
+    /// One of the two tables.
+    table_b: DescriptorTable,
+    /// The table currently pointed to by GDTR. `0` is `table_a`, `1` is `table_b`.
+    table_selector: bool
 }
 
 impl GdtManager {
-    /// Create a GdtManager from a DescriptorTable and segment selectors. The
-    /// given DescriptorTable will be loaded into the GDTR, and the segment
-    /// selectors reloaded with the given value.
-    pub fn load(cur_loaded: DescriptorTable, new_cs: u16, new_ds: u16, new_ss: u16) -> GdtManager {
-        let clone = cur_loaded.clone();
-        info!("{:#?}", cur_loaded);
-        cur_loaded.load_global(new_cs, new_ds, new_ss);
+    /// Commit the changes in the currently unloaded table, and update segment registers.
+    ///
+    /// # Selectors
+    ///
+    /// To make a segment register point to a new descriptor, pass `Some(selector)` to this function.
+    ///
+    /// If `None` is passed, the register will be reloaded from its current value.
+    /// This is what you want if you only updated the content of the descriptor.
+    /// We always perform a reload of all registers to make sure they reflect the state of the GDT,
+    /// in case the user modified it.
+    pub fn commit(&mut self, new_cs: Option<SegmentSelector>,
+                             new_ds: Option<SegmentSelector>,
+                             new_es: Option<SegmentSelector>,
+                             new_fs: Option<SegmentSelector>,
+                             new_gs: Option<SegmentSelector>,
+                             new_ss: Option<SegmentSelector>) {
+        let (previous_in_use, to_load) = if !self.table_selector {
+            (&mut self.table_a, &mut self.table_b)
+        } else {
+            (&mut self.table_b, &mut self.table_a)
+        };
 
-        GdtManager {
-            unloaded_table: Some(clone)
-        }
-    }
-
-    /// Commit the changes in the currently unloaded table.
-    pub fn commit(&mut self, new_cs: u16, new_ds: u16, new_ss: u16) {
-        let old_table = self.unloaded_table.take()
-            .expect("Commit to not be called recursively")
-            .load_global(new_cs, new_ds, new_ss);
-        unsafe {
-            self.unloaded_table = Some(DescriptorTable {
-                table: Vec::from_raw_parts(
-                    old_table.base as *mut DescriptorTableEntry,
-                    old_table.limit as usize / size_of::<DescriptorTableEntry>(),
-                    old_table.limit as usize / size_of::<DescriptorTableEntry>())
-            });
-        }
-        self.set_from_loaded()
+        // first make gdtr point to the new table, and reload segment selector
+        to_load.load_global(new_cs, new_ds, new_es, new_fs, new_gs, new_ss);
+        // copy the new table to the old one
+        previous_in_use.table.copy_from_slice(&to_load.table);
+        // and toggle selector
+        self.table_selector = !self.table_selector;
     }
 }
 
 impl Deref for GdtManager {
     type Target = DescriptorTable;
 
+    /// Deref always returns a reference to the table not in use, so it can be modified,
+    /// before being committed.
     fn deref(&self) -> &DescriptorTable {
-        self.unloaded_table.as_ref().expect("Deref should not be called during commit")
+        if !self.table_selector {
+            &self.table_b
+        } else {
+            &self.table_a
+        }
     }
 }
 
 impl DerefMut for GdtManager {
+    /// DerefMut always returns a reference to the table not in use, so it can be modified,
+    /// before being committed.
     fn deref_mut(&mut self) -> &mut DescriptorTable {
-        self.unloaded_table.as_mut().expect("DerefMut should not be called during commit")
+        if !self.table_selector {
+            &mut self.table_b
+        } else {
+            &mut self.table_a
+        }
     }
 }
 
 /// Push a task segment.
 pub fn push_task_segment(task: &'static TssStruct) -> SegmentSelector {
     info!("Pushing TSS: {:#?}", task);
-    let mut gdt = GDT.r#try().unwrap().lock();
-    let idx = gdt.push(DescriptorTableEntry::new_tss(task, PrivilegeLevel::Ring0, 0));
-    gdt.commit(0x8, 0x10, 0x18);
+    let mut gdt = GDT.r#try().expect("GDT was not initialized").lock();
+    let idx = gdt.set(GDT_TSS, DescriptorTableEntry::new_tss(task, PrivilegeLevel::Ring0, 0));
+    gdt.commit(None, None, None, None, None, None);
     idx
 }
 
@@ -202,6 +254,19 @@ lazy_static! {
     };
 }
 
+/// Update the address of the TLS region. Called on context-switch.
+pub fn update_userspace_tls(new_address: VirtualAddress) {
+    debug!("Setting userspace TLS to {}", new_address);
+    debug_assert!(UserLand::contains_region(new_address, size_of::<TLS>()), "Trying to set UTLS in KernelLand");
+    let mut gdt = GDT.r#try().expect("GDT was not initialized").lock();
+    gdt.set(GDT_UTLS, DescriptorTableEntry::new(
+        new_address.addr() as u32,
+        (size_of::<TLS>() - 1) as u32,
+        false,
+        PrivilegeLevel::Ring3));
+    gdt.commit(None, None, None, None, None, None);
+}
+
 // TODO: gdt::get_main_iopb does not prevent creation of multiple mut ref.
 // BODY: There's currently no guarantee that we don't create multiple &mut
 // BODY: pointer to the IOPB region, which would cause undefined behavior. In
@@ -220,69 +285,44 @@ pub unsafe fn get_main_iopb() -> &'static mut [u8] {
 }
 
 /// A structure containing our GDT.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 struct DescriptorTable {
-    /// The GDT table, a growable array of DescriptorTableEntry.
-    table: Vec<DescriptorTableEntry>,
+    /// The GDT table, an array of DescriptorTableEntry.
+    table: [DescriptorTableEntry; GDT_DESC_COUNT],
 }
 
 impl DescriptorTable {
-    /// Create an empty GDT. This will **not** include the null entry, so make
-    /// sure you add it!
-    pub fn new() -> DescriptorTable {
-        DescriptorTable {
-            table: Vec::new()
-        }
+
+    /// Updates an entry in the table, returning a segment selector to it.
+    pub fn set(&mut self, index: usize, entry: DescriptorTableEntry) -> SegmentSelector {
+        self.table[index] = entry;
+        SegmentSelector(((index as u16) << 3) | (entry.get_ring_level() as u16))
     }
 
-    /// Fill the current DescriptorTable with a copy of the currently loaded entries.
-    pub fn set_from_loaded(&mut self) {
-        let loaded_ptr = sgdt();
-        let loaded_table = unsafe {
-            slice::from_raw_parts(loaded_ptr.base as *mut DescriptorTableEntry, loaded_ptr.limit as usize / size_of::<DescriptorTableEntry>())
-        };
-
-        self.table.clear();
-        self.table.extend_from_slice(loaded_table);
-    }
-
-    /// Push a new entry to the table, returning a segment selector to it.
-    pub fn push(&mut self, entry: DescriptorTableEntry) -> SegmentSelector {
-        let ret = self.table.len() << 3;
-        self.table.push(entry);
-        SegmentSelector(ret as u16)
-    }
-
-    /// Load this descriptor table into the GDTR, and set the segments to the
-    /// given values. Returns the old GDTR.
-    fn load_global(mut self, new_cs: u16, new_ds: u16, new_ss: u16) -> DescriptorTablePointer {
-        self.table.shrink_to_fit();
-        assert_eq!(self.table.len(), self.table.capacity());
-
+    /// Load this descriptor table into the GDTR, and reload the segment registers.
+    fn load_global(&mut self, new_cs: Option<SegmentSelector>,
+                              new_ds: Option<SegmentSelector>,
+                              new_es: Option<SegmentSelector>,
+                              new_fs: Option<SegmentSelector>,
+                              new_gs: Option<SegmentSelector>,
+                              new_ss: Option<SegmentSelector>) {
         let ptr = DescriptorTablePointer {
             base: self.table.as_ptr() as u32,
             limit: (self.table.len() * size_of::<DescriptorTableEntry>()) as u16,
         };
 
-        let oldptr = sgdt();
-
-        // TODO: Figure out how to chose CS.
         unsafe {
 
             lgdt(ptr);
 
             // Reload segment selectors
-            set_cs(SegmentSelector(new_cs));
-            load_ds(SegmentSelector(new_ds));
-            load_es(SegmentSelector(new_ds));
-            load_fs(SegmentSelector(new_ds));
-            load_gs(SegmentSelector(new_ds));
-            load_ss(SegmentSelector(new_ss));
+            set_cs(match new_cs { Some(s) => s, None => cs() });
+            load_ds(match new_ds { Some(s) => s, None => ds()});
+            load_es(match new_es { Some(s) => s, None => es()});
+            load_fs(match new_fs { Some(s) => s, None => fs()});
+            load_gs(match new_gs { Some(s) => s, None => gs()});
+            load_ss(match new_ss { Some(s) => s, None => ss()});
         }
-
-        mem::forget(self.table);
-
-        oldptr
     }
 }
 
@@ -492,5 +532,11 @@ impl DescriptorTableEntry {
     /// If true, this is a 32-bit segment. If false, it is a 16-bit selector.
     pub fn is_32bit(self) -> bool {
         self.0.get_bit(54)
+    }
+}
+
+impl Default for DescriptorTableEntry {
+    fn default() -> Self {
+        DescriptorTableEntry::null_descriptor()
     }
 }
