@@ -24,7 +24,8 @@ use sunrise_libuser::syscalls;
 use core::fmt::Write;
 use log::info;
 
-use sunrise_libuser::time::{RTCManager, StaticService};
+use sunrise_libuser::time::{RTCManager, StaticService, TimeZoneRule, CalendarAdditionalInfo, CalendarTime};
+use spin::Mutex;
 
 /// Turns a day of week number from RTC into an english string.
 fn get_day_of_week(dow: u8) -> &'static str {
@@ -59,12 +60,53 @@ fn get_month(month: u8) -> &'static str {
     }
 }
 
+/// Wrapper to a TimeZoneRule to enforce alignment requirement
+#[repr(C, align(8))]
+struct TimeZoneRuleWrapper {
+    /// The timezone rule
+    pub inner: TimeZoneRule,
+}
+
+/// An intance to a custom TimeZoneRule
+static TIMEZONE_RULE: Mutex<TimeZoneRuleWrapper> = Mutex::new(TimeZoneRuleWrapper { inner: [0x0; 0x4000]});
+
+/// Write a wall clock time into the terminal.
 #[allow(clippy::cast_sign_loss)]
+fn write_calendar(logger: &mut Terminal, location: &str, input: (CalendarTime, CalendarAdditionalInfo), debug_log: bool) {
+    let calendar = input.0;
+
+    let hours = calendar.hour;
+    let minutes = calendar.minute;
+    let seconds = calendar.second;
+    let day = calendar.day;
+    let dayofweek = input.1.day_of_week as u8 + 1;
+    let month = calendar.month as u8 + 1;
+    let year = calendar.year;
+
+    if debug_log {
+        info!("{:02}:{:02}:{:02} {} {:02} {} {}", hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year);
+    }
+
+    let _ = write!(logger, "{}: {:02}:{:02}:{:02} {} {:02} {} {}", location, hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year);
+}
+
 fn main() {
     let mut logger = Terminal::new(WindowSize::FontLines(1, true)).unwrap();
     let mut time = StaticService::raw_new_time_u().unwrap();
     let mut rtc = RTCManager::raw_new().unwrap();
     let mut timezone_service = time.get_timezone_service().unwrap();
+
+    // Get default timezone name
+    let device_location = timezone_service.get_device_location_name().unwrap();
+    let device_location_trimed = unsafe { core::str::from_utf8_unchecked(&device_location) }.trim_matches(char::from(0));
+
+    // Let's get New York time
+    let custom_location = b"America/New_York\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+    let custom_location_trimed = unsafe { core::str::from_utf8_unchecked(&custom_location[..]) }.trim_matches(char::from(0));
+
+    // Load a custom one
+    let mut rule = TIMEZONE_RULE.lock();
+    timezone_service.load_timezone_rule(*custom_location, &mut rule.inner).unwrap();
 
     //let rtc_event = rtc.get_rtc_event().unwrap();
 
@@ -76,18 +118,13 @@ fn main() {
 
         let timestamp = rtc.get_rtc_time().unwrap();
         let res = timezone_service.to_calendar_time_with_my_rule(timestamp).unwrap();
-        let calendar = res.0;
+        let res_custom_timezone = timezone_service.to_calendar_time(timestamp, &rule.inner).unwrap();
 
-        let hours = calendar.hour;
-        let minutes = calendar.minute;
-        let seconds = calendar.second;
-        let day = calendar.day;
-        let dayofweek = res.1.day_of_week as u8 + 1;
-        let month = calendar.month as u8 + 1;
-        let year = calendar.year;
+        let _ = writeln!(&mut logger);
 
-        let _ = info!("{:02}:{:02}:{:02} {} {:02} {} {}", hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year);
-        let _ = write!(&mut logger, "\n{:02}:{:02}:{:02} {} {:02} {} {}", hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year);
+        write_calendar(&mut logger, device_location_trimed, res, true);
+        let _ = write!(&mut logger, "                                ");
+        write_calendar(&mut logger, custom_location_trimed, res_custom_timezone, false);
     }
 }
 
