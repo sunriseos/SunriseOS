@@ -2,7 +2,7 @@
 //!
 //! This service takes care of anything related with time.
 
-#![feature(alloc, alloc_prelude, maybe_uninit, untagged_unions)]
+#![feature(alloc_prelude, untagged_unions)]
 #![no_std]
 
 // rustc warnings

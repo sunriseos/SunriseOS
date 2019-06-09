@@ -137,17 +137,11 @@ capabilities!(CAPABILITIES = Capabilities {
         sunrise_libuser::syscalls::nr::OutputDebugString,
 
         sunrise_libuser::syscalls::nr::ConnectToNamedPort,
-        sunrise_libuser::syscalls::nr::CreateInterruptEvent,
         sunrise_libuser::syscalls::nr::SetHeapSize,
         sunrise_libuser::syscalls::nr::SendSyncRequestWithUserBuffer,
         sunrise_libuser::syscalls::nr::QueryMemory,
         sunrise_libuser::syscalls::nr::CreateSharedMemory,
         sunrise_libuser::syscalls::nr::MapSharedMemory,
         sunrise_libuser::syscalls::nr::UnmapSharedMemory,
-    ],
-    raw_caps: [
-        sunrise_libuser::caps::irq_pair(0x08, 0x3FF),
-        sunrise_libuser::caps::ioport(0x70),
-        sunrise_libuser::caps::ioport(0x71),
     ]
 });
