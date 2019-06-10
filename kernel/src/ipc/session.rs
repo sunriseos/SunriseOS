@@ -735,17 +735,9 @@ fn pass_message(from_buf: &[u8], from_proc: Arc<ThreadStruct>, to_buf: &mut [u8]
             return Err(UserspaceError::PortRemoteDead)
         }
 
-        let mut current_memlock = if is_reply {
-            from_proc.process.pmemory.lock()
-        } else {
-            to_proc.process.pmemory.lock()
-        };
+        let mut current_memlock = to_proc.process.pmemory.lock();
 
-        let (mut from_mem, mut to_mem) = if is_reply {
-            (&mut *current_memlock, &mut *other_memlock)
-        } else {
-            (&mut *other_memlock, &mut *current_memlock)
-        };
+        let (mut from_mem, mut to_mem) = (&mut *other_memlock, &mut *current_memlock);
 
         for i in 0..hdr.num_a_descriptors() {
             buf_map(from_buf, to_buf, &mut curoff, &mut *from_mem, &mut *to_mem, MappingAccessRights::empty(), buffers)?;
@@ -761,11 +753,7 @@ fn pass_message(from_buf: &[u8], from_proc: Arc<ThreadStruct>, to_buf: &mut [u8]
     }
 
     if is_reply && !buffers.is_empty() {
-        let (mut from_mem, mut to_mem) = if is_reply {
-            (from_proc.process.pmemory.lock(), other_memlock)
-        } else {
-            (other_memlock, to_proc.process.pmemory.lock())
-        };
+        let (mut from_mem, mut to_mem) = (from_proc.process.pmemory.lock(), other_memlock);
 
         // Unmap A-B-W buffers
         for buffer in buffers {
