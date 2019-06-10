@@ -177,15 +177,60 @@ pub struct IPCBuffer<'a> {
     phantom: PhantomData<&'a ()>
 }
 
+/// Util used for IPC buffer sizing.
+pub trait SizedIPCBuffer {
+    /// Return the size of the type.
+    fn size(&self) -> usize;
+}
+
+impl<T> SizedIPCBuffer for T {
+    fn size(&self) -> usize {
+        core::mem::size_of::<T>()
+    }
+}
+
+impl<T> SizedIPCBuffer for [T] {
+    fn size(&self) -> usize {
+        core::mem::size_of::<T>() * self.len()
+    }
+}
+
 impl<'a> IPCBuffer<'a> {
+    /// Creates a Type-A IPCBuffer from the given reference.
+    fn out_buffer<T: SizedIPCBuffer + ?Sized>(data: &T, flags: u8) -> IPCBuffer {
+        IPCBuffer {
+            addr: data as *const T as *const u8 as usize as u64,
+            // The dereference is necessary because &T implements SizedIPCBuffer too...
+            size: (*data).size() as u64,
+            ty: IPCBufferType::A {
+                flags
+            },
+            phantom: PhantomData
+        }
+    }
+
+    /// Creates a Type-B IPCBuffer from the given reference.
+    fn in_buffer<T: SizedIPCBuffer + ?Sized>(data: &mut T, flags: u8) -> IPCBuffer {
+        IPCBuffer {
+            addr: data as *mut T as *const u8 as usize as u64,
+            // The dereference is necessary because &T implements SizedIPCBuffer too...
+            size: (*data).size() as u64,
+            ty: IPCBufferType::B {
+                flags
+            },
+            phantom: PhantomData
+        }
+    }
+
     /// Creates a Type-C IPCBuffer from the given reference.
     ///
     /// If has_u16_size is true, the size of the pointer will be written after
     /// the raw data. This is only used when sending client-sized arrays.
-    fn in_pointer<T>(data: &mut T, has_u16_size: bool) -> IPCBuffer {
+    fn in_pointer<T: SizedIPCBuffer + ?Sized>(data: &mut T, has_u16_size: bool) -> IPCBuffer {
         IPCBuffer {
-            addr: data as *mut T as usize as u64,
-            size: core::mem::size_of::<T>() as u64,
+            addr: data as *mut T as *const u8 as usize as u64,
+            // The dereference is necessary because &T implements SizedIPCBuffer too...
+            size: (*data).size() as u64,
             ty: IPCBufferType::C {
                 has_u16_size
             },
@@ -196,10 +241,11 @@ impl<'a> IPCBuffer<'a> {
     /// Creates a Type-X IPCBuffer from the given reference.
     ///
     /// The counter defines which type-C buffer this should be copied into.
-    fn out_pointer<T>(data: &T, counter: u8) -> IPCBuffer {
+    fn out_pointer<T: SizedIPCBuffer + ?Sized>(data: &T, counter: u8) -> IPCBuffer {
         IPCBuffer {
-            addr: data as *const T as usize as u64,
-            size: core::mem::size_of::<T>() as u64,
+            addr: data as *const T as *const u8 as usize as u64,
+            // The dereference is necessary because &T implements SizedIPCBuffer too...
+            size: (*data).size() as u64,
             ty: IPCBufferType::X {
                 counter
             },
@@ -255,7 +301,7 @@ where
     BUFF: Array<Item=IPCBuffer<'a>>,
     COPY: Array<Item=u32>,
     MOVE: Array<Item=u32>,
-    RAW: Copy + Default,
+    RAW: Copy,
 {
     /// Type of the message. This is derived from [MessageTy] and
     /// [Message::token].
@@ -294,7 +340,7 @@ where
     /// make their own requests.
     token: Option<u32>,
     /// The raw arguments included in this message.
-    raw: RAW
+    raw: Option<RAW>
 }
 
 impl<'a, RAW, BUFF, COPY, MOVE> Message<'a, RAW, BUFF, COPY, MOVE>
@@ -302,7 +348,7 @@ where
     BUFF: Array<Item=IPCBuffer<'a>>,
     COPY: Array<Item=u32>,
     MOVE: Array<Item=u32>,
-    RAW: Copy + Default
+    RAW: Copy
 {
     /// Create a new request for the given cmdid. If a token is passed, the new
     /// IPC version will be used. The tokens allow for tracking an IPC request
@@ -318,7 +364,7 @@ where
             is_request: true,
             cmdid_error: cmdid,
             token: token,
-            raw: RAW::default()
+            raw: None
         }
     }
 
@@ -335,7 +381,7 @@ where
             is_request: false,
             cmdid_error: 0,
             token: token,
-            raw: RAW::default()
+            raw: None
         }
     }
 
@@ -378,13 +424,13 @@ where
 
     /// Sets the raw data of the message.
     pub fn push_raw(&mut self, raw: RAW) -> &mut Self {
-        self.raw = raw;
+        self.raw = Some(raw);
         self
     }
 
     /// Gets the raw data of the message.
     pub fn raw(&self) -> RAW {
-        self.raw
+        self.raw.unwrap()
     }
 
     /// Gets the token of a message. This token is used to track IPC call chains.
@@ -490,12 +536,44 @@ where
             .and_then(|buf| InBuffer::<T>::new(buf))
     }
 
+    /// Retreive the next OutBuffer (type-B buffer) in the message.
+    ///
+    /// # Errors
+    ///
+    /// Returns an InvalidIpcBufferCount if not enough buffers are present
+    ///
+    /// Returns an InvalidIpcBuffer if the next buffer was not of the appropriate
+    /// size.
+    ///
+    /// # Safety
+    ///
+    /// This method is unsafe as it allows creating references to arbitrary
+    /// memory, and of arbitrary type.
+    pub unsafe fn pop_out_buffer<T>(&mut self) -> Result<OutBuffer<'_, T>, Error> {
+        self.buffers.iter().position(|buf| buf.buftype().is_type_b())
+            .and_then(|pos| self.buffers.pop_at(pos))
+            .ok_or_else(|| LibuserError::InvalidIpcBufferCount.into())
+            .and_then(|buf| OutBuffer::<T>::new(buf))
+    }
+
+    /// Push an OutBuffer (type-A buffer) backed by the specified data.
+    pub fn push_out_buffer<T: SizedIPCBuffer + ?Sized>(&mut self, data: &'a T) -> &mut Self {
+        self.buffers.push(IPCBuffer::out_buffer(data, 0));
+        self
+    }
+
+    /// Push an InBuffer (type-B buffer) backed by the specified data.
+    pub fn push_in_buffer<T: SizedIPCBuffer + ?Sized>(&mut self, data: &'a mut T) -> &mut Self {
+        self.buffers.push(IPCBuffer::in_buffer(data, 0));
+        self
+    }
+
     /// Push an InPointer (type-C buffer) backed by the specified data.
     ///
     /// If `has_u16_count` is true, the size of the X buffer will be appended
     /// to the Raw Data. See Buffer 0xA on the IPC Marshalling page of
     /// switchbrew.
-    pub fn push_in_pointer<T>(&mut self, data: &'a mut T, has_u16_count: bool) -> &mut Self {
+    pub fn push_in_pointer<T: SizedIPCBuffer + ?Sized>(&mut self, data: &'a mut T, has_u16_count: bool) -> &mut Self {
         self.buffers.push(IPCBuffer::in_pointer(data, has_u16_count));
         self
     }
@@ -505,7 +583,7 @@ where
     /// If `has_u16_count` is true, the size of the X buffer will be appended
     /// to the Raw Data. See Buffer 0xA on the IPC Marshalling page of
     /// switchbrew.
-    pub fn push_out_pointer<T>(&mut self, data: &'a T) -> &mut Self {
+    pub fn push_out_pointer<T: SizedIPCBuffer + ?Sized>(&mut self, data: &'a T) -> &mut Self {
         let index = self.buffers.iter().filter(|buf| buf.buftype().is_type_x()).count();
         self.buffers.push(IPCBuffer::out_pointer(data, index as u8));
         self
@@ -713,7 +791,9 @@ where
         // Send the token if we have one, or zero.
         cursor.write_u32::<LE>(self.token.unwrap_or(0));
 
-        cursor.write_raw(self.raw);
+        if let Some(raw) = self.raw {
+            cursor.write_raw(raw);
+        }
 
         // Write input object IDs. For now: none.
 
@@ -859,7 +939,7 @@ where
         /*if this.domain_obj.is_none() {
         assert_eq!(hdr.get_raw_section_size() as usize, (mem::size_of::<T>() + 8 + 8 + 0x10) / 4);
     }*/
-        let raw = cursor.read_raw::<RAW>();
+        let raw = Some(cursor.read_raw::<RAW>());
 
         /*if let Some(input_objects) = input_objects {
             for _ in 0..input_objects {

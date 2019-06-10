@@ -39,6 +39,19 @@ impl Handle {
             lifetime: PhantomData
         }
     }
+
+    /// Creates a new static reference to this handle. See the documentation of
+    /// [HandleRef] for more information.
+    ///
+    /// The kernel guarantees that a Handle is never reused. If the parent [Handle]
+    /// dies before this HandleRef is dropped, every function taking this HandleRef
+    /// will fail with [sunrise_libkern::error::KernelError::InvalidHandle]
+    pub fn as_ref_static(&self) -> HandleRef<'static> {
+        HandleRef {
+            inner: self.0,
+            lifetime: PhantomData
+        }
+    }
 }
 
 impl Drop for Handle {

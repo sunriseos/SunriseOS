@@ -220,3 +220,117 @@ impl<'a, T> core::ops::Deref for InBuffer<'a, [T]> {
         }
     }
 }
+
+
+/// An outcoming Buffer, also known as a Type-B Buffer.
+///
+/// Note that `T` should be a POD type (in other word, it should be defined for
+/// all bit values). This usually means that it should be a repr(C) struct and
+/// only contain numeric fields.
+pub struct OutBuffer<'a, T: ?Sized> {
+    /// Address of the OutBuffer in the current address space.
+    addr: u64,
+    /// Size of the OutBuffer. Should match the size of T, or be a multiple of
+    /// the size of T::Item if T is a slice.
+    size: u64,
+    /// Lifetime of the OutBuffer, should be bound to a [Message](crate::ipc::Message).
+    phantom: PhantomData<&'a T>
+}
+
+
+impl<'a, T> OutBuffer<'a, T> {
+    /// Creates a new OutBuffer from an underlying [IPCBuffer].
+    ///
+    /// # Panics
+    ///
+    /// Panics if the passed buffer is not a Type-A buffer.
+    ///
+    /// # Errors
+    ///
+    /// Returns a InvalidIpcBuffer error if the size does not match what was
+    /// expected
+    pub fn new(buf: IPCBuffer) -> Result<OutBuffer<'_, T>, Error> {
+        assert!(buf.buftype().is_type_b());
+        if buf.size != size_of::<T>() as u64 ||
+           buf.addr % (align_of::<T>() as u64) != 0 {
+            Err(LibuserError::InvalidIpcBuffer.into())
+        } else {
+            Ok(OutBuffer {
+                addr: buf.addr,
+                size: buf.size,
+                phantom: PhantomData
+            })
+        }
+    }
+}
+
+impl<'a, T> core::ops::Deref for OutBuffer<'a, T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        unsafe {
+            (self.addr as usize as *const T).as_ref().unwrap()
+        }
+    }
+}
+
+impl<'a, T> core::ops::DerefMut for OutBuffer<'a, T> {
+    fn deref_mut(&mut self) -> &mut T {
+        unsafe {
+            (self.addr as usize as *mut T).as_mut().unwrap()
+        }
+    }
+}
+
+impl<'a, T: ?Sized + core::fmt::Debug> core::fmt::Debug for OutBuffer<'a, T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        f.debug_tuple("OutBuffer")
+            .field(&*self)
+            .finish()
+    }
+}
+
+
+impl<'a, T> OutBuffer<'a, [T]> {
+    /// Creates a new OutBuffer from an underlying [IPCBuffer].
+    ///
+    /// # Panics
+    ///
+    /// Panics if the passed buffer is not a Type-B buffer.
+    ///
+    /// # Errors
+    ///
+    /// Returns a InvalidIpcBuffer error if the size does not match what was
+    /// expected
+    pub fn new(buf: IPCBuffer) -> Result<OutBuffer<'_, [T]>, Error> {
+        assert!(buf.buftype().is_type_b());
+        if buf.size % size_of::<T>() as u64 != 0 || buf.size == 0 ||
+           buf.addr % (align_of::<T>() as u64) != 0 {
+            Err(LibuserError::InvalidIpcBuffer.into())
+        } else {
+            Ok(OutBuffer {
+                addr: buf.addr,
+                size: buf.size,
+                phantom: PhantomData
+            })
+        }
+    }
+}
+
+impl<'a, T> core::ops::Deref for OutBuffer<'a, [T]> {
+    type Target = [T];
+    fn deref(&self) -> &[T] {
+        unsafe {
+            core::slice::from_raw_parts(self.addr as usize as *const T,
+                                        self.size as usize / size_of::<T>())
+        }
+    }
+}
+
+impl<'a, T> core::ops::DerefMut for OutBuffer<'a, [T]> {
+    fn deref_mut(&mut self) -> &mut [T] {
+        unsafe {
+            core::slice::from_raw_parts_mut(self.addr as usize as *mut T,
+                                        self.size as usize / size_of::<T>())
+        }
+    }
+}
