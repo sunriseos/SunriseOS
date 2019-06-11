@@ -41,6 +41,8 @@ use crate::checks::check_lower_than_usize;
 use sunrise_libkern::MemoryType;
 use sunrise_libutils::align_up;
 
+use failure::Backtrace;
+
 /// Wrapper around the currently active session and the incoming request list.
 /// They are kept together so they are locked together.
 #[derive(Debug)]
@@ -272,6 +274,29 @@ fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mu
         let to_addr_full = to_mem.find_available_space(align_up(size + (addr % PAGE_SIZE), PAGE_SIZE))?;
         let to_addr = to_addr_full + (addr % PAGE_SIZE);
 
+        let mut first_page_info_opt: Option<(VirtualAddress, usize)> = None;
+        let mut middle_page_info_opt: Option<(VirtualAddress, usize)> = None;
+        let mut last_page_info_opt: Option<(VirtualAddress, usize)> = None;
+
+
+        // Closure in charge of the unmaping logic in case of error during mapping.
+        let mut mapping_error_handling_logic =
+            |to_mem: &mut ProcessMemory, error: KernelError, mut first_page_info_opt: Option<(VirtualAddress, usize)>, mut middle_page_info_opt: Option<(VirtualAddress, usize)>, mut last_page_info_opt: Option<(VirtualAddress, usize)>| {
+                if let Some(first_page_info) = first_page_info_opt.take() {
+                    to_mem.unmap(first_page_info.0, first_page_info.1);
+                }
+
+                if let Some(middle_page_info) = middle_page_info_opt {
+                    to_mem.unmap(middle_page_info.0, middle_page_info.1);
+                }
+
+                if let Some(last_page_info) = last_page_info_opt.take() {
+                    to_mem.unmap(last_page_info.0, last_page_info.1);
+                }
+
+                Err(error.into())
+            };
+
         let mut size_handled = 0;
         if addr % PAGE_SIZE != 0 {
             // memcpy the first page.
@@ -280,7 +305,14 @@ fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mu
             let from_mapping = from_mem.mirror_mapping(VirtualAddress(addr), first_page_size)?;
             let from = UserSpacePtr::from_raw_parts(from_mapping.addr().addr() as *const u8, from_mapping.len());
 
-            to_mem.create_regular_mapping(to_addr_full, PAGE_SIZE, MemoryType::Ipc, MappingAccessRights::u_rw())?;
+            let res_mapping = to_mem.create_regular_mapping(to_addr_full, PAGE_SIZE, MemoryType::Ipc, MappingAccessRights::u_rw());
+
+            if let Err(error) = res_mapping {
+                return mapping_error_handling_logic(to_mem, error, first_page_info_opt, middle_page_info_opt, last_page_info_opt);
+            }
+
+            first_page_info_opt = Some((to_addr_full, PAGE_SIZE));
+
             let mut to = UserSpacePtrMut::from_raw_parts_mut(to_addr.addr() as *mut u8, first_page_size);
             to.copy_from_slice(&from);
             size_handled += first_page_size;
@@ -294,9 +326,15 @@ fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mu
             let from = UserSpacePtr::from_raw_parts(from_mapping.addr().addr() as *const u8, from_mapping.len());
 
             let to_last_page = (to_addr + size).floor();
-            to_mem.create_regular_mapping(to_last_page, PAGE_SIZE, MemoryType::Ipc, MappingAccessRights::u_rw())?;
-            let mut to = UserSpacePtrMut::from_raw_parts_mut(to_last_page.addr() as *mut u8, last_page_size);
+            let res_mapping = to_mem.create_regular_mapping(to_last_page, PAGE_SIZE, MemoryType::Ipc, MappingAccessRights::u_rw());
 
+            if let Err(error) = res_mapping {
+                return mapping_error_handling_logic(to_mem, error, first_page_info_opt, middle_page_info_opt, last_page_info_opt);
+            }
+
+            last_page_info_opt = Some((to_last_page, PAGE_SIZE));
+
+            let mut to = UserSpacePtrMut::from_raw_parts_mut(to_last_page.addr() as *mut u8, last_page_size);
             to.copy_from_slice(&from);
             size_handled += last_page_size;
         }
@@ -310,17 +348,30 @@ fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mu
 
             let mapping = match from_mem.query_memory(VirtualAddress(addr)) {
                 QueryMemory::Used(mapping) => mapping,
-                _ => return Err(UserspaceError::InvalidMemState),
+                QueryMemory::Available(mapping) =>
+                return mapping_error_handling_logic(to_mem, KernelError::InvalidMemState { address: mapping.address(), ty: mapping.state().ty(), backtrace: Backtrace::new() },
+                                                    first_page_info_opt,
+                                                    middle_page_info_opt,
+                                                    last_page_info_opt),
             };
 
             let frames = match mapping.frames() {
                 MappingFrames::Shared(shared) => shared.clone(),
-                _ => return Err(UserspaceError::InvalidMemState),
+                _ =>
+                return mapping_error_handling_logic(to_mem, KernelError::InvalidMemState { address: mapping.address(), ty: mapping.state().ty(), backtrace: Backtrace::new() },
+                                                    first_page_info_opt,
+                                                    middle_page_info_opt,
+                                                    last_page_info_opt),
             };
 
             let offset = addr - mapping.address().addr();
 
-            to_mem.map_partial_shared_mapping(frames, to_addr, mapping.phys_offset() + offset, size - size_handled, MemoryType::Ipc, MappingAccessRights::u_rw())?;
+            let res_mapping = to_mem.map_partial_shared_mapping(frames, to_addr, mapping.phys_offset() + offset, size - size_handled, MemoryType::Ipc, MappingAccessRights::u_rw());
+            if let Err(error) = res_mapping {
+                return mapping_error_handling_logic(to_mem, error, first_page_info_opt, middle_page_info_opt, last_page_info_opt);
+            }
+
+            middle_page_info_opt = Some((to_addr, size - size_handled));
         }
 
         to_addr.addr()
@@ -356,15 +407,24 @@ fn buf_unmap(buffer: &Buffer, from_mem: &mut ProcessMemory, to_mem: &mut Process
     let to_addr_full = to_addr.floor();
     let mut size_handled = 0;
 
+    let mut result: Result<(), UserspaceError> = Ok(());
+
     if addr.addr() % PAGE_SIZE != 0 {
         let first_page_size = core::cmp::min(PAGE_SIZE - (addr.addr() % PAGE_SIZE), size);
 
         if buffer.writable {
             // memcpy the first page.
             let from = UserSpacePtr::from_raw_parts(addr.addr() as *const u8, first_page_size);
-            let to_mapping = to_mem.mirror_mapping(to_addr, first_page_size)?;
-            let mut to = UserSpacePtrMut::from_raw_parts_mut(to_mapping.addr().addr() as *mut u8, first_page_size);
-            to.copy_from_slice(&from);
+
+            // This needs explicit error handling since the user might unmap `to_addr` in-between sending the request and receiving the response.
+            result = match to_mem.mirror_mapping(to_addr, first_page_size) {
+                Ok(to_mapping) => {
+                    let mut to = UserSpacePtrMut::from_raw_parts_mut(to_mapping.addr().addr() as *mut u8, first_page_size);
+                    to.copy_from_slice(&from);
+                    Ok(())
+                },
+                Err(err) => Err(err.into()),
+            };
         }
 
         from_mem.unmap(addr.floor(), PAGE_SIZE)?;
@@ -379,10 +439,17 @@ fn buf_unmap(buffer: &Buffer, from_mem: &mut ProcessMemory, to_mem: &mut Process
             let from = UserSpacePtr::from_raw_parts((addr.addr() + size) as *const u8, last_page_size);
 
             let to_last_page = (to_addr + size).floor();
-            let to_mapping = to_mem.mirror_mapping(to_last_page, last_page_size)?;
-            let mut to = UserSpacePtrMut::from_raw_parts_mut(to_mapping.addr().addr() as *mut u8, last_page_size);
 
-            to.copy_from_slice(&from);
+            // This needs explicit error handling since the user might unmap `to_addr` in-between sending the request and receiving the response.
+            result = match to_mem.mirror_mapping(to_last_page, last_page_size) {
+                Ok(to_mapping) => {
+                    let mut to = UserSpacePtrMut::from_raw_parts_mut(to_mapping.addr().addr() as *mut u8, last_page_size);
+                    to.copy_from_slice(&from);
+                    Ok(())
+                },
+                Err(err) => Err(err.into()),
+            };
+
         }
 
         from_mem.unmap((addr + size).floor(), PAGE_SIZE)?;
@@ -394,7 +461,7 @@ fn buf_unmap(buffer: &Buffer, from_mem: &mut ProcessMemory, to_mem: &mut Process
         from_mem.unmap(addr.ceil(), size - size_handled)?;
     }
 
-    Ok(())
+    result
 }
 
 impl ClientSession {
