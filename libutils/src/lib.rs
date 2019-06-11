@@ -283,6 +283,12 @@ mod test {
 
 #[macro_export]
 /// A macro to initialize a struct directly in global.
+///
+/// # Usage
+///
+/// ```rust
+/// let zero_initialized = unsafe { initialize_to_zero!(u32) };
+/// ``
 macro_rules! initialize_to_zero {
     ($ty:ty) => {{
         #[doc(hidden)]

@@ -178,12 +178,6 @@ pub struct TimeZoneService {
     pub dummy: u64
 }
 
-impl Drop for TimeZoneService {
-    fn drop(&mut self) {
-        info!("DROP TZ");
-    }
-}
-
 /// Convert a IPC CalendarTime type to a libtimezone CalendarInfo.
 fn calendar_to_tzlib(ipc_calendar: CalendarTime) -> sunrise_libtimezone::CalendarTimeInfo {
     let mut res = sunrise_libtimezone::CalendarTimeInfo::default();

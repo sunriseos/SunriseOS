@@ -754,11 +754,6 @@ pub(crate) fn load_body(
         timezone_rule.ttis[i].abbreviation_list_index = i32::from(abbreviation_list_index);
     }
 
-    // FIXME: clone_fron_slice doesn't do the same thing as this loop. We need to report that on rustc repo.
-    /*for i in 0usize..timezone_rule.charcnt as usize {
-        timezone_rule.chars[i] = work_buffer[position + i];
-    }*/
-    //timezone_rule.chars[0usize..timezone_rule.charcnt as usize].clone_from_slice(&work_buffer[position..(timezone_rule.charcnt as usize + position)]);
     timezone_rule.chars[0usize..timezone_rule.charcnt as usize]
         .copy_from_slice(&work_buffer[position..(timezone_rule.charcnt as usize + position)]);
     timezone_rule.chars[timezone_rule.charcnt as usize] = 0;

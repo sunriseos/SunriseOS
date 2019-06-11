@@ -1,6 +1,6 @@
 //! Local Time crate
 //!
-//! Permit to manipulate timezone data.
+//! Allows manipulating timezone data.
 
 #![no_std]
 #![feature(underscore_const_names)]
@@ -254,7 +254,7 @@ impl Default for CalendarTimeInfo {
     }
 }
 
-//assert_eq_size!(calendartimeinfo; CalendarTimeInfo, [u8; 0x8]);
+assert_eq_size!(CalendarTimeInfo, [u8; 0x10]);
 
 /// Represnet aditional info of a local time.
 #[repr(C, align(8))]
