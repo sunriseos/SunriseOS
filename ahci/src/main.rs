@@ -169,8 +169,6 @@ capabilities!(CAPABILITIES = Capabilities {
 
         sunrise_libuser::syscalls::nr::SetHeapSize,
         sunrise_libuser::syscalls::nr::QueryMemory,
-        sunrise_libuser::syscalls::nr::MapSharedMemory,
-        sunrise_libuser::syscalls::nr::UnmapSharedMemory,
         sunrise_libuser::syscalls::nr::ConnectToNamedPort,
         sunrise_libuser::syscalls::nr::CreateInterruptEvent,
         sunrise_libuser::syscalls::nr::QueryPhysicalAddress,

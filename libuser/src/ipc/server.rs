@@ -284,7 +284,7 @@ impl<T, Idx> Index<Idx> for Align16<T> where T: Index<Idx> {
 
 /// Encode an 8-character service string into an u64
 fn encode_bytes(s: &str) -> u64 {
-    assert!(s.len() < 8);
+    assert!(s.len() <= 8);
     let s = s.as_bytes();
     0
         | (u64::from(*s.get(0).unwrap_or(&0))) << 00 | (u64::from(*s.get(1).unwrap_or(&0))) <<  8
@@ -413,7 +413,7 @@ where
     T: Unpin + Send + 'static,
 {
     let mut buf = Align16([0; 0x100]);
-    let mut pointer_buf = [0; 0x300];
+    let mut pointer_buf = [0; 0x400];
 
     async move {
         loop {

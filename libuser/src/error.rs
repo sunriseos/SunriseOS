@@ -55,6 +55,8 @@ pub enum Error {
     Ahci(AhciError, Backtrace),
     /// Time errors
     Time(TimeError, Backtrace),
+    /// Filesystem driver error
+    FileSystem(FileSystemError, Backtrace),
     /// An unknown error type. Either someone returned a custom error, or this
     /// version of libuser is outdated.
     Unknown(u32, Backtrace)
@@ -68,6 +70,7 @@ impl Error {
         let description = errcode >> 9;
         match Module(module) {
             Module::Kernel => Error::Kernel(KernelError::from_description(description), Backtrace::new()),
+            Module::FileSystem => Error::FileSystem(FileSystemError(description), Backtrace::new()),
             Module::Sm => Error::Sm(SmError(description), Backtrace::new()),
             //Module::Vi => Error::Vi(ViError(description), Backtrace::new()),
             Module::Libuser => Error::Libuser(LibuserError(description), Backtrace::new()),
@@ -83,6 +86,7 @@ impl Error {
     pub fn as_code(&self) -> u32 {
         match *self {
             Error::Kernel(err, ..) => err.description() << 9 | Module::Kernel.0,
+            Error::FileSystem(err, ..) => err.0 << 9 | Module::FileSystem.0,
             Error::Sm(err, ..) => err.0 << 9 | Module::Sm.0,
             //Error::Vi(err, ..) => err.0 << 9 | Module::Vi.0,
             Error::Libuser(err, ..) => err.0 << 9 | Module::Libuser.0,
@@ -109,9 +113,80 @@ impl From<KernelError> for Error {
 }
 
 enum_with_val! {
+    /// FileSystem driver errors.
+    #[derive(PartialEq, Eq, Clone, Copy)]
+    pub struct FileSystemError(u32) {
+        /// Unknown error.
+        Unknown = 0,
+
+        /// The given resource couldn't be found.
+        PathNotFound = 1,
+
+        /// A resource at the given path already exist.
+        PathExists = 2,
+
+        /// Resource already in use.
+        InUse = 7,
+
+        /// There isn't enough space for a resource to be stored.
+        NoSpaceLeft = 39,
+
+        /// The partition wasn't used as it's invalid.
+        InvalidPartition = 1001,
+
+        /// Specified value is out of range.
+        OutOfRange = 3005,
+
+        /// A writing operation failed on the attached storage device.
+        WriteFailed = 4002,
+
+        /// A read operation failed on the attached storage device.
+        ReadFailed = 4003,
+
+        /// The given partition cannot be found.
+        PartitionNotFound = 4004,
+
+        /// The given input wasn't valid.
+        InvalidInput = 6001,
+
+        /// The given path is too long to be resolved.
+        PathTooLong = 6003,
+
+        /// The access to a given resource has been denied.
+        AccessDenied = 6400,
+
+        /// The requested file wasn't found.
+        FileNotFound = 6602,
+
+        /// The requested operation isn't supported by the detail.
+        UnsupportedOperation = 6300,
+
+        /// The requested directory wasn't found.
+        DirectoryNotFound = 6603,
+
+        /// The given resource cannot be represented as a file.
+        NotAFile = 8005,
+
+        /// The given resource cannot be represented as a directory.
+        NotADirectory = 8006,
+
+        /// The given disk id doesn't correspond to a any known disk.
+        DiskNotFound = 8007,
+    }
+}
+
+
+impl From<FileSystemError> for Error {
+    fn from(error: FileSystemError) -> Self {
+        Error::FileSystem(error, Backtrace::new())
+    }
+}
+
+enum_with_val! {
     #[derive(PartialEq, Eq, Clone, Copy)]
     struct Module(u32) {
         Kernel = 1,
+        FileSystem = 2,
         Sm = 21,
         Vi = 114,
         Time = 116,

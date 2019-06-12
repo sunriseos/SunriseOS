@@ -32,6 +32,8 @@ extern crate sunrise_libuser as libuser;
 mod ps2;
 use crate::libuser::io;
 use crate::libuser::sm;
+use crate::libuser::fs::{IFileSystemServiceProxy, IFileProxy};
+use crate::libuser::fs::FileSystemPath;
 use crate::libuser::window::{Window, Color};
 use crate::libuser::terminal::{Terminal, WindowSize};
 use crate::libuser::threads::Thread;
@@ -40,9 +42,42 @@ use core::fmt::Write;
 use alloc::vec::Vec;
 use alloc::sync::Arc;
 use spin::Mutex;
+use bitflags::bitflags;
+
+bitflags! {
+    /// Flags indicating the way a file should be open.
+    pub struct FileModeFlags: u32 {
+        /// The file should be readable.
+        const READABLE = 0b0000_0001;
+
+        /// The file should be writable.
+        const WRITABLE = 0b0000_0010;
+
+        /// The file should be appendable.
+        const APPENDABLE = 0b0000_0100;
+    }
+}
 
 fn main() {
     let mut terminal = Terminal::new(WindowSize::FontLines(-1, false)).unwrap();
+
+    let fs_proxy = IFileSystemServiceProxy::raw_new().unwrap();
+    let filesystem = fs_proxy.open_disk_partition(0, 0).unwrap();
+
+    let mut raw_path: FileSystemPath = [0; 0x301];
+    (&mut raw_path[0..9]).copy_from_slice(b"/etc/motd");
+
+    let file: IFileProxy = filesystem.open_file(FileModeFlags::READABLE.bits(), &raw_path).unwrap();
+
+    let mut buffer = [0; 0x200];
+
+    file.read(0, 0, 0x200, &mut buffer).unwrap();
+
+    let raw_motd = core::str::from_utf8(&buffer).unwrap();
+    let motd = raw_motd.trim_matches(char::from(0));
+
+    let _ = writeln!(&mut terminal, "{}", motd);
+
     loop {
         match &*ps2::get_next_line(&mut terminal) {
             "meme1" => show_gif(&LOUIS1[..]),

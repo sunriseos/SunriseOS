@@ -6,13 +6,13 @@ use core::fmt::{self, Debug, Formatter};
 use spin::Mutex;
 
 use sunrise_libuser::error::{Error, AhciError};
-use sunrise_libuser::types::SharedMemory;
-use sunrise_libuser::syscalls::MemoryPermissions;
 use sunrise_libuser::ahci::IDisk as IDiskInterface;
 use sunrise_libuser::futures::WorkQueue;
 use sunrise_libuser::zero_box::ZeroBox;
+use sunrise_libuser::ahci::Block;
 
 use crate::hba::*;
+
 
 /// An AHCI Disk
 ///
@@ -63,6 +63,10 @@ impl Disk {
     /// Reads `sector_count` sectors starting from `lba`.
     #[inline(never)]
     fn read_dma(&mut self, buffer: *mut u8, buffer_len: usize, lba: u64, sector_count: u64) -> Result<(), Error> {
+        if ((buffer as usize) % 2) != 0 {
+            return Err(AhciError::InvalidArg.into());
+        }
+
         if (buffer_len as u64) < sector_count * 512 {
             return Err(AhciError::InvalidArg.into());
         }
@@ -104,7 +108,11 @@ impl Disk {
     ///
     /// Writes `sector_count` sectors starting from `lba`.
     #[inline(never)]
-    fn write_dma(&mut self, buffer: *mut u8, buffer_len: usize, lba: u64, sector_count: u64) -> Result<(), Error> {
+    fn write_dma(&mut self, buffer: *const u8, buffer_len: usize, lba: u64, sector_count: u64) -> Result<(), Error> {
+        if ((buffer as usize) % 2) != 0 {
+            return Err(AhciError::InvalidArg.into());
+        }
+
         if (buffer_len as u64) < sector_count * 512 {
             return Err(AhciError::InvalidArg.into());
         }
@@ -186,12 +194,8 @@ impl IDiskInterface for IDisk {
     ///     - The passed handle points to memory that is so physically scattered it overflows
     ///       the PRDT. This can only happen for read/writes of 1985 sectors or more.
     ///       You should consider retrying with a smaller `sector_count`.
-    fn read_dma(&mut self, _manager: WorkQueue<'static>, sharedmem: SharedMemory, mapping_size: u64, lba: u64, sector_count: u64) -> Result<(), Error> {
-        let addr = sunrise_libuser::mem::find_free_address(mapping_size as _, 0x1000)?;
-        let mapped = sharedmem.map(addr, mapping_size as _, MemoryPermissions::empty())
-        // no need for permission, only the disk will dma to it.
-            .map_err(|_| AhciError::InvalidArg)?;
-        self.0.lock().read_dma(mapped.as_mut_ptr(), mapped.len(), lba, sector_count)
+    fn read_dma(&mut self, _manager: WorkQueue<'static>, address: u64, out_blocks: &mut [sunrise_libuser::ahci::Block]) -> Result<(), Error> {
+        self.0.lock().read_dma(out_blocks.as_mut_ptr() as *mut u8, out_blocks.len() * core::mem::size_of::<Block>(), address, out_blocks.len() as u64)
     }
 
     /// Writes sectors to disk.
@@ -209,11 +213,7 @@ impl IDiskInterface for IDisk {
     ///     - The passed handle points to memory that is so physically scattered it overflows
     ///       the PRDT. This can only happen for read/writes of 1985 sectors or more.
     ///       You should consider retrying with a smaller `sector_count`.
-    fn write_dma(&mut self, _manager: WorkQueue<'static>, sharedmem: SharedMemory, mapping_size: u64, lba: u64, sector_count: u64) -> Result<(), Error> {
-        let addr = sunrise_libuser::mem::find_free_address(mapping_size as _, 0x1000)?;
-        let mapped = sharedmem.map(addr, mapping_size as _, MemoryPermissions::empty())
-        // no need for permission, only the disk will dma to it.
-            .map_err(|_| AhciError::InvalidArg)?;
-        self.0.lock().write_dma(mapped.as_mut_ptr(), mapped.len(), lba, sector_count)
+    fn write_dma(&mut self, _manager: WorkQueue<'static>, address: u64, in_blocks: &[sunrise_libuser::ahci::Block]) -> Result<(), Error> {
+        self.0.lock().write_dma(in_blocks.as_ptr() as *const u8, in_blocks.len() * core::mem::size_of::<Block>(), address, in_blocks.len() as u64)
     }
 }

@@ -883,7 +883,7 @@ impl Px {
     #[allow(clippy::too_many_arguments)] // heh
     #[allow(clippy::missing_docs_in_private_items)]
     pub unsafe fn write_dma(
-        buffer: *mut u8,
+        buffer: *const u8,
         buffer_len: usize,
         lba: u64,
         sector_count: u64,
@@ -1133,12 +1133,14 @@ impl CmdTable {
     ///
     /// * length must be even.
     /// * `buffer[0]` must be the very start of the mapping.
-    pub unsafe fn fill_prdt(&mut self, buffer: *mut u8, mut length: usize, header: &mut CmdHeader) -> Result<(), Error> {
+    pub unsafe fn fill_prdt(&mut self, buffer: *const u8, mut length: usize, header: &mut CmdHeader) -> Result<(), Error> {
         assert_eq!(length % 2, 0, "fill_prdt: length is odd.");
         assert_eq!(buffer as usize % 2, 0, "fill_prdt: buffer is not word aligned.");
+
+        let mut temp_buffer_addr = buffer as usize;
         let mut index = 0;
         while length > 0 {
-            let (mut phys_addr, _, mut phys_len, phys_off) = query_physical_address(buffer as _)?;
+            let (mut phys_addr, _, mut phys_len, phys_off) = query_physical_address(temp_buffer_addr)?;
             phys_addr += phys_off;
             phys_len -= phys_off;
             // divide into 4M regions.
@@ -1157,6 +1159,7 @@ impl CmdTable {
                 index += 1;
                 // also decrement total length.
                 length -= region_len;
+                temp_buffer_addr += region_len;
             }
         }
         // Interrupt on Completion on the last PRDT entry

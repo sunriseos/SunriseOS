@@ -152,15 +152,29 @@ dependencies = ["install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-time", "--release"]
 
+[tasks.fs]
+workspace = false
+description = "Compiles sunrise-fs"
+dependencies = ["install-rust-src"]
+command = "cargo"
+args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-fs"]
+
+[tasks.fs-release]
+workspace = false
+description = "Compiles sunrise-fs"
+dependencies = ["install-rust-src"]
+command = "cargo"
+args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-fs", "--release"]
+
 [tasks.userspace]
 workspace = false
 description = "Compiles userspace apps"
-dependencies = ["shell", "wall-clock", "sm", "vi", "ahci", "time"]
+dependencies = ["shell", "wall-clock", "sm", "vi", "ahci", "time", "fs"]
 
 [tasks.userspace-release]
 workspace = false
 description = "Compiles userspace apps"
-dependencies = ["shell-release", "wall-clock-release", "sm-release", "vi-release", "ahci-release", "time-release"]
+dependencies = ["shell-release", "wall-clock-release", "sm-release", "vi-release", "ahci-release", "time-release", "fs-release"]
 
 [tasks.iso]
 workspace = false
@@ -177,6 +191,7 @@ cp target/i386-unknown-none-user/debug/sunrise-wall-clock     isofiles/boot/
 cp target/i386-unknown-none-user/debug/sunrise-sm             isofiles/boot/
 cp target/i386-unknown-none-user/debug/sunrise-vi             isofiles/boot/
 cp target/i386-unknown-none-user/debug/sunrise-ahci           isofiles/boot/
+cp target/i386-unknown-none-user/debug/sunrise-fs        isofiles/boot/
 mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
 '''
 ]
@@ -196,6 +211,7 @@ cp target/i386-unknown-none-user/release/sunrise-wall-clock     isofiles/boot/
 cp target/i386-unknown-none-user/release/sunrise-sm             isofiles/boot/
 cp target/i386-unknown-none-user/release/sunrise-vi             isofiles/boot/
 cp target/i386-unknown-none-user/release/sunrise-ahci           isofiles/boot/
+cp target/i386-unknown-none-user/release/sunrise-fs        isofiles/boot/
 mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
 '''
 ]
@@ -203,16 +219,8 @@ mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltori
 [tasks.disk]
 workspace = false
 description = "Creates an empty disk image."
-command = "dd"
-# 16384 = 8MiB / 512
-# 512 is the block size, 8MiB is the target disk size.
-args = [ "if=/dev/zero", "of=DISK.img", "count=16384", "bs=512" ]
-
-[tasks.disk.windows]
-command = "fsutil"
-# Chosen by fair dice roll.
-# 8388608 = 8MiB in bytes
-args = [ "file", "createnew", "DISK.img", "8388608" ]
+command = "cargo"
+args = ["run", "--manifest-path", "disk-initializer/Cargo.toml", "--", "DISK.img", "52428800", "external/filesystem/disk_template/"]
 
 # because we can't have a dependency on a file ರ_ರ
 [tasks.create-disk-if-not-exist]
@@ -230,6 +238,7 @@ description = "Runs the bootable ISO in qemu."
 dependencies = ["iso-release", "create-disk-if-not-exist"]
 command = "qemu-system-i386"
 args = [
+    "-boot", "d",
     "-cdrom", "os.iso",
     "-serial", "stdio",
     "-vnc", "${VNC_PORT}",
@@ -245,6 +254,7 @@ description = "Runs the bootable ISO in qemu with gdb support"
 dependencies = ["iso", "create-disk-if-not-exist"]
 command = "qemu-system-i386"
 args = [
+    "-boot", "d",
     "-cdrom", "os.iso",
     "-serial", "stdio",
     "-vnc", "${VNC_PORT}",
@@ -315,6 +325,7 @@ install_crate = { rustup_component_name = "clippy" }
 command = "cargo"
 args = ["xclippy", "--target=i386-unknown-none",
 	"--all", "--exclude", "swipc-gen", "--exclude", "swipc-parser",
+	"--exclude", "disk-initializer",
 	"--exclude", "docs",
 	"--",
 	"@@split(CLIPPY_RULES, )",
@@ -328,7 +339,7 @@ dependencies = ["install-rust-src", "refresh-crates"]
 install_crate = { rustup_component_name = "clippy" }
 command = "cargo"
 args = ["clippy",
-	"-p", "swipc-gen", "-p", "swipc-parser", "-p", "docs",
+	"-p", "swipc-gen", "-p", "swipc-parser", "-p", "docs", "-p", "disk-initializer",
 	"--",
 	"@@split(CLIPPY_RULES, )",
 	"${@}",

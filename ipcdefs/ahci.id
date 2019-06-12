@@ -1,3 +1,6 @@
+# A block (or sector) used by AHCI I/O operations.
+type sunrise_libuser::ahci::Block = bytes<512>;
+
 # Main ahci interface.
 #
 # Can communicate the number of discovered devices,
@@ -31,26 +34,20 @@ interface sunrise_libuser::ahci::IDisk {
     # Reads sectors from the disk.
     #
     # This IPC call will invoke the AHCI driver and make it copy `sector_count` sectors from the disk
-    # to the memory pointed to by `handle`.
-    # You should map `handle` in your process to access the copied data.
+    # to the memory pointed to by the output buffer.
     #
     # # Error
     #
-    # - The handle should contain a buffer at least `sector_count * 512` octets in size.
-    # - `mapping_size` should reflect the size of `handle`.
     # - `address..address+sector_count` should be in the range `0..IDisk.sector_count()`.
-    [1] read_dma(handle<copy, shared_memory>, u64 mapping_size, u64 address, u64 sector_count);
+    [1] read_dma(u64 address) -> array<sunrise_libuser::ahci::Block, 0x6>;
 
     # Writes sectors to the disk.
     #
     # This IPC call will invoke the AHCI driver and make it copy `sector_count` sectors to the disk
-    # from the memory pointed to by `handle`.
-    # You should map `handle` in your process first to fill the data to be copied.
+    # from the memory pointed to by the input buffer.
     #
     # # Error
     #
-    # - The handle should contain a buffer at least `sector_count * 512` octets in size.
-    # - `mapping_size` should reflect the size of `handle`.
     # - `address..address+sector_count` should be in the range `0..IDisk.sector_count()`.
-    [2] write_dma(handle<copy, shared_memory>, u64 mapping_size, u64 address, u64 sector_count);
+    [2] write_dma(u64 address, array<sunrise_libuser::ahci::Block, 0x5> blocks);
 }

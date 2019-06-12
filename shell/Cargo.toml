@@ -10,6 +10,7 @@ gif = { git = "https://github.com/SunriseOS/image-gif" }
 log = "0.4.6"
 sunrise-libuser = { path = "../libuser" }
 spin = "0.5"
+bitflags = "1.1"
 
 [dependencies.lazy_static]
 features = ["spin_no_std"]
