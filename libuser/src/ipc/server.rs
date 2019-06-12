@@ -26,7 +26,7 @@
 //!
 //! fn main() {
 //!      let man = WaitableManager::new();
-//!      let handler = Box::new(PortHandler::<IExample>::new("hello\0", IExample::dispatch).unwrap());
+//!      let handler = Box::new(PortHandler::new("hello\0", IExample::dispatch).unwrap());
 //!      man.add_waitable(handler as Box<dyn IWaitable>);
 //!      man.run()
 //! }
@@ -148,11 +148,16 @@ fn encode_bytes(s: &str) -> u64 {
 /// for connection requests, and creates a new SessionWrapper around the
 /// incoming connections, which gets registered on the WaitableManager.
 ///
-/// The DISPATCH function will usually be found on the interface trait. See, for
-/// instance, [sunrise_libuser::sm::IUserInterface::dispatch()].
+/// The DISPATCH function is passed to [SessionWrapper]s created from this
+/// port. The DISPATCH function is responsible for parsing and answering an
+/// IPC request. It will usually be found on the interface trait. See, for
+/// instance, [crate::sm::IUserInterface::dispatch()].
 pub struct PortHandler<T, DISPATCH> {
+    /// The kernel object backing this Port Handler. 
     handle: ServerPort,
+    /// Function called when sessions created from this port receive a request.
     dispatch: DISPATCH,
+    /// Type of the Object this port creates.
     phantom: PhantomData<T>,
 }
 
@@ -165,7 +170,7 @@ impl<T, DISPATCH> Debug for PortHandler<T, DISPATCH> {
 }
 
 impl<T, DISPATCH> PortHandler<T, DISPATCH> {
-    /// Registers a new PortHandler of the given name to the sm: service.
+    /// Registers a new PortHandler of the given name to the `sm:` service.
     pub fn new(server_name: &str, dispatch: DISPATCH) -> Result<PortHandler<T, DISPATCH>, Error> {
         use crate::sm::IUserInterfaceProxy;
         let port = IUserInterfaceProxy::raw_new()?.register_service(encode_bytes(server_name), false, 0)?;
@@ -212,15 +217,18 @@ where
 }
 
 /// A wrapper around an Object backed by an IPC Session that implements the
-/// IWaitable trait. The DISPATCH function will usually be found on the
-/// interface trait. See, for instance, [sunrise_libuser::sm::IUserInterface::dispatch()].
+/// IWaitable trait.
+///
+/// The DISPATCH function is responsible for parsing and answering an IPC
+/// request. It will usually be found on the interface trait. See, for instance,
+/// [crate::sm::IUserInterface::dispatch()].
 pub struct SessionWrapper<T, DISPATCH> {
     /// Kernel Handle backing this object.
     handle: ServerSession,
     /// Object instance.
     object: T,
 
-    /// Dispatch function
+    /// Function called to handle an IPC request.
     dispatch: DISPATCH,
 
     /// Command buffer for this session.

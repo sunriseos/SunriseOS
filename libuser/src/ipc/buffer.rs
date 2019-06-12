@@ -13,8 +13,8 @@
 //! only (on supported platforms. On platforms that don't have write-only memory,
 //! it will be mapped RW instead).
 //!
-//! Those types are not meant to be used directly. Instead, you should get them
-//! as arguments from the [object macro](crate::ipc::macros).
+//! Those types are not meant to be used directly. The swipc-gen `dispatch`
+//! function will use them automatically as an implementation detail.
 //!
 //! The types will auto-deref to their underlying type, allowing the user to
 //! manipulate them as if they were normal pointers.
