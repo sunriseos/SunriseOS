@@ -213,7 +213,12 @@ bitfield! {
 }
 
 impl IoApic {
-    /// Creates a new IO-APIC device where the region.
+    /// Creates a new IO-APIC device at the given Physical Address, mapping
+    /// interrupts (typically 24) starting from `interrupt_base`.
+    /// 
+    /// The IOAPIC will be initialized with sane values: every redirection entry
+    /// will be masked, their interrupt vector set to 0x20 + interrupt_idx, and
+    /// their destination CPU to `root_cpu_id`.
     ///
     /// # Safety
     ///

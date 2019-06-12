@@ -572,7 +572,7 @@ impl LocalApic {
     pub unsafe fn new(address: PhysicalAddress) -> Self {
         assert!(address.addr() % PAGE_SIZE == 0, "Unaligned local APIC address");
 
-        let lapic = get_kernel_memory().map_phys_region(PhysicalMemRegion::on_fixed_mmio(address, 0x1000).unwrap(), MappingAccessRights::WRITABLE);
+        let lapic = get_kernel_memory().map_phys_region(PhysicalMemRegion::on_fixed_mmio(address, 0x1000).unwrap(), MappingAccessRights::k_rw());
 
         let lapic = LocalApic {
             internal: (lapic.addr() as *const UnsafeCell<LocalApicInternal>).as_ref().unwrap(),
