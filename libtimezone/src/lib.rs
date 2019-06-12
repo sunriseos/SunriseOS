@@ -116,6 +116,12 @@ pub enum TimeZoneError {
     /// Some data inside the Tzif file are invalid (type processing failed).
     InvalidTypeCount,
 
+    /// An invalid time comparaison occured (is the time in range of the rules?)
+    InvalidTimeComparison,
+
+    /// Signed overflow/underflow appened.
+    Overflow,
+
     /// Unknown.
     Unknown,
 }
@@ -490,7 +496,7 @@ impl TimeZoneRule {
             }
 
             if new_time < self.ats[0] && new_time > self.ats[self.timecnt as usize - 1] {
-                return Err(TimeZoneError::Unknown);
+                return Err(TimeZoneError::InvalidTimeComparison);
             }
 
             let mut result = self.to_calendar_time(new_time as PosixTime)?;
@@ -540,14 +546,14 @@ impl TimeZoneRule {
         let mut tmp_minute = i32::from(tmp_calendar.minute);
 
         if utils::normalize_overflow(&mut tmp_hour, &mut tmp_minute, MINS_PER_HOUR as i32) {
-            return Err(TimeZoneError::Unknown);
+            return Err(TimeZoneError::Overflow);
         }
 
         tmp_calendar.minute = tmp_minute as i8;
 
         let mut tmp_day = i32::from(tmp_calendar.day);
         if utils::normalize_overflow(&mut tmp_day, &mut tmp_hour, HOURS_PER_DAY as i32) {
-            return Err(TimeZoneError::Unknown);
+            return Err(TimeZoneError::Overflow);
         }
 
         tmp_calendar.day = tmp_day as i8;
@@ -557,18 +563,18 @@ impl TimeZoneRule {
         let mut month = i64::from(tmp_calendar.month);
 
         if utils::normalize_overflow(&mut year, &mut month, MONS_PER_YEAR) {
-            return Err(TimeZoneError::Unknown);
+            return Err(TimeZoneError::Overflow);
         }
 
         tmp_calendar.month = month as i8;
 
         if utils::increment_overflow(&mut year, YEAR_BASE) {
-            return Err(TimeZoneError::Unknown);
+            return Err(TimeZoneError::Overflow);
         }
 
         while tmp_day <= 0 {
             if utils::increment_overflow(&mut year, -1) {
-                return Err(TimeZoneError::Unknown);
+                return Err(TimeZoneError::Overflow);
             }
 
             let li = if 1 < tmp_calendar.month {
@@ -589,7 +595,7 @@ impl TimeZoneRule {
 
             tmp_day -= YEAR_LENGTHS[utils::is_leap_year(li) as usize] as i32;
             if utils::increment_overflow(&mut year, 1) {
-                return Err(TimeZoneError::Unknown);
+                return Err(TimeZoneError::Overflow);
             }
         }
 
@@ -604,14 +610,14 @@ impl TimeZoneRule {
             if tmp_calendar.month >= MONS_PER_YEAR as i8 {
                 tmp_calendar.month = 0;
                 if utils::increment_overflow(&mut year, 1) {
-                    return Err(TimeZoneError::Unknown);
+                    return Err(TimeZoneError::Overflow);
                 }
             }
         }
         tmp_calendar.day = tmp_day as i8;
 
         if utils::increment_overflow(&mut year, -YEAR_BASE) {
-            return Err(TimeZoneError::Unknown);
+            return Err(TimeZoneError::Overflow);
         }
 
         tmp_calendar.year = year;
@@ -621,7 +627,7 @@ impl TimeZoneRule {
             saved_seconds = 0;
         } else if year + YEAR_BASE < EPOCH_YEAR {
             if utils::increment_overflow(&mut tmp_calendar.second, 1 - SECS_PER_MIN as i8) {
-                return Err(TimeZoneError::Unknown);
+                return Err(TimeZoneError::Overflow);
             }
 
             saved_seconds = tmp_calendar.second;
@@ -660,7 +666,7 @@ impl TimeZoneRule {
                 let result = t + Time::from(saved_seconds);
 
                 if (result < t) != (saved_seconds < 0) {
-                    return Err(TimeZoneError::Unknown);
+                    return Err(TimeZoneError::Overflow);
                 }
                 return Ok(result);
             } else {

@@ -170,7 +170,7 @@ fn get_num<'a>(name: &'a [u8], num: &mut i64, min: i64, max: i64) -> Option<&'a 
         return None;
     }
 
-    let name_str = unsafe { core::str::from_utf8_unchecked(name) };
+    let name_str = core::str::from_utf8(name).ok()?;
 
     let mut max_size = 0;
 

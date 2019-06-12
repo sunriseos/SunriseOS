@@ -9,3 +9,4 @@ edition = "2018"
 sunrise-libuser = { path = "../libuser" }
 log = "0.4.6"
 spin = "0.5"
+bstr = { version = "0.1", default-features = false }

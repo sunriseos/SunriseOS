@@ -27,6 +27,8 @@ use log::info;
 use sunrise_libuser::time::{RTCManager, StaticService, TimeZoneRule, CalendarAdditionalInfo, CalendarTime};
 use spin::Mutex;
 
+use bstr::BStr;
+
 /// Turns a day of week number from RTC into an english string.
 fn get_day_of_week(dow: u8) -> &'static str {
     match dow {
@@ -72,7 +74,7 @@ static TIMEZONE_RULE: Mutex<TimeZoneRuleWrapper> = Mutex::new(TimeZoneRuleWrappe
 
 /// Write a wall clock time into the terminal.
 #[allow(clippy::cast_sign_loss)]
-fn write_calendar(logger: &mut Terminal, location: &str, input: (CalendarTime, CalendarAdditionalInfo), debug_log: bool) {
+fn write_calendar(logger: &mut Terminal, location: &BStr, input: (CalendarTime, CalendarAdditionalInfo), debug_log: bool) {
     let calendar = input.0;
 
     let hours = calendar.hour;
@@ -98,11 +100,11 @@ fn main() {
 
     // Get default timezone name
     let device_location = timezone_service.get_device_location_name().unwrap();
-    let device_location_trimed = unsafe { core::str::from_utf8_unchecked(&device_location) }.trim_matches(char::from(0));
+    let device_location_trimed = BStr::from_bytes(&device_location).trim_with(|c| c == '\0');
 
     // Let's get New York time
     let custom_location = b"America/New_York\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
-    let custom_location_trimed = unsafe { core::str::from_utf8_unchecked(&custom_location[..]) }.trim_matches(char::from(0));
+    let custom_location_trimed = BStr::from_bytes(&custom_location[..]).trim_with(|c| c == '\0');
 
     // Load a custom one
     let mut rule = TIMEZONE_RULE.lock();
