@@ -622,10 +622,15 @@ fn parse_timezone_name(name: &[u8], timezone_rule: &mut TimeZoneRule, last_ditch
     true
 }
 
+/// Convert a slice to a ref to a TzifHeader with the appropriate lifetime.
+#[allow(clippy::cast_ptr_alignment)]
+unsafe fn tzif_header_from_bytes(work_buffer: &[u8]) -> &TzifHeader {
+    &*(work_buffer as *const _ as *const TzifHeader)
+}
+
 /// Load the given timezones rules from a given ConversionBuffer containing TzIf2 data into the given TimeZoneRule.
 #[allow(
     clippy::absurd_extreme_comparisons,
-    clippy::cast_ptr_alignment,
     clippy::cognitive_complexity
 )]
 pub(crate) fn load_body(
@@ -638,7 +643,7 @@ pub(crate) fn load_body(
 
     let work_buffer = conversion_buffer.work_buffer;
 
-    let tzheader: &TzifHeader = unsafe { &*(work_buffer as *const _ as *const TzifHeader) };
+    let tzheader = unsafe { tzif_header_from_bytes(&work_buffer) };
 
     let ttis_gmt_count = detzcode(tzheader.ttis_gmt_count);
     let ttis_std_count = detzcode(tzheader.ttis_std_count);

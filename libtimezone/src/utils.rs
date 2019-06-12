@@ -23,6 +23,10 @@ pub fn increment_overflow<T: Num + CheckedAdd + Copy>(ip: &mut T, j: T) -> bool 
 /// Normalize and increment the given ``ip`` with the given ``unit`` and ``base`` if it doesn't overflow.
 ///
 /// If the operation overflow, this return true otherwise false.
+/// 
+/// Note:
+/// 
+/// The normalization part allows to remove (or in negative case, add) the amount of ``unit`` we are going to add (or in negative case, remove) to ``ip``.
 pub fn normalize_overflow<
     T: Num
         + Sub<Output = T>
