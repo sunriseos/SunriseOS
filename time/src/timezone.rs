@@ -125,7 +125,7 @@ impl TimeZoneManager {
 
     /// Get the total count of location name available
     pub fn get_total_location_name_count(&self) -> IpcResult<u32> {
-        // FIXME: use binaryList.txt
+        // FIXME: parse binaryList.txt
         Ok(TimeZoneFileSystem::file_count())
     }
 
@@ -136,7 +136,6 @@ impl TimeZoneManager {
 
         let path_trim = path.trim_matches('\0');
 
-        // FIXME: use binaryList.txt
         let file = TimeZoneFileSystem::open_file(path_trim.as_bytes());
         if file.is_none() {
             return Err(TimeError::TimeZoneNotFound.into());
@@ -152,9 +151,8 @@ impl TimeZoneManager {
             &mut self.my_rules
         };
 
-        // clear potential uninitialized data just in case
-        // FIXME: this make the whole thing crash SOMEHOW
-        //*timezone_rule = TimeZoneRule::default();
+        // Before anything else, clear the buffer
+        unsafe { core::ptr::write_bytes(timezone_rule as *mut _ as *mut u8, 0, core::mem::size_of::<TimeZoneRule>()); }
 
         // Try conversion
         let res = timezone_rule.load_rules(tzdata, &mut self.temp_rules);

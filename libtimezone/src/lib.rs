@@ -534,7 +534,11 @@ impl TimeZoneRule {
         let tti = &self.ttis[tti_index];
         let mut result = create_calendar_time(time, tti.gmt_offset)?;
         result.additional_info.is_dst = tti.is_dst;
-        // FIXME: copy timezone name
+
+        let tz_name = &self.chars[tti.abbreviation_list_index as usize..];
+        let tz_len = core::cmp::min(misc::len_cstr(&self.chars[tti.abbreviation_list_index as usize..]), 8);
+        (&mut result.additional_info.timezone_name[0..tz_len]).copy_from_slice(&tz_name[..tz_len]);
+
         Ok(result)
     }
 

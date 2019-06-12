@@ -89,7 +89,8 @@ fn write_calendar(logger: &mut Terminal, location: &BStr, input: (CalendarTime, 
         info!("{:02}:{:02}:{:02} {} {:02} {} {}", hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year);
     }
 
-    let _ = write!(logger, "{}: {:02}:{:02}:{:02} {} {:02} {} {}", location, hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year);
+    let abbreviation = core::str::from_utf8(&input.1.tz_name[..]).unwrap().trim_matches('\0');
+    let _ = write!(logger, "{}: {:02}:{:02}:{:02} {} {:02} {} {} {}", location, hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year, abbreviation);
 }
 
 fn main() {
