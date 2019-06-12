@@ -220,12 +220,15 @@ fn get_type(output: bool, ty: &Alias, is_server: bool) -> Result<String, Error> 
         } else {
             Ok(format!("sunrise_libuser::types::{}", if *is_copy && !is_server && !output { "HandleRef" } else { "Handle" }))
         },
-        Alias::Pid => Ok("u64".to_string()),
+        Alias::Pid => Ok("sunrise_libuser::types::Pid".to_string()),
         Alias::Other(ty) if ty == "unknown" => Err(Error::UnsupportedStruct),
         Alias::Other(ty) => Ok(ty.clone()),
     }
 }
 
+/// Generates the InRaw structure from the argument list of a function. This
+/// structure corresponds to the Raw Data that will be sent in the request of an
+/// IPC message.
 fn gen_in_raw(s: &mut String, cmd: &Func) -> Result<&'static str, Error>  {
     if cmd.args.iter().any(|(argty, _)| is_raw(argty)) {
         writeln!(s, "        #[repr(C)]").unwrap();
@@ -242,6 +245,9 @@ fn gen_in_raw(s: &mut String, cmd: &Func) -> Result<&'static str, Error>  {
     }
 }
 
+/// Generates the OutRaw structure from the return param list of a function.
+/// This structure corresponds to the Raw Data that will be sent in the response
+/// of an IPC message.
 fn gen_out_raw(s: &mut String, cmd: &Func) -> Result<&'static str, Error> {
     if cmd.ret.iter().any(|(argty, _)| is_raw(argty)) {
         writeln!(s, "        #[repr(C)]").unwrap();
@@ -479,7 +485,7 @@ fn generate_mod(m: Mod, depth: usize, mod_name: &str, crate_name: &str) -> Strin
 }
 
 /// Parse an incoming request, call the appropriate function from the trait
-/// we're currently generating (see [gen_trait]), and fill the byte buffer with
+/// we're currently generating (see [gen_trait()]), and fill the byte buffer with
 /// the response data.
 fn gen_call(cmd: &Func) -> Result<String, Error> {
     let mut s = String::new();
@@ -606,7 +612,7 @@ fn gen_call(cmd: &Func) -> Result<String, Error> {
     writeln!(s, "                    }},").unwrap();
     writeln!(s, "                    Err(err) => {{ msg__.set_error(err.as_code()); }}").unwrap();
     writeln!(s, "                }}").unwrap();
-    writeln!(s, "").unwrap();
+    writeln!(s).unwrap();
     writeln!(s, "                msg__.pack(buf);").unwrap();
     writeln!(s, "                Ok(())").unwrap();
     Ok(s)

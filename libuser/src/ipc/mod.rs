@@ -587,6 +587,16 @@ where
         self
     }
 
+    /// Send a Pid with this IPC request.
+    ///
+    /// If `pid` is None, sends the current process' Pid. If it's Some, then it
+    /// will attempt to send that process Pid. Note however that this requires a
+    /// kernel patch to work properly.
+    pub fn send_pid(&mut self, pid: Option<Pid>) -> &mut Self {
+        self.pid = Some(pid.map(|v| v.0).unwrap_or(0));
+        self
+    }
+
     /// Retreive the next InPointer (type-X buffer) in the message.
     ///
     /// # Errors
@@ -687,7 +697,8 @@ where
                 cursor.write_u32::<LE>(descriptor_hdr.0);
             }
 
-            // Seek 8 if we have to send pid. We don't actually write the pid.
+            // Seek 8 if we have to send pid. Write the PID, useful if we want
+            // to pretend to be another process (requires a kernel patch).
             if let Some(pid) = self.pid {
                 cursor.write_u64::<LE>(pid);
             }
