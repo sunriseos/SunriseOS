@@ -283,15 +283,15 @@ fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mu
         let mut mapping_error_handling_logic =
             |to_mem: &mut ProcessMemory, error: KernelError, mut first_page_info_opt: Option<(VirtualAddress, usize)>, mut middle_page_info_opt: Option<(VirtualAddress, usize)>, mut last_page_info_opt: Option<(VirtualAddress, usize)>| {
                 if let Some(first_page_info) = first_page_info_opt.take() {
-                    to_mem.unmap(first_page_info.0, first_page_info.1);
+                    to_mem.unmap(first_page_info.0, first_page_info.1).expect("Cannot unmap first unaligned page of buffer");;
                 }
 
                 if let Some(middle_page_info) = middle_page_info_opt {
-                    to_mem.unmap(middle_page_info.0, middle_page_info.1);
+                    to_mem.unmap(middle_page_info.0, middle_page_info.1).expect("Cannot unmap buffer");;
                 }
 
                 if let Some(last_page_info) = last_page_info_opt.take() {
-                    to_mem.unmap(last_page_info.0, last_page_info.1);
+                    to_mem.unmap(last_page_info.0, last_page_info.1).expect("Cannot unmap last unaligned page of buffer");;
                 }
 
                 Err(error.into())
@@ -427,7 +427,7 @@ fn buf_unmap(buffer: &Buffer, from_mem: &mut ProcessMemory, to_mem: &mut Process
             };
         }
 
-        from_mem.unmap(addr.floor(), PAGE_SIZE)?;
+        from_mem.unmap(addr.floor(), PAGE_SIZE).expect("Cannot unmap first unaligned page of buffer");
         size_handled += first_page_size;
     }
 
@@ -452,13 +452,13 @@ fn buf_unmap(buffer: &Buffer, from_mem: &mut ProcessMemory, to_mem: &mut Process
 
         }
 
-        from_mem.unmap((addr + size).floor(), PAGE_SIZE)?;
+        from_mem.unmap((addr + size).floor(), PAGE_SIZE).expect("Cannot unmap last unaligned page of buffer");
         size_handled += last_page_size;
     }
 
     assert!((size - size_handled) % PAGE_SIZE == 0, "Remaining size should be a multiple of PAGE_SIZE");
     if size < size_handled {
-        from_mem.unmap(addr.ceil(), size - size_handled)?;
+        from_mem.unmap(addr.ceil(), size - size_handled).expect("Cannot unmap buffer");
     }
 
     result
