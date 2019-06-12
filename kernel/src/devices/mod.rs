@@ -5,7 +5,7 @@ pub mod pic;
 pub mod pit;
 pub mod rs232;
 
-pub mod apic;
+pub mod lapic;
 pub mod ioapic;
 
 use crate::i386::acpi;

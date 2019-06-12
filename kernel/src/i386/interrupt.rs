@@ -5,7 +5,7 @@
 //! unmask and acknowledge interrupts.
 
 use crate::devices::pic;
-use crate::devices::apic::LocalApic;
+use crate::devices::lapic::LocalApic;
 use crate::devices::ioapic::IoApic;
 use acpi::interrupt::{InterruptModel, InterruptSourceOverride};
 use crate::sync::Once;
@@ -50,13 +50,6 @@ pub fn init() {
                 }
             }
             _ => panic!("ACPI did not find a Local APIC"),
-            /*
-                // According to https://web.archive.org/web/20121002210153/http://download.intel.com/design/archives/processors/pro/docs/24201606.pdf,
-                // Local APIC is at 0xFEE0_0000
-                // I/O - APIC is at 0xFEC0_0000
-                let lapic = LocalApic::new(PhysicalAddress(0xFEE0_0000));
-                let ioapic = IoApic::new(PhysicalAddress(0xFEC0_0000), 0, lapic.local_apic_id())
-            */
         }
     });
 
