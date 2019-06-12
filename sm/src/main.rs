@@ -57,7 +57,7 @@ use spin::Mutex;
 /// The main interface to the Service Manager. Clients can use it to connect to
 /// or register new services (assuming they have the appropriate capabilities).
 ///
-/// Make sure to call the [UserInterface::initialize] method before using it.
+/// Make sure to call the [IUserInterface::initialize()] method before using it.
 #[derive(Debug, Default)]
 struct UserInterface;
 
@@ -93,12 +93,12 @@ fn get_service_str(servicename: &u64) -> &str {
 }
 
 impl IUserInterface for UserInterface {
-    /*/// Initialize the UserInterface, acquiring the Pid of the remote
+    /// Initialize the UserInterface, acquiring the Pid of the remote
     /// process, which will then be used to validate the permissions of each
     /// calls.
-    fn initialize(&mut self, pid: Pid) -> Result<(), Error> {
+    fn initialize(&mut self, _manager: &WaitableManager, _pid: Pid) -> Result<(), Error> {
         Ok(())
-    }*/
+    }
 
     /// Get a ClientSession to this service.
     fn get_service(&mut self, _manager: &WaitableManager, servicename: u64) -> Result<ClientSession, Error> {
@@ -121,13 +121,13 @@ impl IUserInterface for UserInterface {
         }
     }
 
-    /*/// Unregister a service.
-    fn unregister_service(&mut self, servicename: u64) -> Result<(), Error> {
+    /// Unregister a service.
+    fn unregister_service(&mut self, _manager: &WaitableManager, servicename: u64) -> Result<(), Error> {
         match SERVICES.lock().remove(&servicename) {
             Some(_) => Ok(()),
             None => Err(SmError::ServiceNotRegistered.into())
         }
-    }*/
+    }
 }
 
 fn main() {
