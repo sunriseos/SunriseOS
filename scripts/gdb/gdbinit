@@ -1,0 +1,14 @@
+# Connect to the qemu stub through tcp.
+# This should block until the compilation has ended and qemu has started,
+# so it guarantees we are sourcing the up-to-date binaries afterward.
+target remote :9090
+
+# Add the kernel and all its symbols.
+file isofiles/boot/sunrise-kernel
+
+# Add a userspace process and all its symbols.
+# We specify the address at which the kernel loaded it.
+add-symbol-file isofiles/boot/sunrise-shell 0x00400000
+
+# Source sunrise scripts.
+source scripts/gdb/break_userspace.py
