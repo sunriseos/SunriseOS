@@ -1,4 +1,6 @@
 //! HPET driver implementation.
+//!
+//! HPET documentation: https://web.archive.org/web/20190411220000/https://www.intel.com/content/dam/www/public/us/en/documents/technical-specifications/software-developers-hpet-spec-1-0a.pdf
 use crate::frame_allocator::PhysicalMemRegion;
 use crate::mem::PhysicalAddress;
 use crate::paging;
@@ -221,6 +223,21 @@ impl HpetTimer {
         (self.interrupt_route_capability & irq_mask) == irq_mask
     }
 
+    /// Set the routing for the interrupt to the I/O APIC.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the given interrupt route is not supported by this hpet timer.
+    pub fn set_interrupt_route(&self, index: u32) {
+        assert!(self.support_interrupt_routing(index), "Illegal interrupt route.");
+        let mut config = unsafe { (*self.inner).config.read() };
+        config.set_interrupt_route(index);
+        unsafe { (*self.inner).config.write(config); }
+
+        let config = unsafe { (*self.inner).config.read() };
+        assert!(config.interrupt_route() == index, "Illegal interrupt route.");
+    }
+
     /// Set the timer comparactor value
     pub fn set_comparator_value(&self, value: u64) {
         unsafe {
@@ -320,6 +337,7 @@ impl HpetTimer {
 impl Hpet {
     /// Create a new HPET device instance from MMIO registers.
     fn new(inner: *mut HpetRegister) -> Self {
+        debug!("Creating new HPET with registers at {:p}", inner);
         let mut res = Hpet {
             inner,
             timer_count: 1,
@@ -459,7 +477,6 @@ pub unsafe fn init(hpet: &acpi::Hpet) -> bool {
         return false;
     }
 
-    // TODO: enable main timer
     let main_timer_opt = hpet_instance.get_timer(0);
 
     if main_timer_opt.is_none() {
@@ -488,34 +505,26 @@ pub unsafe fn init(hpet: &acpi::Hpet) -> bool {
 
     let irq_period_tick = irq_period_fs / u64::from(hpet_instance.get_period());
 
+    // IO-APIC expects edge triggering by default.
     main_timer.set_edge_trigger();
     main_timer.set_periodic_mode();
     main_timer.enable_interrupt();
     main_timer.set_accumulator_value(irq_period_tick);
     main_timer.set_comparator_value(irq_period_tick);
-
-    // Fake the RTC as in legacy mode it's taking it's IRQ.
-    // TODO: remove this when IO-APIC will be implemented
-    // Cannot fail, by spec there is at least 3 comparators defined.
-    let rtc_timer = hpet_instance.get_timer(1).unwrap();
-    if !rtc_timer.support_periodic_interrupt() {
-        warn!("RTC irq cannot be faked, clock will be broken!");
-    } else {
-        let rtc_period_in_ticks = hpet_instance.get_frequency();
-        rtc_timer.set_edge_trigger();
-        rtc_timer.set_periodic_mode();
-        rtc_timer.enable_interrupt();
-        rtc_timer.set_accumulator_value(rtc_period_in_ticks);
-        rtc_timer.set_comparator_value(rtc_period_in_ticks);
-    }
-
-    // TODO: switch HPET to normal mode when IO-APIC will be implemented.
-    hpet_instance.enable_legacy_mapping();
+    // Route the timer to the IRQ 2.
+    // TODO: Report that IOAPIC IRQ0 is broken under qemu.
+    // BODY: Ideally, we'd use IRQ0 for the timer, in order to match what we have
+    // BODY: with the PIC. Unfortunately, qemu [unconditionally redirects irqs on
+    // BODY: pin0 to pin2](https://github.com/qemu/qemu/blob/37560c259d7a0d6aceb96e9d6903ee002f4e5e0c/hw/intc/ioapic.c#L152).
+    // BODY:
+    // BODY: We should report this upstream bug, and move back to IRQ0 once it is
+    // BODY: fixed.
+    main_timer.set_interrupt_route(2);
 
     // Clear the interrupt state
     hpet_instance.enable();
 
-    timer::set_kernel_timer_info(0, hpet_instance.get_frequency(), irq_period_ns);
+    timer::set_kernel_timer_info(2, hpet_instance.get_frequency(), irq_period_ns);
 
     HPET_INSTANCE = Some(hpet_instance);
     true

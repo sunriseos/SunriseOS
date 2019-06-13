@@ -18,7 +18,6 @@ use core::sync::atomic::Ordering;
 
 use core::fmt::Arguments;
 use crate::sync::SpinLock;
-use crate::devices::pic;
 use crate::scheduler;
 
 mod irq;
@@ -425,7 +424,7 @@ lazy_static! {
 #[allow(clippy::cast_ptr_alignment)] // this function is x86_32 only
 #[allow(clippy::fn_to_numeric_cast)] // this function is x86_32 only
 pub unsafe fn init() {
-    pic::init();
+    crate::i386::interrupt::init();
 
     {
         let page = get_kernel_memory().get_page();

@@ -29,7 +29,7 @@ log = "0.4.6"
 xmas-elf = "0.6.2"
 rustc-demangle = "0.1"
 failure = { version = "0.1", default-features = false, features = ["derive"] }
-bitfield = "0.13"
+bitfield = { git = "https://github.com/sunriseos/rust-bitfield" }
 mashup = "0.1.9"
 acpi = { git = "https://github.com/sunriseos/acpi.git" }
 

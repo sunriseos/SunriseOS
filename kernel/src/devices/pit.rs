@@ -208,3 +208,10 @@ pub unsafe fn init_channel_0() {
 
     timer::set_kernel_timer_info(0, OSCILLATOR_FREQ as u64, 1_000_000_000 / (CHAN_0_FREQUENCY as u64));
 }
+
+/// Prevent the PIT from generating interrupts.
+pub unsafe fn disable() {
+    let mut ports = PIT_PORTS.lock();
+    ports.port_cmd.write(0b00110010); // channel 0, lobyte/hibyte, one-shot
+    ports.write_reload_value(ChannelSelector::Channel0, 1);
+}

@@ -8,13 +8,13 @@
 //! inserted in an architecture-specific interrupt table (such as i386's IDT).
 
 use crate::i386::structures::idt::ExceptionStackFrame;
-use crate::devices::pic;
 
 macro_rules! irq_handler {
     ($irq:expr, $name:ident) => {{
         #[allow(clippy::missing_docs_in_private_items)]
         extern "x86-interrupt" fn $name(_stack_frame: &mut ExceptionStackFrame) {
-            pic::get().acknowledge($irq);
+            // pic::get().acknowledge($irq);
+            crate::i386::interrupt::acknowledge($irq);
             crate::event::dispatch_event($irq);
         }
         $name
@@ -24,9 +24,9 @@ macro_rules! irq_handler {
 /// Array of interrupt handlers. The position in the array defines the IRQ this
 /// handler is targeting. See the module documentation for more information.
 pub static IRQ_HANDLERS : [extern "x86-interrupt" fn(stack_frame: &mut ExceptionStackFrame); 16] = [
-    irq_handler!(0, timer_handler),
+    irq_handler!(0, pin0_handler),
     irq_handler!(1, keyboard_handler),
-    irq_handler!(2, cascade_handler),
+    irq_handler!(2, timer_handler),
     irq_handler!(3, serial2_handler),
     irq_handler!(4, serial1_handler),
     irq_handler!(5, sound_handler),

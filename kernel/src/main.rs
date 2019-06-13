@@ -225,10 +225,10 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     info!("Start ACPI detection");
     unsafe { i386::acpi::init(); }
 
-    devices::init_timer();
-
     info!("Enabling interrupts");
     unsafe { interrupts::init(); }
+
+    devices::init_timer();
 
     //info!("Disable timer interrupt");
     //devices::pic::get().mask(0);

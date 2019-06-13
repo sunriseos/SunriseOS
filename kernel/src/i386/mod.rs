@@ -16,6 +16,7 @@ pub mod multiboot;
 pub mod structures;
 pub mod process_switch;
 pub mod gdt;
+pub mod interrupt;
 
 pub mod pio {
     //! Port IO
