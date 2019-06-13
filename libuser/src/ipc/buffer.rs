@@ -23,6 +23,7 @@ use core::marker::PhantomData;
 use crate::ipc::IPCBuffer;
 use crate::error::{Error, LibuserError};
 use core::mem::{size_of, align_of};
+use crate::ipc::SizedIPCBuffer;
 
 // TODO: Use plain to ensure T is a valid POD type
 // BODY: Plain would give us two benefits: it would do the alignment and size
@@ -44,7 +45,7 @@ pub struct InPointer<'a, T: ?Sized> {
     phantom: PhantomData<&'a T>
 }
 
-impl<'a, T> InPointer<'a, T> {
+impl<'a, T: ?Sized + SizedIPCBuffer> InPointer<'a, T> {
     /// Creates a new InPointer from an underlying [IPCBuffer].
     ///
     /// # Panics
@@ -59,8 +60,7 @@ impl<'a, T> InPointer<'a, T> {
     /// Returns an InvalidIpcBuffer error if the address is not properly aligned.
     pub fn new(buf: IPCBuffer) -> Result<InPointer<'_, T>, Error> {
         assert!(buf.buftype().is_type_x());
-        if buf.size != size_of::<T>() as u64 ||
-           buf.addr % (align_of::<T>() as u64) != 0 {
+        if T::is_cool(buf.addr as usize, buf.size as usize) {
             Err(LibuserError::InvalidIpcBuffer.into())
         } else {
             Ok(InPointer {
@@ -72,11 +72,11 @@ impl<'a, T> InPointer<'a, T> {
     }
 }
 
-impl<'a, T> core::ops::Deref for InPointer<'a, T> {
+impl<'a, T: ?Sized + SizedIPCBuffer> core::ops::Deref for InPointer<'a, T> {
     type Target = T;
     fn deref(&self) -> &T {
         unsafe {
-            (self.addr as usize as *const T).as_ref().unwrap()
+            T::from_raw_parts(self.addr as usize, self.size as usize)
         }
     }
 }
@@ -86,42 +86,6 @@ impl<'a, T: ?Sized + core::fmt::Debug> core::fmt::Debug for InPointer<'a, T> {
         f.debug_tuple("InPointer")
             .field(&*self)
             .finish()
-    }
-}
-
-impl<'a, T> InPointer<'a, [T]> {
-    /// Creates a new InPointer from an underlying [IPCBuffer].
-    ///
-    /// # Panics
-    ///
-    /// Panics if the passed buffer is not a Type-X buffer.
-    ///
-    /// # Errors
-    ///
-    /// Returns a InvalidIpcBuffer error if the size does not match what was
-    /// expected
-    pub fn new(buf: IPCBuffer) -> Result<InPointer<'_, [T]>, Error> {
-        assert!(buf.buftype().is_type_x());
-        if buf.size % size_of::<T>() as u64 != 0 || buf.size == 0 ||
-           buf.addr % (align_of::<T>() as u64) != 0 {
-            Err(LibuserError::InvalidIpcBuffer.into())
-        } else {
-            Ok(InPointer {
-                addr: buf.addr,
-                size: buf.size,
-                phantom: PhantomData
-            })
-        }
-    }
-}
-
-impl<'a, T> core::ops::Deref for InPointer<'a, [T]> {
-    type Target = [T];
-    fn deref(&self) -> &[T] {
-        unsafe {
-            core::slice::from_raw_parts(self.addr as usize as *const T,
-                                        self.size as usize / size_of::<T>())
-        }
     }
 }
 
@@ -140,8 +104,7 @@ pub struct InBuffer<'a, T: ?Sized> {
     phantom: PhantomData<&'a T>
 }
 
-
-impl<'a, T> InBuffer<'a, T> {
+impl<'a, T: ?Sized + SizedIPCBuffer> InBuffer<'a, T> {
     /// Creates a new InBuffer from an underlying [IPCBuffer].
     ///
     /// # Panics
@@ -154,8 +117,7 @@ impl<'a, T> InBuffer<'a, T> {
     /// expected
     pub fn new(buf: IPCBuffer) -> Result<InBuffer<'_, T>, Error> {
         assert!(buf.buftype().is_type_a());
-        if buf.size != size_of::<T>() as u64 ||
-           buf.addr % (align_of::<T>() as u64) != 0 {
+        if T::is_cool(buf.addr as usize, buf.size as usize) {
             Err(LibuserError::InvalidIpcBuffer.into())
         } else {
             Ok(InBuffer {
@@ -167,11 +129,11 @@ impl<'a, T> InBuffer<'a, T> {
     }
 }
 
-impl<'a, T> core::ops::Deref for InBuffer<'a, T> {
+impl<'a, T: ?Sized + SizedIPCBuffer> core::ops::Deref for InBuffer<'a, T> {
     type Target = T;
     fn deref(&self) -> &T {
         unsafe {
-            (self.addr as usize as *const T).as_ref().unwrap()
+            T::from_raw_parts(self.addr as usize, self.size as usize)
         }
     }
 }
@@ -183,44 +145,6 @@ impl<'a, T: ?Sized + core::fmt::Debug> core::fmt::Debug for InBuffer<'a, T> {
             .finish()
     }
 }
-
-
-impl<'a, T> InBuffer<'a, [T]> {
-    /// Creates a new InBuffer from an underlying [IPCBuffer].
-    ///
-    /// # Panics
-    ///
-    /// Panics if the passed buffer is not a Type-A buffer.
-    ///
-    /// # Errors
-    ///
-    /// Returns a InvalidIpcBuffer error if the size does not match what was
-    /// expected
-    pub fn new(buf: IPCBuffer) -> Result<InBuffer<'_, [T]>, Error> {
-        assert!(buf.buftype().is_type_a());
-        if buf.size % size_of::<T>() as u64 != 0 || buf.size == 0 ||
-           buf.addr % (align_of::<T>() as u64) != 0 {
-            Err(LibuserError::InvalidIpcBuffer.into())
-        } else {
-            Ok(InBuffer {
-                addr: buf.addr,
-                size: buf.size,
-                phantom: PhantomData
-            })
-        }
-    }
-}
-
-impl<'a, T> core::ops::Deref for InBuffer<'a, [T]> {
-    type Target = [T];
-    fn deref(&self) -> &[T] {
-        unsafe {
-            core::slice::from_raw_parts(self.addr as usize as *const T,
-                                        self.size as usize / size_of::<T>())
-        }
-    }
-}
-
 
 /// An outcoming Buffer, also known as a Type-B Buffer.
 ///
@@ -238,7 +162,7 @@ pub struct OutBuffer<'a, T: ?Sized> {
 }
 
 
-impl<'a, T> OutBuffer<'a, T> {
+impl<'a, T: ?Sized + SizedIPCBuffer> OutBuffer<'a, T> {
     /// Creates a new OutBuffer from an underlying [IPCBuffer].
     ///
     /// # Panics
@@ -251,8 +175,7 @@ impl<'a, T> OutBuffer<'a, T> {
     /// expected
     pub fn new(buf: IPCBuffer) -> Result<OutBuffer<'_, T>, Error> {
         assert!(buf.buftype().is_type_b());
-        if buf.size != size_of::<T>() as u64 ||
-           buf.addr % (align_of::<T>() as u64) != 0 {
+        if T::is_cool(buf.addr as usize, buf.size as usize) {
             Err(LibuserError::InvalidIpcBuffer.into())
         } else {
             Ok(OutBuffer {
@@ -264,19 +187,19 @@ impl<'a, T> OutBuffer<'a, T> {
     }
 }
 
-impl<'a, T> core::ops::Deref for OutBuffer<'a, T> {
+impl<'a, T: ?Sized + SizedIPCBuffer> core::ops::Deref for OutBuffer<'a, T> {
     type Target = T;
     fn deref(&self) -> &T {
         unsafe {
-            (self.addr as usize as *const T).as_ref().unwrap()
+            T::from_raw_parts(self.addr as usize, self.size as usize)
         }
     }
 }
 
-impl<'a, T> core::ops::DerefMut for OutBuffer<'a, T> {
+impl<'a, T: ?Sized + SizedIPCBuffer> core::ops::DerefMut for OutBuffer<'a, T> {
     fn deref_mut(&mut self) -> &mut T {
         unsafe {
-            (self.addr as usize as *mut T).as_mut().unwrap()
+            T::from_raw_parts_mut(self.addr as usize, self.size as usize)
         }
     }
 }
@@ -286,51 +209,5 @@ impl<'a, T: ?Sized + core::fmt::Debug> core::fmt::Debug for OutBuffer<'a, T> {
         f.debug_tuple("OutBuffer")
             .field(&*self)
             .finish()
-    }
-}
-
-
-impl<'a, T> OutBuffer<'a, [T]> {
-    /// Creates a new OutBuffer from an underlying [IPCBuffer].
-    ///
-    /// # Panics
-    ///
-    /// Panics if the passed buffer is not a Type-B buffer.
-    ///
-    /// # Errors
-    ///
-    /// Returns a InvalidIpcBuffer error if the size does not match what was
-    /// expected
-    pub fn new(buf: IPCBuffer) -> Result<OutBuffer<'_, [T]>, Error> {
-        assert!(buf.buftype().is_type_b());
-        if buf.size % size_of::<T>() as u64 != 0 || buf.size == 0 ||
-           buf.addr % (align_of::<T>() as u64) != 0 {
-            Err(LibuserError::InvalidIpcBuffer.into())
-        } else {
-            Ok(OutBuffer {
-                addr: buf.addr,
-                size: buf.size,
-                phantom: PhantomData
-            })
-        }
-    }
-}
-
-impl<'a, T> core::ops::Deref for OutBuffer<'a, [T]> {
-    type Target = [T];
-    fn deref(&self) -> &[T] {
-        unsafe {
-            core::slice::from_raw_parts(self.addr as usize as *const T,
-                                        self.size as usize / size_of::<T>())
-        }
-    }
-}
-
-impl<'a, T> core::ops::DerefMut for OutBuffer<'a, [T]> {
-    fn deref_mut(&mut self) -> &mut [T] {
-        unsafe {
-            core::slice::from_raw_parts_mut(self.addr as usize as *mut T,
-                                        self.size as usize / size_of::<T>())
-        }
     }
 }
