@@ -204,18 +204,13 @@ impl ServerPort {
 
 /// A Thread. Created with the [create_thread syscall].
 ///
+/// See the [threads] module.
+///
 /// [create_thread syscall]: crate::syscalls::create_thread.
+/// [threads]: crate::threads
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct Thread(pub Handle);
-
-impl Thread {
-    /// Start the thread.
-    pub fn start(&self) -> Result<(), Error> {
-        syscalls::start_thread(self)
-            .map_err(|v| v.into())
-    }
-}
 
 /// A handle to memory that may be mapped in multiple processes at the same time.
 ///

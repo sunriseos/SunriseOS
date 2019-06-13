@@ -34,10 +34,10 @@ use crate::libuser::io;
 use crate::libuser::sm;
 use crate::libuser::window::{Window, Color};
 use crate::libuser::terminal::{Terminal, WindowSize};
+use crate::libuser::threads::Thread;
 
 use core::fmt::Write;
 use alloc::vec::Vec;
-use alloc::boxed::Box;
 use alloc::sync::Arc;
 use byteorder::{ByteOrder, LE};
 use spin::Mutex;
@@ -124,8 +124,7 @@ fn test_threads(terminal: Terminal) -> Terminal {
     }
 
     #[doc(hidden)]
-    #[no_mangle]
-    fn thread_b(terminal: usize) -> ! {
+    fn thread_b(terminal: usize) {
         // Wrap in a block to forcibly call Arc destructor before exiting the thread.
         {
             let terminal = unsafe {
@@ -138,41 +137,14 @@ fn test_threads(terminal: Terminal) -> Terminal {
                 let _ = libuser::syscalls::sleep_thread(0);
             }
         }
-        libuser::syscalls::exit_thread()
     }
-
-    /// Small wrapper around thread_b fixing the thread calling convention.
-    #[naked]
-    extern fn function_wrapper() {
-        unsafe {
-            asm!("
-            push eax
-            call thread_b
-            " :::: "intel");
-        }
-    }
-
-    /// Size of the test_threads stack.
-    const THREAD_STACK_SIZE: usize = 0x2000;
 
     let mut terminal = Arc::new(Mutex::new(terminal));
-    let stack = Box::new([0u8; THREAD_STACK_SIZE]);
-    let sp = (Box::into_raw(stack) as *const u8).wrapping_add(THREAD_STACK_SIZE);
-    let ip : extern fn() -> ! = unsafe {
-        // Safety: This is changing the return type from () to !. It's safe. It
-        // sucks though. This is, yet again, an instance of "naked functions are
-        // fucking horrible".
-        // Also, fun fact about the Rust Type System. Every function has its own
-        // type, that's zero-sized. Those usually get casted automatically into
-        // fn() pointers, but of course transmute is special. So we need to help
-        // it a bit.
-        let fn_wrapper: extern fn() = function_wrapper;
-        core::mem::transmute(fn_wrapper)
-    };
-    let thread_handle = libuser::syscalls::create_thread(ip, Arc::into_raw(terminal.clone()) as usize, sp, 0, 0)
-        .expect("svcCreateThread returned an error");
-    thread_handle.start()
-        .expect("svcStartThread returned an error");
+
+    let t = Thread::create(thread_b, Arc::into_raw(terminal.clone()) as usize)
+        .expect("Failed to create thread B");
+    t.start()
+        .expect("Failed to start thread B");
 
     // thread is running b, run a meanwhile
     thread_a(Arc::into_raw(terminal.clone()) as usize);
