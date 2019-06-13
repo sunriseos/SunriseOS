@@ -446,7 +446,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "static_assertions"
-version = "0.3.1"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
@@ -487,7 +487,7 @@ dependencies = [
  "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "spin 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
- "static_assertions 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "static_assertions 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "sunrise-libuser 0.1.0",
  "sunrise-libutils 0.1.0",
 ]
@@ -503,7 +503,7 @@ dependencies = [
  "multiboot2 0.7.1 (git+https://github.com/sunriseos/multiboot2-elf64.git)",
  "smallvec 0.6.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "spin 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "static_assertions 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "static_assertions 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "sunrise-libutils 0.1.0",
  "xmas-elf 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -535,7 +535,7 @@ dependencies = [
  "rustc-demangle 0.1.14 (registry+https://github.com/rust-lang/crates.io-index)",
  "smallvec 0.6.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "spin 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "static_assertions 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "static_assertions 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "sunrise-libkern 0.1.0",
  "sunrise-libutils 0.1.0",
  "xmas-elf 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -796,7 +796,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum smallvec 0.6.9 (registry+https://github.com/rust-lang/crates.io-index)" = "c4488ae950c49d403731982257768f48fada354a5203fe81f9bb6f43ca9002be"
 "checksum spin 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)" = "ceac490aa12c567115b40b7b7fceca03a6c9d53d5defea066123debc83c5dc1f"
 "checksum spin 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)" = "44363f6f51401c34e7be73db0db371c04705d35efbe9f7d6082e03a921a32c55"
-"checksum static_assertions 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)" = "389ce475f424f267dbed6479cbd8f126c5e1afb053b0acdaa019c74305fc65d1"
+"checksum static_assertions 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)" = "b4f8de36da215253eb5f24020bfaa0646613b48bf7ebe36cdfa37c3b3b33b241"
 "checksum strsim 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "bb4f380125926a99e52bc279241539c018323fab05ad6368b56f93d9369ff550"
 "checksum strsim 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)" = "8ea5119cdb4c55b55d432abb513a0429384878c15dde60cc77b1c99de1a95a6a"
 "checksum structopt 0.2.15 (registry+https://github.com/rust-lang/crates.io-index)" = "3d0760c312538987d363c36c42339b55f5ee176ea8808bbe4543d484a291c8d1"
