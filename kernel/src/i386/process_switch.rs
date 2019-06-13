@@ -332,9 +332,9 @@ fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize, arg: usize) -> ! {
         push $0     // Entrypoint
 
         // Clean up all registers. Also setup arguments.
-        mov eax, $2
+        mov ecx, $2
+        mov eax, 0
         mov ebx, 0
-        mov ecx, 0
         mov edx, 0
         mov ebp, 0
         mov edi, 0
