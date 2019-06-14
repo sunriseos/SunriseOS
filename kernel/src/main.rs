@@ -147,7 +147,7 @@ fn main() {
 
                 (VirtualAddress(ep), stack + 5 * PAGE_SIZE)
         };
-        let thread = ThreadStruct::new(&proc, ep, sp, 0)
+        let thread = ThreadStruct::new(&proc, ep, sp, None)
             .expect("failed creating thread for service");
         ThreadStruct::start(thread)
             .expect("failed starting thread for service");

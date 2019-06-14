@@ -202,7 +202,7 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
 /// This function will definitely fuck up your stack, so make sure you're calling it on a
 /// never-scheduled thread's empty-stack.
 #[allow(clippy::fn_to_numeric_cast)]
-pub unsafe fn prepare_for_first_schedule(t: &ThreadStruct, entrypoint: usize, userspace_stack: usize) {
+pub unsafe fn prepare_for_first_schedule(t: &ThreadStruct, entrypoint: usize, userspace_arg: usize, userspace_stack: usize) {
     #[repr(packed)]
     #[allow(clippy::missing_docs_in_private_items)]
     struct RegistersOnStack {
@@ -238,7 +238,7 @@ pub unsafe fn prepare_for_first_schedule(t: &ThreadStruct, entrypoint: usize, us
         ebp: stack_start,                         // -+
         esp: 0, // ignored by the popad anyway    //  |
         ebx: userspace_stack as u32,              //  |
-        edx: 0,                                   //  |
+        edx: userspace_arg as u32,                //  |
         ecx: 0,                                   //  |
         eax: entrypoint as u32,                   //  |
         callback_eip: first_schedule as u32       //  |
@@ -266,6 +266,7 @@ fn first_schedule() {
     unsafe {
         asm!("
         push ebx
+        push edx
         push eax
         push edi
         call $0
@@ -273,7 +274,7 @@ fn first_schedule() {
     }
 
     /// Stack is set-up, now we can run rust code.
-    extern "C" fn first_schedule_inner(whoami: *const ThreadStruct, entrypoint: usize, userspace_stack: usize) -> ! {
+    extern "C" fn first_schedule_inner(whoami: *const ThreadStruct, entrypoint: usize, userspace_arg: usize, userspace_stack: usize) -> ! {
         // reconstruct an Arc to our ProcessStruct from the leaked pointer
         let current = unsafe { Arc::from_raw(whoami) };
 
@@ -295,8 +296,7 @@ fn first_schedule() {
         }
 
         // call the scheduler to finish the high-level process switch mechanics
-        let arg = current.arg;
-        crate::scheduler::scheduler_first_schedule(current, || jump_to_entrypoint(entrypoint, userspace_stack, arg));
+        crate::scheduler::scheduler_first_schedule(current, || jump_to_entrypoint(entrypoint, userspace_stack, userspace_arg));
 
         unreachable!()
     }

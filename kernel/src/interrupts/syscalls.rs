@@ -271,7 +271,7 @@ fn exit_thread() -> Result<(), UserspaceError> {
 /// A thread_handle to the created thread.
 fn create_thread(ip: usize, arg: usize, sp: usize, _priority: u32, _processor_id: u32) -> Result<usize, UserspaceError> {
     let cur_proc = get_current_process();
-    let thread = ThreadStruct::new(&cur_proc, VirtualAddress(ip), VirtualAddress(sp), arg)?;
+    let thread = ThreadStruct::new(&cur_proc, VirtualAddress(ip), VirtualAddress(sp), Some(arg))?;
     let handle = Handle::Thread(thread);
     let mut handles_table = cur_proc.phandles.lock();
     Ok(handles_table.add_handle(Arc::new(handle)) as usize)

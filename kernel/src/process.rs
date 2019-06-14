@@ -115,9 +115,6 @@ pub struct ThreadStruct {
 
     /// Pointer to the Thread Local Storage region of this thread.
     pub tls: VirtualAddress,
-
-    /// Argument passed to the entrypoint on first schedule.
-    pub arg: usize
 }
 
 /// A handle to a userspace-accessible resource.
@@ -526,7 +523,17 @@ impl ThreadStruct {
     ///
     /// The thread's only strong reference is stored in the process' maternity,
     /// and we return only a weak to it, that can directly be put in a thread_handle.
-    pub fn new(belonging_process: &Arc<ProcessStruct>, ep: VirtualAddress, stack: VirtualAddress, arg: usize) -> Result<Weak<Self>, KernelError> {
+    ///
+    /// ##### Argument
+    ///
+    /// * When creating a new thread from `svcCreateThread` you should pass `Some(thread_entry_arg)`.
+    ///   This should be the argument provided by the userspace, and will be passed to the thread
+    ///   when it starts.
+    /// * When creating the first thread of a process ("main thread") you should pass `None`.
+    ///   This function will recognise this condition, automatically push a handle to the created
+    ///   thread in the process' handle table, and this handle will be given as an argument to
+    ///   the thread itself when it starts, so that the main thread can know its thread handle.
+    pub fn new(belonging_process: &Arc<ProcessStruct>, ep: VirtualAddress, stack: VirtualAddress, arg: Option<usize>) -> Result<Weak<Self>, KernelError> {
         // get its process memory
         let mut pmemory = belonging_process.pmemory.lock();
 
@@ -549,15 +556,25 @@ impl ThreadStruct {
                 hwcontext : empty_hwcontext,
                 process: Arc::clone(belonging_process),
                 tls,
-                arg
             }
         );
+
+        // if we're creating the main thread, push a handle to it in the process' handle table,
+        // and give it to the thread as an argument.
+        let arg = match arg {
+            Some(arg) => arg,
+            None => {
+                debug_assert!(belonging_process.threads.lock().is_empty() &&
+                              belonging_process.thread_maternity.lock().is_empty(), "Argument shouldn't be None");
+                belonging_process.phandles.lock().add_handle(Arc::new(Handle::Thread(Arc::downgrade(&t)))) as usize
+            }
+        };
 
         // prepare the thread's stack for its first schedule-in
         unsafe {
             // Safety: We just created the ThreadStruct, and own the only reference
             // to it, so we *know* it never has been scheduled, and cannot be.
-            prepare_for_first_schedule(&t, ep.addr(), stack.addr());
+            prepare_for_first_schedule(&t, ep.addr(), arg, stack.addr());
         }
 
         // make a weak copy that we will return
@@ -629,7 +646,6 @@ impl ThreadStruct {
                 hwcontext,
                 process: Arc::clone(&process),
                 tls,
-                arg: 0
             }
         );
 
