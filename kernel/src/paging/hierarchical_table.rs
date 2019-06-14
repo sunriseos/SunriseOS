@@ -631,4 +631,7 @@ pub trait InactiveHierarchyTrait : TableHierarchy {
     /// Generally this means comparing the current MMU register pointer to top-level table with the
     /// address of the top-level table of this hierarchy.
     fn is_currently_active(&self) -> bool;
+
+    /// Returns the currently active hierarchy as an inactive hierarchy.
+    unsafe fn from_currently_active() -> Self;
 }

@@ -163,6 +163,20 @@ impl Default for ProcessMemory {
 }
 
 impl ProcessMemory {
+    /// Creates a ProcessMemory referencing the current page tables.
+    /// Used only when becoming the first process for creating the first ProcessMemory.
+    ///
+    /// # Unsafety
+    ///
+    /// Having multiple ProcessMemory pointing to the same table hierarchy is unsafe.
+    pub unsafe fn from_active_page_tables() -> Self {
+        ProcessMemory {
+            userspace_bookkeping: UserspaceBookkeeping::new(),
+            table_hierarchy: InactiveHierarchy::from_currently_active(),
+            heap_base_address: VirtualAddress(0x55555555), // just a dummy value, the first process
+                                                           // should never use its process's heap !
+        }
+    }
 
     /// If these tables are the one currently in use, we return them as an ActiveHierarchy instead.
     fn get_hierarchy(&mut self) -> DynamicHierarchy<'_> {

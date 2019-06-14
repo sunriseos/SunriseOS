@@ -440,16 +440,8 @@ impl ProcessStruct {
     /// Panics if max PID has been reached, which it shouldn't have since we're the first process.
     unsafe fn create_first_process() -> Arc<ProcessStruct> {
 
-        let mut pmemory = ProcessMemory::default();
-        pmemory.switch_to();
-
-        // * just leaked bootstrap page table hierarchy right here *
-        //
-        // The pages themselves were already marked as free in the FrameAllocator,
-        // but the tables hierarchy (around 1 table, and the directory) are marked reserved,
-        // and we leaked them.
-        //
-        // We accept the trade-off because is simplifies code complexity a lot.
+        // the already currently active pages
+        let pmemory = Mutex::new(ProcessMemory::from_active_page_tables());
 
         let pid = NEXT_PROCESS_ID.fetch_add(1, Ordering::SeqCst);
         if pid == usize::max_value() {
@@ -460,7 +452,7 @@ impl ProcessStruct {
             ProcessStruct {
                 pid,
                 name: String::from("init"),
-                pmemory: Mutex::new(pmemory),
+                pmemory,
                 threads: SpinLockIRQ::new(Vec::new()),
                 phandles: SpinLockIRQ::new(HandleTable::default()),
                 killed: AtomicBool::new(false),
