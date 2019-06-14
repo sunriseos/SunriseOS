@@ -115,9 +115,11 @@ fn test_threads(terminal: Terminal) -> Terminal {
         let terminal = unsafe {
             Arc::from_raw(terminal as *const Mutex<Terminal>)
         };
-        for _ in 0..10 {
+        let mut i = 0;
+        while i < 10 {
             if let Some(mut lock) = terminal.try_lock() {
                 let _ = writeln!(lock, "A");
+                i += 1;
             }
             let _ = libuser::syscalls::sleep_thread(0);
         }
@@ -130,9 +132,11 @@ fn test_threads(terminal: Terminal) -> Terminal {
             let terminal = unsafe {
                 Arc::from_raw(terminal as *const Mutex<Terminal>)
             };
-            for _ in 0..10 {
+            let mut i = 0;
+            while i < 10 {
                 if let Some(mut lock) = terminal.try_lock() {
                     let _ = writeln!(lock, "B");
+                    i += 1;
                 }
                 let _ = libuser::syscalls::sleep_thread(0);
             }
