@@ -202,11 +202,13 @@ pub trait PagingCacheFlusher {
 ///
 /// When passing this struct the TLB will **not** be flushed. Used by Inactive/PagingOff page tables,
 /// and DynamicHierarchy
+#[derive(Debug)]
 pub struct NoFlush;
 impl PagingCacheFlusher for NoFlush { fn flush_whole_cache() { /* do nothing */ } }
 
 /// This is just a wrapper for a pointer to a table.
 /// It enables us to do handle when it is dropped
+#[allow(missing_debug_implementations)]
 pub struct SmartHierarchicalTable<'a, T: HierarchicalTable>(*mut T, PhantomData<&'a T>);
 
 impl<'a, T: HierarchicalTable> SmartHierarchicalTable<'a, T> {
@@ -633,5 +635,26 @@ pub trait InactiveHierarchyTrait : TableHierarchy {
     fn is_currently_active(&self) -> bool;
 
     /// Returns the currently active hierarchy as an inactive hierarchy.
+    ///
+    /// Used only when becoming the first process to get a hold on the page tables
+    /// created by the bootstrap before us, so we can free them.
+    ///
+    /// Dropping it will **not free the pages** owned by this InactiveHierarchy.
+    /// This is fine, because they used to belong to the bootstrap, and are already
+    /// considered free by the [FrameAllocator], so we must leak them.
+    ///
+    /// However, it **will free the tables** (including directory) of this InactiveHierarchy,
+    /// except the ones mapping KernelLand memory, as for any other regular process.
+    /// This frames were marked as occupied when initialising the `FrameAllocator`,
+    /// we're making them available again.
+    ///
+    /// # Unsafety
+    ///
+    /// Having multiple InactiveHierarchy pointing to the same table hierarchy is unsafe.
+    /// Should not be use for any other purpose, it is only guaranteed to be safe to drop.
+    ///
+    /// Make sure you switch to a new table hierarchy before dropping it.
+    ///
+    /// [FrameAllocator]: crate::frame_allocator::FrameAllocator
     unsafe fn from_currently_active() -> Self;
 }
