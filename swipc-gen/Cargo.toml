@@ -10,7 +10,7 @@ proc-macro = true
 
 [dependencies]
 lazy_static = "1.3.0"
-bit_field = "0.9.0"
+bit_field = "0.10.0"
 swipc-parser = { path = "../swipc-parser" }
 darling = "0.9.0"
 syn = { version = "0.15.32", features = ["full"] }
