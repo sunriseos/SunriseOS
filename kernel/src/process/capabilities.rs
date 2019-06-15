@@ -57,9 +57,9 @@ impl<'a, T: BitField> fmt::Debug for MaskPrinter<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_list()
             .entries(self.0.iter().enumerate().flat_map(|(idx, v)| {
-                (0..T::bit_length())
+                (0..T::BIT_LENGTH)
                     .filter(move |x| v.get_bit(*x))
-                    .map(move |x| idx * T::bit_length() + x)
+                    .map(move |x| idx * T::BIT_LENGTH + x)
             }))
             .finish()
     }
