@@ -22,6 +22,7 @@ use crate::sync::RwLock;
 
 mod capabilities;
 pub use self::capabilities::ProcessCapabilities;
+use crate::paging::{InactiveHierarchy, InactiveHierarchyTrait};
 
 /// The struct representing a process. There's one for every process.
 ///
@@ -440,8 +441,15 @@ impl ProcessStruct {
     /// Panics if max PID has been reached, which it shouldn't have since we're the first process.
     unsafe fn create_first_process() -> Arc<ProcessStruct> {
 
-        // the already currently active pages
-        let pmemory = Mutex::new(ProcessMemory::from_active_page_tables());
+        // get the bootstrap hierarchy so we can free it
+        let bootstrap_pages = InactiveHierarchy::from_currently_active();
+
+        // create a new page table hierarchy for this process
+        let mut pmemory = ProcessMemory::default();
+        pmemory.switch_to();
+
+        // free the bootstrap page tables
+        drop(bootstrap_pages);
 
         let pid = NEXT_PROCESS_ID.fetch_add(1, Ordering::SeqCst);
         if pid == usize::max_value() {
@@ -452,7 +460,7 @@ impl ProcessStruct {
             ProcessStruct {
                 pid,
                 name: String::from("init"),
-                pmemory,
+                pmemory: Mutex::new(pmemory),
                 threads: SpinLockIRQ::new(Vec::new()),
                 phandles: SpinLockIRQ::new(HandleTable::default()),
                 killed: AtomicBool::new(false),
