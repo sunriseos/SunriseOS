@@ -19,7 +19,7 @@ xmas-elf = "0.7.0"
 
 [dependencies.smallvec]
 default-features = false
-version = "0.6.9"
+version = "0.6.10"
 
 [dependencies.arrayvec]
 default-features = false
