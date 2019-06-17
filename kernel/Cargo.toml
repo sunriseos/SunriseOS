@@ -35,7 +35,7 @@ acpi = { git = "https://github.com/sunriseos/acpi.git" }
 
 [dependencies.smallvec]
 default-features = false
-version = "0.6.9"
+version = "0.6.10"
 
 [dependencies.byteorder]
 default-features = false
