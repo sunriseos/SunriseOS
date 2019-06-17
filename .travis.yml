@@ -11,7 +11,7 @@ matrix:
 # Install cargo-make and rust-src rustup component
 before_install:
 - cargo install cargo-update || echo "cargo-update already installed"
-- cargo install cargo-travis --git "https://github.com/roblabla/cargo-travis" --rev "doc-upload-target" || echo "cargo-travis already installed"
+- cargo install cargo-travis --git "https://github.com/roblabla/cargo-travis" --rev "cargo-metadata" --force || echo "cargo-travis already installed"
 - cargo install cargo-make || echo "cargo-make already installed"
 - cargo install-update cargo-update cargo-make cargo-xbuild
 - \[[ -n "${NO_TESTS_NO_DEPLOY}" ]] && rustup target install i686-unknown-linux-gnu || echo "target i686-unknown-linux-gnu already installed"
