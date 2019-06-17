@@ -645,13 +645,13 @@ pub trait InactiveHierarchyTrait : TableHierarchy {
     ///
     /// However, it **will free the tables** (including directory) of this InactiveHierarchy,
     /// except the ones mapping KernelLand memory, as for any other regular process.
-    /// This frames were marked as occupied when initialising the `FrameAllocator`,
+    /// These frames were marked as occupied when initialising the `FrameAllocator`,
     /// we're making them available again.
     ///
     /// # Unsafety
     ///
     /// Having multiple InactiveHierarchy pointing to the same table hierarchy is unsafe.
-    /// Should not be use for any other purpose, it is only guaranteed to be safe to drop.
+    /// Should not be used for any other purpose, it is only guaranteed to be safe to drop.
     ///
     /// Make sure you switch to a new table hierarchy before dropping it.
     ///
