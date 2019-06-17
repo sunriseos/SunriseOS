@@ -298,7 +298,7 @@ fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mu
             };
 
         let mut size_handled = 0;
-        if addr % PAGE_SIZE != 0 {
+        if addr % PAGE_SIZE != 0 || size < PAGE_SIZE {
             // memcpy the first page.
             let first_page_size = core::cmp::min(PAGE_SIZE - (addr % PAGE_SIZE), size);
 
@@ -409,7 +409,7 @@ fn buf_unmap(buffer: &Buffer, from_mem: &mut ProcessMemory, to_mem: &mut Process
 
     let mut result: Result<(), UserspaceError> = Ok(());
 
-    if addr.addr() % PAGE_SIZE != 0 {
+    if addr.addr() % PAGE_SIZE != 0 || size < PAGE_SIZE {
         let first_page_size = core::cmp::min(PAGE_SIZE - (addr.addr() % PAGE_SIZE), size);
 
         if buffer.writable {
