@@ -102,6 +102,27 @@ impl fmt::Debug for ThreadContext {
     }
 }
 
+/// Context of the main thread. Instead of allocating it at startup, this one lives in the `.data`.
+///
+/// The handle of the main thread is stored to it at startup.
+///
+/// ## Mock values:
+///
+/// Because the main thread is started by the kernel and not libuser, we don't have control or
+/// even knowledge of most of the fields that should be in our context. Because of this, we choose
+/// to put mock values instead.
+/// This includes:
+///
+/// * `.entry_point`: unused, we are started by the kernel
+/// * `.arg`: unused
+/// * `.stack`: our stack is not allocated by us, and we don't know its size.
+static MAIN_THREAD_CONTEXT: ThreadContext = ThreadContext {
+    entry_point: |_| { },
+    arg: 0,
+    stack: None,
+    thread_handle: Once::new(), // will be initialized at startup.
+};
+
 /// Get a pointer to this thread's [TLS] region pointed to by `gs`, translated to the flat-memory model.
 #[inline]
 fn get_my_tls_region() -> *mut TLS {
@@ -229,4 +250,20 @@ impl Drop for Thread {
         // body: done by adding the ThreadContext to a global Vec<> of ThreadContext that gets freed
         // body: when the main thread (or the last thread alive?) exits.
     }
+}
+
+/// Initialisation of the main thread's thread local structures:
+///
+/// When a main thread starts, the kernel puts the handle of its own thread in one of its registers.
+/// The main thread should perform relocations, and then call this function, which will:
+///
+/// * put the main thread's handle in [MAIN_THREAD_CONTEXT].
+/// * save a pointer to it in its [TLS].
+/// * perform copy of `.tdata` and `.tbss` for the main thread.
+#[no_mangle] // called from asm
+pub extern fn init_main_thread(handle: ThreadHandle) {
+    // save the handle in our context
+    MAIN_THREAD_CONTEXT.thread_handle.call_once(|| handle);
+    // save the address of our context in our TLS region
+    unsafe { (*get_my_tls_region()).ptr_thread_context = &MAIN_THREAD_CONTEXT as *const ThreadContext as usize };
 }

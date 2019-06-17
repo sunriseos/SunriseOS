@@ -2,8 +2,6 @@
 //! This module is a minimal RT0 handling the entry point of the application.
 //! It handles relocation, clean the bss and then finally call start_main.
 
-use core::ptr;
-
 mod relocation;
 
 /// Executable entrypoint. Handle relocations and calls real_start.
@@ -22,6 +20,10 @@ pub unsafe extern fn start() {
         .int eip_pos - get_aslr_base
     _start_shim:
         pop eax
+
+        // Save our thread handle passed by the kernel
+        // `esi` is callee-saved
+        mov esi, ecx
 
         // Save eip_pos address
         mov ecx, eax
@@ -42,6 +44,10 @@ pub unsafe extern fn start() {
         push ebx
         call clean_bss
 
+        // Init TLS
+        push esi
+        call init_main_thread
+
         call real_start
     ");
 }
@@ -59,5 +65,5 @@ pub unsafe extern fn clean_bss(module_header: *const relocation::ModuleHeader) {
     let bss_end_address = module_header_address.add(module_header.bss_end_off as usize) as *mut u8;
 
     let count = bss_end_address as usize - bss_start_address as usize;
-    ptr::write_bytes(bss_start_address, 0, count);
+    core::ptr::write_bytes(bss_start_address, 0, count);
 }
