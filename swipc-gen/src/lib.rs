@@ -10,13 +10,16 @@
 extern crate proc_macro;
 
 use proc_macro::TokenStream;
-use syn::{AttributeArgs, ItemMod, parse_macro_input, spanned::Spanned};
+use syn::{AttributeArgs, parse_macro_input, spanned::Spanned};
 use darling::FromMeta;
 use std::path::PathBuf;
 use std::fmt::Write;
 use std::fs;
 
 mod gen_rust_code;
+mod itemmod;
+
+use itemmod::ItemMod;
 
 /// Attribute arguments for the gen_ipc macro.
 #[derive(Debug, FromMeta)]
