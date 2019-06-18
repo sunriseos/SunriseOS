@@ -14,14 +14,14 @@ before_install:
 - cargo install cargo-travis --git "https://github.com/roblabla/cargo-travis" --rev "cargo-metadata" --force || echo "cargo-travis already installed"
 - cargo install cargo-make || echo "cargo-make already installed"
 - cargo install-update cargo-update cargo-make cargo-xbuild
-- \[[ -n "${NO_TESTS_NO_DEPLOY}" ]] && rustup target install i686-unknown-linux-gnu || echo "target i686-unknown-linux-gnu already installed"
+- test -n "${NO_TESTS_NO_DEPLOY}" && rustup target install i686-unknown-linux-gnu || echo "target i686-unknown-linux-gnu already installed"
 
 script:
 - cargo make iso
 - cargo make iso-release
-- \[[ -n "${NO_TESTS_NO_DEPLOY}" ]] && cargo make test
-- \[[ -n "${NO_TESTS_NO_DEPLOY}" ]] && cargo make doc-full
-- \[[ -n "${NO_TESTS_NO_DEPLOY}" ]] && cargo make clippy -- -D warnings
+- test -n "${NO_TESTS_NO_DEPLOY}" && cargo make test
+- test -n "${NO_TESTS_NO_DEPLOY}" && cargo make doc-full
+- test -n "${NO_TESTS_NO_DEPLOY}" && cargo make clippy -- -D warnings
 
 deploy:
 - provider: script
@@ -29,7 +29,7 @@ deploy:
   skip_cleanup: true
   on:
     branch: master
-    condition: '-z "${NO_TESTS_NO_DEPLOY}"'
+    condition: -z "${NO_TESTS_NO_DEPLOY}"
 
 cache: cargo
 before_cache:
