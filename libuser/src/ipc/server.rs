@@ -252,7 +252,7 @@ impl<T: Object + Default + Debug + 'static> IWaitable for PortHandler<T> {
 
 /// Encode an 8-character service string into an u64
 fn encode_bytes(s: &str) -> u64 {
-    assert!(s.len() < 8);
+    assert!(s.len() <= 8);
     let s = s.as_bytes();
     0
         | (u64::from(*s.get(0).unwrap_or(&0))) << 00 | (u64::from(*s.get(1).unwrap_or(&0))) <<  8
