@@ -3,6 +3,7 @@ language: rust
 matrix:
   include:
     - os: linux
+      dist: xenial
     - os: osx
       env: NO_TESTS_NO_DEPLOY=1
     - os: windows
