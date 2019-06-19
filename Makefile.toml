@@ -238,7 +238,7 @@ args = ["doc", "--no-deps", "--document-private-items"]
 
 [tasks.deploy-doc]
 workspace = false
-install_crate = { crate_name = "cargo-travis", binary = "cargo", test_arg = "doc-upload --help" }
+install_crate = { crate_name = "cargo-travis", binary = "cargo", test_arg = ["doc-upload", "--help"] }
 install_crate_args = ["--git", "https://github.com/roblabla/cargo-travis", "--rev", "doc-upload-target"]
 description = "Upload this project's documentation on github pages. Should only run on CI."
 command = "cargo"
