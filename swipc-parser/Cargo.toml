@@ -6,5 +6,5 @@ edition = "2018"
 description = "Parser for the SwIPC file format"
 
 [dependencies]
-pest = { git = "https://github.com/pest-parser/pest" }
-pest_derive = "2.0"
+pest = "2.1"
+pest_derive = "2.1"
