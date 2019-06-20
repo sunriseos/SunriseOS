@@ -23,6 +23,7 @@ script:
 # crossed).
 # Link.exe (the only other dependency) is not in the PATH anyways, so it should
 # still be found by rustc.
+- OLDPATH=$PATH
 - if [ "windows" = "${TRAVIS_OS_NAME}" ]; then export PATH=${TRAVIS_HOME}/.cargo/bin:/c/Windows/system32:/c/Windows:/c/Windows/System32/Wbem:/c/Windows/System32/WindowsPowerShell/v1.0; fi
 - cargo make iso
 - cargo make iso-release
@@ -30,6 +31,7 @@ script:
 - if [ -z "${NO_TESTS_NO_DEPLOY}" ]; then cargo make test; fi
 - if [ -z "${NO_TESTS_NO_DEPLOY}" ]; then cargo make doc-full; fi
 - if [ -z "${NO_TESTS_NO_DEPLOY}" ]; then cargo make clippy -- -D warnings; fi
+- export PATH=$OLDPATH
 
 deploy:
 - provider: script
