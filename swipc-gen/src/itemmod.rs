@@ -14,11 +14,20 @@ use syn::parse::{Parse, ParseStream};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt};
 
+/// A module or module declaration: `mod m` or `mod m { ... }`.
+///
+/// Doesn't attempt to parse the content, in order to keep the requirement on
+/// `syn` down.
+///
+/// *This type is available if Syn is built with the "derive" feature.*
+#[allow(clippy::missing_docs_in_private_items)] // Those are all bloody obvious.
 pub struct ItemMod {
     pub attrs: Vec<Attribute>,
     pub vis: Visibility,
     pub mod_token: Token![mod],
     pub ident: Ident,
+    /// Optional content of the module. The TokenStream contains whatever tokens
+    /// are between the braces.
     pub content: Option<(Brace, TokenStream)>,
     pub semi: Option<Token![;]>,
 }
@@ -65,25 +74,14 @@ impl Parse for ItemMod {
 
 impl ToTokens for ItemMod {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        fn is_outer(attr: &&Attribute) -> bool {
-            match attr.style {
-                AttrStyle::Outer => true,
-                _ => false,
-            }
-        }
-        tokens.append_all(self.attrs.iter().filter(is_outer));
+        tokens.append_all(self.attrs.iter().filter(|attr| attr.style == AttrStyle::Outer));
         self.vis.to_tokens(tokens);
         self.mod_token.to_tokens(tokens);
         self.ident.to_tokens(tokens);
         if let Some((ref brace, ref items)) = self.content {
             brace.surround(tokens, |tokens| {
-                fn is_inner(attr: &&Attribute) -> bool {
-                    match attr.style {
-                        AttrStyle::Inner(_) => true,
-                        _ => false,
-                    }
-                }
-                tokens.append_all(self.attrs.iter().filter(is_inner));
+                tokens.append_all(self.attrs.iter().filter(|attr|
+                    if let AttrStyle::Inner(_) = attr.style { true } else { false }));
                 tokens.append_all(items.clone().into_iter());
             });
         } else {
