@@ -26,10 +26,12 @@ CLIPPY_RULES = """
 
 [tasks.bootstrap-linker]
 workspace = false
+script_runner = "@shell"
 script = ["cp linker-scripts/bootstrap.ld link.T"]
 
 [tasks.kernel-linker]
 workspace = false
+script_runner = "@shell"
 script = ["cp linker-scripts/kernel.ld    link.T"]
 
 [tasks.install-rust-src]
@@ -150,6 +152,7 @@ dependencies = ["shell-release", "clock-release", "sm-release", "vi-release", "a
 workspace = false
 description = "Creates a bootable ISO containing the kernel and grub."
 dependencies = ["bootstrap", "kernel", "userspace", "install-mkisofs-rs"]
+script_runner = "@shell"
 script = [
 '''
 cp target/i386-unknown-none/debug/sunrise-bootstrap isofiles/boot/
@@ -167,6 +170,7 @@ mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltori
 workspace = false
 description = "Creates a bootable ISO containing the kernel and grub."
 dependencies = ["bootstrap-release", "kernel-release", "userspace-release", "install-mkisofs-rs"]
+script_runner = "@shell"
 script = [
 '''
 cp target/i386-unknown-none/release/sunrise-bootstrap isofiles/boot/
