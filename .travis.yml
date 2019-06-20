@@ -14,7 +14,7 @@ before_install:
 - cargo install cargo-make --git "https://github.com/roblabla/cargo-make" --rev "testarg-array" -Z install-upgrade
 - if [ -z "${NO_TESTS_NO_DEPLOY}" ]; then cargo install cargo-travis --git "https://github.com/roblabla/cargo-travis" --rev "cargo-metadata" -Z install-upgrade; fi
 - if [ -z "${NO_TESTS_NO_DEPLOY}" ]; then rustup target install i686-unknown-linux-gnu || echo "target i686-unknown-linux-gnu already installed"; fi
-- if [ -z "${NO_TESTS_NO_DEPLOY}" ]; then sudo apt-get install -y libc6-dev-i386; fi
+- if [ -z "${NO_TESTS_NO_DEPLOY}" ]; then sudo apt-get install -y libc6-dev-i386 lib32gcc1; fi
 
 script:
 - cargo make iso
