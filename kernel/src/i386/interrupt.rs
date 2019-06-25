@@ -114,11 +114,7 @@ pub fn unmask(irq: u8) {
 
     // First, find the "real" IRQ number:
     let irqisa = irq;
-    let irq = match irqisa {
-        // We use the HPET to replace the PIT.
-        0 => 0,
-        _ => isa_to_ioapic_irq(irq)
-    };
+    let irq = isa_to_ioapic_irq(irq);
 
     debug!("Unmasking IRQ {} (ISA {})", irq, irqisa);
 
