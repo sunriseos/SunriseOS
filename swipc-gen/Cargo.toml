@@ -13,7 +13,7 @@ lazy_static = "1.3.0"
 bit_field = "0.10.0"
 swipc-parser = { path = "../swipc-parser" }
 darling = "0.9.0"
-syn = { version = "0.15.32", features = ["derive"] }
+syn = { version = "0.15.38", features = ["derive"] }
 structopt = { version = "0.2", optional = true }
 quote = "0.6"
 proc-macro2 = "0.4"
