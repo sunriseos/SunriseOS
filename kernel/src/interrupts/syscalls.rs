@@ -722,6 +722,9 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
         }
     }
 
+    debug!("Returning from syscall {} - x0: {}, x1: {}, x2: {}, x3: {}, x4: {}, x5: {}, x6: {}", 
+        syscall_name, registers.eax, registers.ebx, registers.ecx, registers.edx, registers.esi, registers.edi, registers.ebp);
+
     // Effectively kill the thread at syscall boundary
     check_thread_killed();
 }
