@@ -44,9 +44,15 @@ pub fn init() {
             Some(InterruptModel::Apic { local_apic_address, io_apics, interrupt_source_overrides, .. }) => {
                 unsafe {
                     let lapic = LocalApic::new(PhysicalAddress(*local_apic_address as usize));
-                    let ioapics = io_apics.iter().map(|v|
+                    let ioapics: Vec<IoApic> = io_apics.iter().map(|v|
                        IoApic::new(PhysicalAddress(v.address as usize), v.global_system_interrupt_base, lapic.local_apic_id())
                     ).collect();
+
+                    for over_ride in interrupt_source_overrides {
+                        let mut entry = ioapics[0].redirection_entry(over_ride.global_system_interrupt as u8);
+                        entry.set_interrupt_vector(0x20 + over_ride.isa_source as u64);
+                        ioapics[0].set_redirection_entry(over_ride.global_system_interrupt as u8, entry);
+                    }
 
                     InterruptHandler {
                         root_lapic: lapic,
