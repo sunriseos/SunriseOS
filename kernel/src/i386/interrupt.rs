@@ -32,6 +32,12 @@ pub fn init() {
     info!("Init pic");
     pic::init();
 
+    info!("Mask all interrupts in PIC");
+    let pic = pic::get();
+    for i in 0..16 {
+        pic.mask(i);
+    }
+
     info!("Acquire INTERRUPT_HANDLER");
     let handler = INTERRUPT_HANDLER.call_once(|| {
         match crate::i386::acpi::try_get_acpi_information().and_then(|v| v.interrupt_model().as_ref()) {
@@ -52,12 +58,6 @@ pub fn init() {
             _ => panic!("ACPI did not find a Local APIC"),
         }
     });
-
-    info!("Mask all interrupts in PIC");
-    let pic = pic::get();
-    for i in 0..16 {
-        pic.mask(i);
-    }
 
     info!("Enable the APIC");
     handler.root_lapic.enable();
