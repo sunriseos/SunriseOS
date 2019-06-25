@@ -26,10 +26,12 @@ CLIPPY_RULES = """
 
 [tasks.bootstrap-linker]
 workspace = false
+script_runner = "@shell"
 script = ["cp linker-scripts/bootstrap.ld link.T"]
 
 [tasks.kernel-linker]
 workspace = false
+script_runner = "@shell"
 script = ["cp linker-scripts/kernel.ld    link.T"]
 
 [tasks.install-rust-src]
@@ -150,6 +152,7 @@ dependencies = ["shell-release", "clock-release", "sm-release", "vi-release", "a
 workspace = false
 description = "Creates a bootable ISO containing the kernel and grub."
 dependencies = ["bootstrap", "kernel", "userspace", "install-mkisofs-rs"]
+script_runner = "@shell"
 script = [
 '''
 cp target/i386-unknown-none/debug/sunrise-bootstrap isofiles/boot/
@@ -167,6 +170,7 @@ mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltori
 workspace = false
 description = "Creates a bootable ISO containing the kernel and grub."
 dependencies = ["bootstrap-release", "kernel-release", "userspace-release", "install-mkisofs-rs"]
+script_runner = "@shell"
 script = [
 '''
 cp target/i386-unknown-none/release/sunrise-bootstrap isofiles/boot/
@@ -184,14 +188,24 @@ mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltori
 workspace = false
 description = "Creates an empty disk image."
 command = "dd"
-args = [ "if=/dev/zero", "of=DISK.img", "count=8M", "iflag=count_bytes" ]
+# 16384 = 8MiB / 512
+# 512 is the block size, 8MiB is the target disk size.
+args = [ "if=/dev/zero", "of=DISK.img", "count=16384", "iflag=count_bytes" ]
+
+[tasks.disk.windows]
+command = "fsutil"
+# Chosen by fair dice roll.
+# 8388608 = 8MiB in bytes
+args = [ "file", "createnew", "DISK.img", "8388608" ]
 
 # because we can't have a dependency on a file ರ_ರ
 [tasks.create-disk-if-not-exist]
 workspace = false
 description = "Invokes the task `disk` if DISK.img does not already exist."
 condition_script = [ "[ ! -e DISK.img ]" ]
-run_task = "disk"
+
+[tasks.create-disk-if-not-exist.windows]
+condition_script = [ "if exists DISK.img exit 1" ]
 
 [tasks.qemu]
 workspace = false
@@ -238,7 +252,7 @@ args = ["doc", "--no-deps", "--document-private-items"]
 
 [tasks.deploy-doc]
 workspace = false
-install_crate = { crate_name = "cargo-travis", binary = "cargo", test_arg = "doc-upload --help" }
+install_crate = { crate_name = "cargo-travis", binary = "cargo", test_arg = ["doc-upload", "--help"] }
 install_crate_args = ["--git", "https://github.com/roblabla/cargo-travis", "--rev", "doc-upload-target"]
 description = "Upload this project's documentation on github pages. Should only run on CI."
 command = "cargo"
