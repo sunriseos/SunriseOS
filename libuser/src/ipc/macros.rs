@@ -275,7 +275,7 @@ macro_rules! object {
     // requirement.
     (@genstruct $ident:ident fields=($($name:ident: $ty:ty),*), ) => {
         #[repr(C)]
-        #[derive(Default, Debug, Clone, Copy)]
+        #[derive(Debug, Clone, Copy)]
         struct $ident {
             $($name: $ty),*
         }
@@ -414,7 +414,7 @@ macro_rules! object {
     // call all the functions to push values to msgout, and push_raw.
     (@genret fields=($($name:ident: $ty:ty),*), retfields=($($rname:ident => $rfn:expr),*), $msgout:expr, $ret:expr, ) => {{
         #[repr(C)]
-        #[derive(Default, Debug, Clone, Copy)]
+        #[derive(Debug, Clone, Copy)]
         struct Ret($($ty,)*);
 
         let ($($rname,)*) = $ret;
@@ -450,7 +450,7 @@ macro_rules! object {
     };
     
     (@copycount ) => { 0 };
-    (@copycount HandleRef, $($tt:tt)*) => {
+    (@copycount HandleRef<$lifetime:lifetime>, $($tt:tt)*) => {
         1 + object!(@copycount $($tt)*)
     };
     (@copycount Handle<copy>, $($tt:tt)*) => {

@@ -230,7 +230,7 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
     writeln!(s).unwrap();
     let in_raw = if cmd.args.iter().any(|(argty, _)| is_raw(argty)) {
         writeln!(s, "        #[repr(C)]").unwrap();
-        writeln!(s, "        #[derive(Clone, Copy, Default)]").unwrap();
+        writeln!(s, "        #[derive(Clone, Copy)]").unwrap();
         writeln!(s, "        #[allow(clippy::missing_docs_in_private_items)]").unwrap();
         writeln!(s, "        struct InRaw {{").unwrap();
         for (argty, argname) in raw_iterator(&cmd.args, false) {
@@ -273,13 +273,29 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
     {
         let argname = argname.clone().unwrap_or_else(|| format!("unknown_{}", idx));
         match argty {
-            Alias::Array(_alias, _)                    => return Err(Error::UnsupportedStruct),
+            Alias::Array(_alias, ty)                    => {
+                match (ty.get_bits(0..2), ty.get_bits(2..4), ty.get_bit(5)) {
+                    // A Buffer
+                    (1, 1, false) => writeln!(s, "        msg__.push_out_buffer({});", argname).unwrap(),
+                    // B Buffer
+                    (2, 1, false) => writeln!(s, "        msg__.push_in_buffer({});", argname).unwrap(),
+                    // X Buffer
+                    (1, 2, false) => writeln!(s, "        msg__.push_out_pointer({});", argname).unwrap(),
+                    // C Buffer
+                    (2, 2, false) => writeln!(s, "        msg__.push_in_pointer({}, {});", argname, !ty.get_bit(4)).unwrap(),
+                    // Smart A+X
+                    (1, 0, true) => return Err(Error::UnsupportedStruct),
+                    // Smart B+C
+                    (2, 0, true) => return Err(Error::UnsupportedStruct),
+                    _ => panic!("Illegal buffer type: {}", ty)
+                }
+            },
             Alias::Buffer(_alias, ty, _)               => {
                 match (ty.get_bits(0..2), ty.get_bits(2..4), ty.get_bit(5)) {
                     // A Buffer
-                    (1, 1, false) => return Err(Error::UnsupportedStruct),
+                    (1, 1, false) => writeln!(s, "        msg__.push_out_buffer({});", argname).unwrap(),
                     // B Buffer
-                    (2, 1, false) => return Err(Error::UnsupportedStruct),
+                    (2, 1, false) => writeln!(s, "        msg__.push_in_buffer({});", argname).unwrap(),
                     // X Buffer
                     (1, 2, false) => writeln!(s, "        msg__.push_out_pointer({});", argname).unwrap(),
                     // C Buffer
@@ -323,7 +339,7 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
     writeln!(s).unwrap();
     let out_raw = if cmd.ret.iter().any(|(argty, _)| is_raw(argty)) {
         writeln!(s, "        #[repr(C)]").unwrap();
-        writeln!(s, "        #[derive(Clone, Copy, Default)]").unwrap();
+        writeln!(s, "        #[derive(Clone, Copy)]").unwrap();
         writeln!(s, "        #[allow(clippy::missing_docs_in_private_items)]").unwrap();
         writeln!(s, "        struct OutRaw {{").unwrap();
         for (argty, argname) in raw_iterator(&cmd.ret, true) {
@@ -360,6 +376,7 @@ fn format_type(struct_name: &str, ty: &TypeDef) -> Result<String, Error> {
     match &ty.ty {
         Type::Struct(struc) => {
             writeln!(s, "#[repr(C)]").unwrap();
+            writeln!(s, "#[derive(Clone, Copy, Debug)]").unwrap();
             writeln!(s, "pub struct {} {{", struct_name).unwrap();
             for (doc, name, ty) in &struc.fields {
                 // TODO: Support nested type
@@ -370,12 +387,13 @@ fn format_type(struct_name: &str, ty: &TypeDef) -> Result<String, Error> {
                     Type::Alias(alias) => get_type(false, alias)?,
                     _ => unimplemented!()
                 };
-                writeln!(s, "    {}: {},", name, tyname).unwrap();
+                writeln!(s, "    pub {}: {},", name, tyname).unwrap();
             }
             writeln!(s, "}}").unwrap();
         },
         Type::Enum(enu) => {
             writeln!(s, "#[repr(u32)]").unwrap(); // TODO: Deduce from template
+            writeln!(s, "#[derive(Clone, Copy, Debug)]").unwrap();
             writeln!(s, "pub enum {} {{", struct_name).unwrap();
             for (doc, name, num) in &enu.fields {
                 for line in doc.lines() {
