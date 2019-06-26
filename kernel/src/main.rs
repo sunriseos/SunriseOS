@@ -1,5 +1,9 @@
 //! Sunrise kernel
 //!
+//! > Writing an Operating System is easy. Explaining how to write one isn't.
+//!
+//! - PoC||GTFO, 4:3.
+//!
 //! A small kernel written in rust for shit and giggles. Also, hopefully the
 //! last project I'll do before graduating from 42 >_>'.
 //!
