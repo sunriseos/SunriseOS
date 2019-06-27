@@ -604,7 +604,7 @@ impl Registers {
                 self.ebp = 0;
             },
             Err(err) => {
-                self.eax = err.make_ret();
+                self.eax = err.make_ret() as _;
                 self.ebx = 0;
                 self.ecx = 0;
                 self.edx = 0;

@@ -3,7 +3,7 @@
 //! APIs allowing the creation of a window, and drawing inside of it.
 
 use crate::types::{SharedMemory, MappedSharedMemory};
-use crate::vi::{ViInterface, IBuffer};
+use crate::vi::{ViInterfaceProxy, IBufferProxy};
 use crate::syscalls::MemoryPermissions;
 use crate::mem::{find_free_address, PAGE_SIZE};
 use sunrise_libutils::align_up;
@@ -36,10 +36,10 @@ impl Color {
 #[derive(Debug)]
 pub struct Window {
     /// The framebuffer memory shared with Vi. Drawing to this buffer will take
-    /// effect on the next call to [IBuffer::draw].
+    /// effect on the next call to [IBufferProxy::draw].
     buf: MappedSharedMemory,
     /// Vi handle for this window.
-    handle: IBuffer,
+    handle: IBufferProxy,
     /// Width of the window.
     width: usize,
     /// Height of the window.
@@ -51,7 +51,7 @@ pub struct Window {
 impl Window {
     /// Creates a window in the vi compositor.
     pub fn new(top: i32, left: i32, width: u32, height: u32) -> Result<Window, Error> {
-        let mut vi = ViInterface::raw_new()?;
+        let mut vi = ViInterfaceProxy::raw_new()?;
         let bpp = 32;
         let size = height * width * bpp / 8;
 

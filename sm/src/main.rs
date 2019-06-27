@@ -49,6 +49,7 @@ use crate::libuser::ipc::server::{WaitableManager, PortHandler, IWaitable};
 use crate::libuser::types::*;
 use crate::libuser::error::Error;
 use crate::libuser::error::SmError;
+use crate::libuser::sm::IUserInterface;
 use hashbrown::hash_map::{HashMap, Entry};
 use spin::Mutex;
 
@@ -56,7 +57,7 @@ use spin::Mutex;
 /// The main interface to the Service Manager. Clients can use it to connect to
 /// or register new services (assuming they have the appropriate capabilities).
 ///
-/// Make sure to call the [UserInterface::initialize] method before using it.
+/// Make sure to call the [IUserInterface::initialize()] method before using it.
 #[derive(Debug, Default)]
 struct UserInterface;
 
@@ -91,53 +92,47 @@ fn get_service_str(servicename: &u64) -> &str {
     }
 }
 
-object! {
-    impl UserInterface {
-        /// Initialize the UserInterface, acquiring the Pid of the remote
-        /// process, which will then be used to validate the permissions of each
-        /// calls.
-        #[cmdid(0)]
-        fn initialize(&mut self, _pid: Pid,) -> Result<(), Error> {
-            Ok(())
-        }
+impl IUserInterface for UserInterface {
+    /// Initialize the UserInterface, acquiring the Pid of the remote
+    /// process, which will then be used to validate the permissions of each
+    /// calls.
+    fn initialize(&mut self, _manager: &WaitableManager, _pid: Pid) -> Result<(), Error> {
+        Ok(())
+    }
 
-        /// Get a ClientSession to this service.
-        #[cmdid(1)]
-        fn get_service(&mut self, servicename: u64,) -> Result<(Handle,), Error> {
-            match SERVICES.lock().get(&servicename) {
-                Some(port) => port.connect().map(|v| (v.into_handle(),)),
-                None => Err(SmError::ServiceNotRegistered.into())
+    /// Get a ClientSession to this service.
+    fn get_service(&mut self, _manager: &WaitableManager, servicename: u64) -> Result<ClientSession, Error> {
+        match SERVICES.lock().get(&servicename) {
+            Some(port) => port.connect(),
+            None => Err(SmError::ServiceNotRegistered.into())
+        }
+    }
+
+    /// Register a new service, returning a ServerPort to the newly
+    /// registered service.
+    fn register_service(&mut self, _manager: &WaitableManager, servicename: u64, is_light: bool, max_handles: u32) -> Result<ServerPort, Error> {
+        let (clientport, serverport) = syscalls::create_port(max_handles, is_light, get_service_str(&servicename))?;
+        match SERVICES.lock().entry(servicename) {
+            Entry::Occupied(_) => Err(SmError::ServiceAlreadyRegistered.into()),
+            Entry::Vacant(vacant) => {
+                vacant.insert(clientport);
+                Ok(serverport)
             }
         }
+    }
 
-        /// Register a new service, returning a ServerPort to the newly
-        /// registered service.
-        #[cmdid(2)]
-        fn register_service(&mut self, servicename: u64, is_light: u8, max_handles: u32,) -> Result<(Handle,), Error> {
-            let (clientport, serverport) = syscalls::create_port(max_handles, is_light != 0, get_service_str(&servicename))?;
-            match SERVICES.lock().entry(servicename) {
-                Entry::Occupied(_) => Err(SmError::ServiceAlreadyRegistered.into()),
-                Entry::Vacant(vacant) => {
-                    vacant.insert(clientport);
-                    Ok((serverport.0,))
-                }
-            }
-        }
-
-        /// Unregister a service.
-        #[cmdid(3)]
-        fn unregister_service(&mut self, servicename: u64,) -> Result<(), Error> {
-            match SERVICES.lock().remove(&servicename) {
-                Some(_) => Ok(()),
-                None => Err(SmError::ServiceNotRegistered.into())
-            }
+    /// Unregister a service.
+    fn unregister_service(&mut self, _manager: &WaitableManager, servicename: u64) -> Result<(), Error> {
+        match SERVICES.lock().remove(&servicename) {
+            Some(_) => Ok(()),
+            None => Err(SmError::ServiceNotRegistered.into())
         }
     }
 }
 
 fn main() {
     let man = WaitableManager::new();
-    let handler = Box::new(PortHandler::<UserInterface>::new_managed("sm:\0").unwrap());
+    let handler = Box::new(PortHandler::new_managed("sm:\0", UserInterface::dispatch).unwrap());
     man.add_waitable(handler as Box<dyn IWaitable>);
 
     man.run();

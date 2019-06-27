@@ -9,7 +9,7 @@ use font_rs::{font, font::{Font, GlyphBitmap}};
 use hashbrown::HashMap;
 use crate::window::{Window, Color};
 use crate::error::Error;
-use crate::vi::ViInterface;
+use crate::vi::ViInterfaceProxy;
 
 /// Just an x and a y
 #[derive(Copy, Clone, Debug)]
@@ -80,7 +80,7 @@ impl Terminal {
 
         let my_linespace = my_descent + my_ascent;
 
-        let (fullscreen_width, fullscreen_height) = ViInterface::raw_new()?.get_screen_resolution()?;
+        let (fullscreen_width, fullscreen_height) = ViInterfaceProxy::raw_new()?.get_screen_resolution()?;
 
         let framebuffer = match size {
             WindowSize::Fullscreen => Window::new(0, 0, fullscreen_width, fullscreen_height)?,

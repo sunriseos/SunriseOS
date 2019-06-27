@@ -77,9 +77,9 @@ use alloc::sync::Arc;
 use sunrise_libuser::error::{Error, AhciError};
 use sunrise_libuser::ipc::server::{WaitableManager, PortHandler, IWaitable};
 use spin::Mutex;
-use sunrise_libuser::types::Handle;
 use sunrise_libuser::syscalls;
 use sunrise_libuser::ipc::server::SessionWrapper;
+use sunrise_libuser::ahci::{AhciInterface as IAhciInterface, IDiskProxy, IDisk as _};
 
 /// Array of discovered disk.
 ///
@@ -113,7 +113,7 @@ fn main() {
 
     // event loop
     let man = WaitableManager::new();
-    let handler = Box::new(PortHandler::<AhciInterface>::new("ahci:\0").unwrap());
+    let handler = Box::new(PortHandler::new("ahci:\0", AhciInterface::dispatch).unwrap());
     man.add_waitable(handler as Box<dyn IWaitable>);
     man.run();
 }
@@ -130,34 +130,30 @@ fn main() {
 #[derive(Default, Debug)]
 struct AhciInterface;
 
-object! {
-    impl AhciInterface {
-        /// Returns the number of discovered disks.
-        ///
-        /// Any number in the range `0..disk_count()` is considered a valid disk id.
-        #[cmdid(0)]
-        fn disk_count(&mut self,) -> Result<(usize,), Error> {
-            Ok((DISKS.lock().len(),))
-        }
+impl IAhciInterface for AhciInterface {
+    /// Returns the number of discovered disks.
+    ///
+    /// Any number in the range `0..disk_count()` is considered a valid disk id.
+    fn discovered_disks_count(&mut self, _manager: &WaitableManager) -> Result<u32, Error> {
+        Ok(DISKS.lock().len() as u32)
+    }
 
-        /// Gets the interface to a disk.
-        ///
-        /// This creates a session to an [IDisk].
-        ///
-        /// # Error
-        ///
-        /// - InvalidArg: `disk_id` is not a valid disk id.
-        #[cmdid(1)]
-        fn get_disk(&mut self, manager: &WaitableManager, disk_id: u32,) -> Result<(Handle,), Error> {
-            let idisk = IDisk::new(Arc::clone(
-                DISKS.lock().get(disk_id as usize)
-                .ok_or(AhciError::InvalidArg)?
-            ));
-            let (server, client) = syscalls::create_session(false, 0)?;
-            let wrapper = SessionWrapper::new(server, idisk);
-            manager.add_waitable(Box::new(wrapper) as Box<dyn IWaitable>);
-            Ok((client.into_handle(),))
-        }
+    /// Gets the interface to a disk.
+    ///
+    /// This creates a session to an [IDisk].
+    ///
+    /// # Error
+    ///
+    /// - InvalidArg: `disk_id` is not a valid disk id.
+    fn get_disk(&mut self, manager: &WaitableManager, disk_id: u32,) -> Result<IDiskProxy, Error> {
+        let idisk = IDisk::new(Arc::clone(
+            DISKS.lock().get(disk_id as usize)
+            .ok_or(AhciError::InvalidArg)?
+        ));
+        let (server, client) = syscalls::create_session(false, 0)?;
+        let wrapper = SessionWrapper::new(server, idisk, IDisk::dispatch);
+        manager.add_waitable(Box::new(wrapper) as Box<dyn IWaitable>);
+        Ok(IDiskProxy::from(client))
     }
 }
 
