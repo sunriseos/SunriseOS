@@ -50,7 +50,7 @@ pub fn init() {
 
                     for over_ride in interrupt_source_overrides {
                         let mut entry = ioapics[0].redirection_entry(over_ride.global_system_interrupt as u8);
-                        entry.set_interrupt_vector(0x20 + over_ride.isa_source as u64);
+                        entry.set_interrupt_vector(u64::from(0x20 + over_ride.isa_source));
                         ioapics[0].set_redirection_entry(over_ride.global_system_interrupt as u8, entry);
                     }
 
