@@ -133,11 +133,11 @@ fn format_args(args: &[(Alias, Option<String>)], ret: &[(Alias, Option<String>)]
 /// arguments.
 ///
 /// See [get_type] to find the mapping of a SwIPC type to a Rust type.
-fn format_ret_ty(ret: &[(Alias, Option<String>)]) -> Result<String, Error> {
+fn format_ret_ty(ret: &[(Alias, Option<String>)], server: bool) -> Result<String, Error> {
     let mut v = Vec::new();
 
     for (ty, _name) in named_iterator(ret, true) {
-        v.push(get_type(true, ty, false)?);
+        v.push(get_type(true, ty, server)?);
     }
 
     match v.len() {
@@ -217,6 +217,8 @@ fn get_type(output: bool, ty: &Alias, is_server: bool) -> Result<String, Error> 
 
         Alias::Handle(is_copy, ty) => if let Some(s) = get_handle_type(ty) {
             Ok(format!("{}{}", if *is_copy && !is_server && !output { "&" } else { "" }, s))
+        } else if *is_copy && is_server && output {
+            Ok("sunrise_libuser::types::HandleRef<'static>".to_string())
         } else {
             Ok(format!("sunrise_libuser::types::{}", if *is_copy && !is_server && !output { "HandleRef" } else { "Handle" }))
         },
@@ -270,7 +272,7 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
     for line in cmd.doc.lines() {
         writeln!(s, "    /// {}", line).unwrap();
     }
-    writeln!(s, "    pub fn {}(&mut self, {}) -> Result<{}, Error> {{", &cmd.name, format_args(&cmd.args, &cmd.ret, false)?, format_ret_ty(&cmd.ret)?).unwrap();
+    writeln!(s, "    pub fn {}(&mut self, {}) -> Result<{}, Error> {{", &cmd.name, format_args(&cmd.args, &cmd.ret, false)?, format_ret_ty(&cmd.ret, false)?).unwrap();
     writeln!(s, "        use sunrise_libuser::ipc::Message;").unwrap();
     writeln!(s, "        let mut buf__ = [0; 0x100];").unwrap();
     writeln!(s).unwrap();
@@ -512,7 +514,7 @@ fn gen_call(cmd: &Func) -> Result<String, Error> {
             match ty { Alias::Array(..) | Alias::Buffer(..) => true, _ => false }))
     {
         match item {
-            Alias::Array(_, bufty) | Alias::Buffer(_, bufty, _) => {
+            Alias::Array(underlying_ty, bufty) | Alias::Buffer(underlying_ty, bufty, _) => {
                 let (ismut,direction, ty) = match (bufty.get_bits(0..2), bufty.get_bits(2..4)) {
                     (0b01, 0b01) => ("", "in", "buffer"),
                     (0b01, 0b10) => ("", "in", "pointer"),
@@ -520,7 +522,18 @@ fn gen_call(cmd: &Func) -> Result<String, Error> {
                     (0b10, 0b10) => ("mut", "out", "pointer"),
                     _ => panic!("Invalid bufty")
                 };
-                args += &format!("&{} *msg__.pop_{}_{}().unwrap(), ", ismut, direction, ty);
+                let realty = get_type(false, underlying_ty, false)?;
+                if let Alias::Array(..) = item {
+                    // TODO: Make pop_out_buffer and co safe to call.
+                    // BODY: Currently, pop_out_buffer (and other functions of
+                    // BODY: that family) are unsafe to call as they basically
+                    // BODY: allow transmuting variables. We should use a crate
+                    // BODY: like `plain` to ensure that said functions are only
+                    // BODY: callable when it is safe.
+                    args += &format!("unsafe {{ &{} *msg__.pop_{}_{}::<[{}]>().unwrap() }}, ", ismut, direction, ty, realty);
+                } else {
+                    args += &format!("unsafe {{ &{} *msg__.pop_{}_{}::<{}>().unwrap() }}, ", ismut, direction, ty, realty);
+                }
             },
             Alias::Object(ty) => {
                 args += &format!("{}Proxy(sunrise_libuser::types::ClientSession(msg__.pop_handle_move().unwrap())), ", ty);
@@ -564,7 +577,7 @@ fn gen_call(cmd: &Func) -> Result<String, Error> {
     writeln!(s, "                match  ret__ {{").unwrap();
     writeln!(s, "                    Ok(ret) => {{").unwrap();
 
-    let retcount = named_iterator(&cmd.ret, false).count();
+    let retcount = named_iterator(&cmd.ret, true).count();
     for (idx, (item, _)) in named_iterator(&cmd.ret, true).enumerate().filter(|(_, (ty, _))| !is_raw(ty))
     {
         let ret = if retcount == 1 {
@@ -578,14 +591,14 @@ fn gen_call(cmd: &Func) -> Result<String, Error> {
             },
             Alias::Handle(is_copy, ty) => {
                 let (is_ref, handle) = if *is_copy {
-                    ("&", "copy")
+                    (".as_ref()", "copy")
                 } else {
                     ("", "move")
                 };
                 match (get_handle_type(ty), ty) {
-                    (_, Some(HandleType::ClientSession)) => writeln!(s, "msg__.push_handle_{}({}({}).into_handle());", handle, is_ref, ret).unwrap(),
-                    (Some(_), _) => writeln!(s, "msg__.push_handle_{}({}({}).0);", handle, is_ref, ret).unwrap(),
-                    _ => writeln!(s, "msg__.push_handle_{}({}{})", handle, is_ref, ret).unwrap(),
+                    (_, Some(HandleType::ClientSession)) => writeln!(s, "msg__.push_handle_{}(({}).into_handle(){});", handle, ret, is_ref).unwrap(),
+                    (Some(_), _) => writeln!(s, "msg__.push_handle_{}(({}).0{});", handle, ret, is_ref).unwrap(),
+                    _ => writeln!(s, "msg__.push_handle_{}({});", handle, ret).unwrap(),
                 };
             },
             Alias::Pid => {
@@ -595,9 +608,9 @@ fn gen_call(cmd: &Func) -> Result<String, Error> {
         }
     }
 
-    if raw_iterator(&cmd.ret, false).count() > 0 {
-        if named_iterator(&cmd.ret, false).count() == 1 {
-            let (_, name) = raw_iterator(&cmd.ret, false).next().unwrap();
+    if raw_iterator(&cmd.ret, true).count() > 0 {
+        if named_iterator(&cmd.ret, true).count() == 1 {
+            let (_, name) = raw_iterator(&cmd.ret, true).next().unwrap();
             writeln!(s, "msg__.push_raw({} {{ {}: ret }});", out_raw, name).unwrap();
         } else {
             writeln!(s, "msg__.push_raw({} {{", out_raw).unwrap();
@@ -631,7 +644,7 @@ pub fn generate_trait(ifacename: &str, interface: &Interface) -> String {
     }
     writeln!(s, "pub trait {} {{", trait_name).unwrap();
     for cmd in &interface.funcs {
-        match format_args(&cmd.args, &cmd.ret, true).and_then(|v| format_ret_ty(&cmd.ret).map(|u| (v, u))) {
+        match format_args(&cmd.args, &cmd.ret, true).and_then(|v| format_ret_ty(&cmd.ret, true).map(|u| (v, u))) {
             Ok((args, ret)) => {
                 for line in cmd.doc.lines() {
                     writeln!(s, "/// {}", line).unwrap();
