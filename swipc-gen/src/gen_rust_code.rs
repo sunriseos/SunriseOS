@@ -485,7 +485,7 @@ fn generate_mod(m: Mod, depth: usize, mod_name: &str, crate_name: &str) -> Strin
 }
 
 /// Parse an incoming request, call the appropriate function from the trait
-/// we're currently generating (see [gen_trait()]), and fill the byte buffer with
+/// we're currently generating (see [generate_trait()]), and fill the byte buffer with
 /// the response data.
 fn gen_call(cmd: &Func) -> Result<String, Error> {
     let mut s = String::new();
