@@ -222,7 +222,7 @@ args = [
     "-d", "cpu_reset",
     "-drive", "id=diskA,file=DISK.img,format=raw,if=none", "-device", "ahci,id=ahci", "-device", "ide-drive,drive=diskA,bus=ahci.0",
     "-machine", "q35",
-    ]
+]
 
 [tasks.doc]
 workspace = false
