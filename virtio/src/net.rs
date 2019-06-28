@@ -12,7 +12,7 @@ use smoltcp::time::Instant;
 use core::fmt;
 use sunrise_libuser::error::Error;
 use bit_field::BitField;
-use log::info;
+use log::*;
 
 bitflags! {
     /// Features supported by the Virtio-Net driver.
@@ -280,6 +280,7 @@ impl<'a> Device<'a> for VirtioNet {
 
     fn receive(&'a mut self) -> Option<(Self::RxToken, Self::TxToken)> {
         let buf = self.receive_queues().nth(0).unwrap().pop_buffer_w()?;
+        debug!("{:#?}", buf);
         let rx = VirtioNetRxToken(buf);
         let tx = VirtioNetTxToken(self);
         Some((rx, tx))
@@ -311,7 +312,8 @@ impl RxToken for VirtioNetRxToken {
     where
         F: FnOnce(&[u8]) -> smoltcp::Result<R>
     {
-        f(&self.0[..])
+        debug!("Consuming the buffer");
+        f(&self.0[core::mem::size_of::<NetHdr>()..])
     }
 }
 
