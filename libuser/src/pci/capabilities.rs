@@ -33,13 +33,19 @@ pub struct MsiX<'a> {
     inner: RWCapability<'a>
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct MsiXEntry {
+    pub addr: u64,
+    pub data: u32,
+    pub ctrl: MsiXControl 
+}
+
 bitfield! {
-    pub struct MsiXEntry(u64);
+    #[derive(Clone, Copy)]
+    pub struct MsiXControl(u32);
     impl Debug;
-    pub pending, _: 0;
-    pub masked, set_masked: 1;
-    pub message_address, set_message_address: 31, 2;
-    pub message_data, set_message_data: 63, 32;
+    pub masked, set_masked: 0;
 }
 
 impl<'a> MsiX<'a> {
@@ -53,19 +59,11 @@ impl<'a> MsiX<'a> {
         self.inner.read_u32(0).get_bits(16..27) as usize + 1
     }
 
-    pub fn message_upper_address(&self) -> u32 {
-        self.inner.read_u32(4)
-    }
-
-    pub fn set_message_upper_address(&self, val: u32) {
-        self.inner.write_u32(4, val)
-    }
-
     pub fn set_message_entry(&self, entry: usize, val: MsiXEntry) -> Result<(), KernelError> {
         assert!(entry < self.table_size());
-        let mut table_offset_bir = self.inner.read_u32(8);
+        let mut table_offset_bir = self.inner.read_u32(4);
         let bir = table_offset_bir.get_bits(0..3);
-        let table_offset = *table_offset_bir.set_bits(0..3, 0);
+        let table_offset = *table_offset_bir.set_bits(0..3, 0) as u64;
 
         let PciDevice { bus, slot, function, .. } = self.inner.device;
 
@@ -77,8 +75,10 @@ impl<'a> MsiX<'a> {
         let bar = header.bar(bir as usize).expect(&format!("Device {}.{}.{} to contain BAR {}", bus, slot, function, bir));
         let mapped_bar = bar.map()?;
 
-        mapped_bar.write_u32::<LE>((entry * 8) as u64, val.0.get_bits(0..32) as u32);
-        mapped_bar.write_u32::<LE>((entry * 8 + 4) as u64, val.0.get_bits(32..64) as u32);
+        mapped_bar.write_u32::<LE>(table_offset + (entry * 16) as u64, val.addr.get_bits(0..32) as u32);
+        mapped_bar.write_u32::<LE>(table_offset + (entry * 16 + 4) as u64, val.addr.get_bits(32..64) as u32);
+        mapped_bar.write_u32::<LE>(table_offset + (entry * 16 + 8) as u64, val.data);
+        mapped_bar.write_u32::<LE>(table_offset + (entry * 16 + 12) as u64, val.ctrl.0);
 
         Ok(())
     }

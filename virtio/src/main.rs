@@ -11,7 +11,7 @@ use sunrise_libuser::pci::{discover as pci_discover, PciHeader, PciDevice,
                            GeneralPciHeader,
                            CONFIG_ADDRESS as PCI_CONFIG_ADDRESS,
                            CONFIG_DATA as PCI_CONFIG_DATA};
-use sunrise_libuser::pci::capabilities::{MsiXEntry, Capability};
+use sunrise_libuser::pci::capabilities::{MsiXEntry, MsiXControl, Capability};
 
 use sunrise_libuser::error::{VirtioError, Error};
 use log::*;
@@ -157,6 +157,16 @@ impl VirtioDevice {
         self.reset();
         self.common_cfg.set_device_status(DeviceStatus::ACKNOWLEDGE);
 
+        // Setup MSI-X vector.
+        self.device.enable_msix(true).unwrap();
+        let mut entry = MsiXEntry {
+            // TODO: DMAR
+            addr: 0xFEE0_0000,
+            data: 0x0000_0033,
+            ctrl: MsiXControl(0)
+        };
+        self.device.set_msix_message_entry(0, entry).unwrap();
+
         self.queues.clear();
         for i in 0..self.common_cfg.num_queues() {
             self.queues.push(None)
@@ -179,11 +189,7 @@ impl VirtioDevice {
         queue.desc = virtqueue.descriptor_area_dma_addr();
         queue.driver = virtqueue.driver_area_dma_addr();
         queue.device = virtqueue.device_area_dma_addr();
-        let mut entry = MsiXEntry(0);
-        // TODO: DMAR
-        entry.set_message_address(0x0FEE_0000);
-        entry.set_message_data(0x0000_0000);
-        self.device.set_msix_message_entry(0, entry);
+        queue.msix_vector = 0;
         queue.enable = true;
         self.common_cfg.set_queue(virtqueue_idx, &queue);
         self.queues[virtqueue_idx as usize] = Some(virtqueue);
@@ -501,7 +507,7 @@ fn main() {
                 devices.push(VirtioDevice {
                     virtio_did, device, header, common_cfg, device_cfg: Some(device_cfg),
                     common_features: CommonFeatures::empty(), notif_cfg, queues: Vec::new(),
-                    irq_event: syscalls::create_interrupt_event(header.interrupt_line() as usize, 0).unwrap()
+                    irq_event: syscalls::create_interrupt_event(19, 0).unwrap()
                 }),
             _ => ()
         }
@@ -556,20 +562,8 @@ capabilities!(CAPABILITIES = Capabilities {
         sunrise_libuser::syscalls::nr::CreateSession,
     ],
     raw_caps: [
-        // todo: IRQ capabilities at runtime
-        // body: Currently IRQ capabilities are declared at compile-time.
-        // body:
-        // body: However, for PCI, the IRQ line we want to subscribe to
-        // body: can only be determined at runtime by reading the `Interrupt Line` register
-        // body: that has been set-up during POST.
-        // body:
-        // body: What would be the proper way to handle such a case ?
-        // body:
-        // body: - Declaring every IRQ line in our capabilities, but only effectively using one ?
-        // body: - Deporting the PIC management to a userspace module, and allow it to accept
-        // body:   dynamic irq capabilities in yet undefined way.
         sunrise_libuser::caps::ioport(PCI_CONFIG_ADDRESS + 0), sunrise_libuser::caps::ioport(PCI_CONFIG_ADDRESS + 1), sunrise_libuser::caps::ioport(PCI_CONFIG_ADDRESS + 2), sunrise_libuser::caps::ioport(PCI_CONFIG_ADDRESS + 3),
         sunrise_libuser::caps::ioport(PCI_CONFIG_DATA    + 0), sunrise_libuser::caps::ioport(PCI_CONFIG_DATA    + 1), sunrise_libuser::caps::ioport(PCI_CONFIG_DATA    + 2), sunrise_libuser::caps::ioport(PCI_CONFIG_DATA    + 3),
-        sunrise_libuser::caps::irq_pair(0xb, 0x3FF)
+        sunrise_libuser::caps::irq_pair(19, 0x3FF)
     ]
 });

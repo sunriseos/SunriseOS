@@ -2,7 +2,10 @@
 //!
 //! A minimal PCI implementation, that permits only discovering AHCI devices, and querying their BAR.
 //!
-//! PCI Local Bus Specification: https://web.archive.org/web/20180712233954/http://fpga-faq.narod.ru/PCI_Rev_30.pdf
+//! PCI Local Bus Specification: https://web.archive.org/web/20170728023923/https://lekensteyn.nl/files/docs/PCI_SPEV_V3_0.pdf
+//!
+//! (Careful, there are many outdated PCI specs documents out there that are
+//! incompatible with the real spec, especially in regards to MSI-X!)
 
 use sunrise_libutils::io::{Io, Pio};
 use spin::Mutex;
@@ -605,16 +608,6 @@ impl PciDevice {
         let msix = self.capabilities().find(|v| if let Capability::MsiX(..) = v { true } else { false });
         if let Some(Capability::MsiX(msix)) = msix {
             msix.set_message_entry(entry, val);
-            Ok(())
-        } else {
-            Err(())
-        }
-    }
-
-    pub fn set_msix_message_upper_address(&self, val: u32) -> Result<(), ()> {
-        let msix = self.capabilities().find(|v| if let Capability::MsiX(..) = v { true } else { false });
-        if let Some(Capability::MsiX(msix)) = msix {
-            msix.set_message_upper_address(val);
             Ok(())
         } else {
             Err(())

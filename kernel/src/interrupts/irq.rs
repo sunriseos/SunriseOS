@@ -23,7 +23,7 @@ macro_rules! irq_handler {
 
 /// Array of interrupt handlers. The position in the array defines the IRQ this
 /// handler is targeting. See the module documentation for more information.
-pub static IRQ_HANDLERS : [extern "x86-interrupt" fn(stack_frame: &mut ExceptionStackFrame); 17] = [
+pub static IRQ_HANDLERS : [extern "x86-interrupt" fn(stack_frame: &mut ExceptionStackFrame); 24] = [
     irq_handler!(0, pit_handler),
     irq_handler!(1, keyboard_handler),
     irq_handler!(2, cascade_handler),
@@ -41,4 +41,11 @@ pub static IRQ_HANDLERS : [extern "x86-interrupt" fn(stack_frame: &mut Exception
     irq_handler!(14, primary_ata_handler),
     irq_handler!(15, secondary_ata_handler),
     irq_handler!(16, hpet_handler),
+    irq_handler!(17, irq17_handler),
+    irq_handler!(18, irq18_handler),
+    irq_handler!(19, network_handler),
+    irq_handler!(20, irq20_handler),
+    irq_handler!(21, irq21_handler),
+    irq_handler!(22, irq22_handler),
+    irq_handler!(23, irq23_handler),
 ];
