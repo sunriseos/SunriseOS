@@ -439,3 +439,22 @@ pub fn map_mmio_region(physical_address: usize, size: usize, virtual_address: us
         Ok(())
     }
 }
+
+pub fn get_system_tick() -> u64 {
+    let mut registers = Registers {
+        eax: nr::GetSystemTick,
+        ebx: 0,
+        ecx: 0,
+        edx: 0,
+        esi: 0,
+        edi: 0,
+        ebp: 0, 
+    };
+
+    unsafe {
+        // Safety: Syscall to GetSystemTick is always safe.
+        syscall_inner(&mut registers);
+    }
+
+    registers.eax as u64 | ((registers.ebx as u64) << 32)
+}

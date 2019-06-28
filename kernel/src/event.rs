@@ -187,6 +187,12 @@ pub fn wait_event(irq: u8) -> IRQEvent {
     }
 }
 
+/// Gets the number of times a certain IRQ got triggered since boot.
+pub fn get_current_count(irqnum: u8) -> usize {
+    IRQ_STATES[usize::from(irqnum)].counter.load(Ordering::SeqCst)
+}
+
+
 /// Global state of an IRQ.
 ///
 /// Counts the number of times this IRQ was triggered from kernel boot.
