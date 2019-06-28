@@ -1,5 +1,13 @@
+//! Virtio Driver
+//!
+//! This binary contains the common bits of a virtio driver. It implements the
+//! [virtio spec 1.1](https://web.archive.org/web/20190628162805/https://docs.oasis-open.org/virtio/virtio/v1.1/virtio-v1.1.html).
+//!
+//! It does **not** support legacy or transitional interfaces. Only the modern
+//! interfaces are implemented.
+
 #![no_std]
-#![feature(alloc, underscore_const_names)]
+#![feature(underscore_const_names, slice_concat_ext)]
 
 #[macro_use]
 extern crate alloc;
@@ -17,11 +25,10 @@ use sunrise_libuser::error::{VirtioError, Error};
 use log::*;
 use bitflags::bitflags;
 use crate::pci::{CommonCfg, NotificationCfg, Config};
-use crate::net::VirtioNet;
-use alloc::vec::Vec;
 use bitfield::bitfield;
 use virtqueue::VirtQueue;
 use core::sync::atomic::{fence, Ordering};
+use alloc::vec::Vec;
 
 mod pci;
 mod net;
@@ -239,25 +246,24 @@ impl VirtioDevice {
             // that it updates the idx field before checking for notification
             // suppression.
             fence(Ordering::SeqCst);
-            info!("{:#?}", queue);
 
             if !queue.device_notif_suppressed() {
                 let queue_notify_off = self.common_cfg.queue_notify_off(vq) as usize;
                 if self.common_features.contains(CommonFeatures::NOTIFICATION_DATA) {
-                    info!("Notifying {}", vq);
+                    debug!("Notifying {}", vq);
                     let mut notif = Notification(0);
                     notif.set_virtqueue_idx(vq.into());
                     notif.set_next_off_split(queue.get_available_idx().into());
                     self.notif_cfg.notify_with_notification(queue_notify_off as usize, notif);
                 } else {
-                    info!("Notifying {}", vq);
+                    debug!("Notifying {}", vq);
                     self.notif_cfg.notify_with_virtqueue(queue_notify_off as usize, vq);
                 }
             } else {
-                info!("Notifications for {} suppressed", vq);
+                debug!("Notifications for {} suppressed", vq);
             }
         } else {
-            info!("Queue {} does not exist", vq);
+            error!("Queue {} does not exist", vq);
         }
     }
 
@@ -266,190 +272,7 @@ impl VirtioDevice {
     }
 }
 
-macro_rules! send_icmp_ping {
-    ( $repr_type:ident, $packet_type:ident, $ident:expr, $seq_no:expr,
-      $echo_payload:expr, $socket:expr, $remote_addr:expr ) => {{
-        let icmp_repr = $repr_type::EchoRequest {
-            ident: $ident,
-            seq_no: $seq_no,
-            data: &$echo_payload,
-        };
-
-        let icmp_payload = $socket
-            .send(icmp_repr.buffer_len(), $remote_addr)
-            .unwrap();
-
-        let mut icmp_packet = $packet_type::new_unchecked(icmp_payload);
-        (icmp_repr, icmp_packet)
-    }}
-}
-
-macro_rules! get_icmp_pong {
-    ( $repr_type:ident, $repr:expr, $payload:expr, $waiting_queue:expr, $remote_addr:expr,
-      $timestamp:expr, $received:expr ) => {{
-        if let $repr_type::EchoReply { seq_no, data, .. } = $repr {
-            if let Some(_) = $waiting_queue.get(&seq_no) {
-                let packet_timestamp_ms = NetworkEndian::read_i64(data);
-                info!("{} bytes from {}: icmp_seq={}, time={}ms",
-                         data.len(), $remote_addr, seq_no,
-                         $timestamp.total_millis() - packet_timestamp_ms);
-                $waiting_queue.remove(&seq_no);
-                $received += 1;
-            }
-        }
-    }}
-}
-
-fn ping(device: VirtioNet) {
-    use smoltcp::time::{Duration, Instant};
-    use smoltcp::phy::Device;
-    //use smoltcp::phy::wait as phy_wait;
-    use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr,
-                        Ipv6Address, Icmpv6Repr, Icmpv6Packet,
-                        Ipv4Address, Icmpv4Repr, Icmpv4Packet};
-    use smoltcp::iface::{NeighborCache, EthernetInterfaceBuilder, Routes};
-    use smoltcp::socket::{SocketSet, IcmpSocket, IcmpSocketBuffer, IcmpPacketMetadata, IcmpEndpoint};
-    use byteorder::{NetworkEndian, ByteOrder};
-    use alloc::collections::BTreeMap;
-
-    let count = 5;
-    let interval = Duration::from_millis(50);
-    let timeout = Duration::from_millis(5000);
-    let device_caps = device.capabilities();
-
-    let neighbor_cache = NeighborCache::new(BTreeMap::new());
-
-    let remote_addr = IpAddress::v4(10, 0, 2, 2);
-
-    let icmp_rx_buffer = IcmpSocketBuffer::new(vec![IcmpPacketMetadata::EMPTY], vec![0; 256]);
-    let icmp_tx_buffer = IcmpSocketBuffer::new(vec![IcmpPacketMetadata::EMPTY], vec![0; 256]);
-    let icmp_socket = IcmpSocket::new(icmp_rx_buffer, icmp_tx_buffer);
-
-    let ethernet_addr = EthernetAddress(device.mac());
-    let src_ipv4 = IpCidr::new(IpAddress::v4(10, 0, 2, 15), 24);
-    let ip_addrs = [src_ipv4];
-    let default_v4_gw = Ipv4Address::new(10, 0, 2, 2);
-    let mut routes_storage = [None; 1];
-    let mut routes = Routes::new(&mut routes_storage[..]);
-    routes.add_default_ipv4_route(default_v4_gw).unwrap();
-    let mut iface = EthernetInterfaceBuilder::new(device)
-            .ethernet_addr(ethernet_addr)
-            .ip_addrs(ip_addrs)
-            .routes(routes)
-            .neighbor_cache(neighbor_cache)
-            .finalize();
-
-    let mut sockets = SocketSet::new(vec![]);
-    let icmp_handle = sockets.add(icmp_socket);
-
-    let mut send_at = Instant::from_millis(0);
-    let mut seq_no = 0;
-    let mut received = 0;
-    let mut echo_payload = [0xffu8; 40];
-    let mut waiting_queue = BTreeMap::new();
-    let ident = 0x22b;
-
-    let mut timestamp = Instant::from_millis(0);
-    loop {
-        timestamp += interval;
-        //info!("{:#?}", iface);
-        match iface.poll(&mut sockets, timestamp) {
-            Ok(_) => {},
-            Err(e) => {
-                debug!("poll error: {}", e);
-            }
-        }
-
-        {
-            let timestamp = timestamp + Duration::from_millis(50);
-            let mut socket = sockets.get::<IcmpSocket>(icmp_handle);
-            if !socket.is_open() {
-                socket.bind(IcmpEndpoint::Ident(ident)).unwrap();
-                send_at = timestamp;
-            }
-
-            if socket.can_send() && seq_no < count as u16 &&
-                    send_at <= timestamp {
-                NetworkEndian::write_i64(&mut echo_payload, timestamp.total_millis());
-
-                match remote_addr {
-                    IpAddress::Ipv4(_) => {
-                        let (icmp_repr, mut icmp_packet) = send_icmp_ping!(
-                                Icmpv4Repr, Icmpv4Packet, ident, seq_no,
-                                echo_payload, socket, remote_addr);
-                        icmp_repr.emit(&mut icmp_packet, &device_caps.checksum);
-                    },
-                    /*IpAddress::Ipv6(_) => {
-                        let (icmp_repr, mut icmp_packet) = send_icmp_ping!(
-                                Icmpv6Repr, Icmpv6Packet, ident, seq_no,
-                                echo_payload, socket, remote_addr);
-                        icmp_repr.emit(&src_ipv6, &remote_addr,
-                                       &mut icmp_packet, &device_caps.checksum);
-                    },*/
-                    _ => unimplemented!()
-                }
-
-                waiting_queue.insert(seq_no, timestamp);
-                seq_no += 1;
-                send_at += interval;
-            }
-
-            if socket.can_recv() {
-                let (payload, _) = socket.recv().unwrap();
-
-                match remote_addr {
-                    IpAddress::Ipv4(_) => {
-                        let icmp_packet = Icmpv4Packet::new_checked(&payload).unwrap();
-                        let icmp_repr =
-                            Icmpv4Repr::parse(&icmp_packet, &device_caps.checksum).unwrap();
-                        get_icmp_pong!(Icmpv4Repr, icmp_repr, payload,
-                                waiting_queue, remote_addr, timestamp, received);
-                    }
-                    /*IpAddress::Ipv6(_) => {
-                        let icmp_packet = Icmpv6Packet::new_checked(&payload).unwrap();
-                        let icmp_repr = Icmpv6Repr::parse(&remote_addr, &src_ipv6,
-                                &icmp_packet, &device_caps.checksum).unwrap();
-                        get_icmp_pong!(Icmpv6Repr, icmp_repr, payload,
-                                waiting_queue, remote_addr, timestamp, received);
-                    },*/
-                    _ => unimplemented!()
-                }
-            }
-
-            let mut to_remove = Vec::new();
-
-            for (seq, from) in &waiting_queue {
-                if timestamp - *from >= timeout {
-                    info!("From {} icmp_seq={} timeout", remote_addr, seq);
-                    to_remove.push(seq.clone());
-                }
-            }
-
-            for item in to_remove {
-                waiting_queue.remove(&item);
-            }
-
-
-            if seq_no == count as u16 && waiting_queue.is_empty() {
-                break
-            }
-        }
-
-        let timestamp = timestamp + Duration::from_millis(50);
-        match iface.poll_at(&sockets, timestamp) {
-            Some(poll_at) if timestamp < poll_at => {
-                let resume_at = core::cmp::min(poll_at, send_at);
-                let ns = (resume_at - timestamp).total_millis() * 0x1_000_000;
-                syscalls::wait_synchronization(&[iface.device().device.irq_event.0.as_ref()], Some(ns as usize)).unwrap();
-            },
-            Some(_) => (),
-            None => {
-                let ns = (send_at - timestamp).total_millis() * 0x1_000_000;
-                syscalls::wait_synchronization(&[iface.device().device.irq_event.0.as_ref()], Some(ns as usize)).unwrap();
-            }
-        }
-    }
-}
+mod ping;
 
 fn main() {
     debug!("Virtio driver starting up");
@@ -514,7 +337,6 @@ fn main() {
     }
 
     for device in devices.iter_mut() {
-        info!("Pinging on device {:#x?}", device);
         device.acknowledge();
     }
 
@@ -526,8 +348,8 @@ fn main() {
                 info!("Initializing");
                 device.init().unwrap();
 
-                info!("Pinging on device {:#x?}", device);
-                ping(device);
+                info!("Pinging");
+                ping::ping(device);
             },
             id => info!("Unsupported did {}", id)
         }
@@ -547,6 +369,7 @@ capabilities!(CAPABILITIES = Capabilities {
         sunrise_libuser::syscalls::nr::CloseHandle,
         sunrise_libuser::syscalls::nr::WaitSynchronization,
         sunrise_libuser::syscalls::nr::OutputDebugString,
+        sunrise_libuser::syscalls::nr::GetSystemTick,
 
         sunrise_libuser::syscalls::nr::SetHeapSize,
         sunrise_libuser::syscalls::nr::QueryMemory,
