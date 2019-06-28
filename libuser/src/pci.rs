@@ -16,6 +16,7 @@ use crate::types::MappedSharedMemory;
 use crate::error::{LibuserError, KernelError, Error};
 use byteorder::ByteOrder;
 use capabilities::Capability;
+use bitflags::bitflags;
 
 pub mod capabilities;
 
@@ -231,6 +232,40 @@ pub enum BAR {
     Memory64(BARMemory64),
     /// an IO space address
     Io(BARIo)
+}
+
+bitflags! {
+    /// Command Register Layout
+    ///
+    /// See Chapter 6.2.2: Device Control
+    pub struct Command: u16 {
+        /// Controls a device's response to I/O Space accesses. A value of 0
+        /// disables the device response. A value of 1 allows the device to
+        /// respond to I/O Space accesses. State after RST# is 0. 
+        const IO_SPACE = 1 << 0;
+        /// Controls a device's response to Memory Space accesses. A value of 0
+        /// disables the device response. A value of 1 allows the device to
+        /// respond to Memory Space accesses. State after RST# is 0. 
+        const MEMORY_SPACE = 1 << 1;
+        /// Controls a device's ability to act as a master on the PCI bus. A
+        /// value of 0 disables the device from generating PCI accesses. A value
+        /// of 1 allows the device to behave as a bus master. State after RST#
+        /// is 0.
+        ///
+        /// Bus Mastering is basically DMA for PCI.
+        const BUS_MASTER = 1 << 2;
+        /// Controls a device's action on Special Cycle operations. A value of 0
+        /// causes the device to ignore all Special Cycle operations. A value of
+        /// 1 allows the device to monitor Special Cycle operations. State after
+        /// RST# is 0. 
+        const SPECIAL_CYCLES = 1 << 3;
+        const MEMORY_WRITE_AND_INVALIDATE_ENABLE = 1 << 4;
+        const VGA_PALETTE_SNOOP = 1 << 5;
+        const PARITY_ERROR_RESPONSE = 1 << 6;
+        const SERR_ENABLE = 1 << 8;
+        const FAST_BACK_TO_BACK_ENABLE = 1 << 9;
+        const INTERRUPT_DISABLE = 1 << 10;
+    }
 }
 
 impl BAR {
@@ -570,8 +605,25 @@ impl PciDevice {
     }
 
     /// Reads the command register.
-    fn command(&self) -> u16 {
-        (self.read_config_register(4) >> 0) as u16
+    ///
+    /// The Command register provides coarse control over a device's ability to
+    /// generate and respond to PCI cycles.
+    /// 
+    /// See Chapter 6.2.2: Device Control.
+    fn command(&self) -> Command {
+        Command::from_bits_truncate((self.read_config_register(4) >> 0) as u16)
+    }
+
+    /// Writes to the command register.
+    ///
+    /// The Command register provides coarse control over a device's ability to
+    /// generate and respond to PCI cycles.
+    /// 
+    /// See Chapter 6.2.2: Device Control.
+    fn set_command(&self, command: Command) {
+        let mut config = self.read_config_register(4);
+        config.set_bits(0..16, command.bits() as u32);
+        self.write_config_register(4, config);
     }
 
     pub fn capabilities(&self) -> impl Iterator<Item = capabilities::Capability> {
@@ -588,6 +640,8 @@ impl PciDevice {
     pub fn enable_msix(&self, val: bool) -> Result<(), ()> {
         let msix = self.capabilities().find(|v| if let Capability::MsiX(..) = v { true } else { false });
         if let Some(Capability::MsiX(msix)) = msix {
+            // Enable Bus Mastering, necessary for MsiX to work.
+            self.set_command(self.command() | Command::BUS_MASTER | Command::MEMORY_SPACE | Command::IO_SPACE);
             msix.enable_msix(val);
             Ok(())
         } else {
