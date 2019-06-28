@@ -88,21 +88,14 @@ impl<'a> MsiX<'a> {
 pub struct RWCapability<'a> {
     device: &'a PciDevice,
     offset: u8,
-    len: u8
 }
 
 impl<'a> RWCapability<'a> {
     pub fn read_u32(&self, offset: u8) -> u32 {
-        assert!(offset < self.len, "Attempted to read at offset {}, but capability only has {} bytes", offset, self.len);
         pci_config_read_word(self.device.bus, self.device.slot, self.device.function, (self.offset + offset) & 0xFC)
     }
     pub fn write_u32(&self, offset: u8, value: u32) {
-        assert!(offset < self.len, "Attempted to write at offset {}, but capability only has {} bytes", offset, self.len);
         pci_config_write_word(self.device.bus, self.device.slot, self.device.function, (self.offset + offset) & 0xFC, value);
-    }
-
-    pub fn len(&self) -> usize {
-        self.len as usize
     }
 }
 
@@ -117,7 +110,7 @@ pub enum Capability<'a> {
     CompactPciHotSwap,
     PciX,
     HyperTransport,
-    VendorSpecific(RWCapability<'a>),
+    VendorSpecific(RWCapability<'a>, u8),
     DebugPort,
     CompactPciCentralResourceControl,
     PciHotPlug,
@@ -152,10 +145,9 @@ impl<'a> Capability<'a> {
         let mut next = word.get_bits(8..16) as u8;
         // 6.7: Get rid of the lower 2 bits, they are reserved for future use.
         next.set_bits(0..2, 0);
-        let len = word.get_bits(16..24) as u8;
 
         let rw_cap = RWCapability {
-            device, offset: register, len
+            device, offset: register
         };
 
         let cap = match ty {
@@ -168,7 +160,10 @@ impl<'a> Capability<'a> {
             0x06 => Capability::CompactPciHotSwap,
             0x07 => Capability::PciX,
             0x08 => Capability::HyperTransport,
-            0x09 => Capability::VendorSpecific(rw_cap),
+            0x09 => {
+                let len = word.get_bits(16..24) as u8;
+                Capability::VendorSpecific(rw_cap, len)
+            },
             0x0A => Capability::DebugPort,
             0x0B => Capability::CompactPciCentralResourceControl,
             0x0C => Capability::PciHotPlug,

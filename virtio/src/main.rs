@@ -485,7 +485,7 @@ fn main() {
         let mut notify_cfg = None;
         for capability in device.capabilities() {
             match capability {
-                Capability::VendorSpecific(data) => {
+                Capability::VendorSpecific(data, size) => {
                     if let Ok(Some(cap)) = pci::Cap::read(header.bars(), &data) {
                         info!("{:?}", cap);
                         match cap {
