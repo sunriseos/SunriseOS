@@ -558,7 +558,7 @@ where
     ///
     /// This method is unsafe as it allows creating references to arbitrary
     /// memory, and of arbitrary type.
-    pub unsafe fn pop_in_buffer<T: SizedIPCBuffer + ?Sized>(&mut self) -> Result<InBuffer<'_, T>, Error> {
+    pub unsafe fn pop_in_buffer<T: SizedIPCBuffer + ?Sized>(&mut self) -> Result<InBuffer<T>, Error> {
         self.buffers.iter().position(|buf| buf.buftype().is_type_a())
             .and_then(|pos| self.buffers.pop_at(pos))
             .ok_or_else(|| LibuserError::InvalidIpcBufferCount.into())
@@ -578,7 +578,7 @@ where
     ///
     /// This method is unsafe as it allows creating references to arbitrary
     /// memory, and of arbitrary type.
-    pub unsafe fn pop_out_buffer<T: SizedIPCBuffer + ?Sized>(&mut self) -> Result<OutBuffer<'_, T>, Error> {
+    pub unsafe fn pop_out_buffer<T: SizedIPCBuffer + ?Sized>(&mut self) -> Result<OutBuffer<T>, Error> {
         self.buffers.iter().position(|buf| buf.buftype().is_type_b())
             .and_then(|pos| self.buffers.pop_at(pos))
             .ok_or_else(|| LibuserError::InvalidIpcBufferCount.into())
@@ -641,7 +641,7 @@ where
     ///
     /// This method is unsafe as it allows creating references to arbitrary
     /// memory, and of arbitrary type.
-    pub unsafe fn pop_in_pointer<T: SizedIPCBuffer + ?Sized>(&mut self) -> Result<InPointer<'_, T>, Error> {
+    pub unsafe fn pop_in_pointer<T: SizedIPCBuffer + ?Sized>(&mut self) -> Result<InPointer<T>, Error> {
         self.buffers.iter().position(|buf| buf.buftype().is_type_x())
             .and_then(|pos| self.buffers.pop_at(pos))
             .ok_or_else(|| LibuserError::InvalidIpcBufferCount.into())
