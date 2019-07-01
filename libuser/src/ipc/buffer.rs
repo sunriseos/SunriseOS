@@ -22,7 +22,6 @@
 use core::marker::PhantomData;
 use crate::ipc::IPCBuffer;
 use crate::error::{Error, LibuserError};
-use core::mem::{size_of, align_of};
 use crate::ipc::SizedIPCBuffer;
 
 // TODO: Use plain to ensure T is a valid POD type
@@ -35,17 +34,17 @@ use crate::ipc::SizedIPCBuffer;
 /// Note that `T` should be a POD type (in other word, it should be defined for
 /// all bit values). This usually means that it should be a repr(C) struct and
 /// only contain numeric fields.
-pub struct InPointer<'a, T: ?Sized> {
+pub struct InPointer<T: ?Sized> {
     /// Address of the InBuffer in the current address space.
     addr: u64,
     /// Size of the InPointer. Should match the size of T, or be a multiple of
     /// the size of T::Item if T is a slice.
     size: u64,
     /// Lifetime of the InPointer, should be bound to a [Message](crate::ipc::Message).
-    phantom: PhantomData<&'a T>
+    phantom: PhantomData<T>
 }
 
-impl<'a, T: ?Sized + SizedIPCBuffer> InPointer<'a, T> {
+impl<T: ?Sized + SizedIPCBuffer> InPointer<T> {
     /// Creates a new InPointer from an underlying [IPCBuffer].
     ///
     /// # Panics
@@ -58,7 +57,7 @@ impl<'a, T: ?Sized + SizedIPCBuffer> InPointer<'a, T> {
     /// expected.
     ///
     /// Returns an InvalidIpcBuffer error if the address is not properly aligned.
-    pub fn new(buf: IPCBuffer) -> Result<InPointer<'_, T>, Error> {
+    pub fn new(buf: IPCBuffer) -> Result<InPointer<T>, Error> {
         assert!(buf.buftype().is_type_x());
         if T::is_cool(buf.addr as usize, buf.size as usize) {
             Err(LibuserError::InvalidIpcBuffer.into())
@@ -72,7 +71,7 @@ impl<'a, T: ?Sized + SizedIPCBuffer> InPointer<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized + SizedIPCBuffer> core::ops::Deref for InPointer<'a, T> {
+impl<T: ?Sized + SizedIPCBuffer> core::ops::Deref for InPointer<T> {
     type Target = T;
     fn deref(&self) -> &T {
         unsafe {
@@ -81,7 +80,7 @@ impl<'a, T: ?Sized + SizedIPCBuffer> core::ops::Deref for InPointer<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized + core::fmt::Debug> core::fmt::Debug for InPointer<'a, T> {
+impl<T: ?Sized + core::fmt::Debug> core::fmt::Debug for InPointer<T> {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         f.debug_tuple("InPointer")
             .field(&*self)
@@ -94,17 +93,17 @@ impl<'a, T: ?Sized + core::fmt::Debug> core::fmt::Debug for InPointer<'a, T> {
 /// Note that `T` should be a POD type (in other word, it should be defined for
 /// all bit values). This usually means that it should be a repr(C) struct and
 /// only contain numeric fields.
-pub struct InBuffer<'a, T: ?Sized> {
+pub struct InBuffer<T: ?Sized> {
     /// Address of the InBuffer in the current address space.
     addr: u64,
     /// Size of the InBuffer. Should match the size of T, or be a multiple of
     /// the size of T::Item if T is a slice.
     size: u64,
     /// Lifetime of the InBuffer, should be bound to a [Message](crate::ipc::Message).
-    phantom: PhantomData<&'a T>
+    phantom: PhantomData<T>
 }
 
-impl<'a, T: ?Sized + SizedIPCBuffer> InBuffer<'a, T> {
+impl<T: ?Sized + SizedIPCBuffer> InBuffer<T> {
     /// Creates a new InBuffer from an underlying [IPCBuffer].
     ///
     /// # Panics
@@ -115,7 +114,7 @@ impl<'a, T: ?Sized + SizedIPCBuffer> InBuffer<'a, T> {
     ///
     /// Returns a InvalidIpcBuffer error if the size does not match what was
     /// expected
-    pub fn new(buf: IPCBuffer) -> Result<InBuffer<'_, T>, Error> {
+    pub fn new(buf: IPCBuffer) -> Result<InBuffer<T>, Error> {
         assert!(buf.buftype().is_type_a());
         if T::is_cool(buf.addr as usize, buf.size as usize) {
             Err(LibuserError::InvalidIpcBuffer.into())
@@ -129,7 +128,7 @@ impl<'a, T: ?Sized + SizedIPCBuffer> InBuffer<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized + SizedIPCBuffer> core::ops::Deref for InBuffer<'a, T> {
+impl<T: ?Sized + SizedIPCBuffer> core::ops::Deref for InBuffer<T> {
     type Target = T;
     fn deref(&self) -> &T {
         unsafe {
@@ -138,7 +137,7 @@ impl<'a, T: ?Sized + SizedIPCBuffer> core::ops::Deref for InBuffer<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized + core::fmt::Debug> core::fmt::Debug for InBuffer<'a, T> {
+impl<T: ?Sized + core::fmt::Debug> core::fmt::Debug for InBuffer<T> {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         f.debug_tuple("InBuffer")
             .field(&*self)
@@ -151,18 +150,18 @@ impl<'a, T: ?Sized + core::fmt::Debug> core::fmt::Debug for InBuffer<'a, T> {
 /// Note that `T` should be a POD type (in other word, it should be defined for
 /// all bit values). This usually means that it should be a repr(C) struct and
 /// only contain numeric fields.
-pub struct OutBuffer<'a, T: ?Sized> {
+pub struct OutBuffer<T: ?Sized> {
     /// Address of the OutBuffer in the current address space.
     addr: u64,
     /// Size of the OutBuffer. Should match the size of T, or be a multiple of
     /// the size of T::Item if T is a slice.
     size: u64,
     /// Lifetime of the OutBuffer, should be bound to a [Message](crate::ipc::Message).
-    phantom: PhantomData<&'a T>
+    phantom: PhantomData<T>
 }
 
 
-impl<'a, T: ?Sized + SizedIPCBuffer> OutBuffer<'a, T> {
+impl<T: ?Sized + SizedIPCBuffer> OutBuffer<T> {
     /// Creates a new OutBuffer from an underlying [IPCBuffer].
     ///
     /// # Panics
@@ -173,7 +172,7 @@ impl<'a, T: ?Sized + SizedIPCBuffer> OutBuffer<'a, T> {
     ///
     /// Returns a InvalidIpcBuffer error if the size does not match what was
     /// expected
-    pub fn new(buf: IPCBuffer) -> Result<OutBuffer<'_, T>, Error> {
+    pub fn new(buf: IPCBuffer) -> Result<OutBuffer<T>, Error> {
         assert!(buf.buftype().is_type_b());
         if T::is_cool(buf.addr as usize, buf.size as usize) {
             Err(LibuserError::InvalidIpcBuffer.into())
@@ -187,7 +186,7 @@ impl<'a, T: ?Sized + SizedIPCBuffer> OutBuffer<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized + SizedIPCBuffer> core::ops::Deref for OutBuffer<'a, T> {
+impl<T: ?Sized + SizedIPCBuffer> core::ops::Deref for OutBuffer<T> {
     type Target = T;
     fn deref(&self) -> &T {
         unsafe {
@@ -196,7 +195,7 @@ impl<'a, T: ?Sized + SizedIPCBuffer> core::ops::Deref for OutBuffer<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized + SizedIPCBuffer> core::ops::DerefMut for OutBuffer<'a, T> {
+impl<T: ?Sized + SizedIPCBuffer> core::ops::DerefMut for OutBuffer<T> {
     fn deref_mut(&mut self) -> &mut T {
         unsafe {
             T::from_raw_parts_mut(self.addr as usize, self.size as usize)
@@ -204,7 +203,7 @@ impl<'a, T: ?Sized + SizedIPCBuffer> core::ops::DerefMut for OutBuffer<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized + core::fmt::Debug> core::fmt::Debug for OutBuffer<'a, T> {
+impl<T: ?Sized + core::fmt::Debug> core::fmt::Debug for OutBuffer<T> {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         f.debug_tuple("OutBuffer")
             .field(&*self)
