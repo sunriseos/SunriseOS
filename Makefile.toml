@@ -203,6 +203,7 @@ args = [ "file", "createnew", "DISK.img", "8388608" ]
 workspace = false
 description = "Invokes the task `disk` if DISK.img does not already exist."
 condition_script = [ "[ ! -e DISK.img ]" ]
+run_task = "disk"
 
 [tasks.create-disk-if-not-exist.windows]
 condition_script = [ "if exists DISK.img exit 1" ]
