@@ -11,10 +11,6 @@ log = "0.4.6"
 sunrise-libuser = { path = "../libuser" }
 spin = "0.5"
 
-[dependencies.byteorder]
-default-features = false
-version = "1.3.2"
-
 [dependencies.lazy_static]
 features = ["spin_no_std"]
 version = "1.3.0"

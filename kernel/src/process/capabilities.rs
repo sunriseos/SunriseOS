@@ -18,7 +18,7 @@ use failure::Backtrace;
 use bit_field::BitField;
 use bit_field::BitArray;
 use core::fmt;
-use byteorder::{LE, ByteOrder};
+use core::convert::TryInto;
 
 /// Capabilities of a process.
 ///
@@ -162,7 +162,7 @@ impl ProcessCapabilities {
         let mut duplicate_svc = 0;
 
         while let Some(kac) = kac_iter.next() {
-            let kac = LE::read_u32(kac);
+            let kac = u32::from_le_bytes(kac.try_into().expect("Unexpectted kac size"));
             let kac_type = (!kac).trailing_zeros();
             if duplicate_kacs.get_bit(kac_type as _) && KACS_NO_DUPLICATES.get_bit(kac_type as _) {
                 return Err(KernelError::InvalidCombination {
@@ -214,7 +214,7 @@ impl ProcessCapabilities {
                     let _start_page = kac.get_bits(7..31);
                     let _is_ro = kac.get_bit(31);
                     if let Some(kac) = kac_iter.next() {
-                        let kac = LE::read_u32(kac);
+                        let kac = u32::from_le_bytes(kac.try_into().expect("Unexpectted kac size"));
                         if (!kac).trailing_zeros() == MAP_IO_OR_NORMAL_RANGE {
                             let _num_pages = kac.get_bits(7..31);
                             let _is_io = kac.get_bit(31);

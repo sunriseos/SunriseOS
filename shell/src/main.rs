@@ -39,7 +39,6 @@ use core::fmt::Write;
 use alloc::vec::Vec;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
-use byteorder::{ByteOrder, LE};
 use spin::Mutex;
 
 fn main() {
@@ -55,7 +54,7 @@ fn main() {
             "test_divide_by_zero" => test_divide_by_zero(),
             "test_page_fault" => test_page_fault(),
             "connect" => {
-                let handle = sm::IUserInterfaceProxy::raw_new().unwrap().get_service(LE::read_u64(b"vi:\0\0\0\0\0"));
+                let handle = sm::IUserInterfaceProxy::raw_new().unwrap().get_service(u64::from_le_bytes(*b"vi:\0\0\0\0\0"));
                 let _ = writeln!(&mut terminal, "Got handle {:?}", handle);
             },
             "exit" => return,
