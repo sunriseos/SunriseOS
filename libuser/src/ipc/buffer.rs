@@ -59,7 +59,7 @@ impl<T: ?Sized + SizedIPCBuffer> InPointer<T> {
     /// Returns an InvalidIpcBuffer error if the address is not properly aligned.
     pub fn new(buf: IPCBuffer) -> Result<InPointer<T>, Error> {
         assert!(buf.buftype().is_type_x());
-        if T::is_cool(buf.addr as usize, buf.size as usize) {
+        if !T::is_cool(buf.addr as usize, buf.size as usize) {
             Err(LibuserError::InvalidIpcBuffer.into())
         } else {
             Ok(InPointer {
@@ -116,7 +116,7 @@ impl<T: ?Sized + SizedIPCBuffer> InBuffer<T> {
     /// expected
     pub fn new(buf: IPCBuffer) -> Result<InBuffer<T>, Error> {
         assert!(buf.buftype().is_type_a());
-        if T::is_cool(buf.addr as usize, buf.size as usize) {
+        if !T::is_cool(buf.addr as usize, buf.size as usize) {
             Err(LibuserError::InvalidIpcBuffer.into())
         } else {
             Ok(InBuffer {
@@ -174,7 +174,7 @@ impl<T: ?Sized + SizedIPCBuffer> OutBuffer<T> {
     /// expected
     pub fn new(buf: IPCBuffer) -> Result<OutBuffer<T>, Error> {
         assert!(buf.buftype().is_type_b());
-        if T::is_cool(buf.addr as usize, buf.size as usize) {
+        if !T::is_cool(buf.addr as usize, buf.size as usize) {
             Err(LibuserError::InvalidIpcBuffer.into())
         } else {
             Ok(OutBuffer {

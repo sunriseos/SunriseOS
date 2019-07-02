@@ -180,9 +180,13 @@ pub trait SizedIPCBuffer {
     /// Return the size of the type.
     fn size(&self) -> usize;
 
+    /// Check if the address and size are correct.
     fn is_cool(addr: usize, size: usize) -> bool;
 
+    /// Create a reference to a ipc buffer from part.
     unsafe fn from_raw_parts<'a>(addr: usize, size: usize) -> &'a Self;
+
+    /// Create a mutable reference to a ipc buffer from part.
     unsafe fn from_raw_parts_mut<'a>(addr: usize, size: usize) -> &'a mut Self;
 }
 
@@ -193,14 +197,14 @@ impl<T> SizedIPCBuffer for T {
 
     fn is_cool(addr: usize, size: usize) -> bool {
         size == core::mem::size_of::<T>() &&
-            addr % (core::mem::align_of::<T>()) == 0 
+            (addr % core::mem::align_of::<T>()) == 0
     }
 
-    unsafe fn from_raw_parts<'a>(addr: usize, size: usize) -> &'a Self {
+    unsafe fn from_raw_parts<'a>(addr: usize, _size: usize) -> &'a Self {
         (addr as *const T).as_ref().unwrap()
     }
 
-    unsafe fn from_raw_parts_mut<'a>(addr: usize, size: usize) -> &'a mut Self {
+    unsafe fn from_raw_parts_mut<'a>(addr: usize, _size: usize) -> &'a mut Self {
         (addr as *mut T).as_mut().unwrap()
     }
 }
@@ -212,7 +216,7 @@ impl<T> SizedIPCBuffer for [T] {
 
     fn is_cool(addr: usize, size: usize) -> bool {
         size % core::mem::size_of::<T>() == 0 && size != 0 &&
-           addr % (core::mem::align_of::<T>()) == 0
+           (addr % core::mem::align_of::<T>()) == 0
     }
 
     unsafe fn from_raw_parts<'a>(addr: usize, size: usize) -> &'a Self {
