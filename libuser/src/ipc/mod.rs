@@ -16,6 +16,7 @@
 
 use core::marker::PhantomData;
 use core::mem;
+use core::convert::TryFrom;
 use byteorder::{ByteOrder, LE};
 use arrayvec::{ArrayVec, Array};
 use crate::utils::{self, align_up, CursorWrite, CursorRead};
@@ -24,8 +25,6 @@ use bit_field::BitField;
 use crate::error::{Error, LibuserError};
 
 pub mod server;
-mod buffer;
-pub use buffer::*;
 
 bitfield! {
     /// Represenens the header of an HIPC command.
@@ -562,11 +561,19 @@ where
     ///
     /// This method is unsafe as it allows creating references to arbitrary
     /// memory, and of arbitrary type.
-    pub unsafe fn pop_in_buffer<T: SizedIPCBuffer + ?Sized>(&mut self) -> Result<InBuffer<T>, Error> {
-        self.buffers.iter().position(|buf| buf.buftype().is_type_a())
+    pub unsafe fn pop_in_buffer<'b, T: SizedIPCBuffer + ?Sized>(&mut self) -> Result<&'b T, Error> {
+        let buffer = self.buffers.iter().position(|buf| buf.buftype().is_type_a())
             .and_then(|pos| self.buffers.pop_at(pos))
-            .ok_or_else(|| LibuserError::InvalidIpcBufferCount.into())
-            .and_then(|buf| InBuffer::<T>::new(buf))
+            .ok_or_else(|| LibuserError::InvalidIpcBufferCount)?;
+
+        let addr = usize::try_from(buffer.addr).map_err(|_| LibuserError::InvalidIpcBuffer)?;
+        let size = usize::try_from(buffer.size).map_err(|_| LibuserError::InvalidIpcBuffer)?;
+
+        if T::is_cool(addr, size) {
+            Ok(T::from_raw_parts(addr, size))
+        } else {
+            Err(LibuserError::InvalidIpcBuffer.into())
+        }
     }
 
     /// Retreive the next OutBuffer (type-B buffer) in the message.
@@ -582,11 +589,19 @@ where
     ///
     /// This method is unsafe as it allows creating references to arbitrary
     /// memory, and of arbitrary type.
-    pub unsafe fn pop_out_buffer<T: SizedIPCBuffer + ?Sized>(&mut self) -> Result<OutBuffer<T>, Error> {
-        self.buffers.iter().position(|buf| buf.buftype().is_type_b())
+    pub unsafe fn pop_out_buffer<'b, T: SizedIPCBuffer + ?Sized>(&mut self) -> Result<&'b mut T, Error> {
+        let buffer = self.buffers.iter().position(|buf| buf.buftype().is_type_b())
             .and_then(|pos| self.buffers.pop_at(pos))
-            .ok_or_else(|| LibuserError::InvalidIpcBufferCount.into())
-            .and_then(|buf| OutBuffer::<T>::new(buf))
+            .ok_or_else(|| LibuserError::InvalidIpcBufferCount)?;
+
+        let addr = usize::try_from(buffer.addr).map_err(|_| LibuserError::InvalidIpcBuffer)?;
+        let size = usize::try_from(buffer.size).map_err(|_| LibuserError::InvalidIpcBuffer)?;
+
+        if T::is_cool(addr, size) {
+            Ok(T::from_raw_parts_mut(addr, size))
+        } else {
+            Err(LibuserError::InvalidIpcBuffer.into())
+        }
     }
 
     /// Push an OutBuffer (type-A buffer) backed by the specified data.
@@ -645,11 +660,19 @@ where
     ///
     /// This method is unsafe as it allows creating references to arbitrary
     /// memory, and of arbitrary type.
-    pub unsafe fn pop_in_pointer<T: SizedIPCBuffer + ?Sized>(&mut self) -> Result<InPointer<T>, Error> {
-        self.buffers.iter().position(|buf| buf.buftype().is_type_x())
+    pub unsafe fn pop_in_pointer<'b, T: SizedIPCBuffer + ?Sized>(&mut self) -> Result<&'b T, Error> {
+        let buffer = self.buffers.iter().position(|buf| buf.buftype().is_type_x())
             .and_then(|pos| self.buffers.pop_at(pos))
-            .ok_or_else(|| LibuserError::InvalidIpcBufferCount.into())
-            .and_then(|buf| InPointer::<T>::new(buf))
+            .ok_or_else(|| LibuserError::InvalidIpcBufferCount)?;
+
+        let addr = usize::try_from(buffer.addr).map_err(|_| LibuserError::InvalidIpcBuffer)?;
+        let size = usize::try_from(buffer.size).map_err(|_| LibuserError::InvalidIpcBuffer)?;
+
+        if T::is_cool(addr, size) {
+            Ok(T::from_raw_parts(addr, size))
+        } else {
+            Err(LibuserError::InvalidIpcBuffer.into())
+        }
     }
 
     // TODO: Move pack to a non-generic function
