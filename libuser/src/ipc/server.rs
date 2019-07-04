@@ -292,6 +292,31 @@ where
                 Ok(false)
             },
             Some((2, _)) => Ok(true),
+            Some((5, 0)) | Some((7, 0)) => {
+                // ConvertCurrentObjectToDomain, unsupported
+                Ok(true)
+            },
+            Some((5, 1)) | Some((7, 1)) => {
+                // CopyFromCurrentDomain, unsupported
+                Ok(true)
+            },
+            Some((5, 2)) | Some((7, 2)) => {
+                // CloneCurrentObject, unsupported
+                Ok(true)
+            },
+            Some((5, 3)) | Some((7, 3)) => {
+                // QueryPointerBufferSize
+                let mut msg__ = Message::<u16, [_; 0], [_; 0], [_; 0]>::new_response(None);
+                msg__.push_raw(self.pointer_buf.len() as u16);
+                msg__.pack(&mut self.buf[..]);
+                self.handle.reply(&mut self.buf[..])?;
+                Ok(false)
+            },
+            Some((5, 4)) | Some((7, 4)) => {
+                // CloneCurrentObjectEx, unsupported
+                Ok(true)
+            },
+
             _ => Ok(true)
         }
     }

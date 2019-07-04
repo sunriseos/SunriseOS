@@ -319,9 +319,9 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
                     // C Buffer
                     (2, 2, false) => writeln!(s, "        msg__.push_in_pointer({}, {});", argname, !ty.get_bit(4)).unwrap(),
                     // Smart A+X
-                    (1, 0, true) => return Err(Error::UnsupportedStruct),
+                    (1, 0, true) => writeln!(s, "        msg__.push_out_smart_pointer(self.1, {});", argname).unwrap(),
                     // Smart B+C
-                    (2, 0, true) => return Err(Error::UnsupportedStruct),
+                    (2, 0, true) => writeln!(s, "        msg__.push_in_smart_pointer(self.1, {});", argname).unwrap(),
                     _ => panic!("Illegal buffer type: {}", ty)
                 }
             },
@@ -336,9 +336,9 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
                     // C Buffer
                     (2, 2, false) => writeln!(s, "        msg__.push_in_pointer({}, {});", argname, !ty.get_bit(4)).unwrap(),
                     // Smart A+X
-                    (1, 0, true) => return Err(Error::UnsupportedStruct),
+                    (1, 0, true) => writeln!(s, "        msg__.push_out_smart_pointer(self.1, {});", argname).unwrap(),
                     // Smart B+C
-                    (2, 0, true) => return Err(Error::UnsupportedStruct),
+                    (2, 0, true) => writeln!(s, "        msg__.push_in_smart_pointer(self.1, {});", argname).unwrap(),
                     _ => panic!("Illegal buffer type: {}", ty)
                 }
             },
@@ -514,29 +514,35 @@ fn gen_call(cmd: &Func) -> Result<String, Error> {
             match ty { Alias::Array(..) | Alias::Buffer(..) => true, _ => false }))
     {
         match item {
-            Alias::Array(underlying_ty, bufty) | Alias::Buffer(underlying_ty, bufty, _) => {
-                let (ismut,direction, ty) = match (bufty.get_bits(0..2), bufty.get_bits(2..4)) {
-                    (0b01, 0b01) => ("", "in", "buffer"),
-                    (0b01, 0b10) => ("", "in", "pointer"),
-                    (0b10, 0b01) => ("mut", "out", "buffer"),
-                    (0b10, 0b10) => ("mut", "out", "pointer"),
-                    _ => panic!("Invalid bufty")
+            Alias::Array(_, bufty) | Alias::Buffer(_, bufty, _) => {
+                let (ismut,direction, ty) = match (bufty.get_bits(0..2), bufty.get_bits(2..4), bufty.get_bit(5)) {
+                    (0b01, _, true)     => ("", "in", "smart_buffer"),
+                    (0b10, _, true)     => ("mut", "out", "smart_buffer"),
+                    (0b01, 0b01, false) => ("", "in", "buffer"),
+                    (0b01, 0b10, false) => ("", "in", "pointer"),
+                    (0b10, 0b01, false) => ("mut", "out", "buffer"),
+                    (0b10, 0b10, false) => ("mut", "out", "pointer"),
+                    (direction, ty, smart) => panic!("Invalid bufty while handling {:?}: {:x}, {:x} {} {:x}", cmd, direction, ty, smart, bufty)
                 };
-                let realty = get_type(false, underlying_ty, false)?;
-                if let Alias::Array(..) = item {
-                    // TODO: Make pop_out_buffer and co safe to call.
-                    // BODY: Currently, pop_out_buffer (and other functions of
-                    // BODY: that family) are unsafe to call as they basically
-                    // BODY: allow transmuting variables. We should use a crate
-                    // BODY: like `plain` to ensure that said functions are only
-                    // BODY: callable when it is safe.
-                    args += &format!("unsafe {{ &{} *msg__.pop_{}_{}::<[{}]>().unwrap() }}, ", ismut, direction, ty, realty);
+                let realty = get_type(false, item, false)?;
+                let realty = if realty.starts_with("&mut") {
+                    realty.trim_start_matches("&mut")
+                } else if realty.starts_with("&") {
+                    realty.trim_start_matches("&")
                 } else {
-                    args += &format!("unsafe {{ &{} *msg__.pop_{}_{}::<{}>().unwrap() }}, ", ismut, direction, ty, realty);
-                }
+                    &*realty
+                };
+
+                // TODO: Make pop_out_buffer and co safe to call.
+                // BODY: Currently, pop_out_buffer (and other functions of
+                // BODY: that family) are unsafe to call as they basically
+                // BODY: allow transmuting variables. We should use a crate
+                // BODY: like `plain` to ensure that said functions are only
+                // BODY: callable when it is safe.
+                args += &format!("unsafe {{ &{} *msg__.pop_{}_{}::<{}>().unwrap() }}, ", ismut, direction, ty, realty);
             },
             Alias::Object(ty) => {
-                args += &format!("{}Proxy(sunrise_libuser::types::ClientSession(msg__.pop_handle_move().unwrap())), ", ty);
+                args += &format!("{}Proxy::from(sunrise_libuser::types::ClientSession(msg__.pop_handle_move().unwrap())), ", ty);
             },
             Alias::Handle(is_copy, ty) => {
                 let handle = if *is_copy {
@@ -693,7 +699,14 @@ pub fn generate_proxy(ifacename: &str, interface: &Interface) -> String {
         writeln!(s, "/// {}", line).unwrap();
     }
     writeln!(s, "#[derive(Debug)]").unwrap();
-    writeln!(s, "pub struct {}(ClientSession);", struct_name).unwrap();
+    // Detect the presence of smart buffers on this interface. If there is one
+    // present, we want to cache the pointer buffer size in the structure.
+    let has_smart_buffer = interface.funcs.iter().any(|cmd| cmd.args.iter().chain(cmd.ret.iter()).any(|(arg, _)| if let Alias::Buffer(_, ty, _) | Alias::Array(_, ty) = arg { ty.get_bit(5) } else { false } ));
+    if has_smart_buffer {
+        writeln!(s, "pub struct {}(ClientSession, u16);", struct_name).unwrap();
+    } else {
+        writeln!(s, "pub struct {}(ClientSession);", struct_name).unwrap();
+    }
     writeln!(s).unwrap();
     writeln!(s, "impl From<{}> for ClientSession {{", struct_name).unwrap();
     writeln!(s, "    fn from(sess: {}) -> ClientSession {{", struct_name).unwrap();
@@ -703,7 +716,17 @@ pub fn generate_proxy(ifacename: &str, interface: &Interface) -> String {
     writeln!(s).unwrap();
     writeln!(s, "impl From<ClientSession> for {} {{", struct_name).unwrap();
     writeln!(s, "    fn from(sess: ClientSession) -> {} {{", struct_name).unwrap();
-    writeln!(s, "        {}(sess)", struct_name).unwrap();
+
+    // Cache the pointer buffer size in the structure only if we have smart
+    // buffers on the interface.
+    if has_smart_buffer {
+        // Assume that if there's an error, the remote doesn't support the
+        // pointer buffer at all.
+        writeln!(s, "        let pointer_buffer = sess.query_pointer_buffer().unwrap_or(0);").unwrap();
+        writeln!(s, "        {}(sess, pointer_buffer)", struct_name).unwrap();
+    } else {
+        writeln!(s, "        {}(sess)", struct_name).unwrap();
+    }
     writeln!(s, "    }}").unwrap();
     writeln!(s, "}}").unwrap();
 
@@ -728,7 +751,7 @@ pub fn generate_proxy(ifacename: &str, interface: &Interface) -> String {
                 let mut service_name = service.to_string();
                 service_name += &"\\0";
                 writeln!(s, r#"            let _ = match syscalls::connect_to_named_port("{}") {{"#, service_name).unwrap();
-                writeln!(s, "                Ok(s) => return Ok({}(s)),", struct_name).unwrap();
+                writeln!(s, "                Ok(s) => return Ok({}::from(s)),", struct_name).unwrap();
                 writeln!(s, "                Err(KernelError::NoSuchEntry) => syscalls::sleep_thread(0),").unwrap();
                 writeln!(s, "                Err(err) => Err(err)?").unwrap();
                 writeln!(s, "            }};").unwrap();
@@ -744,7 +767,7 @@ pub fn generate_proxy(ifacename: &str, interface: &Interface) -> String {
                 writeln!(s, r#"                  core::mem::transmute(*b"{}")"#, service_name).unwrap();
                 writeln!(s, "              }};").unwrap();
                 writeln!(s, "              let _ = match sunrise_libuser::sm::IUserInterfaceProxy::raw_new()?.get_service(svcname) {{").unwrap();
-                writeln!(s, "                  Ok(s) => return Ok({}(s)),", struct_name).unwrap();
+                writeln!(s, "                  Ok(s) => return Ok({}::from(s)),", struct_name).unwrap();
                 writeln!(s, "                  Err(Error::Sm(SmError::ServiceNotRegistered, ..)) => syscalls::sleep_thread(0),").unwrap();
                 writeln!(s, "                  Err(err) => return Err(err)").unwrap();
                 writeln!(s, "              }};").unwrap();
