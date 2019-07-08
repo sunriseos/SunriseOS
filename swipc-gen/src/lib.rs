@@ -53,7 +53,7 @@ pub fn gen_ipc(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let id_file = fs::read_to_string(&root.join("src/").join(&args.path)).unwrap();
 
-    let mut generated_mod = gen_rust_code::generate_ipc(&id_file, prefix, item.ident.to_string(), crate_name);
+    let mut generated_mod = gen_rust_code::generate_ipc(&id_file, prefix, item.ident.to_string(), crate_name, false);
 
     // Force a rebuild if the SwIPC definition changes.
     writeln!(generated_mod).unwrap();

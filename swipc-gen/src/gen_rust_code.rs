@@ -445,12 +445,14 @@ struct Mod {
 
 /// Generate the module hierarchy. The depth should be set to 0 on the first call
 /// and will be increased on each recursive call.
-fn generate_mod(m: Mod, depth: usize, mod_name: &str, crate_name: &str) -> String {
+fn generate_mod(m: Mod, depth: usize, mod_name: &str, crate_name: &str, is_root_mod: bool) -> String {
     let mut s = String::new();
 
     let depthstr = "    ".repeat(depth);
 
-    writeln!(s, "{}pub mod {} {{", depthstr, mod_name).unwrap();
+    if !is_root_mod {
+        writeln!(s, "{}pub mod {} {{", depthstr, mod_name).unwrap();
+    }
     writeln!(s, "{}    //! Auto-generated documentation", depthstr).unwrap();
     writeln!(s, "{}    use crate as {};", depthstr, crate_name.replace("-", "_")).unwrap();
     writeln!(s).unwrap();
@@ -462,7 +464,7 @@ fn generate_mod(m: Mod, depth: usize, mod_name: &str, crate_name: &str) -> Strin
 
     for (mod_name, modinfo) in m.mods {
         writeln!(s).unwrap();
-        writeln!(s, "{}", generate_mod(modinfo, depth + 1, &mod_name, crate_name)).unwrap();
+        writeln!(s, "{}", generate_mod(modinfo, depth + 1, &mod_name, crate_name, false)).unwrap();
     }
 
     for ty in m.types {
@@ -479,8 +481,9 @@ fn generate_mod(m: Mod, depth: usize, mod_name: &str, crate_name: &str) -> Strin
         }
     }
 
-    writeln!(s, "{}}}", depthstr).unwrap();
-
+    if !is_root_mod {
+        writeln!(s, "{}}}", depthstr).unwrap();
+    }
     s
 }
 
@@ -767,7 +770,7 @@ pub fn generate_proxy(ifacename: &str, interface: &Interface) -> String {
 /// namespace.
 ///
 /// The generated string will contain a module hierarchy.
-pub fn generate_ipc(s: &str, prefix: String, mod_name: String, crate_name: String) -> String {
+pub fn generate_ipc(s: &str, prefix: String, mod_name: String, crate_name: String, is_root_mod: bool) -> String {
     // Read and parse the SwIPC file.
     let ctx = swipc_parser::parse(s);
 
@@ -852,5 +855,5 @@ pub fn generate_ipc(s: &str, prefix: String, mod_name: String, crate_name: Strin
     }
 
     // Generate the final module hierarchy
-    generate_mod(root_mod, 0, &mod_name, &crate_name)
+    generate_mod(root_mod, 0, &mod_name, &crate_name, is_root_mod)
 }
