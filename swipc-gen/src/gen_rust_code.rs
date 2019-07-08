@@ -196,11 +196,11 @@ fn get_type(output: bool, ty: &Alias, is_server: bool) -> Result<String, Error> 
         Alias::Array(underlying, _) => Ok(format!("&{}[{}]", is_mut, get_type(output, underlying, is_server)?)),
 
         // Blow up if we don't know the size or type
-        Alias::Buffer(box Alias::Other(name), _, 0) if name == "unknown" => Err(Error::UnsupportedStruct),
+        Alias::Buffer(box Alias::Other(name), _, None) if name == "unknown" => Err(Error::UnsupportedStruct),
         // Treat unknown but sized types as an opaque byte array
-        Alias::Buffer(box Alias::Other(name), _, size) if name == "unknown" => Ok(format!("&{}[u8; {:#x}]", is_mut, size)),
+        Alias::Buffer(box Alias::Other(name), _, Some(size)) if name == "unknown" => Ok(format!("&{}[u8; {:#x}]", is_mut, size)),
         // 0-sized buffer means it takes an array
-        Alias::Buffer(inner @ box Alias::Other(_), _, 0) => Ok(format!("&{}[{}]", is_mut, get_type(output, inner, is_server)?)),
+        Alias::Buffer(inner @ box Alias::Other(_), _, None) => Ok(format!("&{}[{}]", is_mut, get_type(output, inner, is_server)?)),
         // Typed buffers are just references to the underlying raw object
         Alias::Buffer(inner @ box Alias::Bytes(_), _, _) |
         Alias::Buffer(inner @ box Alias::Other(_), _, _) => Ok(format!("&{}{}", is_mut, get_type(output, inner, is_server)?)),
@@ -216,8 +216,8 @@ fn get_type(output: bool, ty: &Alias, is_server: bool) -> Result<String, Error> 
         },
 
         // Unsized bytes
-        Alias::Bytes(0) => Ok("[u8]".to_string()),
-        Alias::Bytes(len) => Ok(format!("[u8; {}]", len)),
+        Alias::Bytes(Some(0)) | Alias::Bytes(None) => Ok("[u8]".to_string()),
+        Alias::Bytes(Some(len)) => Ok(format!("[u8; {}]", len)),
 
         // Deprecated in newer version of SwIPC anyways.
         Alias::Align(_alignment, _underlying) => Err(Error::UnsupportedStruct),
