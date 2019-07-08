@@ -9,10 +9,10 @@
 //! sleep (deregistering it from the scheduler). When the event is triggered,
 //! the scheduler will wake the process up, allowing it work.
 
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
 use core::fmt::Debug;
 use alloc::sync::Arc;
-use crate::sync::SpinLockIRQ;
+use crate::sync::{SpinLock, SpinLockIRQ};
 use alloc::vec::Vec;
 use crate::error::UserspaceError;
 use crate::process::ThreadStruct;
@@ -122,6 +122,78 @@ where
 
         // Schedule
         scheduler::unschedule(&interrupt_manager, lock)?;
+    }
+}
+
+/// The underlying shared object of a [ReadableEvent]/[WritableEvent].
+#[derive(Debug)]
+struct Event {
+    /// The state determines whether the event is signaled or not. When it is true,
+    /// the event is signaled, and calls to WaitSynchronization with this event
+    /// will immediately return.
+    state: AtomicBool,
+    /// List of processes waiting on this IRQ. When this IRQ is triggered, all
+    /// those processes will be rescheduled.
+    waiting_processes: SpinLock<Vec<Arc<ThreadStruct>>>
+}
+
+/// Create a new pair of [WritableEvent]/[ReadableEvent].
+pub fn new_pair() -> (WritableEvent, ReadableEvent) {
+    let event = Arc::new(Event {
+        state: AtomicBool::new(false),
+        waiting_processes: SpinLock::new(Vec::new())
+    });
+
+    (WritableEvent { parent: event.clone() }, ReadableEvent { parent: event })
+}
+
+/// The readable part of an event. The user shall use this end to verify if the
+/// event is signaled, and wait for the signaling through wait_synchronization.
+/// The user can also use this handle to clear the signaled state through
+/// [ReadableEvent::clear_signal()].
+#[derive(Debug, Clone)]
+pub struct ReadableEvent {
+    /// Pointer to the shared event representation.
+    parent: Arc<Event>
+}
+
+impl ReadableEvent {
+    /// Clears the signaled state.
+    pub fn clear_signal(&self) {
+        self.parent.state.store(false, Ordering::SeqCst);
+    }
+}
+
+impl Waitable for ReadableEvent {
+    fn is_signaled(&self) -> bool {
+        self.parent.state.load(Ordering::SeqCst)
+    }
+    fn register(&self) {
+        self.parent.waiting_processes.lock().push(scheduler::get_current_thread());
+    }
+}
+
+/// The writable part of an event. The user shall use this end to signal (and
+/// wake up threads waiting on the event).
+#[derive(Debug, Clone)]
+pub struct WritableEvent {
+    /// Pointer to the shared event representation.
+    parent: Arc<Event>
+}
+
+impl WritableEvent {
+    /// Signals the event, setting its state to signaled and waking up any
+    /// thread waiting on its value.
+    pub fn signal(&self) {
+        self.parent.state.store(true, Ordering::SeqCst);
+        let mut processes = self.parent.waiting_processes.lock();
+        while let Some(process) = processes.pop() {
+            scheduler::add_to_schedule_queue(process);
+        }
+    }
+    /// Clears the signaled state.
+    pub fn clear_signal(&self) {
+        self.parent.state.store(false, Ordering::SeqCst);
     }
 }
 

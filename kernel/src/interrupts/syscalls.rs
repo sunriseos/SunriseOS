@@ -9,7 +9,6 @@ use crate::paging::mapping::MappingFrames;
 use crate::process::{Handle, ThreadStruct, ProcessStruct};
 use crate::event::{self, Waitable};
 use crate::scheduler::{self, get_current_thread, get_current_process};
-use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -21,6 +20,7 @@ use crate::timer;
 use failure::Backtrace;
 use sunrise_libkern::{nr, SYSCALL_NAMES, MemoryInfo, MemoryAttributes, MemoryPermissions, MemoryType};
 use bit_field::BitArray;
+use core::convert::TryFrom;
 
 /// Resize the heap of a process, just like a brk.
 /// It can both expand, and shrink the heap.
@@ -99,7 +99,7 @@ fn create_interrupt_event(irq_num: usize, _flag: u32) -> Result<usize, Userspace
             return Err(UserspaceError::NoSuchEntry);
         }
     }
-    let hnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ReadableEvent(Box::new(event::wait_event(irq_num as u8)))));
+    let hnd = curproc.phandles.lock().add_handle(Arc::new(Handle::InterruptEvent(event::wait_event(irq_num as u8))));
     Ok(hnd as _)
 }
 
@@ -420,6 +420,35 @@ fn sleep_thread(nanos: usize) -> Result<(), UserspaceError> {
     }
 }
 
+/// Sets the "signaled" state of an event. Calling this on an unsignalled event
+/// will cause any thread waiting on this event through [wait_synchronization()]
+/// to wake up. Any future calls to [wait_synchronization()] with this handle
+/// will immediately return - the user has to clear the "signaled" state through
+/// [clear_event()].
+///
+/// Takes either a [ReadableEvent] or a [WritableEvent].
+fn signal_event(handle: u32) -> Result<(), UserspaceError> {
+    let proc = scheduler::get_current_process();
+    proc.phandles.lock().get_handle(handle)?.as_writable_event()?.signal();
+    Ok(())
+}
+
+/// Clear the "signaled" state of an event. After calling this on a signaled
+/// event, [wait_synchronization()] on this handle will wait until
+/// [signal_event()] is called once again.
+///
+/// Takes either a [ReadableEvent] or a [WritableEvent].
+fn clear_event(handle: u32) -> Result<(), UserspaceError> {
+    let proc = scheduler::get_current_process();
+    let handle = proc.phandles.lock().get_handle(handle)?;
+    match &*handle {
+        Handle::ReadableEvent(event) => event.clear_signal(),
+        Handle::WritableEvent(event) => event.clear_signal(),
+        _ => Err(UserspaceError::InvalidHandle)?
+    }
+    Ok(())
+}
+
 /// Create a new Port pair. Those ports are linked to each-other: The server will
 /// receive connections from the client.
 fn create_port(max_sessions: u32, _is_light: bool, _name_ptr: UserSpacePtr<[u8; 12]>) -> Result<(usize, usize), UserspaceError>{
@@ -545,6 +574,17 @@ fn create_session(_is_light: bool, _unk: usize) -> Result<(usize, usize), Usersp
     let serverhnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ServerSession(server)));
     let clienthnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ClientSession(client)));
     Ok((serverhnd as _, clienthnd as _))
+}
+
+/// Create a [WritableEvent]/[ReadableEvent] pair. Signals on the
+/// [WritableEvent] will cause threads waiting on the [ReadableEvent] to wake
+/// up until the signal is cleared/reset.
+fn create_event() -> Result<(usize, usize), UserspaceError> {
+    let (writable, readable) = crate::event::new_pair();
+    let curproc = scheduler::get_current_process();
+    let readable = curproc.phandles.lock().add_handle(Arc::new(Handle::ReadableEvent(readable)));
+    let writable = curproc.phandles.lock().add_handle(Arc::new(Handle::WritableEvent(writable)));
+    Ok((usize::try_from(writable).unwrap(), usize::try_from(readable).unwrap()))
 }
 
 /// Maps a physical region in the address space of the process.
@@ -683,6 +723,8 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
         (true, nr::StartThread) => registers.apply0(start_thread(x0 as _)),
         (true, nr::ExitThread) => registers.apply0(exit_thread()),
         (true, nr::SleepThread) => registers.apply0(sleep_thread(x0)),
+        (true, nr::SignalEvent) => registers.apply0(signal_event(x0 as _)),
+        (true, nr::ClearEvent) => registers.apply0(clear_event(x0 as _)),
         (true, nr::MapSharedMemory) => registers.apply0(map_shared_memory(x0 as _, x1 as _, x2 as _, x3 as _)),
         (true, nr::UnmapSharedMemory) => registers.apply0(unmap_shared_memory(x0 as _, x1 as _, x2 as _)),
         (true, nr::CloseHandle) => registers.apply0(close_handle(x0 as _)),
@@ -693,6 +735,7 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
         (true, nr::CreateSession) => registers.apply2(create_session(x0 != 0, x1 as _)),
         (true, nr::AcceptSession) => registers.apply1(accept_session(x0 as _)),
         (true, nr::ReplyAndReceiveWithUserBuffer) => registers.apply1(reply_and_receive_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), UserSpacePtr::from_raw_parts(x2 as _, x3), x4 as _, x5)),
+        (true, nr::CreateEvent) => registers.apply2(create_event()),
         (true, nr::CreateSharedMemory) => registers.apply1(create_shared_memory(x0 as _, x1 as _, x2 as _)),
         (true, nr::CreateInterruptEvent) => registers.apply1(create_interrupt_event(x0, x1 as u32)),
         (true, nr::QueryPhysicalAddress) => registers.apply4(query_physical_address(x0 as _)),

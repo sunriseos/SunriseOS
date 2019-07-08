@@ -177,6 +177,32 @@ pub fn sleep_thread(nanos: usize) -> Result<(), KernelError> {
     }
 }
 
+/// Sets the "signaled" state of an event. Calling this on an unsignalled event
+/// will cause any thread waiting on this event through [wait_synchronization()]
+/// to wake up. Any future calls to [wait_synchronization()] with this handle
+/// will immediately return - the user has to clear the "signaled" state through
+/// [clear_event()].
+///
+/// Takes either a [ReadableEvent] or a [WritableEvent].
+pub fn signal_event(event: &WritableEvent) -> Result<(), KernelError> {
+    unsafe {
+        syscall(nr::SignalEvent, (event.0).0.get() as _, 0, 0, 0, 0, 0)?;
+        Ok(())
+    }
+}
+
+/// Clear the "signaled" state of an event. After calling this on a signaled
+/// event, [wait_synchronization()] on this handle will wait until
+/// [signal_event()] is called once again.
+///
+/// Takes either a [ReadableEvent] or a [WritableEvent].
+pub(crate) fn clear_event(event: HandleRef) -> Result<(), KernelError> {
+    unsafe {
+        syscall(nr::ClearEvent, event.inner.get() as _, 0, 0, 0, 0, 0)?;
+        Ok(())
+    }
+}
+
 /// Creates a shared memory handle.
 ///
 /// Allocates the given size bytes of physical memory to back the SharedMemory.
@@ -352,6 +378,14 @@ pub fn reply_and_receive_with_user_buffer(buf: &mut [u8], handles: &[HandleRef<'
             None => 0
         }, timeout.unwrap_or_else(usize::max_value))?;
         Ok(idx)
+    }
+}
+
+/// Create a [ReadableEvent]/[WritableEvent] pair.
+pub fn create_event() -> Result<(WritableEvent, ReadableEvent), KernelError> {
+    unsafe {
+        let (wevent, revent, ..) = syscall(nr::CreateEvent, 0, 0, 0, 0, 0, 0)?;
+        Ok((WritableEvent(Handle::new(wevent as _)), ReadableEvent(Handle::new(revent as _))))
     }
 }
 
