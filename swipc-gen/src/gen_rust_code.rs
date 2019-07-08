@@ -158,7 +158,9 @@ fn get_handle_type(ty: &Option<HandleType>) -> Option<&'static str> {
         Some(HandleType::ClientPort)    => Some("sunrise_libuser::types::ClientPort"),
         Some(HandleType::ServerPort)    => Some("sunrise_libuser::types::ServerPort"),
         Some(HandleType::SharedMemory)  => Some("sunrise_libuser::types::SharedMemory"),
-        _                                => None
+        Some(HandleType::Process)       => Some("sunrise_libuser::types::Process"),
+        Some(HandleType::Thread)        => Some("sunrise_libuser::types::Thread"),
+        _                               => None
     }
 }
 

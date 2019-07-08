@@ -56,7 +56,10 @@ impl Handle {
 
 impl Drop for Handle {
     fn drop(&mut self) {
-        let _ = syscalls::close_handle(self.0.get());
+        match self.0.get() {
+            0xFFFF8000 | 0xFFFF8001 => (),
+            handle => { let _ = syscalls::close_handle(handle); },
+        }
     }
 }
 
@@ -223,10 +226,30 @@ impl ServerPort {
 pub struct Thread(pub Handle);
 
 impl Thread {
+    /// Gets the current process handle. Uses the 0xFFFF8000 meta-handle, which
+    /// may not be valid in all contexts!
+    fn current() -> Thread {
+        Thread(Handle::new(0xFFFF8000))
+    }
+
     /// Start the thread.
     pub fn start(&self) -> Result<(), Error> {
         syscalls::start_thread(self)
             .map_err(|v| v.into())
+    }
+}
+
+/// A Process. Created with `create_process` syscall, or by calling
+/// [Process::current()].
+#[repr(transparent)]
+#[derive(Debug)]
+pub struct Process(pub Handle);
+
+impl Process {
+    /// Gets the current process handle. Uses the 0xFFFF8001 meta-handle, which
+    /// may not be valid in all contexts!
+    fn current() -> Process {
+        Process(Handle::new(0xFFFF8001))
     }
 }
 
