@@ -13,7 +13,6 @@ use crate::paging::mapping::MappingFrames;
 use crate::process::{Handle, ThreadStruct, ProcessStruct};
 use crate::event::{self, Waitable};
 use crate::scheduler::{self, get_current_thread, get_current_process};
-use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -25,6 +24,7 @@ use failure::Backtrace;
 use sunrise_libkern::{MemoryInfo, MemoryAttributes, MemoryPermissions, MemoryType};
 use bit_field::BitArray;
 use crate::i386::gdt::{GDT, GdtIndex};
+use core::convert::TryFrom;
 
 /// Resize the heap of a process, just like a brk.
 /// It can both expand, and shrink the heap.
@@ -103,7 +103,7 @@ pub fn create_interrupt_event(irq_num: usize, _flag: u32) -> Result<usize, Users
             return Err(UserspaceError::NoSuchEntry);
         }
     }
-    let hnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ReadableEvent(Box::new(event::wait_event(irq_num as u8)))));
+    let hnd = curproc.phandles.lock().add_handle(Arc::new(Handle::InterruptEvent(event::wait_event(irq_num as u8))));
     Ok(hnd as _)
 }
 
@@ -424,6 +424,35 @@ pub fn sleep_thread(nanos: usize) -> Result<(), UserspaceError> {
     }
 }
 
+/// Sets the "signaled" state of an event. Calling this on an unsignalled event
+/// will cause any thread waiting on this event through [wait_synchronization()]
+/// to wake up. Any future calls to [wait_synchronization()] with this handle
+/// will immediately return - the user has to clear the "signaled" state through
+/// [clear_event()].
+///
+/// Takes either a [ReadableEvent] or a [WritableEvent].
+pub fn signal_event(handle: u32) -> Result<(), UserspaceError> {
+    let proc = scheduler::get_current_process();
+    proc.phandles.lock().get_handle(handle)?.as_writable_event()?.signal();
+    Ok(())
+}
+
+/// Clear the "signaled" state of an event. After calling this on a signaled
+/// event, [wait_synchronization()] on this handle will wait until
+/// [signal_event()] is called once again.
+///
+/// Takes either a [ReadableEvent] or a [WritableEvent].
+pub fn clear_event(handle: u32) -> Result<(), UserspaceError> {
+    let proc = scheduler::get_current_process();
+    let handle = proc.phandles.lock().get_handle(handle)?;
+    match &*handle {
+        Handle::ReadableEvent(event) => event.clear_signal(),
+        Handle::WritableEvent(event) => event.clear_signal(),
+        _ => Err(UserspaceError::InvalidHandle)?
+    }
+    Ok(())
+}
+
 /// Create a new Port pair. Those ports are linked to each-other: The server will
 /// receive connections from the client.
 pub fn create_port(max_sessions: u32, _is_light: bool, _name_ptr: UserSpacePtr<[u8; 12]>) -> Result<(usize, usize), UserspaceError>{
@@ -549,6 +578,17 @@ pub fn create_session(_is_light: bool, _unk: usize) -> Result<(usize, usize), Us
     let serverhnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ServerSession(server)));
     let clienthnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ClientSession(client)));
     Ok((serverhnd as _, clienthnd as _))
+}
+
+/// Create a [WritableEvent]/[ReadableEvent] pair. Signals on the
+/// [WritableEvent] will cause threads waiting on the [ReadableEvent] to wake
+/// up until the signal is cleared/reset.
+pub fn create_event() -> Result<(usize, usize), UserspaceError> {
+    let (writable, readable) = crate::event::new_pair();
+    let curproc = scheduler::get_current_process();
+    let readable = curproc.phandles.lock().add_handle(Arc::new(Handle::ReadableEvent(readable)));
+    let writable = curproc.phandles.lock().add_handle(Arc::new(Handle::WritableEvent(writable)));
+    Ok((usize::try_from(writable).unwrap(), usize::try_from(readable).unwrap()))
 }
 
 /// Maps a physical region in the address space of the process.

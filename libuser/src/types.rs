@@ -78,10 +78,43 @@ pub struct HandleRef<'a> {
     lifetime: PhantomData<&'a Handle>
 }
 
-/// An awaitable event handle, such as an IRQ event.
+/// A handle on an IRQ event.
+#[repr(transparent)]
+#[derive(Debug)]
+pub struct IRQEvent(pub Handle);
+
+/// The readable part of an event. The user shall use this end to verify if the
+/// event is signaled, and wait for the signaling through wait_synchronization.
+/// The user can also use this handle to clear the signaled state through
+/// [ReadableEvent::clear_signal()].
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct ReadableEvent(pub Handle);
+
+impl ReadableEvent {
+    /// Clears the signaled state.
+    pub fn clear_signal(&self) -> Result<(), KernelError> {
+        syscalls::clear_event(self.0.as_ref())
+    }
+}
+
+
+/// The writable part of an event. The user shall use this end to signal (and
+/// wake up threads waiting on the event).
+pub struct WritableEvent(pub Handle);
+
+impl WritableEvent {
+    /// Clears the signaled state.
+    pub fn clear_signal(&self) -> Result<(), KernelError> {
+        syscalls::clear_event(self.0.as_ref())
+    }
+
+    /// Signals the event, setting its state to signaled and waking up any
+    /// thread waiting on its value.
+    pub fn signal(&self) -> Result<(), KernelError> {
+        syscalls::signal_event(self)
+    }
+}
 
 /// The client side of an IPC session.
 ///
