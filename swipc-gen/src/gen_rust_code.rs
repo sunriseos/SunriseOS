@@ -9,6 +9,14 @@ use std::collections::HashMap;
 use swipc_parser::{Alias, Func, HandleType, TypeDef, Type, Decorator, Interface};
 use bit_field::BitField;
 
+/// Rename field names that would conflict with rust keywords.
+fn remap_keywords(s: &str) -> &'_ str {
+    match s {
+        "type" => "ty",
+        s => s
+    }
+}
+
 lazy_static! {
     /// SwIPC builtin type. Associates a SwIPC builtin name with a size/alignment
     /// and a rust type name.
@@ -71,7 +79,7 @@ where
             _ => true,
         }
     }).enumerate().map(|(idx, (v, name))| {
-        (v, name.clone().unwrap_or_else(|| format!("unknown_{}", idx)))
+        (v, name.as_ref().map(|v| remap_keywords(v).to_string()).unwrap_or_else(|| format!("unknown_{}", idx)))
     })
 }
 
@@ -109,8 +117,7 @@ fn format_args(args: &[(Alias, Option<String>)], ret: &[(Alias, Option<String>)]
             // BODY: names that may be keywords in rust. We should have a list of
             // BODY: keywords and a central function to fix them up.
             // Rename type to ty since type is a keyword in rust.
-            Some("type") => s += "ty",
-            Some(name) => s += name,
+            Some(name) => s += remap_keywords(name),
             None => s += &format!("unknown_{}", idx)
         }
         s += ": ";
@@ -415,7 +422,7 @@ fn format_type(struct_name: &str, ty: &TypeDef) -> Result<String, Error> {
                     Type::Alias(alias) => get_type(false, alias, false)?,
                     _ => unimplemented!()
                 };
-                writeln!(s, "    pub {}: {},", name, tyname).unwrap();
+                writeln!(s, "    pub {}: {},", remap_keywords(name), tyname).unwrap();
             }
             writeln!(s, "}}").unwrap();
         },
@@ -430,7 +437,7 @@ fn format_type(struct_name: &str, ty: &TypeDef) -> Result<String, Error> {
                 for line in doc.lines() {
                     writeln!(s, "        /// {}", line).unwrap();
                 }
-                writeln!(s, "        {} = {},", name, num).unwrap();
+                writeln!(s, "        {} = {},", remap_keywords(name), num).unwrap();
             }
             writeln!(s, "    }}").unwrap();
             writeln!(s, "}}").unwrap();
