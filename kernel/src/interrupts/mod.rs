@@ -9,7 +9,7 @@ use crate::i386::structures::idt::{ExceptionStackFrame, PageFaultErrorCode, Idt}
 use crate::i386::instructions::interrupts::sti;
 use crate::mem::VirtualAddress;
 use crate::paging::kernel_memory::get_kernel_memory;
-use crate::i386::{TssStruct, PrivilegeLevel};
+use crate::i386::PrivilegeLevel;
 use crate::i386::gdt;
 use crate::scheduler::get_current_thread;
 use crate::process::{ProcessStruct, ThreadState};
@@ -19,6 +19,8 @@ use core::sync::atomic::Ordering;
 use core::fmt::Arguments;
 use crate::sync::SpinLock;
 use crate::scheduler;
+use crate::i386::gdt::GdtIndex;
+use crate::i386::gdt::DOUBLE_FAULT_TASK;
 
 mod irq;
 mod syscalls;
@@ -171,18 +173,18 @@ fn double_fault_handler() {
     // Get the Main TSS so I can recover some information about what happened.
     unsafe {
         // Safety: gdt::MAIN_TASK should always point to a valid TssStruct.
-        if let Some(tss_main) = (gdt::MAIN_TASK.addr() as *const TssStruct).as_ref() {
+        if let Some(tss_main) = gdt::MAIN_TASK.try_lock() {
 
             // safe: we're in an exception handler, nobody can modify the faulty thread's stack.
             crate::do_panic(format_args!("Double fault!
                     EIP={:#010x} CR3={:#010x}
                     EAX={:#010x} EBX={:#010x} ECX={:#010x} EDX={:#010x}
                     ESI={:#010x} EDI={:#010X} ESP={:#010x} EBP={:#010x}",
-                    tss_main.eip, tss_main.cr3,
-                    tss_main.eax, tss_main.ebx, tss_main.ecx, tss_main.edx,
-                    tss_main.esi, tss_main.edi, tss_main.esp, tss_main.ebp),
+                    tss_main.tss.eip, tss_main.tss.cr3,
+                    tss_main.tss.eax, tss_main.tss.ebx, tss_main.tss.ecx, tss_main.tss.edx,
+                    tss_main.tss.esi, tss_main.tss.edi, tss_main.tss.esp, tss_main.tss.ebp),
                 Some(crate::stack::StackDumpSource::new(
-                    tss_main.esp as usize, tss_main.ebp as usize, tss_main.eip as usize
+                    tss_main.tss.esp as usize, tss_main.tss.ebp as usize, tss_main.tss.eip as usize
                     )));
         } else {
             // safe: we're not passing a stackdump_source
@@ -439,7 +441,8 @@ pub unsafe fn init() {
             (*idt).bound_range_exceeded.set_handler_fn(bound_range_exceeded_handler);
             (*idt).invalid_opcode.set_handler_fn(invalid_opcode_handler);
             (*idt).device_not_available.set_handler_fn(device_not_available_handler);
-            (*idt).double_fault.set_handler_task_gate_addr(double_fault_handler as u32);
+            DOUBLE_FAULT_TASK.lock().set_ip(double_fault_handler as u32);
+            (*idt).double_fault.set_handler_task_gate(GdtIndex::FTSS.selector());
             // coprocessor_segment_overrun
             (*idt).invalid_tss.set_handler_fn(invalid_tss_handler);
             (*idt).segment_not_present.set_handler_fn(segment_not_present_handler);

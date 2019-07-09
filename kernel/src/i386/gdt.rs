@@ -5,11 +5,10 @@
 
 #![allow(dead_code)]
 
-use crate::sync::{SpinLock, Once};
+use crate::sync::{SpinLockIRQ, Once};
 use bit_field::BitField;
 use core::mem::size_of;
 use core::ops::{Deref, DerefMut};
-use core::slice;
 use core::fmt;
 
 use crate::i386::{PrivilegeLevel, TssStruct};
@@ -18,41 +17,70 @@ use crate::i386::instructions::tables::{lgdt, lldt, ltr, DescriptorTablePointer}
 use crate::i386::instructions::segmentation::*;
 
 use crate::paging::PAGE_SIZE;
-use crate::paging::{MappingAccessRights, kernel_memory::get_kernel_memory};
-use crate::frame_allocator::{FrameAllocator, FrameAllocatorTrait};
-use crate::mem::VirtualAddress;
-use crate::utils::align_up;
 use sunrise_libkern::TLS;
-use crate::paging::lands::{UserLand, VirtualSpaceLand};
+use spin::Mutex;
+use bitfield::fmt::Debug;
 
-/// The global GDT. Needs to be initialized with init_gdt().
-static GDT: Once<SpinLock<GdtManager>> = Once::new();
+/// The global GDT. Needs to be initialized with [init_gdt].
+///
+/// Modifying it disables interrupts.
+pub static GDT: Once<SpinLockIRQ<GdtManager>> = Once::new();
 
 /// The global LDT used by all the processes.
+///
+/// Empty.
 static GLOBAL_LDT: Once<DescriptorTable> = Once::new();
 
-/// The index in the GDT of the null descriptor.
-const GDT_NULL:   usize = 0;
-/// The index in the GDT of the Kernel code segment descriptor.
-const GDT_KCODE:  usize = 1;
-/// The index in the GDT of the Kernel data segment descriptor.
-const GDT_KDATA:  usize = 2;
-/// The index in the GDT of the Kernel stack segment descriptor.
-const GDT_KSTACK: usize = 3;
-/// The index in the GDT of the Userland code segment descriptor.
-const GDT_UCODE:  usize = 4;
-/// The index in the GDT of the Userland data segment descriptor.
-const GDT_UDATA:  usize = 5;
-/// The index in the GDT of the Userland stack segment descriptor.
-const GDT_USTACK: usize = 6;
-/// The index in the GDT of the Userland thread local storage segment descriptor.
-const GDT_UTLS:   usize = 7;
-/// The index in the GDT of the LDT descriptor.
-const GDT_LDT:    usize = 8;
-/// The index in the GDT of the main TSS descriptor.
-const GDT_TSS:    usize = 9;
-/// The number of descriptors in the GDT.
-const GDT_DESC_COUNT: usize = 10;
+/// Index in the GDT of each segment descriptor.
+#[repr(usize)]
+#[derive(Debug, Clone, Copy)]
+pub enum GdtIndex {
+    /// The index in the GDT of the null descriptor.
+    Null       = 0,
+    /// The index in the GDT of the Kernel code segment descriptor.
+    KCode      = 1,
+    /// The index in the GDT of the Kernel data segment descriptor.
+    KData      = 2,
+    /// The index in the GDT of the Kernel thread local storage ("cpu-locals") segment descriptor.
+    KTls       = 3,
+    /// The index in the GDT of the Kernel stack segment descriptor.
+    KStack     = 4,
+    /// The index in the GDT of the Userland code segment descriptor.
+    UCode      = 5,
+    /// The index in the GDT of the Userland data segment descriptor.
+    UData      = 6,
+    /// The index in the GDT of the Userland thread local storage segment descriptor.
+    UTlsRegion = 7,
+    /// The index in the GDT of the Userland stack segment descriptor.
+    UStack     = 9,
+    /// The index in the GDT of the LDT descriptor.
+    LDT       = 10,
+    /// The index in the GDT of the main TSS descriptor.
+    TSS       = 11,
+    /// The index in the GDT of the double fault TSS descriptor.
+    FTSS      = 12,
+
+    /// The number of descriptors in the GDT.
+    DescCount,
+}
+
+impl GdtIndex {
+    /// Turns a segment descriptor index to a segment selector.
+    ///
+    /// The ring part of the selector will be `0b00` for K* segments, and `0b11` for U* segments.
+    pub fn selector(self) -> SegmentSelector {
+        match self {
+            GdtIndex::KCode | GdtIndex::KData | GdtIndex::KTls | GdtIndex::KStack |
+            GdtIndex::LDT | GdtIndex::TSS | GdtIndex::FTSS
+                => SegmentSelector::new(self as u16, PrivilegeLevel::Ring0),
+            GdtIndex::UCode | GdtIndex::UData | GdtIndex::UTlsRegion |
+            GdtIndex::UStack
+                => SegmentSelector::new(self as u16, PrivilegeLevel::Ring3),
+
+            _ => panic!("Cannot get segment selector of {:?}", self)
+        }
+    }
+}
 
 /// Initializes the GDT.
 ///
@@ -70,80 +98,119 @@ pub fn init_gdt() {
     GDT.call_once(|| {
         let mut gdt = GdtManager::default();
         // Push the null descriptor
-        gdt.set(GDT_NULL, DescriptorTableEntry::null_descriptor());
+        gdt.table[GdtIndex::Null as usize] = DescriptorTableEntry::null_descriptor();
         // Push a kernel code segment
-        let cs = gdt.set(GDT_KCODE, DescriptorTableEntry::new(
+        gdt.table[GdtIndex::KCode as usize] = DescriptorTableEntry::new(
             0,
             0xffffffff,
             true,
             PrivilegeLevel::Ring0,
-        ));
+        );
         // Push a kernel data segment
-        let ds = gdt.set(GDT_KDATA, DescriptorTableEntry::new(
+        gdt.table[GdtIndex::KData as usize] = DescriptorTableEntry::new(
             0,
             0xffffffff,
             false,
             PrivilegeLevel::Ring0,
-        ));
+        );
+        // Push a dummy tls segment, will be moved and resized appropriately later
+        gdt.table[GdtIndex::KTls as usize] = DescriptorTableEntry::new(
+            0,
+            0xffffffff,
+            false,
+            PrivilegeLevel::Ring0,
+        );
         // Push a kernel stack segment
-        let ss = gdt.set(GDT_KSTACK, DescriptorTableEntry::new(
+        gdt.table[GdtIndex::KStack as usize] = DescriptorTableEntry::new(
             0,
             0xffffffff,
             false,
             PrivilegeLevel::Ring0,
-        ));
+        );
         // Push a userland code segment
-        gdt.set(GDT_UCODE, DescriptorTableEntry::new(
+        gdt.table[GdtIndex::UCode as usize] = DescriptorTableEntry::new(
             0,
             0xffffffff,
             true,
             PrivilegeLevel::Ring3,
-        ));
+        );
         // Push a userland data segment
-        gdt.set(GDT_UDATA, DescriptorTableEntry::new(
+        gdt.table[GdtIndex::UData as usize] = DescriptorTableEntry::new(
             0,
             0xffffffff,
             false,
             PrivilegeLevel::Ring3,
-        ));
-        // Push a userland stack segment
-        gdt.set(GDT_USTACK, DescriptorTableEntry::new(
-            0,
-            0xffffffff,
-            false,
-            PrivilegeLevel::Ring3,
-        ));
-        // Push a userland thread local storage segment
-        let gs = gdt.set(GDT_UTLS, DescriptorTableEntry::new(
+        );
+        // Push a userland thread local storage segment, will be moved at every thread-switch.
+        gdt.table[GdtIndex::UTlsRegion as usize] = DescriptorTableEntry::new(
             0,
             (size_of::<TLS>() - 1) as u32,
             false,
             PrivilegeLevel::Ring3,
-        ));
+        );
+        // Push a userland stack segment
+        gdt.table[GdtIndex::UStack as usize] = DescriptorTableEntry::new(
+            0,
+            0xffffffff,
+            false,
+            PrivilegeLevel::Ring3,
+        );
 
         // Global LDT
-        let ldt_ss = gdt.set(GDT_LDT, DescriptorTableEntry::new_ldt(&GLOBAL_LDT.r#try().unwrap(), PrivilegeLevel::Ring0));
-
-        let main_task = unsafe {
-            (MAIN_TASK.addr() as *mut TssStruct).as_ref().unwrap()
-        };
+        gdt.table[GdtIndex::LDT as usize] = DescriptorTableEntry::new_ldt(&GLOBAL_LDT.r#try().unwrap(), PrivilegeLevel::Ring0);
 
         // Main task
-        let tss_ss = gdt.set(GDT_TSS, DescriptorTableEntry::new_tss(main_task, PrivilegeLevel::Ring0, 0x2001));
+        let mut main_task = MAIN_TASK.lock();
+        main_task.init();
+        let main_tss_ref: &'static TssStruct = unsafe {
+            // creating a static ref to tss.
+            // kinda-safe: the tss is in a static so it is 'static, but is behind a lock
+            // and will still be accessed by the hardware with no consideration for the lock.
+            (&main_task.tss as *const TssStruct).as_ref().unwrap()
+        };
+        gdt.table[GdtIndex::TSS as usize] = DescriptorTableEntry::new_tss(main_tss_ref, PrivilegeLevel::Ring0, 0x2001);
 
-        gdt.commit(Some(cs), Some(ds), Some(ds), Some(ds), Some(gs), Some(ss));
+        // Double fault task
+        let mut fault_task = DOUBLE_FAULT_TASK.lock();
+        fault_task.init();
+        let fault_task_stack_end = unsafe { &DOUBLE_FAULT_TASK_STACK.0 } as *const u8 as usize + size_of::<DoubleFaultTaskStack>();
+        fault_task.esp = fault_task_stack_end as u32;
+        fault_task.esp0 = fault_task_stack_end as u32;
+        fault_task.eip = 0; // will be set by IDT init.
+        let fault_task_ref: &'static TssStruct = unsafe {
+            // creating a static ref to tss.
+            // kinda-safe: the tss is in a static so it is 'static, but is behind a lock
+            // and will still be accessed by the hardware with no consideration for the lock.
+            (&*fault_task as *const TssStruct).as_ref().unwrap()
+        };
+        gdt.table[GdtIndex::FTSS as usize] = DescriptorTableEntry::new_tss(fault_task_ref, PrivilegeLevel::Ring0, 0x0);
 
-        unsafe {
-            debug!("Loading LDT");
-            lldt(ldt_ss);
-            debug!("Loading Task");
-            ltr(tss_ss);
-        }
-
-        info!("Loaded GDT {:#?}\ncs: {:?}\nds: {:?}\nss: {:?}\ngs: {:?}\nldt: {:?}\ntss: {:?}", gdt.deref().table, cs, ds, ss, gs, ldt_ss, tss_ss);
-
-        SpinLock::new(gdt)
+        SpinLockIRQ::new(gdt)
     });
+
+    // initialized, now let's use it !
+
+    let cs = GdtIndex::KCode.selector();
+    let ds = GdtIndex::KData.selector();
+    let fs = GdtIndex::UTlsRegion.selector();
+    let gs = GdtIndex::KTls.selector();
+    let ss = GdtIndex::KStack.selector();
+    let ldt_ss = GdtIndex::LDT.selector();
+    let tss_ss = GdtIndex::TSS.selector();
+
+    let mut gdt = GDT.r#try().unwrap().lock();
+
+    debug!("Loading GDT {:#?}\ncs: {:?}\nds: {:?}\nes: {:?}\nfs: {:?}\ngs: {:?}\nss: {:?}\nldt: {:?}\ntss: {:?}", gdt.deref().table, cs, ds, ds, fs, gs, ss, ldt_ss, tss_ss);
+    gdt.commit(Some(cs), Some(ds), Some(ds), Some(fs), Some(gs), Some(ss));
+
+    unsafe {
+        debug!("Loading LDT {:?}", ldt_ss);
+        lldt(ldt_ss);
+        debug!("Loading Task {:?}", tss_ss);
+        ltr(tss_ss);
+    }
+
+    info!("Loaded GDT {:#?}\ncs: {:?}\nds: {:?}\nes: {:?}\nfs: {:?}\ngs: {:?}\nss: {:?}\nldt: {:?}\ntss: {:?}", gdt.deref().table, cs, ds, ds, fs, gs, ss, ldt_ss, tss_ss);
 }
 
 /// Safety wrapper that manages the lifetime of GDT tables.
@@ -159,7 +226,7 @@ pub fn init_gdt() {
 /// This struct's implementation of `Deref` and `DerefMut` will always give a reference to the table
 /// currently not in use, so you can make modifications to it, and call `commit` afterwards.
 #[derive(Debug, Default)]
-struct GdtManager {
+pub struct GdtManager {
     /// One of the two tables.
     table_a: DescriptorTable,
     /// One of the two tables.
@@ -226,78 +293,123 @@ impl DerefMut for GdtManager {
     }
 }
 
-/// Push a task segment.
-pub fn push_task_segment(task: &'static TssStruct) -> SegmentSelector {
-    info!("Pushing TSS: {:#?}", task);
-    let mut gdt = GDT.r#try().expect("GDT was not initialized").lock();
-    let idx = gdt.set(GDT_TSS, DescriptorTableEntry::new_tss(task, PrivilegeLevel::Ring0, 0));
-    gdt.commit(None, None, None, None, None, None);
-    idx
+/// The main TSS. See [MAIN_TASK].
+#[repr(C)]
+pub struct MainTask {
+    /// TssStruct of the main task.
+    pub tss: TssStruct,
+    /// Array of bits representing the io-space permissions:
+    ///
+    /// * `0`: this port is addressable.
+    /// * `1`: this port is not addressable.
+    pub iopb: [u8; 0x2001]
 }
 
-lazy_static! {
-    /// VirtualAddress of the TSS structure of the main task. Has 0x2001 bytes
-    /// available after the TssStruct to encode the IOPB of the current process.
-    pub static ref MAIN_TASK: VirtualAddress = {
-        // We need TssStruct + 0x2001 bytes of IOPB.
-        let pregion = FrameAllocator::allocate_region(align_up(size_of::<TssStruct>() + 0x2001, PAGE_SIZE))
-            .expect("Failed to allocate physical region for tss MAIN_TASK");
-        let vaddr = get_kernel_memory().map_phys_region(pregion, MappingAccessRights::WRITABLE);
-        let tss = vaddr.addr() as *mut TssStruct;
-        unsafe {
-            *tss = TssStruct::new();
+impl Debug for MainTask {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> Result<(), core::fmt::Error> {
+        f.debug_struct("MainTask")
+            .field("tss", &self.tss)
+            .field("iopb", &"*omitted*")
+            .finish()
+    }
+}
 
-            // Now, set the IOPB to 0xFF to prevent all userland accesses
-            slice::from_raw_parts_mut(tss.offset(1) as *mut u8, 0x2001).iter_mut().for_each(|v| *v = 0xFF);
+impl MainTask {
+    /// Creates an empty TSS.
+    ///
+    /// Suitable for static declaration, the whole structure should end up in the `.bss`.
+    ///
+    /// This means that the IOPB will be set to everything addressable.
+    ///
+    /// Must be initialised by calling [init].
+    ///
+    /// [init]: MainTask::init
+    const fn empty() -> MainTask {
+        MainTask {
+            tss: TssStruct::empty(),
+            iopb: [0u8; 0x2001]
         }
-        vaddr
-    };
+    }
+
+    /// Fills the TSS.
+    ///
+    /// The struct inherits the current task's values (except registers, which are set to 0).
+    ///
+    /// IOPB is set to nothing addressable.
+    fn init(&mut self) {
+        self.tss.init();
+        for v in &mut self.iopb[..] { *v = 0xFF }
+    }
 }
 
-/// Update the address of the TLS region. Called on context-switch.
-pub fn update_userspace_tls(new_address: VirtualAddress) {
-    debug!("Setting userspace TLS to {}", new_address);
-    debug_assert!(UserLand::contains_region(new_address, size_of::<TLS>()), "Trying to set UTLS in KernelLand");
-    let mut gdt = GDT.r#try().expect("GDT was not initialized").lock();
-    gdt.set(GDT_UTLS, DescriptorTableEntry::new(
-        new_address.addr() as u32,
-        (size_of::<TLS>() - 1) as u32,
-        false,
-        PrivilegeLevel::Ring3));
-    gdt.commit(None, None, None, None, None, None);
-}
+/// Main TSS
+///
+/// Because Sunrise does not make use of Hardware Task Switching, we only allocate a single
+/// TSS that will be used by every process, we update it at every software task switch.
+///
+/// We mostly set the `esp0` field, updating which stack the cpu will jump to when handling an
+/// exception/syscall.
+///
+/// #### IOPB
+///
+/// Right after the [TssStruct], the MAIN_TASK holds a bitarray indicating io-space permissions
+/// for the current process, one bit for every port:
+///
+/// * `0`: this port is addressable.
+/// * `1`: this port is not addressable.
+///
+/// This array is checked by the cpu every time a port is accessed by userspace, and we use it
+/// to enforce io-space policies. This array is updated at every task switch.
+///
+/// The kernel bypasses this protection by having the `IOPL` set to `0b00` in `EFLAGS`,
+/// making the kernel able to access all ports at all times.
+///
+/// ### Double fault
+///
+/// The only exception to this is double faulting, which does use Hardware Task Switching, and
+/// for which we allocate a second TSS, see [DOUBLE_FAULT_TASK].
+pub static MAIN_TASK: Mutex<MainTask> = Mutex::new(MainTask::empty());
 
-// TODO: gdt::get_main_iopb does not prevent creation of multiple mut ref.
-// BODY: There's currently no guarantee that we don't create multiple &mut
-// BODY: pointer to the IOPB region, which would cause undefined behavior. In
-// BODY: practice, it should only be used by `i386::process_switch`, and as such,
-// BODY: there is never actually two main_iopb active at the same time. Still,
-// BODY: it'd be nicer to have safe functions to access the IOPB.
-/// Get the IOPB of the Main Task.
+/// Double fault TSS
 ///
-/// # Safety
+/// Double faulting will most likely occur after a kernel stack overflow.
+/// We can't use the regular way of handling exception, i.e. pushing some registers and handling
+/// the exception on the same stack that we were using, since it has overflowed.
 ///
-/// This function can be used to create multiple mut references to the same
-/// region, which is very UB. Care should be taken to make sure any old mut slice
-/// acquired through this method is dropped before it is called again.
-pub unsafe fn get_main_iopb() -> &'static mut [u8] {
-    slice::from_raw_parts_mut((MAIN_TASK.addr() as *mut TssStruct).offset(1) as *mut u8, 0x2001)
-}
+/// We must switch the stack when it happens, and the only way to do that is via a task gate.
+///
+/// We setup a Tss whose `esp0` points to [DOUBLE_FAULT_TASK_STACK],
+/// its `eip` to the double fault handler, and make the double fault vector in IDT task gate to it.
+///
+/// When a double fault occurs, the current (faulty) cpu registers values will be backed up
+/// to [MAIN_TASK], where the double fault handler can access them to work out what happened.
+///
+/// ##### IOPB
+///
+/// Unlike the [MAIN_TASK], this TSS does not have an associated IOPB.
+pub static DOUBLE_FAULT_TASK: Mutex<TssStruct> = Mutex::new(TssStruct::empty());
+
+/// The stack used while handling a double fault.
+///
+/// Just a page aligned array of bytes.
+#[repr(C, align(4096))]
+struct DoubleFaultTaskStack([u8; 4096]);
+
+/// The stack used while handling a double fault. See [DOUBLE_FAULT_TASK].
+static mut DOUBLE_FAULT_TASK_STACK: DoubleFaultTaskStack = DoubleFaultTaskStack([0u8; PAGE_SIZE]);
 
 /// A structure containing our GDT.
+///
+/// See [module level documentation].
+///
+/// [module level documentation]: super
 #[derive(Debug, Clone, Default)]
-struct DescriptorTable {
+pub struct DescriptorTable {
     /// The GDT table, an array of DescriptorTableEntry.
-    table: [DescriptorTableEntry; GDT_DESC_COUNT],
+    pub table: [DescriptorTableEntry; GdtIndex::DescCount as usize],
 }
 
 impl DescriptorTable {
-
-    /// Updates an entry in the table, returning a segment selector to it.
-    pub fn set(&mut self, index: usize, entry: DescriptorTableEntry) -> SegmentSelector {
-        self.table[index] = entry;
-        SegmentSelector(((index as u16) << 3) | (entry.get_ring_level() as u16))
-    }
 
     /// Load this descriptor table into the GDTR, and reload the segment registers.
     fn load_global(&mut self, new_cs: Option<SegmentSelector>,
@@ -349,7 +461,7 @@ enum SystemDescriptorTypes {
 /// LDT, or Call Gates.
 #[repr(transparent)]
 #[derive(Clone, Copy)]
-struct DescriptorTableEntry(u64);
+pub struct DescriptorTableEntry(u64);
 
 impl fmt::Debug for DescriptorTableEntry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
@@ -388,12 +500,12 @@ impl DescriptorTableEntry {
     /// Returns an empty descriptor. Using this descriptor is an error and will
     /// raise a GPF. Should only be used to create a descriptor to place at index
     /// 0 of the GDT.
-    pub fn null_descriptor() -> DescriptorTableEntry {
+    fn null_descriptor() -> DescriptorTableEntry {
         DescriptorTableEntry(0)
     }
 
     /// Creates an empty GDT descriptor, but with some flags set correctly
-    pub fn new(base: u32, limit: u32, is_code: bool, priv_level: PrivilegeLevel) -> DescriptorTableEntry {
+    fn new(base: u32, limit: u32, is_code: bool, priv_level: PrivilegeLevel) -> DescriptorTableEntry {
         let mut gdt = Self::null_descriptor();
 
         // First, the constant values.
@@ -416,7 +528,7 @@ impl DescriptorTableEntry {
     }
 
     /// Creates an empty GDT system descriptor of the given type.
-    pub fn new_system(ty: SystemDescriptorTypes, base: u32, limit: u32, priv_level: PrivilegeLevel) -> DescriptorTableEntry {
+    fn new_system(ty: SystemDescriptorTypes, base: u32, limit: u32, priv_level: PrivilegeLevel) -> DescriptorTableEntry {
         let mut gdt = Self::null_descriptor();
 
         // Set the system descriptor type
@@ -431,19 +543,19 @@ impl DescriptorTableEntry {
     }
 
     /// Creates a new LDT descriptor.
-    pub fn new_ldt(base: &'static DescriptorTable, priv_level: PrivilegeLevel) -> DescriptorTableEntry {
+    fn new_ldt(base: &'static DescriptorTable, priv_level: PrivilegeLevel) -> DescriptorTableEntry {
         let limit = if base.table.is_empty() { 0 } else { base.table.len() * size_of::<DescriptorTableEntry>() - 1 };
         Self::new_system(SystemDescriptorTypes::Ldt, base as *const _ as u32, limit as u32, priv_level)
     }
 
 
     /// Creates a GDT descriptor pointing to a TSS segment
-    pub fn new_tss(base: &'static TssStruct, priv_level: PrivilegeLevel, iobp_size: usize) -> DescriptorTableEntry {
+    fn new_tss(base: &'static TssStruct, priv_level: PrivilegeLevel, iobp_size: usize) -> DescriptorTableEntry {
         Self::new_system(SystemDescriptorTypes::AvailableTss32, base as *const _ as u32, (size_of::<TssStruct>() + iobp_size - 1) as u32, priv_level)
     }
 
     /// Gets the byte length of the entry, minus 1.
-    fn get_limit(self) -> u32 {
+    pub fn get_limit(self) -> u32 {
         (self.0.get_bits(0..16) as u32) | ((self.0.get_bits(48..52) << 16) as u32)
     }
 
@@ -454,7 +566,7 @@ impl DescriptorTableEntry {
     /// # Panics
     ///
     /// Panics if the given limit is higher than 65536 and not page aligned.
-    fn set_limit(&mut self, mut newlimit: u32) {
+    pub fn set_limit(&mut self, mut newlimit: u32) {
         if newlimit > 65536 && (newlimit & 0xFFF) != 0xFFF {
             panic!("Limit {} is invalid", newlimit);
         }
@@ -469,12 +581,12 @@ impl DescriptorTableEntry {
     }
 
     /// Gets the base address of the entry.
-    fn get_base(self) -> u32 {
+    pub fn get_base(self) -> u32 {
         (self.0.get_bits(16..40) as u32) | ((self.0.get_bits(56..64) << 24) as u32)
     }
 
     /// Sets the base address of the entry.
-    fn set_base(&mut self, newbase: u32) {
+    pub fn set_base(&mut self, newbase: u32) {
         self.0.set_bits(16..40, u64::from(newbase.get_bits( 0..24)));
         self.0.set_bits(56..64, u64::from(newbase.get_bits(24..32)));
     }

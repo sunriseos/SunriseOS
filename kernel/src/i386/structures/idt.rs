@@ -14,11 +14,8 @@ use core::marker::PhantomData;
 use core::mem;
 use core::ops::{Index, IndexMut};
 use bit_field::BitField;
-use crate::i386::{AlignedTssStruct, TssStruct, PrivilegeLevel};
+use crate::i386::PrivilegeLevel;
 use crate::mem::VirtualAddress;
-use crate::paging::{PAGE_SIZE, kernel_memory::get_kernel_memory};
-use alloc::boxed::Box;
-use crate::i386::gdt;
 use crate::i386::structures::gdt::SegmentSelector;
 
 /// An Interrupt Descriptor Table with 256 entries.
@@ -589,25 +586,16 @@ impl<F> IdtEntry<F> {
 
     /// Set a task gate for the IDT entry and sets the present bit.
     ///
-    /// For the code selector field, this function uses the code segment selector currently
-    /// active in the CPU.
-    pub fn set_handler_task_gate_addr(&mut self, addr: u32) {
+    /// # Unsafety
+    ///
+    /// `tss_selector` must point to a valid TSS, which will remain present.
+    /// The TSS' `eip` should point to the handler function.
+    /// The TSS' `esp` and `esp0` should point to a usable stack for the handler function.
+    pub unsafe fn set_handler_task_gate(&mut self, tss_selector: SegmentSelector) {
 
         self.pointer_low = 0;
         self.pointer_high = 0;
-
-        let stack = get_kernel_memory().get_page();
-
-        // Load tss segment with addr in IP.
-        let mut tss = AlignedTssStruct::new(TssStruct::new());
-        //tss.ss0 = SegmentSelector(3 << 3);
-        tss.esp0 = (stack.addr() + PAGE_SIZE) as u32;
-        tss.esp = (stack.addr() + PAGE_SIZE) as u32;
-        tss.eip = addr;
-
-        let tss = Box::leak(tss);
-
-        self.gdt_selector = gdt::push_task_segment(tss);
+        self.gdt_selector = tss_selector;
         self.options.set_present_task(true);
     }
 }
@@ -627,18 +615,6 @@ macro_rules! impl_set_handler_fn {
                 unsafe {
                     self.set_interrupt_gate_addr(handler as u32)
                 }
-            }
-
-            /// Set a task gate function for the IDT entry and sets the present bit.
-            ///
-            /// For the code selector field, this function uses the code segment selector currently
-            /// active in the CPU.
-            ///
-            /// The function returns a mutable reference to the entry's options that allows
-            /// further customization.
-            #[allow(clippy::fn_to_numeric_cast)] // it **is** a u32
-            pub fn set_task_fn(&mut self, handler: $h) {
-                self.set_handler_task_gate_addr(handler as u32)
             }
         }
     }
