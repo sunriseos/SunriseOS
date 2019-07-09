@@ -439,3 +439,37 @@ pub fn map_mmio_region(physical_address: usize, size: usize, virtual_address: us
         Ok(())
     }
 }
+
+/// Set thread local area pointer.
+///
+/// Akin to `set_thread_area` on Linux, this syscall sets the `gs` segment selector's base address
+/// to the address passed as argument.
+///
+/// The user will likely want to make it point to its elf thread local storage, as `gs:0` is expected
+/// to contain the thread pointer `tp`.
+///
+/// Unlike linux, you only have **one** user controlled segment, found in `gs`, and you can only set its address.
+///
+/// The limit will always be set to `0xFFFFFFFF`, and adding this offset to a non-zero base address
+/// means that the resulting address will "wrap around" the address space, and end-up **under**
+/// the base address.
+/// You can use this property to implement thread local storage variant II - gnu model,
+/// as thread local variable are expected to be found "below" `gs:0`, with "negative" offset such as
+/// `gs:0xFFFFFFFC`.
+///
+/// ## x86_64
+///
+/// ![same, but different, but still same](https://media.giphy.com/media/C6JQPEUsZUyVq/giphy.gif)
+///
+/// `fs` is used instead of `gs`, because reasons.
+///
+/// # Errors
+///
+/// * The whole initial design of TLS on x86 should be considered an error.
+/// * No returned error otherwise.
+pub fn set_thread_area(address: usize) -> Result<(), KernelError> {
+    unsafe {
+        syscall(nr::SetThreadArea, address, 0, 0, 0, 0, 0)?;
+        Ok(())
+    }
+}

@@ -1,7 +1,76 @@
 //! GDT Handler
 //!
-//! The Global Descriptor Table is responsible for segmentation of memory. In
-//! our case though, we don't really care about that.
+//! The Global Descriptor Table is responsible for segmentation of memory.
+//!
+//! Since we manage memory permissions in the paging, we want to set-up our
+//! segments so that we have a flat-memory model, i.e. having segments with
+//! `base = 0; limit = 0xffffffff`.
+//!
+//! ### GDT segments
+//!
+//! | Index                    | Found in                               | Maps to                        | Purpose                                                           |
+//! |--------------------------|----------------------------------------|--------------------------------|-------------------------------------------------------------------|
+//! | [`GdtIndex::Null`]       | nowhere (hopefully)                    | _                              | _                                                                 |
+//! | [`GdtIndex::KCode`]      | `cs`, while in kernel code             | flat: `0x00000000..0xffffffff` | kernel's code segment                                             |                                                    |
+//! | [`GdtIndex::KData`]      | `ds`, `es`, while in kernel code       | flat: `0x00000000..0xffffffff` | kernel's data segment                                             |
+//! | [`GdtIndex::KTls`]       | `gs`, while in kernel code             | kernel's cpu-locals            | kernel sets-up cpu-locals at this address                         |
+//! | [`GdtIndex::KStack`]     | `ss`, while in kernel code             | flat: `0x00000000..0xffffffff` | kernel's stack segment                                            |
+//! | [`GdtIndex::UCode`]      | `cs`, while in user code               | flat: `0x00000000..0xffffffff` | user's code segment                                               |
+//! | [`GdtIndex::UData`]      | `ds`, `es`, while in user code         | flat: `0x00000000..0xffffffff` | user's data segment                                               |
+//! | [`GdtIndex::UTlsRegion`] | `fs`, while in user code               | `&`[`TLS`]`..&`[`TLS`]`+0x200` | user can get the address of its [`TLS`] from this selector        |
+//! | [`GdtIndex::UTlsElf`]    | `gs`, while in user code               | User-defined                   | user can set-up elf TLS at this address                           |
+//! | [`GdtIndex::UStack`]     | `ss`, while in user code               | flat: `0x00000000..0xffffffff` |                                                                   |
+//! | [`GdtIndex::LDT`]        | _                                      | Points to the [`GLOBAL_LDT`]   |                                                                   |
+//! | [`GdtIndex::TSS`]        | IDT Double fault vector                | Points to the [`MAIN_TASK`]    | Double fault exception backups registers to this TSS              |
+//! | [`GdtIndex::FTSS`]       | IDT Double fault vector                |                                | Double fault exception loads registers from this TSS              |
+//!
+//! ##### UTlsRegion
+//!
+//! The kernel allocates a 0x200-bytes region for every thread, and always makes `fs` point to it
+//! when jumping to userspace. See [`TLS`] for more.
+//!
+//! This region is thread local, its address is switched at every thread-switch.
+//!
+//! ##### UTlsElf:
+//!
+//! The segment pointed by `gs` is controlled by the user. It can set its address/limit with
+//! [`svcSetThreadArea`]. The segment it chooses to use is local to every thread, and defaults to `0x00000000..0xffffffff`.
+//!
+//! Typically, the user will want to make `gs` point to its elf TLS.
+//!
+//! This segment is thread local, its address and size are switched at every thread-switch.
+//!
+//! ### LDT segments:
+//!
+//! None :)
+//!
+//! ## x86_64
+//!
+//! Because x86_64 uses `fs` for tls instead of `gs`, the purpose of `gs` and `fs` are swapped:
+//!
+//! | Index               | Found in                               | Maps to                        | Purpose                                                           |
+//! |---------------------|----------------------------------------|--------------------------------|-------------------------------------------------------------------|
+//! | MSR                 | `fs`, while in kernel code             | kernel's cpu-locals            | kernel sets-up cpu-locals at this address                         |
+//! | MSR                 | `gs`, while in user code               | `&`[`TLS`]`..&`[`TLS`]`+0x200` | user can get the address of its [`TLS`] from this selector        |
+//! | MSR                 | `fs`, while in user code               | User-defined                   | user can set-up elf TLS at this address                           |
+//!
+//! [`GdtIndex::Null`]: gdt::GdtIndex::Null
+//! [`GdtIndex::KCode`]: gdt::GdtIndex::KCode
+//! [`GdtIndex::KData`]: gdt::GdtIndex::KData
+//! [`GdtIndex::KTls`]: gdt::GdtIndex::KTls
+//! [`GdtIndex::KStack`]: gdt::GdtIndex::KStack
+//! [`GdtIndex::UCode`]: gdt::GdtIndex::UCode
+//! [`GdtIndex::UData`]: gdt::GdtIndex::UData
+//! [`GdtIndex::UTlsRegion`]: gdt::GdtIndex::UTlsRegion
+//! [`GdtIndex::UTlsElf`]: gdt::GdtIndex::UTlsElf
+//! [`GdtIndex::UStack`]: gdt::GdtIndex::UStack
+//! [`GdtIndex::LDT`]: gdt::GdtIndex::LDT
+//! [`GdtIndex::TSS`]: gdt::GdtIndex::TSS
+//! [`GdtIndex::FTSS`]: gdt::GdtIndex::FTSS
+//! [`TLS`]: sunrise_libkern::TLS
+//! [`GLOBAL_LDT`]: gdt::GLOBAL_LDT
+//! [`MAIN_TASK`]: gdt::MAIN_TASK
+//! [`svcSetThreadArea`]: crate::interrupts::syscalls::set_thread_area
 
 #![allow(dead_code)]
 
@@ -51,6 +120,8 @@ pub enum GdtIndex {
     UData      = 6,
     /// The index in the GDT of the Userland thread local storage segment descriptor.
     UTlsRegion = 7,
+    /// The index in the GDT of the Userland thread local storage segment descriptor.
+    UTlsElf    = 8,
     /// The index in the GDT of the Userland stack segment descriptor.
     UStack     = 9,
     /// The index in the GDT of the LDT descriptor.
@@ -73,7 +144,7 @@ impl GdtIndex {
             GdtIndex::KCode | GdtIndex::KData | GdtIndex::KTls | GdtIndex::KStack |
             GdtIndex::LDT | GdtIndex::TSS | GdtIndex::FTSS
                 => SegmentSelector::new(self as u16, PrivilegeLevel::Ring0),
-            GdtIndex::UCode | GdtIndex::UData | GdtIndex::UTlsRegion |
+            GdtIndex::UCode | GdtIndex::UData | GdtIndex::UTlsRegion | GdtIndex::UTlsElf |
             GdtIndex::UStack
                 => SegmentSelector::new(self as u16, PrivilegeLevel::Ring3),
 
@@ -84,8 +155,8 @@ impl GdtIndex {
 
 /// Initializes the GDT.
 ///
-/// Creates a GDT with a flat memory segmentation model. It will create 3 kernel
-/// segments (code, data, stack), four user segments (code, data, stack, tls), an
+/// Creates a GDT with a flat memory segmentation model. It will create 4 kernel
+/// segments (code, data, tls, stack), 5 user segments (code, data, tls region, tls elf, stack), an
 /// LDT, and a TSS for the main task.
 ///
 /// This function should only be called once. Further calls will be silently
@@ -145,6 +216,13 @@ pub fn init_gdt() {
         gdt.table[GdtIndex::UTlsRegion as usize] = DescriptorTableEntry::new(
             0,
             (size_of::<TLS>() - 1) as u32,
+            false,
+            PrivilegeLevel::Ring3,
+        );
+        // Push a userland thread local storage segment, will be moved at every thread-switch.
+        gdt.table[GdtIndex::UTlsElf as usize] = DescriptorTableEntry::new(
+            0,
+            0xffffffff,
             false,
             PrivilegeLevel::Ring3,
         );

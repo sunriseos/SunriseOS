@@ -114,7 +114,16 @@ pub struct ThreadStruct {
     pub process: Arc<ProcessStruct>,
 
     /// Pointer to the Thread Local Storage region of this thread.
-    pub tls: VirtualAddress,
+    ///
+    /// * x86_32: loaded in the `fs` segment selector.
+    /// * x86_64: loaded in the `gs` segment selector.
+    pub tls_region: VirtualAddress,
+
+    /// Userspace's elf `Thread Pointer`.
+    ///
+    /// * x86_32: loaded in the `gs` segment selectors.
+    /// * x86_64: loaded in the `fs` segment selectors.
+    pub tls_elf: Mutex<VirtualAddress>,
 }
 
 /// A handle to a userspace-accessible resource.
@@ -555,7 +564,8 @@ impl ThreadStruct {
                 kstack,
                 hwcontext : empty_hwcontext,
                 process: Arc::clone(belonging_process),
-                tls,
+                tls_region: tls,
+                tls_elf: Mutex::new(VirtualAddress(0x00000000)),
             }
         );
 
@@ -645,7 +655,8 @@ impl ThreadStruct {
                 kstack,
                 hwcontext,
                 process: Arc::clone(&process),
-                tls,
+                tls_region: tls,
+                tls_elf: Mutex::new(VirtualAddress(0x00000000)),
             }
         );
 
@@ -714,7 +725,7 @@ impl Drop for ThreadStruct {
     fn drop(&mut self) {
         unsafe {
             // safe: we're being dropped, our TLS will not be reused by us.
-            self.process.tls_manager.lock().free_tls(self.tls);
+            self.process.tls_manager.lock().free_tls(self.tls_region);
         }
         // todo this should be a debug !
         info!("💀 Dropped a thread : {}", self.process.name)

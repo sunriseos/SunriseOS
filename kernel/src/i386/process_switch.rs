@@ -105,7 +105,8 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
         let mut gdt = GDT
             .r#try().expect("GDT not initialized")
             .try_lock().expect("Could not lock GDT");
-        gdt.table[GdtIndex::UTlsRegion as usize].set_base(thread_b.tls.addr() as u32);
+        gdt.table[GdtIndex::UTlsRegion as usize].set_base(thread_b.tls_region.addr() as u32);
+        gdt.table[GdtIndex::UTlsElf as usize].set_base(thread_b.tls_elf.lock().addr() as u32);
         gdt.commit(None, None, None, None, None, None);
 
         let current_esp: usize;
@@ -325,6 +326,7 @@ fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize, arg: usize) -> ! {
     const_assert_eq!((GdtIndex::UCode as u16) << 3 | 0b11, 0x2B);
     const_assert_eq!((GdtIndex::UData as u16) << 3 | 0b11, 0x33);
     const_assert_eq!((GdtIndex::UTlsRegion as u16) << 3 | 0b11, 0x3B);
+    const_assert_eq!((GdtIndex::UTlsElf as u16) << 3 | 0b11, 0x43);
     const_assert_eq!((GdtIndex::UStack as u16) << 3 | 0b11, 0x4B);
     unsafe {
         asm!("
@@ -333,6 +335,7 @@ fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize, arg: usize) -> ! {
         mov es,ax
         mov ax,0x3B  // fs     <- UTlsRegion, Ring 3
         mov fs,ax
+        mov ax, 0x43 // gs     <- UTlsElf, Ring 3
         mov gs,ax
 
         // Build the fake stack for IRET

@@ -321,23 +321,23 @@ pub type IpcBuffer = [u8; 0x100];
 /// The kernel allocates one for every thread, and makes a register point (indirectly) to it
 /// so that the userspace can access it at any time.
 ///
-/// * x86_32: Stored at `gs:0x00..gs:0x200`.
-/// * x86_64: Stored at `fs:0x00..fs:0x200`.
+/// * x86_32: Stored at `fs:0x00..fs:0x200`.
+/// * x86_64: Stored at `gs:0x00..gs:0x200`.
 #[repr(C, align(16))]
 pub struct TLS {
     /// Pointer pointing to this TLS region (i.e pointing to itself). Set by the kernel.
     ///
-    /// x86 uses the segmentation for accessing the TLS, and it has no way to translate `gs:0x0`
+    /// x86 uses the segmentation for accessing the TLS, and it has no way to translate `fs:0x0`
     /// to an address in the flat segmentation model that every other segment uses.
     ///
     /// This pointer serves as a translation.
     pub ptr_self: *mut TLS,
     /// reserved or unknown.
-    _reserved0: [u8; 16 - size_of::<*mut u8>()],
+    _reserved0: [u8; 16 - size_of::<*mut TLS>()],
     /// Buffer used for IPC. Kernel reads, interprets, and copies data from/to it.
     pub ipc_command_buffer: IpcBuffer,
     /// reserved or unknown.
-    _reserved1: [u8; 0x200 - size_of::<IpcBuffer>() - 2 * size_of::<usize>() - (16 - size_of::<*mut u8>())],
+    _reserved1: [u8; 0x200 - size_of::<IpcBuffer>() - 2 * size_of::<usize>() - (16 - size_of::<*mut TLS>())],
     /// User controlled pointer to thread context. Not observed by the kernel.
     pub ptr_thread_context: usize,
 }
@@ -514,8 +514,9 @@ syscalls! {
     MapFramebuffer = 0x80,
     StartProcessEntrypoint = 0x81,
     MapMmioRegion = 0x82,
+    SetThreadArea = 0x83,
 
     ---
     // Add SVCs before this line.
-    MaxSvc = 0x82
+    MaxSvc = 0x83
 }

@@ -123,20 +123,20 @@ static MAIN_THREAD_CONTEXT: ThreadContext = ThreadContext {
     thread_handle: Once::new(), // will be initialized at startup.
 };
 
-/// Get a pointer to this thread's [TLS] region pointed to by `gs`, translated to the flat-memory model.
+/// Get a pointer to this thread's [TLS] region pointed to by `fs`, translated to the flat-memory model.
 #[inline]
 fn get_my_tls_region() -> *mut TLS {
     let mut tls: *mut TLS;
     unsafe {
-        // get the address of the TLS region from gs:0x00 translated to the flat model
-        // safe: gs:0x00 is guaranteed by the kernel to hold a valid pointer to itself.
-        asm!("mov $0, gs:0x00" : "=r" (tls) ::: "intel");
+        // get the address of the TLS region from fs:0x00 translated to the flat model
+        // safe: fs:0x00 is guaranteed by the kernel to hold a valid pointer to itself.
+        asm!("mov $0, fs:0x00" : "=r" (tls) ::: "intel");
     }
     tls
 }
 
 
-/// Get a pointer to this thread's [ThreadContext], from the [TLS] region pointed to by `gs`.
+/// Get a pointer to this thread's [ThreadContext], from the [TLS] region pointed to by `fs`.
 #[inline]
 pub fn get_my_thread_context() -> *mut ThreadContext {
     unsafe {
@@ -145,7 +145,7 @@ pub fn get_my_thread_context() -> *mut ThreadContext {
     }
 }
 
-/// Get a pointer to this thread's [IPCBuffer], from the [TLS] region pointed to by `gs`.
+/// Get a pointer to this thread's [IPCBuffer], from the [TLS] region pointed to by `fs`.
 ///
 /// [IpcBuffer]: sunrise_libkern::IpcBuffer
 #[inline]

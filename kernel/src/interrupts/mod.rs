@@ -350,6 +350,12 @@ extern "x86-interrupt" fn security_exception_handler(stack_frame: &mut Exception
     panic_on_exception(format_args!("Unexpected Security Exception: error code {:?}", errcode), stack_frame);
 }
 
+// gonna write constants in the code, cause not enough registers.
+// just check we aren't hard-coding the wrong values.
+const_assert_eq!((GdtIndex::KTls as u16) << 3 | 0b00, 0x18);
+const_assert_eq!((GdtIndex::UTlsRegion as u16) << 3 | 0b11, 0x3B);
+const_assert_eq!((GdtIndex::UTlsElf as u16) << 3 | 0b11, 0x43);
+
 /// This is the function called on int 0x80.
 ///
 /// The ABI is linuxy, but modified to allow multiple register returns:
@@ -396,9 +402,15 @@ extern "C" fn syscall_handler() {
         push ecx
         push ebx
         push eax
+        // Load kernel tls segment
+        mov ax, 0x18
+        mov gs, ax
         // Push pointer to Registers structure as argument
         push esp
         call $0
+        // Load userspace tls segment
+        mov ax, 0x43
+        mov gs, ax
         // Restore registers.
         mov ebx, [esp + 0x08]
         mov ecx, [esp + 0x0C]
