@@ -10,7 +10,6 @@ use crate::i386::instructions::interrupts::sti;
 use crate::mem::VirtualAddress;
 use crate::paging::kernel_memory::get_kernel_memory;
 use crate::i386::PrivilegeLevel;
-use crate::i386::gdt;
 use crate::scheduler::get_current_thread;
 use crate::process::{ProcessStruct, ThreadState};
 use crate::sync::SpinLockIRQ;
@@ -21,9 +20,49 @@ use crate::sync::SpinLock;
 use crate::scheduler;
 use crate::i386::gdt::GdtIndex;
 use crate::i386::gdt::DOUBLE_FAULT_TASK;
+use crate::panic::{kernel_panic, PanicOrigin};
+use crate::i386::structures::gdt::SegmentSelector;
+use crate::i386::registers::eflags::EFlags;
 
 mod irq;
-mod syscalls;
+pub mod syscalls;
+
+/// Represents a register backup.
+#[repr(C)]
+#[derive(Debug, Clone, Default)]
+#[allow(clippy::missing_docs_in_private_items)]
+#[allow(missing_docs)]
+pub struct UserspaceHardwareContext {
+    pub esp: usize,
+    pub ebp: usize,
+    pub edi: usize,
+    pub esi: usize,
+    pub edx: usize,
+    pub ecx: usize,
+    pub ebx: usize,
+    pub eax: usize,
+    // pushed by cpu:
+    pub errcode: usize,
+    pub eip: usize,
+    pub cs: usize,
+    pub eflags: usize,
+}
+
+impl core::fmt::Display for UserspaceHardwareContext {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> Result<(), core::fmt::Error> {
+        writeln!(f, "EIP={:#010x} ESP={:#010x} EBP={:#010x}\n\
+                     EAX={:#010x} EBX={:#010x} ECX={:#010x} EDX={:#010x}\n\
+                     ESI={:#010x} EDI={:#010X}\n\
+                     EFLAGS={:?}\n\
+                     CS={:?}",
+                     self.eip, self.esp, self.ebp,
+                     self.eax, self.ebx, self.ecx, self.edx,
+                     self.esi, self.edi,
+                     EFlags::from_bits_truncate(self.eflags as u32),
+                     SegmentSelector(self.cs as u16),
+        )
+    }
+}
 
 /// Checks if our thread was killed, in which case unschedule ourselves.
 ///
@@ -42,17 +81,16 @@ pub fn check_thread_killed() {
 
 /// Panics with an informative message.
 fn panic_on_exception(exception_string: Arguments<'_>, exception_stack_frame: &ExceptionStackFrame) -> ! {
-    unsafe {
-        // safe: we're not passing a stackdump_source
-        //       so it will use our current kernel stack, which is safe.
-        crate::do_panic(
-            format_args!("{} in {:?}: {:?}",
-                         exception_string,
-                         scheduler::try_get_current_process().as_ref().map(|p| &p.name),
-                         exception_stack_frame),
-            None,
-        )
-    }
+    kernel_panic(&PanicOrigin::UserspaceFault {
+        exception_message: exception_string,
+        userspace_hardware_context: UserspaceHardwareContext {
+            cs: exception_stack_frame.code_segment as usize,
+            eflags: exception_stack_frame.cpu_flags as usize,
+            eip: exception_stack_frame.instruction_pointer.addr(),
+            esp: exception_stack_frame.stack_pointer.addr(),
+            .. UserspaceHardwareContext::default()
+        }
+    });
 }
 
 /// Divide by zero interruption handler. Kills the process unconditionally.
@@ -170,28 +208,7 @@ extern "x86-interrupt" fn device_not_available_handler(stack_frame: &mut Excepti
 
 /// Double fault handler. Panics the kernel unconditionally.
 fn double_fault_handler() {
-    // Get the Main TSS so I can recover some information about what happened.
-    unsafe {
-        // Safety: gdt::MAIN_TASK should always point to a valid TssStruct.
-        if let Some(tss_main) = gdt::MAIN_TASK.try_lock() {
-
-            // safe: we're in an exception handler, nobody can modify the faulty thread's stack.
-            crate::do_panic(format_args!("Double fault!
-                    EIP={:#010x} CR3={:#010x}
-                    EAX={:#010x} EBX={:#010x} ECX={:#010x} EDX={:#010x}
-                    ESI={:#010x} EDI={:#010X} ESP={:#010x} EBP={:#010x}",
-                    tss_main.tss.eip, tss_main.tss.cr3,
-                    tss_main.tss.eax, tss_main.tss.ebx, tss_main.tss.ecx, tss_main.tss.edx,
-                    tss_main.tss.esi, tss_main.tss.edi, tss_main.tss.esp, tss_main.tss.ebp),
-                Some(crate::stack::StackDumpSource::new(
-                    tss_main.tss.esp as usize, tss_main.tss.ebp as usize, tss_main.tss.eip as usize
-                    )));
-        } else {
-            // safe: we're not passing a stackdump_source
-            //       so it will use our current stack, which is safe.
-            crate::do_panic(format_args!("Doudble fault! Cannot get main TSS, good luck"), None)
-        }
-    }
+    kernel_panic(&PanicOrigin::DoubleFault);
 }
 
 /// Invalid tss interruption handler. Panics the kernel unconditionally.

@@ -312,6 +312,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "memchr"
+version = "2.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
 name = "multiboot2"
 version = "0.7.1"
 source = "git+https://github.com/sunriseos/multiboot2-elf64.git#01f37450ae3d7f996c34337853e96124bfa07822"
@@ -323,6 +328,15 @@ dependencies = [
 name = "nodrop"
 version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "nom"
+version = "4.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "memchr 2.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "version_check 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
+]
 
 [[package]]
 name = "num-traits"
@@ -551,6 +565,7 @@ dependencies = [
  "static_assertions 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "sunrise-libkern 0.1.0",
  "sunrise-libutils 0.1.0",
+ "tinybmp 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "xmas-elf 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -687,6 +702,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "tinybmp"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "nom 4.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "typenum"
 version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -714,6 +737,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "vec_map"
 version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "version_check"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
@@ -792,8 +820,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum mashup 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)" = "f2d82b34c7fb11bb41719465c060589e291d505ca4735ea30016a91f6fc79c3b"
 "checksum mashup-impl 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)" = "aa607bfb674b4efb310512527d64266b065de3f894fc52f84efcbf7eaa5965fb"
 "checksum math 0.0.1 (git+https://github.com/roblabla/math.rs.git)" = "<none>"
+"checksum memchr 2.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "88579771288728879b57485cc7d6b07d648c9f0141eb955f8ab7f9d45394468e"
 "checksum multiboot2 0.7.1 (git+https://github.com/sunriseos/multiboot2-elf64.git)" = "<none>"
 "checksum nodrop 0.1.13 (registry+https://github.com/rust-lang/crates.io-index)" = "2f9667ddcc6cc8a43afc9b7917599d7216aa09c463919ea32c59ed6cac8bc945"
+"checksum nom 4.2.3 (registry+https://github.com/rust-lang/crates.io-index)" = "2ad2a91a8e869eeb30b9cb3119ae87773a8f4ae617f41b1eb9c154b2905f7bd6"
 "checksum num-traits 0.2.8 (registry+https://github.com/rust-lang/crates.io-index)" = "6ba9a427cfca2be13aa6f6403b0b7e7368fe982bfa16fccc450ce74c46cd9b32"
 "checksum pest 2.1.0 (git+https://github.com/pest-parser/pest)" = "<none>"
 "checksum pest 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "54f0c72a98d8ab3c99560bfd16df8059cc10e1f9a8e83e6e3b97718dd766e9c3"
@@ -821,12 +851,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum synstructure 0.10.1 (registry+https://github.com/rust-lang/crates.io-index)" = "73687139bf99285483c96ac0add482c3776528beac1d97d444f6e91f203a2015"
 "checksum termion 1.5.1 (registry+https://github.com/rust-lang/crates.io-index)" = "689a3bdfaab439fd92bc87df5c4c78417d3cbe537487274e9b0b2dce76e92096"
 "checksum textwrap 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)" = "d326610f408c7a4eb6f51c37c330e496b08506c9457c9d34287ecc38809fb060"
+"checksum tinybmp 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "503e3fde7e36b1aa2345af8a3af0086c9b01d9db07b24f3fb0aab07316b9fa10"
 "checksum typenum 1.10.0 (registry+https://github.com/rust-lang/crates.io-index)" = "612d636f949607bdf9b123b4a6f6d966dedf3ff669f7f045890d3a4a73948169"
 "checksum ucd-trie 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "71a9c5b1fe77426cf144cc30e49e955270f5086e31a6441dfa8b32efc09b9d77"
 "checksum unicode-segmentation 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "aa6024fc12ddfd1c6dbc14a80fa2324d4568849869b779f6bd37e5e4c03344d1"
 "checksum unicode-width 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "882386231c45df4700b275c7ff55b6f3698780a650026380e72dabe76fa46526"
 "checksum unicode-xid 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "fc72304796d0818e357ead4e000d19c9c174ab23dc11093ac919054d20a6a7fc"
 "checksum vec_map 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)" = "05c78687fb1a80548ae3250346c3db86a80a7cdd77bda190189f2d0a0987c81a"
+"checksum version_check 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "914b1a6776c4c929a602fafd8bc742e06365d4bcbe48c30f9cca5824f70dc9dd"
 "checksum winapi 0.3.7 (registry+https://github.com/rust-lang/crates.io-index)" = "f10e386af2b13e47c89e7236a7a14a086791a2b88ebad6df9bf42040195cf770"
 "checksum winapi-i686-pc-windows-gnu 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ac3b87c63620426dd9b991e5ce0329eff545bccbbb34f3be09ff6fb6ab51b7b6"
 "checksum winapi-x86_64-pc-windows-gnu 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"

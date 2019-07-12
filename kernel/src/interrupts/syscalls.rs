@@ -45,7 +45,7 @@ fn set_heap_size(new_size: usize) -> Result<usize, UserspaceError> {
 }
 
 /// Maps the vga frame buffer mmio in userspace memory
-fn map_framebuffer() -> Result<(usize, usize, usize, usize), UserspaceError> {
+pub fn map_framebuffer() -> Result<(usize, usize, usize, usize), UserspaceError> {
     let tag = i386::multiboot::get_boot_information().framebuffer_tag()
         .expect("Framebuffer to be provided");
     let framebuffer_size = tag.bpp as usize

@@ -70,6 +70,7 @@ pub mod ipc;
 pub mod elf_loader;
 pub mod utils;
 pub mod checks;
+pub mod panic;
 
 #[cfg(target_os = "none")]
 // Make rust happy about rust_oom being no_mangle...
@@ -253,97 +254,13 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 #[cfg(target_os = "none")]
 #[lang = "eh_personality"] #[no_mangle] pub extern fn eh_personality() {}
 
-/// The kernel panic function.
-///
-/// Executed on a `panic!`, but can also be called directly.
-/// Will print some useful debugging information, and never return.
-///
-/// This function will print a stack dump, from `stackdump_source`.
-/// If `None` is passed, it will dump the current KernelStack instead, this is the default for a panic!.
-/// It is usefull being able to debug another stack that our own, especially when we double-faulted.
-///
-/// # Safety
-///
-/// When a `stackdump_source` is passed, this function cannot check the requirements of
-/// [dump_stack], it is the caller's job to do it.
-///
-/// Note that if `None` is passed, this function is safe.
-///
-/// [dump_stack]: crate::stack::dump_stack
-unsafe fn do_panic(msg: core::fmt::Arguments<'_>, stackdump_source: Option<stack::StackDumpSource>) -> ! {
-
-    // Disable interrupts forever!
-    unsafe { sync::permanently_disable_interrupts(); }
-    // Don't deadlock in the logger
-    unsafe { SerialLogger.force_unlock(); }
-
-    //todo: force unlock the KernelMemory lock
-    //      and also the process memory lock for userspace stack dumping (only if panic-on-excetpion ?).
-
-    use crate::devices::rs232::SerialLogger;
-
-    let _ = writeln!(SerialLogger, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\
-                                    ! Panic! at the disco\n\
-                                    ! {}\n\
-                                    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
-                     msg);
-
-    // Parse the ELF to get the symbol table.
-    // We must not fail, so this means a lot of Option checking :/
-    use xmas_elf::symbol_table::Entry32;
-    use xmas_elf::sections::SectionData;
-    use xmas_elf::ElfFile;
-    use crate::elf_loader::MappedGrubModule;
-
-    let mapped_kernel_elf = i386::multiboot::try_get_boot_information()
-        .and_then(|info| info.module_tags().nth(0))
-        .and_then(|module| elf_loader::map_grub_module(module).ok());
-
-    /// Gets the symbol table of a mapped module.
-    fn get_symbols<'a>(mapped_kernel_elf: &'a Option<MappedGrubModule<'_>>) -> Option<(&'a ElfFile<'a>, &'a[Entry32])> {
-        let module = mapped_kernel_elf.as_ref()?;
-        let elf = module.elf.as_ref().ok()?;
-        let data = elf.find_section_by_name(".symtab")?
-            .get_data(elf).ok()?;
-        let st = match data {
-            SectionData::SymbolTable32(st) => st,
-            _ => return None
-        };
-        Some((elf, st))
-    }
-
-    let elf_and_st = get_symbols(&mapped_kernel_elf);
-
-    if elf_and_st.is_none() {
-        let _ = writeln!(SerialLogger, "Panic handler: Failed to get kernel elf symbols");
-    }
-
-    // Then print the stack
-    if let Some(sds) = stackdump_source {
-        unsafe {
-            // this is unsafe, caller must check safety
-            crate::stack::dump_stack(&sds, elf_and_st)
-        }
-    } else {
-        crate::stack::KernelStack::dump_current_stack(elf_and_st)
-    }
-
-    let _ = writeln!(SerialLogger, "Thread : {:#x?}", scheduler::try_get_current_thread());
-
-    let _ = writeln!(SerialLogger, "!!!!!!!!!!!!!!!END PANIC!!!!!!!!!!!!!!");
-
-    loop { unsafe { asm!("HLT"); } }
-}
-
 /// Function called on `panic!` invocation.
 ///
 /// Kernel panics.
 #[cfg(target_os = "none")]
 #[panic_handler] #[no_mangle]
 pub extern fn panic_fmt(p: &::core::panic::PanicInfo<'_>) -> ! {
-    unsafe {
-        // safe: we're not passing a stackdump_source
-        //       so it will use our current stack, which is safe.
-        do_panic(format_args!("{}", p), None);
-    }
+    panic::kernel_panic(&panic::PanicOrigin::KernelAssert {
+        panic_message: format_args!("{}", p)
+    });
 }
