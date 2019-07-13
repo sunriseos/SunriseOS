@@ -19,6 +19,9 @@ struct KernelTimerInfo {
 
     /// The IRQ number that the timer use.
     pub irq_number: u8,
+
+    /// Get the current tick in nanoseconds.
+    pub get_tick: fn() -> u64,
 }
 
 /// Stores the information needed for Sunrise's internal timing.
@@ -29,13 +32,14 @@ static KERNEL_TIMER_INFO: Once<KernelTimerInfo> = Once::new();
 /// # Panics
 ///
 /// Panics if the timer info has already been initialized.
-pub fn set_kernel_timer_info(irq_number: u8, oscillator_frequency: u64, irq_period_ns: u64) {
+pub fn set_kernel_timer_info(irq_number: u8, oscillator_frequency: u64, irq_period_ns: u64, get_tick: fn() -> u64) {
     assert!(KERNEL_TIMER_INFO.r#try().is_none(), "Kernel Timer Info is already initialized!");
     KERNEL_TIMER_INFO.call_once(|| {
         KernelTimerInfo {
             irq_number,
             oscillator_frequency,
-            irq_period_ns
+            irq_period_ns,
+            get_tick
         }
     });
 }
@@ -101,3 +105,13 @@ impl Waitable for IRQTimer {
     }
 }
 
+/// Gets the current tick in nanosecond according to the [KERNEL_TIMER_INFO].
+///
+/// The tick should be monotonically increasing. Note that the underlying timer
+/// might not have nanosecond precision - the HPET, for instance, has a worst
+/// precision of 100ns.
+pub fn get_tick() -> u64 {
+    let timer_info = KERNEL_TIMER_INFO.r#try().expect("Kernel Timer Info is not initialized!");
+
+    (timer_info.get_tick)()
+}

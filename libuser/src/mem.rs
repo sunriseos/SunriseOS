@@ -64,6 +64,17 @@ pub fn map_mmio<T>(physical_address: usize) -> Result<*mut T, KernelError> {
     Ok((virt_addr + (physical_address % PAGE_SIZE)) as *mut T)
 }
 
+/// Maps a range of bytes.
+///
+/// This function preserves the offset relative to `PAGE_SIZE`.
+pub fn map_mmio_range(physical_address: usize, len: usize) -> Result<*mut u8, KernelError> {
+    let aligned_phys_addr = align_down(physical_address, PAGE_SIZE);
+    let full_size = align_up(aligned_phys_addr + len, PAGE_SIZE) - aligned_phys_addr;
+    let virt_addr = find_free_address(full_size as _, 1).unwrap();
+    syscalls::map_mmio_region(aligned_phys_addr as _, full_size as _, virt_addr, true)?;
+    Ok((virt_addr + (physical_address % PAGE_SIZE)) as *mut u8)
+}
+
 /// Gets the physical address of a structure from its virtual address, preserving offset in the page.
 ///
 /// # Panics

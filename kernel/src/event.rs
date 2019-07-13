@@ -159,7 +159,7 @@ impl Waitable for IRQEvent {
     fn register(&self) {
         let curproc = scheduler::get_current_thread();
         let mut veclock = self.state.waiting_processes.lock();
-        info!("Registering {:010x} for irq {}", &*curproc as *const _ as usize, self.state.irqnum);
+        debug!("Registering {:010x} for irq {}", &*curproc as *const _ as usize, self.state.irqnum);
         if veclock.iter().find(|v| Arc::ptr_eq(&curproc, v)).is_none() {
             veclock.push(scheduler::get_current_thread());
         }
@@ -186,6 +186,12 @@ pub fn wait_event(irq: u8) -> IRQEvent {
         state: &IRQ_STATES[irq as usize], ack: AtomicUsize::new(IRQ_STATES[irq as usize].counter.load(Ordering::SeqCst))
     }
 }
+
+/// Gets the number of times a certain IRQ got triggered since boot.
+pub fn get_current_count(irqnum: u8) -> usize {
+    IRQ_STATES[usize::from(irqnum)].counter.load(Ordering::SeqCst)
+}
+
 
 /// Global state of an IRQ.
 ///
@@ -214,10 +220,11 @@ impl IRQState {
 }
 
 /// Global state for all the IRQ handled by the IOAPIC.
-static IRQ_STATES: [IRQState; 17] = [
+static IRQ_STATES: [IRQState; 24] = [
     IRQState::new(0x20), IRQState::new(0x21), IRQState::new(0x22), IRQState::new(0x23),
     IRQState::new(0x24), IRQState::new(0x25), IRQState::new(0x26), IRQState::new(0x27),
     IRQState::new(0x28), IRQState::new(0x29), IRQState::new(0x2A), IRQState::new(0x2B),
     IRQState::new(0x2C), IRQState::new(0x2D), IRQState::new(0x2E), IRQState::new(0x2F),
-    IRQState::new(0x30),
+    IRQState::new(0x30), IRQState::new(0x31), IRQState::new(0x32), IRQState::new(0x33),
+    IRQState::new(0x34), IRQState::new(0x35), IRQState::new(0x36), IRQState::new(0x37),
 ];

@@ -16,6 +16,7 @@
 
 use core::marker::PhantomData;
 use core::mem;
+use core::convert::TryFrom;
 use byteorder::{ByteOrder, LE};
 use arrayvec::{ArrayVec, Array};
 use crate::utils::{self, align_up, CursorWrite, CursorRead};
@@ -24,8 +25,6 @@ use bit_field::BitField;
 use crate::error::{Error, LibuserError};
 
 pub mod server;
-mod buffer;
-pub use buffer::*;
 
 bitfield! {
     /// Represenens the header of an HIPC command.
@@ -179,11 +178,33 @@ pub struct IPCBuffer<'a> {
 pub trait SizedIPCBuffer {
     /// Return the size of the type.
     fn size(&self) -> usize;
+
+    /// Check if the address and size are correct.
+    fn is_cool(addr: usize, size: usize) -> bool;
+
+    /// Create a reference to a ipc buffer from part.
+    unsafe fn from_raw_parts<'a>(addr: usize, size: usize) -> &'a Self;
+
+    /// Create a mutable reference to a ipc buffer from part.
+    unsafe fn from_raw_parts_mut<'a>(addr: usize, size: usize) -> &'a mut Self;
 }
 
 impl<T> SizedIPCBuffer for T {
     fn size(&self) -> usize {
         core::mem::size_of::<T>()
+    }
+
+    fn is_cool(addr: usize, size: usize) -> bool {
+        size == core::mem::size_of::<T>() &&
+            (addr % core::mem::align_of::<T>()) == 0 && addr != 0
+    }
+
+    unsafe fn from_raw_parts<'a>(addr: usize, _size: usize) -> &'a Self {
+        (addr as *const T).as_ref().unwrap()
+    }
+
+    unsafe fn from_raw_parts_mut<'a>(addr: usize, _size: usize) -> &'a mut Self {
+        (addr as *mut T).as_mut().unwrap()
     }
 }
 
@@ -191,15 +212,28 @@ impl<T> SizedIPCBuffer for [T] {
     fn size(&self) -> usize {
         core::mem::size_of::<T>() * self.len()
     }
+
+    fn is_cool(addr: usize, size: usize) -> bool {
+        size % core::mem::size_of::<T>() == 0 && size != 0 &&
+           (addr % core::mem::align_of::<T>()) == 0 && addr != 0
+    }
+
+    unsafe fn from_raw_parts<'a>(addr: usize, size: usize) -> &'a Self {
+        core::slice::from_raw_parts(addr as *const T, size / core::mem::size_of::<T>())
+    }
+
+    unsafe fn from_raw_parts_mut<'a>(addr: usize, size: usize) -> &'a mut Self {
+        core::slice::from_raw_parts_mut(addr as *mut T, size / core::mem::size_of::<T>())
+    }
 }
 
 impl<'a> IPCBuffer<'a> {
     /// Creates a Type-A IPCBuffer from the given reference.
-    fn out_buffer<T: SizedIPCBuffer + ?Sized>(data: &T, flags: u8) -> IPCBuffer {
+    fn out_buffer<T: SizedIPCBuffer + ?Sized>(data: Option<&T>, flags: u8) -> IPCBuffer {
         IPCBuffer {
-            addr: data as *const T as *const u8 as usize as u64,
+            addr: data.map(|v| v as *const T as *const u8 as usize as u64).unwrap_or(0),
             // The dereference is necessary because &T implements SizedIPCBuffer too...
-            size: (*data).size() as u64,
+            size: data.map(|v| (*v).size() as u64).unwrap_or(0),
             ty: IPCBufferType::A {
                 flags
             },
@@ -208,11 +242,11 @@ impl<'a> IPCBuffer<'a> {
     }
 
     /// Creates a Type-B IPCBuffer from the given reference.
-    fn in_buffer<T: SizedIPCBuffer + ?Sized>(data: &mut T, flags: u8) -> IPCBuffer {
+    fn in_buffer<T: SizedIPCBuffer + ?Sized>(mut data: Option<&mut T>, flags: u8) -> IPCBuffer {
         IPCBuffer {
-            addr: data as *mut T as *const u8 as usize as u64,
+            addr: data.as_mut().map(|v| *v as *mut T as *const u8 as usize as u64).unwrap_or(0),
             // The dereference is necessary because &T implements SizedIPCBuffer too...
-            size: (*data).size() as u64,
+            size: data.as_mut().map(|v| (**v).size() as u64).unwrap_or(0),
             ty: IPCBufferType::B {
                 flags
             },
@@ -224,11 +258,11 @@ impl<'a> IPCBuffer<'a> {
     ///
     /// If has_u16_size is true, the size of the pointer will be written after
     /// the raw data. This is only used when sending client-sized arrays.
-    fn in_pointer<T: SizedIPCBuffer + ?Sized>(data: &mut T, has_u16_size: bool) -> IPCBuffer {
+    fn in_pointer<T: SizedIPCBuffer + ?Sized>(mut data: Option<&mut T>, has_u16_size: bool) -> IPCBuffer {
         IPCBuffer {
-            addr: data as *mut T as *const u8 as usize as u64,
+            addr: data.as_mut().map(|v| *v as *mut T as *const u8 as usize as u64).unwrap_or(0),
             // The dereference is necessary because &T implements SizedIPCBuffer too...
-            size: (*data).size() as u64,
+            size: data.as_mut().map(|v| (**v).size() as u64).unwrap_or(0),
             ty: IPCBufferType::C {
                 has_u16_size
             },
@@ -239,11 +273,11 @@ impl<'a> IPCBuffer<'a> {
     /// Creates a Type-X IPCBuffer from the given reference.
     ///
     /// The counter defines which type-C buffer this should be copied into.
-    fn out_pointer<T: SizedIPCBuffer + ?Sized>(data: &T, counter: u8) -> IPCBuffer {
+    fn out_pointer<T: SizedIPCBuffer + ?Sized>(data: Option<&T>, counter: u8) -> IPCBuffer {
         IPCBuffer {
-            addr: data as *const T as *const u8 as usize as u64,
+            addr: data.map(|v| v as *const T as *const u8 as usize as u64).unwrap_or(0),
             // The dereference is necessary because &T implements SizedIPCBuffer too...
-            size: (*data).size() as u64,
+            size: data.map(|v| (*v).size() as u64).unwrap_or(0),
             ty: IPCBufferType::X {
                 counter
             },
@@ -527,11 +561,19 @@ where
     ///
     /// This method is unsafe as it allows creating references to arbitrary
     /// memory, and of arbitrary type.
-    pub unsafe fn pop_in_buffer<T>(&mut self) -> Result<InBuffer<'_, T>, Error> {
-        self.buffers.iter().position(|buf| buf.buftype().is_type_a())
+    pub unsafe fn pop_in_buffer<'b, T: SizedIPCBuffer + ?Sized>(&mut self) -> Result<&'b T, Error> {
+        let buffer = self.buffers.iter().position(|buf| buf.buftype().is_type_a())
             .and_then(|pos| self.buffers.pop_at(pos))
-            .ok_or_else(|| LibuserError::InvalidIpcBufferCount.into())
-            .and_then(|buf| InBuffer::<T>::new(buf))
+            .ok_or_else(|| LibuserError::InvalidIpcBufferCount)?;
+
+        let addr = usize::try_from(buffer.addr).map_err(|_| LibuserError::InvalidIpcBuffer)?;
+        let size = usize::try_from(buffer.size).map_err(|_| LibuserError::InvalidIpcBuffer)?;
+
+        if T::is_cool(addr, size) {
+            Ok(T::from_raw_parts(addr, size))
+        } else {
+            Err(LibuserError::InvalidIpcBuffer.into())
+        }
     }
 
     /// Retreive the next OutBuffer (type-B buffer) in the message.
@@ -547,22 +589,30 @@ where
     ///
     /// This method is unsafe as it allows creating references to arbitrary
     /// memory, and of arbitrary type.
-    pub unsafe fn pop_out_buffer<T>(&mut self) -> Result<OutBuffer<'_, T>, Error> {
-        self.buffers.iter().position(|buf| buf.buftype().is_type_b())
+    pub unsafe fn pop_out_buffer<'b, T: SizedIPCBuffer + ?Sized>(&mut self) -> Result<&'b mut T, Error> {
+        let buffer = self.buffers.iter().position(|buf| buf.buftype().is_type_b())
             .and_then(|pos| self.buffers.pop_at(pos))
-            .ok_or_else(|| LibuserError::InvalidIpcBufferCount.into())
-            .and_then(|buf| OutBuffer::<T>::new(buf))
+            .ok_or_else(|| LibuserError::InvalidIpcBufferCount)?;
+
+        let addr = usize::try_from(buffer.addr).map_err(|_| LibuserError::InvalidIpcBuffer)?;
+        let size = usize::try_from(buffer.size).map_err(|_| LibuserError::InvalidIpcBuffer)?;
+
+        if T::is_cool(addr, size) {
+            Ok(T::from_raw_parts_mut(addr, size))
+        } else {
+            Err(LibuserError::InvalidIpcBuffer.into())
+        }
     }
 
     /// Push an OutBuffer (type-A buffer) backed by the specified data.
     pub fn push_out_buffer<T: SizedIPCBuffer + ?Sized>(&mut self, data: &'a T) -> &mut Self {
-        self.buffers.push(IPCBuffer::out_buffer(data, 0));
+        self.buffers.push(IPCBuffer::out_buffer(Some(data), 0));
         self
     }
 
     /// Push an InBuffer (type-B buffer) backed by the specified data.
     pub fn push_in_buffer<T: SizedIPCBuffer + ?Sized>(&mut self, data: &'a mut T) -> &mut Self {
-        self.buffers.push(IPCBuffer::in_buffer(data, 0));
+        self.buffers.push(IPCBuffer::in_buffer(Some(data), 0));
         self
     }
 
@@ -572,7 +622,7 @@ where
     /// to the Raw Data. See Buffer 0xA on the IPC Marshalling page of
     /// switchbrew.
     pub fn push_in_pointer<T: SizedIPCBuffer + ?Sized>(&mut self, data: &'a mut T, has_u16_count: bool) -> &mut Self {
-        self.buffers.push(IPCBuffer::in_pointer(data, has_u16_count));
+        self.buffers.push(IPCBuffer::in_pointer(Some(data), has_u16_count));
         self
     }
 
@@ -583,9 +633,34 @@ where
     /// switchbrew.
     pub fn push_out_pointer<T: SizedIPCBuffer + ?Sized>(&mut self, data: &'a T) -> &mut Self {
         let index = self.buffers.iter().filter(|buf| buf.buftype().is_type_x()).count();
-        self.buffers.push(IPCBuffer::out_pointer(data, index as u8));
+        self.buffers.push(IPCBuffer::out_pointer(Some(data), index as u8));
         self
     }
+
+    pub fn push_in_smart_pointer<T: SizedIPCBuffer + ?Sized>(&mut self, pointer_buffer_size: u16, data: &'a mut T) -> &mut Self {
+        if pointer_buffer_size != 0 && (*data).size() <= usize::from(pointer_buffer_size) {
+            self.buffers.push(IPCBuffer::in_pointer(Some(data), false));
+            self.buffers.push(IPCBuffer::in_buffer::<T>(None, 0));
+        } else {
+            self.buffers.push(IPCBuffer::in_pointer::<T>(None, false));
+            self.buffers.push(IPCBuffer::in_buffer(Some(data), 0));
+        }
+        self
+    }
+
+    pub fn push_out_smart_pointer<T: SizedIPCBuffer + ?Sized>(&mut self, pointer_buffer_size: u16, data: &'a T) -> &mut Self {
+        let index = self.buffers.iter().filter(|buf| buf.buftype().is_type_x()).count();
+        if pointer_buffer_size != 0 && (*data).size() <= usize::from(pointer_buffer_size) {
+            self.buffers.push(IPCBuffer::out_pointer(Some(data), index as u8));
+            self.buffers.push(IPCBuffer::out_buffer::<T>(None, 0));
+        } else {
+            self.buffers.push(IPCBuffer::out_pointer::<T>(None, index as u8));
+            self.buffers.push(IPCBuffer::out_buffer(Some(data), 0));
+        }
+        self
+    }
+
+
 
     /// Send a Pid with this IPC request.
     ///
@@ -610,11 +685,69 @@ where
     ///
     /// This method is unsafe as it allows creating references to arbitrary
     /// memory, and of arbitrary type.
-    pub unsafe fn pop_in_pointer<T>(&mut self) -> Result<InPointer<'_, T>, Error> {
-        self.buffers.iter().position(|buf| buf.buftype().is_type_x())
+    pub unsafe fn pop_in_pointer<'b, T: SizedIPCBuffer + ?Sized>(&mut self) -> Result<&'b T, Error> {
+        let buffer = self.buffers.iter().position(|buf| buf.buftype().is_type_x())
             .and_then(|pos| self.buffers.pop_at(pos))
-            .ok_or_else(|| LibuserError::InvalidIpcBufferCount.into())
-            .and_then(|buf| InPointer::<T>::new(buf))
+            .ok_or_else(|| LibuserError::InvalidIpcBufferCount)?;
+
+        let addr = usize::try_from(buffer.addr).map_err(|_| LibuserError::InvalidIpcBuffer)?;
+        let size = usize::try_from(buffer.size).map_err(|_| LibuserError::InvalidIpcBuffer)?;
+
+        if T::is_cool(addr, size) {
+            Ok(T::from_raw_parts(addr, size))
+        } else {
+            Err(LibuserError::InvalidIpcBuffer.into())
+        }
+    }
+
+    pub unsafe fn pop_in_smart_buffer<'b, T: SizedIPCBuffer + ?Sized>(&mut self) -> Result<&'b T, Error> {
+        let pointer = self.buffers.iter().position(|buf| buf.buftype().is_type_x())
+            .and_then(|pos| self.buffers.pop_at(pos))
+            .ok_or_else(|| LibuserError::InvalidIpcBufferCount)?;
+
+        let buffer = self.buffers.iter().position(|buf| buf.buftype().is_type_a())
+            .and_then(|pos| self.buffers.pop_at(pos))
+            .ok_or_else(|| LibuserError::InvalidIpcBufferCount)?;
+
+        let (addr, size) = if pointer.addr != 0 {
+            (pointer.addr, pointer.size)
+        } else {
+            (buffer.addr, buffer.size)
+        };
+
+        let addr = usize::try_from(addr).map_err(|_| LibuserError::InvalidIpcBuffer)?;
+        let size = usize::try_from(size).map_err(|_| LibuserError::InvalidIpcBuffer)?;
+
+        if T::is_cool(addr, size) {
+            Ok(T::from_raw_parts(addr, size))
+        } else {
+            Err(LibuserError::InvalidIpcBuffer.into())
+        }
+    }
+
+    pub unsafe fn pop_out_smart_buffer<'b, T: SizedIPCBuffer + ?Sized>(&mut self) -> Result<&'b mut T, Error> {
+        let pointer = self.buffers.iter().position(|buf| buf.buftype().is_type_x())
+            .and_then(|pos| self.buffers.pop_at(pos))
+            .ok_or_else(|| LibuserError::InvalidIpcBufferCount)?;
+
+        let buffer = self.buffers.iter().position(|buf| buf.buftype().is_type_a())
+            .and_then(|pos| self.buffers.pop_at(pos))
+            .ok_or_else(|| LibuserError::InvalidIpcBufferCount)?;
+
+        let (addr, size) = if pointer.addr != 0 {
+            (pointer.addr, pointer.size)
+        } else {
+            (buffer.addr, buffer.size)
+        };
+
+        let addr = usize::try_from(addr).map_err(|_| LibuserError::InvalidIpcBuffer)?;
+        let size = usize::try_from(size).map_err(|_| LibuserError::InvalidIpcBuffer)?;
+
+        if T::is_cool(addr, size) {
+            Ok(T::from_raw_parts_mut(addr, size))
+        } else {
+            Err(LibuserError::InvalidIpcBuffer.into())
+        }
     }
 
     // TODO: Move pack to a non-generic function

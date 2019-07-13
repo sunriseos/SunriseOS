@@ -51,6 +51,8 @@ pub enum Error {
     Libuser(LibuserError, Backtrace),
     /// Ahci driver error.
     Ahci(AhciError, Backtrace),
+    /// Virtio driver error.
+    Virtio(VirtioError, Backtrace),
     /// An unknown error type. Either someone returned a custom error, or this
     /// version of libuser is outdated.
     Unknown(u32, Backtrace)
@@ -68,6 +70,7 @@ impl Error {
             //Module::Vi => Error::Vi(ViError(description), Backtrace::new()),
             Module::Libuser => Error::Libuser(LibuserError(description), Backtrace::new()),
             Module::Ahci => Error::Ahci(AhciError(description), Backtrace::new()),
+            Module::Virtio => Error::Virtio(VirtioError(description), Backtrace::new()),
             _ => Error::Unknown(errcode, Backtrace::new())
         }
     }
@@ -82,6 +85,7 @@ impl Error {
             //Error::Vi(err, ..) => err.0 << 9 | Module::Vi.0,
             Error::Libuser(err, ..) => err.0 << 9 | Module::Libuser.0,
             Error::Ahci(err, ..) => err.0 << 9 | Module::Ahci.0,
+            Error::Virtio(err, ..) => err.0 << 9 | Module::Virtio.0,
             Error::Unknown(err, ..) => err,
         }
     }
@@ -110,6 +114,7 @@ enum_with_val! {
         Vi = 114,
         Libuser = 115,
         Ahci = 116,
+        Virtio = 117,
     }
 }
 
@@ -129,6 +134,8 @@ enum_with_val! {
         InvalidIpcBufferCount = 5,
         /// Invalid IPCBuffer
         InvalidIpcBuffer = 6,
+        /// Specified BAR does not exist in this PCI device.
+        MissingBAR = 7,
     }
 }
 
@@ -188,5 +195,22 @@ enum_with_val! {
 impl From<AhciError> for Error {
     fn from(error: AhciError) -> Self {
         Error::Ahci(error, Backtrace::new())
+    }
+}
+
+enum_with_val! {
+    /// Virtio errors.
+    #[derive(PartialEq, Eq, Clone, Copy)]
+    pub struct VirtioError(u32) {
+        /// A required PCI Vendor-Specific feature was missing.
+        MissingRequiredFeature = 0,
+        /// Failed to negociate features with the virtio device.
+        FeatureNegociationFailed = 1,
+    }
+}
+
+impl From<VirtioError> for Error {
+    fn from(error: VirtioError) -> Self {
+        Error::Virtio(error, Backtrace::new())
     }
 }

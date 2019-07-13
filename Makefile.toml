@@ -138,15 +138,30 @@ dependencies = ["install-rust-src"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-ahci", "--release"]
 
+[tasks.virtio]
+workspace = false
+description = "Compiles sunrise-virtio"
+dependencies = ["install-rust-src"]
+command = "cargo"
+args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-virtio"]
+
+[tasks.virtio-release]
+workspace = false
+description = "Compiles sunrise-virtio"
+dependencies = ["install-rust-src"]
+command = "cargo"
+args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-virtio", "--release"]
+
+
 [tasks.userspace]
 workspace = false
 description = "Compiles userspace apps"
-dependencies = ["shell", "clock", "sm", "vi", "ahci"]
+dependencies = ["shell", "clock", "sm", "vi", "ahci", "virtio"]
 
 [tasks.userspace-release]
 workspace = false
 description = "Compiles userspace apps"
-dependencies = ["shell-release", "clock-release", "sm-release", "vi-release", "ahci-release"]
+dependencies = ["shell-release", "clock-release", "sm-release", "vi-release", "ahci-release", "virtio-release"]
 
 [tasks.iso]
 workspace = false
@@ -162,6 +177,7 @@ cp target/i386-unknown-none-user/debug/sunrise-clock     isofiles/boot/
 cp target/i386-unknown-none-user/debug/sunrise-sm        isofiles/boot/
 cp target/i386-unknown-none-user/debug/sunrise-vi        isofiles/boot/
 cp target/i386-unknown-none-user/debug/sunrise-ahci      isofiles/boot/
+cp target/i386-unknown-none-user/debug/sunrise-virtio    isofiles/boot/
 mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
 '''
 ]
@@ -180,6 +196,7 @@ cp target/i386-unknown-none-user/release/sunrise-clock     isofiles/boot/
 cp target/i386-unknown-none-user/release/sunrise-sm        isofiles/boot/
 cp target/i386-unknown-none-user/release/sunrise-vi        isofiles/boot/
 cp target/i386-unknown-none-user/release/sunrise-ahci      isofiles/boot/
+cp target/i386-unknown-none-user/release/sunrise-virtio    isofiles/boot/
 mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
 '''
 ]
@@ -214,13 +231,28 @@ description = "Runs the bootable ISO in qemu."
 dependencies = ["iso-release", "create-disk-if-not-exist"]
 command = "qemu-system-i386"
 args = [
+    # Boot device
     "-cdrom", "os.iso",
-    "-serial", "stdio",
+    # Redirect serial to STDIO
+    "-serial", "mon:stdio",
+    # Redirect graphics to VNC
     "-vnc", "${VNC_PORT}",
+    # Don't reboot on triple fault 
     "-no-reboot",
-    "-enable-kvm",
+    # Enable hardware acceleration
+    #"-enable-kvm",
+    # Setup an AHCI device, with a disk on the first IDE port.
     "-drive", "id=diskA,file=DISK.img,format=raw,if=none", "-device", "ahci,id=ahci", "-device", "ide-drive,drive=diskA,bus=ahci.0",
     "-machine", "q35",
+    # Setup a network device, using virtio-net.
+    # TODO: iommu_platform=true
+    "-device", "virtio-net,disable-legacy=on,netdev=u1", "-netdev", "user,id=u1",
+    # Dump packets going on the vlan
+    "-object", "filter-dump,id=f1,netdev=u1,file=dump.dat",
+    # Trace virtio-related events
+    "--trace", "virtio_set_status,file=trace", "--trace", "virtio_queue_notify,file=trace", "--trace", "virtio_notify,file=trace", "--trace", "virtio_input_queue_full,file=trace",
+    "--trace", "virtio_net_announce_notify,file=trace", "--trace", "virtio_net_announce_timer,file=trace", "--trace", "virtio_net_handle_announce,file=trace",
+    "--trace", "virtio_net_post_load_device,file=trace", "--trace", "virtio_notify_irqfd,file=trace",
 ]
 
 [tasks.qemu-debug]
@@ -229,14 +261,32 @@ description = "Runs the bootable ISO in qemu with gdb support"
 dependencies = ["iso", "create-disk-if-not-exist"]
 command = "qemu-system-i386"
 args = [
+    # Boot device
     "-cdrom", "os.iso",
-    "-serial", "stdio",
+    # Redirect serial to STDIO
+    "-serial", "mon:stdio",
+    # Redirect graphics to VNC
     "-vnc", "${VNC_PORT}",
-    "-no-reboot",
+    # Enable hardware acceleration
+    #"-enable-kvm",
+    # Setup an AHCI device, with a disk on the first IDE port.
+    "-drive", "id=diskA,file=DISK.img,format=raw,if=none", "-device", "ahci,id=ahci", "-device", "ide-drive,drive=diskA,bus=ahci.0",
+    # Setup a network device, using virtio-net.
+    # TODO: ,iommu_platform=true
+    "-device", "virtio-net,disable-legacy=on,netdev=u1", "-netdev", "user,id=u1",
+    # Dump packets going on the vlan
+    "-object", "filter-dump,id=f1,netdev=u1,file=dump.dat",
+
+    # Enable GDB
     "-gdb", "tcp::${GDB_PORT}", "-S",
+    # Print state on CPU reset
     "-d", "cpu_reset",
     "-drive", "id=diskA,file=DISK.img,format=raw,if=none", "-device", "ahci,id=ahci", "-device", "ide-drive,drive=diskA,bus=ahci.0",
     "-machine", "q35",
+    # Trace virtio-related events
+    "--trace", "virtio_set_status,file=trace", "--trace", "virtio_queue_notify,file=trace", "--trace", "virtio_notify,file=trace", "--trace", "virtio_input_queue_full,file=trace",
+    "--trace", "virtio_net_announce_notify,file=trace", "--trace", "virtio_net_announce_timer,file=trace", "--trace", "virtio_net_handle_announce,file=trace",
+    "--trace", "virtio_net_post_load_device,file=trace", "--trace", "virtio_notify_irqfd,file=trace",
 ]
 
 [tasks.doc]
@@ -275,7 +325,7 @@ args = ["-c", "kernel/src/main.rs", "bootstrap/src/main.rs",
 	"shell/src/main.rs", "libuser/src/lib.rs", "clock/src/main.rs",
 	"sm/src/main.rs", "vi/src/main.rs", "ahci/src/main.rs",
 	"libutils/src/lib.rs", "libkern/src/lib.rs", "swipc-gen/src/lib.rs",
-	"swipc-parser/src/lib.rs"
+	"swipc-parser/src/lib.rs", "virtio/src/main.rs",
 ]
 
 [tasks.clippy-sunrise-target]

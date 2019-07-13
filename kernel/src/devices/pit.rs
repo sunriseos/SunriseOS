@@ -56,6 +56,7 @@ use crate::sync::SpinLock;
 use crate::io::Io;
 use crate::i386::pio::Pio;
 use crate::timer;
+use core::convert::TryFrom;
 
 /// The oscillator frequency when not divided, in hertz.
 const OSCILLATOR_FREQ: usize = 1193182;
@@ -206,7 +207,7 @@ pub unsafe fn init_channel_0() {
     );
     ports.write_reload_value(ChannelSelector::Channel0, CHAN_0_DIVISOR);
 
-    timer::set_kernel_timer_info(0, OSCILLATOR_FREQ as u64, 1_000_000_000 / (CHAN_0_FREQUENCY as u64));
+    timer::set_kernel_timer_info(0, OSCILLATOR_FREQ as u64, 1_000_000_000 / (CHAN_0_FREQUENCY as u64), get_tick);
 }
 
 /// Prevent the PIT from generating interrupts.
@@ -214,4 +215,12 @@ pub unsafe fn disable() {
     let mut ports = PIT_PORTS.lock();
     ports.port_cmd.write(0b00110010); // channel 0, lobyte/hibyte, one-shot
     ports.write_reload_value(ChannelSelector::Channel0, 1);
+}
+
+/// Get the current tick in nanosecond.
+///
+/// Note that the PIT's frequency is set at 10 millisecond, so the update
+/// frequency of this tick is going to be, erm, not ideal.
+fn get_tick() -> u64 {
+    u64::try_from(crate::event::get_current_count(0)).unwrap().wrapping_mul(100_000)
 }

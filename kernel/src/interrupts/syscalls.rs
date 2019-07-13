@@ -20,7 +20,7 @@ use crate::sync::RwLock;
 use crate::timer;
 use failure::Backtrace;
 use sunrise_libkern::{nr, SYSCALL_NAMES, MemoryInfo, MemoryAttributes, MemoryPermissions, MemoryType};
-use bit_field::BitArray;
+use bit_field::{BitField, BitArray};
 
 /// Resize the heap of a process, just like a brk.
 /// It can both expand, and shrink the heap.
@@ -532,6 +532,14 @@ fn query_memory(mut meminfo: UserSpacePtrMut<MemoryInfo>, _unk: usize, addr: usi
     Ok(0)
 }
 
+/// Returns the current system tick (if you're a linuxian, you might call this
+/// a jiffie).
+///
+/// The frequency is 19200000 Hz (constant from official sw).
+fn get_system_tick() -> u64 {
+    crate::timer::get_tick().wrapping_mul(625) / 12 // Accurate way of doing * 52.083333
+}
+
 /// Create a new Session pair. Those sessions are linked to each-other: The
 /// server will receive requests sent through the client.
 ///
@@ -687,6 +695,11 @@ pub extern fn syscall_handler_inner(registers: &mut Registers) {
         (true, nr::UnmapSharedMemory) => registers.apply0(unmap_shared_memory(x0 as _, x1 as _, x2 as _)),
         (true, nr::CloseHandle) => registers.apply0(close_handle(x0 as _)),
         (true, nr::WaitSynchronization) => registers.apply1(wait_synchronization(UserSpacePtr::from_raw_parts(x0 as _, x1), x2)),
+        (true, nr::GetSystemTick) => {
+            let tick = get_system_tick();
+            registers.eax = tick.get_bits(0..32) as usize;
+            registers.ebx = tick.get_bits(32..64) as usize;
+        },
         (true, nr::ConnectToNamedPort) => registers.apply1(connect_to_named_port(UserSpacePtr(x0 as _))),
         (true, nr::SendSyncRequestWithUserBuffer) => registers.apply0(send_sync_request_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), x2 as _)),
         (true, nr::OutputDebugString) => registers.apply0(output_debug_string(UserSpacePtr::from_raw_parts(x0 as _, x1), x2, UserSpacePtr::from_raw_parts(x3 as _, x4))),

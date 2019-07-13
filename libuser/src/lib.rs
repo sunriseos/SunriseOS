@@ -56,6 +56,7 @@ pub mod allocator;
 pub mod terminal;
 pub mod window;
 pub mod zero_box;
+pub mod pci;
 mod crt0;
 mod log_impl;
 

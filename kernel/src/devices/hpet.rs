@@ -108,7 +108,8 @@ pub struct HpetRegister {
     /// General Interrupt Status Register.
     pub general_interrupt_status: Mmio<u32>, // 0x20
     _reserved3: [u8; 0xCC], // 0x24
-    /// main counter value.
+    /// Current value of the main counter. Should be an up-counter updating at
+    /// the frequency specified by the period field.
     pub main_counter_value: Mmio<u64>, // 0xF0
     _reserved4: u64, // 0xF8
 }
@@ -361,7 +362,7 @@ impl Hpet {
 
     /// Return the frequency of the HPET device.
     pub fn get_frequency(&self) -> u64 {
-        1000000000000000 / u64::from(self.get_period())
+        1_000_000_000_000_000 / u64::from(self.get_period())
     }
 
     /// Enable the "legacy mapping".
@@ -528,8 +529,24 @@ pub unsafe fn init(hpet: &acpi::Hpet) -> bool {
     // Clear the interrupt state
     hpet_instance.enable();
 
-    timer::set_kernel_timer_info(16, hpet_instance.get_frequency(), irq_period_ns);
+    timer::set_kernel_timer_info(16, hpet_instance.get_frequency(), irq_period_ns, get_tick);
 
     HPET_INSTANCE = Some(hpet_instance);
     true
+}
+
+/// Returns the current tick in nanoseconds
+fn get_tick() -> u64 {
+    unsafe {
+        let instance = HPET_INSTANCE.as_ref().expect("HPET not initialized!");
+        let period = instance.get_period();
+        if period < 1_000_000 {
+            // nanosecond precision
+            (*instance.inner).main_counter_value.read() / (1_000_000 / u64::from(instance.get_period()))
+        } else {
+            // 100-nanosecond precision. This is the worse possible precision on
+            // the HPET.
+            (*instance.inner).main_counter_value.read() / (100_000_000 / u64::from(instance.get_period())) * 100
+        }
+    }
 }

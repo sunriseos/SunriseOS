@@ -107,6 +107,19 @@ impl ClientSession {
             .map_err(|v| v.into())
     }
 
+    pub fn query_pointer_buffer(&self) -> Result<u16, Error> {
+        // Use a very small buffer to avoid stackoverflows - we really don't
+        // need a big one here anyways.
+        let mut data = [0; 0x10];
+        let mut msg = Message::<(), [_; 0], [_; 0], [_; 0]>::new_request(None, 3);
+        msg.set_ty(MessageTy::Control);
+        msg.pack(&mut data[..]);
+        self.send_sync_request_with_user_buffer(&mut data[..])?;
+        let msg = Message::<u16, [_; 0], [_; 0], [_; 0]>::unpack(&data[..]);
+        msg.error()?;
+        Ok(msg.raw())
+    }
+
     /// Consumes the session, returning the underlying handle. Note that closing
     /// a Handle without sending a close IPC message will leak the object in the
     /// sysmodule. You should always reconstruct the ClientSession from the

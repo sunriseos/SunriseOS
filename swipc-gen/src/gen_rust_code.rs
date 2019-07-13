@@ -133,11 +133,11 @@ fn format_args(args: &[(Alias, Option<String>)], ret: &[(Alias, Option<String>)]
 /// arguments.
 ///
 /// See [get_type] to find the mapping of a SwIPC type to a Rust type.
-fn format_ret_ty(ret: &[(Alias, Option<String>)]) -> Result<String, Error> {
+fn format_ret_ty(ret: &[(Alias, Option<String>)], server: bool) -> Result<String, Error> {
     let mut v = Vec::new();
 
     for (ty, _name) in named_iterator(ret, true) {
-        v.push(get_type(true, ty, false)?);
+        v.push(get_type(true, ty, server)?);
     }
 
     match v.len() {
@@ -217,6 +217,8 @@ fn get_type(output: bool, ty: &Alias, is_server: bool) -> Result<String, Error> 
 
         Alias::Handle(is_copy, ty) => if let Some(s) = get_handle_type(ty) {
             Ok(format!("{}{}", if *is_copy && !is_server && !output { "&" } else { "" }, s))
+        } else if *is_copy && is_server && output {
+            Ok("sunrise_libuser::types::HandleRef<'static>".to_string())
         } else {
             Ok(format!("sunrise_libuser::types::{}", if *is_copy && !is_server && !output { "HandleRef" } else { "Handle" }))
         },
@@ -270,7 +272,7 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
     for line in cmd.doc.lines() {
         writeln!(s, "    /// {}", line).unwrap();
     }
-    writeln!(s, "    pub fn {}(&mut self, {}) -> Result<{}, Error> {{", &cmd.name, format_args(&cmd.args, &cmd.ret, false)?, format_ret_ty(&cmd.ret)?).unwrap();
+    writeln!(s, "    pub fn {}(&mut self, {}) -> Result<{}, Error> {{", &cmd.name, format_args(&cmd.args, &cmd.ret, false)?, format_ret_ty(&cmd.ret, false)?).unwrap();
     writeln!(s, "        use sunrise_libuser::ipc::Message;").unwrap();
     writeln!(s, "        let mut buf__ = [0; 0x100];").unwrap();
     writeln!(s).unwrap();
@@ -317,9 +319,9 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
                     // C Buffer
                     (2, 2, false) => writeln!(s, "        msg__.push_in_pointer({}, {});", argname, !ty.get_bit(4)).unwrap(),
                     // Smart A+X
-                    (1, 0, true) => return Err(Error::UnsupportedStruct),
+                    (1, 0, true) => writeln!(s, "        msg__.push_out_smart_pointer(self.1, {});", argname).unwrap(),
                     // Smart B+C
-                    (2, 0, true) => return Err(Error::UnsupportedStruct),
+                    (2, 0, true) => writeln!(s, "        msg__.push_in_smart_pointer(self.1, {});", argname).unwrap(),
                     _ => panic!("Illegal buffer type: {}", ty)
                 }
             },
@@ -334,9 +336,9 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
                     // C Buffer
                     (2, 2, false) => writeln!(s, "        msg__.push_in_pointer({}, {});", argname, !ty.get_bit(4)).unwrap(),
                     // Smart A+X
-                    (1, 0, true) => return Err(Error::UnsupportedStruct),
+                    (1, 0, true) => writeln!(s, "        msg__.push_out_smart_pointer(self.1, {});", argname).unwrap(),
                     // Smart B+C
-                    (2, 0, true) => return Err(Error::UnsupportedStruct),
+                    (2, 0, true) => writeln!(s, "        msg__.push_in_smart_pointer(self.1, {});", argname).unwrap(),
                     _ => panic!("Illegal buffer type: {}", ty)
                 }
             },
@@ -513,17 +515,34 @@ fn gen_call(cmd: &Func) -> Result<String, Error> {
     {
         match item {
             Alias::Array(_, bufty) | Alias::Buffer(_, bufty, _) => {
-                let (ismut,direction, ty) = match (bufty.get_bits(0..2), bufty.get_bits(2..4)) {
-                    (0b01, 0b01) => ("", "in", "buffer"),
-                    (0b01, 0b10) => ("", "in", "pointer"),
-                    (0b10, 0b01) => ("mut", "out", "buffer"),
-                    (0b10, 0b10) => ("mut", "out", "pointer"),
-                    _ => panic!("Invalid bufty")
+                let (ismut,direction, ty) = match (bufty.get_bits(0..2), bufty.get_bits(2..4), bufty.get_bit(5)) {
+                    (0b01, _, true)     => ("", "in", "smart_buffer"),
+                    (0b10, _, true)     => ("mut", "out", "smart_buffer"),
+                    (0b01, 0b01, false) => ("", "in", "buffer"),
+                    (0b01, 0b10, false) => ("", "in", "pointer"),
+                    (0b10, 0b01, false) => ("mut", "out", "buffer"),
+                    (0b10, 0b10, false) => ("mut", "out", "pointer"),
+                    (direction, ty, smart) => panic!("Invalid bufty while handling {:?}: {:x}, {:x} {} {:x}", cmd, direction, ty, smart, bufty)
                 };
-                args += &format!("&{} *msg__.pop_{}_{}().unwrap(), ", ismut, direction, ty);
+                let realty = get_type(false, item, false)?;
+                let realty = if realty.starts_with("&mut") {
+                    realty.trim_start_matches("&mut")
+                } else if realty.starts_with("&") {
+                    realty.trim_start_matches("&")
+                } else {
+                    &*realty
+                };
+
+                // TODO: Make pop_out_buffer and co safe to call.
+                // BODY: Currently, pop_out_buffer (and other functions of
+                // BODY: that family) are unsafe to call as they basically
+                // BODY: allow transmuting variables. We should use a crate
+                // BODY: like `plain` to ensure that said functions are only
+                // BODY: callable when it is safe.
+                args += &format!("unsafe {{ &{} *msg__.pop_{}_{}::<{}>().unwrap() }}, ", ismut, direction, ty, realty);
             },
             Alias::Object(ty) => {
-                args += &format!("{}Proxy(sunrise_libuser::types::ClientSession(msg__.pop_handle_move().unwrap())), ", ty);
+                args += &format!("{}Proxy::from(sunrise_libuser::types::ClientSession(msg__.pop_handle_move().unwrap())), ", ty);
             },
             Alias::Handle(is_copy, ty) => {
                 let handle = if *is_copy {
@@ -564,7 +583,7 @@ fn gen_call(cmd: &Func) -> Result<String, Error> {
     writeln!(s, "                match  ret__ {{").unwrap();
     writeln!(s, "                    Ok(ret) => {{").unwrap();
 
-    let retcount = named_iterator(&cmd.ret, false).count();
+    let retcount = named_iterator(&cmd.ret, true).count();
     for (idx, (item, _)) in named_iterator(&cmd.ret, true).enumerate().filter(|(_, (ty, _))| !is_raw(ty))
     {
         let ret = if retcount == 1 {
@@ -578,14 +597,14 @@ fn gen_call(cmd: &Func) -> Result<String, Error> {
             },
             Alias::Handle(is_copy, ty) => {
                 let (is_ref, handle) = if *is_copy {
-                    ("&", "copy")
+                    (".as_ref()", "copy")
                 } else {
                     ("", "move")
                 };
                 match (get_handle_type(ty), ty) {
-                    (_, Some(HandleType::ClientSession)) => writeln!(s, "msg__.push_handle_{}({}({}).into_handle());", handle, is_ref, ret).unwrap(),
-                    (Some(_), _) => writeln!(s, "msg__.push_handle_{}({}({}).0);", handle, is_ref, ret).unwrap(),
-                    _ => writeln!(s, "msg__.push_handle_{}({}{})", handle, is_ref, ret).unwrap(),
+                    (_, Some(HandleType::ClientSession)) => writeln!(s, "msg__.push_handle_{}(({}).into_handle(){});", handle, ret, is_ref).unwrap(),
+                    (Some(_), _) => writeln!(s, "msg__.push_handle_{}(({}).0{});", handle, ret, is_ref).unwrap(),
+                    _ => writeln!(s, "msg__.push_handle_{}({});", handle, ret).unwrap(),
                 };
             },
             Alias::Pid => {
@@ -595,9 +614,9 @@ fn gen_call(cmd: &Func) -> Result<String, Error> {
         }
     }
 
-    if raw_iterator(&cmd.ret, false).count() > 0 {
-        if named_iterator(&cmd.ret, false).count() == 1 {
-            let (_, name) = raw_iterator(&cmd.ret, false).next().unwrap();
+    if raw_iterator(&cmd.ret, true).count() > 0 {
+        if named_iterator(&cmd.ret, true).count() == 1 {
+            let (_, name) = raw_iterator(&cmd.ret, true).next().unwrap();
             writeln!(s, "msg__.push_raw({} {{ {}: ret }});", out_raw, name).unwrap();
         } else {
             writeln!(s, "msg__.push_raw({} {{", out_raw).unwrap();
@@ -631,7 +650,7 @@ pub fn generate_trait(ifacename: &str, interface: &Interface) -> String {
     }
     writeln!(s, "pub trait {} {{", trait_name).unwrap();
     for cmd in &interface.funcs {
-        match format_args(&cmd.args, &cmd.ret, true).and_then(|v| format_ret_ty(&cmd.ret).map(|u| (v, u))) {
+        match format_args(&cmd.args, &cmd.ret, true).and_then(|v| format_ret_ty(&cmd.ret, true).map(|u| (v, u))) {
             Ok((args, ret)) => {
                 for line in cmd.doc.lines() {
                     writeln!(s, "/// {}", line).unwrap();
@@ -680,7 +699,14 @@ pub fn generate_proxy(ifacename: &str, interface: &Interface) -> String {
         writeln!(s, "/// {}", line).unwrap();
     }
     writeln!(s, "#[derive(Debug)]").unwrap();
-    writeln!(s, "pub struct {}(ClientSession);", struct_name).unwrap();
+    // Detect the presence of smart buffers on this interface. If there is one
+    // present, we want to cache the pointer buffer size in the structure.
+    let has_smart_buffer = interface.funcs.iter().any(|cmd| cmd.args.iter().chain(cmd.ret.iter()).any(|(arg, _)| if let Alias::Buffer(_, ty, _) | Alias::Array(_, ty) = arg { ty.get_bit(5) } else { false } ));
+    if has_smart_buffer {
+        writeln!(s, "pub struct {}(ClientSession, u16);", struct_name).unwrap();
+    } else {
+        writeln!(s, "pub struct {}(ClientSession);", struct_name).unwrap();
+    }
     writeln!(s).unwrap();
     writeln!(s, "impl From<{}> for ClientSession {{", struct_name).unwrap();
     writeln!(s, "    fn from(sess: {}) -> ClientSession {{", struct_name).unwrap();
@@ -690,7 +716,17 @@ pub fn generate_proxy(ifacename: &str, interface: &Interface) -> String {
     writeln!(s).unwrap();
     writeln!(s, "impl From<ClientSession> for {} {{", struct_name).unwrap();
     writeln!(s, "    fn from(sess: ClientSession) -> {} {{", struct_name).unwrap();
-    writeln!(s, "        {}(sess)", struct_name).unwrap();
+
+    // Cache the pointer buffer size in the structure only if we have smart
+    // buffers on the interface.
+    if has_smart_buffer {
+        // Assume that if there's an error, the remote doesn't support the
+        // pointer buffer at all.
+        writeln!(s, "        let pointer_buffer = sess.query_pointer_buffer().unwrap_or(0);").unwrap();
+        writeln!(s, "        {}(sess, pointer_buffer)", struct_name).unwrap();
+    } else {
+        writeln!(s, "        {}(sess)", struct_name).unwrap();
+    }
     writeln!(s, "    }}").unwrap();
     writeln!(s, "}}").unwrap();
 
@@ -715,7 +751,7 @@ pub fn generate_proxy(ifacename: &str, interface: &Interface) -> String {
                 let mut service_name = service.to_string();
                 service_name += &"\\0";
                 writeln!(s, r#"            let _ = match syscalls::connect_to_named_port("{}") {{"#, service_name).unwrap();
-                writeln!(s, "                Ok(s) => return Ok({}(s)),", struct_name).unwrap();
+                writeln!(s, "                Ok(s) => return Ok({}::from(s)),", struct_name).unwrap();
                 writeln!(s, "                Err(KernelError::NoSuchEntry) => syscalls::sleep_thread(0),").unwrap();
                 writeln!(s, "                Err(err) => Err(err)?").unwrap();
                 writeln!(s, "            }};").unwrap();
@@ -731,7 +767,7 @@ pub fn generate_proxy(ifacename: &str, interface: &Interface) -> String {
                 writeln!(s, r#"                  core::mem::transmute(*b"{}")"#, service_name).unwrap();
                 writeln!(s, "              }};").unwrap();
                 writeln!(s, "              let _ = match sunrise_libuser::sm::IUserInterfaceProxy::raw_new()?.get_service(svcname) {{").unwrap();
-                writeln!(s, "                  Ok(s) => return Ok({}(s)),", struct_name).unwrap();
+                writeln!(s, "                  Ok(s) => return Ok({}::from(s)),", struct_name).unwrap();
                 writeln!(s, "                  Err(Error::Sm(SmError::ServiceNotRegistered, ..)) => syscalls::sleep_thread(0),").unwrap();
                 writeln!(s, "                  Err(err) => return Err(err)").unwrap();
                 writeln!(s, "              }};").unwrap();
