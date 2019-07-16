@@ -159,6 +159,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "docs"
+version = "0.1.0"
+
+[[package]]
 name = "failure"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
