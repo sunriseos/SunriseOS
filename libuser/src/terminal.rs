@@ -11,6 +11,24 @@ use crate::window::{Window, Color};
 use crate::error::Error;
 use crate::vi::ViInterfaceProxy;
 
+// TODO: Missing fminf in compiler-builtins for soft-float
+// BODY: See https://github.com/rust-lang/rust/issues/62729.
+// BODY: 
+// BODY: As a workaround, we include the functions in libuser for now.
+/// Workaround rust-lang/rust#62729
+#[no_mangle]
+#[doc(hidden)]
+pub extern "C" fn fminf(x: f32, y: f32) -> f32 {
+    libm::fminf(x, y)
+}
+
+/// Workaround rust-lang/rust#62729
+#[no_mangle]
+#[doc(hidden)]
+pub extern "C" fn fmaxf(x: f32, y: f32) -> f32 {
+    libm::fmaxf(x, y)
+}
+
 /// Just an x and a y
 #[derive(Copy, Clone, Debug)]
 #[allow(clippy::missing_docs_in_private_items)]
