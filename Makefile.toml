@@ -242,14 +242,14 @@ args = [
 [tasks.doc]
 workspace = false
 description = "Generate the project's documentation"
-env = { "RUSTFLAGS" = "--sysroot=${PWD}/target/sysroot",  "RUSTDOCFLAGS" = "--sysroot=${PWD}/target/sysroot"}
+env = { "RUSTDOCFLAGS" = "-Z unstable-options --enable-index-page" }
 command = "cargo"
-args = ["doc", "--no-deps" ]
+args = ["doc", "--no-deps"]
 
 [tasks.doc-full]
 workspace = false
 description = "Generate the project's documentation, including private items"
-env = { "RUSTFLAGS" = "--sysroot=${PWD}/target/sysroot",  "RUSTDOCFLAGS" = "--sysroot=${PWD}/target/sysroot -Z unstable-options --enable-index-page"}
+env = { "RUSTDOCFLAGS" = "-Z unstable-options --enable-index-page" }
 command = "cargo"
 args = ["doc", "--no-deps", "--document-private-items"]
 
