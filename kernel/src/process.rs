@@ -25,6 +25,7 @@ mod capabilities;
 pub use self::capabilities::ProcessCapabilities;
 use crate::paging::{InactiveHierarchy, InactiveHierarchyTrait};
 use self::thread_local_storage::TLSManager;
+use crate::interrupts::UserspaceHardwareContext;
 
 /// The struct representing a process. There's one for every process.
 ///
@@ -124,6 +125,11 @@ pub struct ThreadStruct {
     /// * x86_32: loaded in the `gs` segment selectors.
     /// * x86_64: loaded in the `fs` segment selectors.
     pub tls_elf: Mutex<VirtualAddress>,
+
+    /// Userspace hardware context of this thread.
+    ///
+    /// Registers are backed up every time we enter the kernel via a syscall/exception, for debug purposes.
+    pub userspace_hwcontext: SpinLock<UserspaceHardwareContext>,
 }
 
 /// A handle to a userspace-accessible resource.
@@ -566,6 +572,7 @@ impl ThreadStruct {
                 process: Arc::clone(belonging_process),
                 tls_region: tls,
                 tls_elf: Mutex::new(VirtualAddress(0x00000000)),
+                userspace_hwcontext: SpinLock::new(UserspaceHardwareContext::default()),
             }
         );
 
@@ -657,6 +664,7 @@ impl ThreadStruct {
                 process: Arc::clone(&process),
                 tls_region: tls,
                 tls_elf: Mutex::new(VirtualAddress(0x00000000)),
+                userspace_hwcontext: SpinLock::new(UserspaceHardwareContext::default()),
             }
         );
 

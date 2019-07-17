@@ -544,13 +544,11 @@ impl<F> fmt::Debug for IdtEntry<F> {
 const_assert_eq!(mem::size_of::<IdtEntry<()>>(), 8);
 
 /// A handler function for an interrupt or an exception without error code.
-pub type HandlerFunc = extern "x86-interrupt" fn(&mut ExceptionStackFrame);
+pub type HandlerFunc = fn();
 /// A handler function for an exception that pushes an error code.
-pub type HandlerFuncWithErrCode =
-    extern "x86-interrupt" fn(&mut ExceptionStackFrame, error_code: u32);
+pub type HandlerFuncWithErrCode = fn(error_code: u32);
 /// A page fault handler function that pushes a page fault error code.
-pub type PageFaultHandlerFunc =
-    extern "x86-interrupt" fn(&mut ExceptionStackFrame, error_code: PageFaultErrorCode);
+pub type PageFaultHandlerFunc = fn(error_code: u32);
 
 impl<F> IdtEntry<F> {
     /// Creates a non-present IDT entry (but sets the must-be-one bits).
@@ -600,29 +598,21 @@ impl<F> IdtEntry<F> {
     }
 }
 
-macro_rules! impl_set_handler_fn {
-    ($h:ty) => {
-        impl IdtEntry<$h> {
-            /// Set an interrupt gate function for the IDT entry and sets the present bit.
-            ///
-            /// For the code selector field, this function uses the code segment selector currently
-            /// active in the CPU.
-            ///
-            /// The function returns a mutable reference to the entry's options that allows
-            /// further customization.
-            #[allow(clippy::fn_to_numeric_cast)] // it **is** a u32
-            pub fn set_handler_fn(&mut self, handler: $h) -> &mut EntryOptions {
-                unsafe {
-                    self.set_interrupt_gate_addr(handler as u32)
-                }
-            }
+impl<T> IdtEntry<T> {
+    /// Set an interrupt gate function for the IDT entry and sets the present bit.
+    ///
+    /// For the code selector field, this function uses the code segment selector currently
+    /// active in the CPU.
+    ///
+    /// The function returns a mutable reference to the entry's options that allows
+    /// further customization.
+    #[allow(clippy::fn_to_numeric_cast)] // it **is** a u32
+    pub fn set_handler_fn(&mut self, handler_asm_wrapper: extern "C" fn()) -> &mut EntryOptions {
+        unsafe {
+            self.set_interrupt_gate_addr(handler_asm_wrapper as u32)
         }
     }
 }
-
-impl_set_handler_fn!(HandlerFunc);
-impl_set_handler_fn!(HandlerFuncWithErrCode);
-impl_set_handler_fn!(PageFaultHandlerFunc);
 
 /// Represents the type of an IDT descriptor (called a gate).
 ///
@@ -741,10 +731,10 @@ impl fmt::Debug for ExceptionStackFrame {
 
         let mut s = f.debug_struct("ExceptionStackFrame");
         s.field("instruction_pointer", &self.instruction_pointer);
-        s.field("code_segment", &self.code_segment);
+        s.field("code_segment", &Hex(self.code_segment));
         s.field("cpu_flags", &Hex(self.cpu_flags));
         s.field("stack_pointer", &self.stack_pointer);
-        s.field("stack_segment", &self.stack_segment);
+        s.field("stack_segment", &Hex(self.stack_segment));
         s.finish()
     }
 }
