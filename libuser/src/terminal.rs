@@ -62,7 +62,7 @@ pub struct Terminal {
 }
 
 /// The font we choose to render in
-static FONT:  &'static [u8] = include_bytes!("../fonts/Monaco.ttf");
+static FONT:  &[u8] = include_bytes!("../fonts/Monaco.ttf");
 
 /// The size we choose to render in
 const FONT_SIZE: u32 = 10;
