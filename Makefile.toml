@@ -286,6 +286,7 @@ install_crate = { rustup_component_name = "clippy" }
 command = "cargo"
 args = ["xclippy", "--target=i386-unknown-none",
 	"--all", "--exclude", "swipc-gen", "--exclude", "swipc-parser",
+	"--exclude", "docs",
 	"--",
 	"@@split(CLIPPY_RULES, )",
 	"${@}",
@@ -298,7 +299,7 @@ dependencies = ["install-rust-src", "refresh-crates"]
 install_crate = { rustup_component_name = "clippy" }
 command = "cargo"
 args = ["clippy",
-	"-p", "swipc-gen", "-p", "swipc-parser",
+	"-p", "swipc-gen", "-p", "swipc-parser", "-p", "docs",
 	"--",
 	"@@split(CLIPPY_RULES, )",
 	"${@}",

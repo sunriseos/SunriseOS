@@ -1,4 +1,3 @@
-#![no_std]
 #![feature(external_doc)]
 #![doc(include = "../../README.md")]
 
