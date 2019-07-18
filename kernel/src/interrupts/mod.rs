@@ -1,4 +1,4 @@
-//! Interrupt handling.
+//! i386 exceptions + syscall handling
 //!
 //! All exceptions are considered unrecoverable errors, and kill the process that issued it.
 //!
@@ -11,13 +11,20 @@
 //!
 //! * [`trap_gate_asm`]\: low-level asm wrapper.
 //! * [`generate_trap_gate_handler`]\: high-level rust wrapper.
+//!
+//! # Syscalls
+//!
+//! Syscalls are handled as if they were exceptions, but instead of killing the process the handler
+//! calls [syscall_interrupt_dispatcher].
+//!
+//! [syscall_interrupt_dispatcher]: self::interrupts::syscall_interrupt_dispatcher
 
 use crate::i386::structures::idt::{PageFaultErrorCode, Idt};
 use crate::i386::instructions::interrupts::sti;
 use crate::mem::VirtualAddress;
 use crate::paging::kernel_memory::get_kernel_memory;
 use crate::i386::PrivilegeLevel;
-use crate::scheduler::get_current_thread;
+use crate::scheduler::{get_current_thread, get_current_process};
 use crate::process::{ProcessStruct, ThreadState};
 use crate::sync::{SpinLock, SpinLockIRQ};
 use core::sync::atomic::Ordering;
@@ -28,6 +35,11 @@ use crate::i386::gdt::DOUBLE_FAULT_TASK;
 use crate::panic::{kernel_panic, PanicOrigin};
 use crate::i386::structures::gdt::SegmentSelector;
 use crate::i386::registers::eflags::EFlags;
+use crate::mem::{UserSpacePtr, UserSpacePtrMut};
+use crate::error::UserspaceError;
+use crate::interrupts::syscalls::*;
+use bit_field::BitArray;
+use sunrise_libkern::{nr, SYSCALL_NAMES};
 
 mod irq;
 pub mod syscalls;
@@ -754,11 +766,60 @@ generate_trap_gate_handler!(name: "Security Exception",
                 handler_strategy: panic
 );
 
-// gonna write constants in the code, cause not enough registers.
-// just check we aren't hard-coding the wrong values.
-const_assert_eq!((GdtIndex::KTls as u16) << 3 | 0b00, 0x18);
-const_assert_eq!((GdtIndex::UTlsRegion as u16) << 3 | 0b11, 0x3B);
-const_assert_eq!((GdtIndex::UTlsElf as u16) << 3 | 0b11, 0x43);
+generate_trap_gate_handler!(name: "Syscall Interrupt",
+                has_errcode: false,
+                wrapper_asm_fnname: syscall_interrupt_asm_wrapper,
+                wrapper_rust_fnname: syscall_interrupt_rust_wrapper,
+                kernel_fault_strategy: panic, // you aren't expected to syscall from the kernel
+                user_fault_strategy: ignore, // don't worry it's fine ;)
+                handler_strategy: syscall_interrupt_dispatcher
+);
+
+impl UserspaceHardwareContext {
+    /// Update the Registers with the passed result.
+    fn apply0(&mut self, ret: Result<(), UserspaceError>) {
+        self.apply3(ret.map(|_| (0, 0, 0)))
+    }
+
+    /// Update the Registers with the passed result.
+    fn apply1(&mut self, ret: Result<usize, UserspaceError>) {
+        self.apply3(ret.map(|v| (v, 0, 0)))
+    }
+
+    /// Update the Registers with the passed result.
+    fn apply2(&mut self, ret: Result<(usize, usize), UserspaceError>) {
+        self.apply3(ret.map(|(v0, v1)| (v0, v1, 0)))
+    }
+
+    /// Update the Registers with the passed result.
+    fn apply3(&mut self, ret: Result<(usize, usize, usize), UserspaceError>) {
+        self.apply4(ret.map(|(v0, v1, v2)| (v0, v1, v2, 0)))
+    }
+
+    /// Update the Registers with the passed result.
+    fn apply4(&mut self, ret: Result<(usize, usize, usize, usize), UserspaceError>) {
+        match ret {
+            Ok((v0, v1, v2, v3)) => {
+                self.eax = 0;
+                self.ebx = v0;
+                self.ecx = v1;
+                self.edx = v2;
+                self.esi = v3;
+                self.edi = 0;
+                self.ebp = 0;
+            },
+            Err(err) => {
+                self.eax = err.make_ret();
+                self.ebx = 0;
+                self.ecx = 0;
+                self.edx = 0;
+                self.esi = 0;
+                self.edi = 0;
+                self.ebp = 0;
+            }
+        }
+    }
+}
 
 /// This is the function called on int 0x80.
 ///
@@ -793,39 +854,94 @@ const_assert_eq!((GdtIndex::UTlsElf as u16) << 3 | 0b11, 0x43);
 ///
 /// We do *NOT* restore registers before returning, as they all are used for parameter passing.
 /// It is the caller's job to save the one it needs.
-#[naked]
-extern "C" fn syscall_handler() {
-    unsafe {
-        asm!("
-        cld         // direction flag will be restored on return when iret pops EFLAGS
-        // Construct Registers structure - see syscalls for more info
-        push ebp
-        push edi
-        push esi
-        push edx
-        push ecx
-        push ebx
-        push eax
-        // Load kernel tls segment
-        mov ax, 0x18
-        mov gs, ax
-        // Push pointer to Registers structure as argument
-        push esp
-        call $0
-        // Load userspace tls segment
-        mov ax, 0x43
-        mov gs, ax
-        // Restore registers.
-        mov ebx, [esp + 0x08]
-        mov ecx, [esp + 0x0C]
-        mov edx, [esp + 0x10]
-        mov esi, [esp + 0x14]
-        mov edi, [esp + 0x18]
-        mov ebp, [esp + 0x1C]
-        mov eax, [esp + 0x04]
-        add esp, 0x20
-        iretd
-        " :: "i"(syscalls::syscall_handler_inner as *const u8) :: "volatile", "intel" );
+///
+/// Dispatches to the various syscall handling functions based on `hwcontext.eax`,
+/// and updates the hwcontext with the correct return values.
+// TODO: Missing argument slot for SVCs on i386 backend
+// BODY: Our i386 SVC ABI is currently fairly different from the ABI used by
+// BODY: Horizon/NX. This is for two reasons:
+// BODY:
+// BODY: 1. We are missing one argument slot compared to the official SVCs, so
+// BODY:    we changed the ABI to work around it.
+// BODY:
+// BODY: 2. The Horizon ABI "skipping" over some register is an optimization for
+// BODY:    ARM, but doesn't help on i386.
+// BODY:
+// BODY: That being said, there is a way for us to recover the missing SVC slot.
+// BODY: We are currently "wasting" x0 for the syscall number. We could avoid
+// BODY: this by instead using different IDT entries for the different syscalls.
+// BODY: This is actually more in line with what the Horizon/NX kernel is doing
+// BODY: anyways.
+// BODY:
+// BODY: Once we've regained this missing slot, we'll be able to make our ABI
+// BODY: match the Horizon/NX 32-bit ABI. While the "skipping over" doesn't help
+// BODY: our performances, it doesn't really hurt it either, and having a uniform
+// BODY: ABI across platforms would make for lower maintenance.
+fn syscall_interrupt_dispatcher(_exception_name: &'static str, hwcontext: &mut UserspaceHardwareContext, _has_errcode: bool) {
+
+    let (syscall_nr, x0, x1, x2, x3, x4, x5) = (hwcontext.eax, hwcontext.ebx, hwcontext.ecx, hwcontext.edx, hwcontext.esi, hwcontext.edi, hwcontext.ebp);
+    let syscall_name = SYSCALL_NAMES.get(syscall_nr).unwrap_or(&"Unknown");
+
+    debug!("Handling syscall {} - x0: {}, x1: {}, x2: {}, x3: {}, x4: {}, x5: {}",
+          syscall_name, x0, x1, x2, x3, x4, x5);
+
+    let allowed = get_current_process().capabilities.syscall_mask.get_bit(syscall_nr);
+
+    if cfg!(feature = "no-security-check") && !allowed {
+        let curproc = get_current_process();
+        error!("Process {} attempted to use unauthorized syscall {} ({:#04x})",
+               curproc.name, syscall_name, syscall_nr);
+    }
+
+    let allowed = cfg!(feature = "no-security-check") || allowed;
+
+    match (allowed, syscall_nr) {
+        // Horizon-inspired syscalls!
+        (true, nr::SetHeapSize) => hwcontext.apply1(set_heap_size(x0)),
+        (true, nr::QueryMemory) => hwcontext.apply1(query_memory(UserSpacePtrMut(x0 as _), x1, x2)),
+        (true, nr::ExitProcess) => hwcontext.apply0(exit_process()),
+        (true, nr::CreateThread) => hwcontext.apply1(create_thread(x0, x1, x2, x3 as _, x4 as _)),
+        (true, nr::StartThread) => hwcontext.apply0(start_thread(x0 as _)),
+        (true, nr::ExitThread) => hwcontext.apply0(exit_thread()),
+        (true, nr::SleepThread) => hwcontext.apply0(sleep_thread(x0)),
+        (true, nr::MapSharedMemory) => hwcontext.apply0(map_shared_memory(x0 as _, x1 as _, x2 as _, x3 as _)),
+        (true, nr::UnmapSharedMemory) => hwcontext.apply0(unmap_shared_memory(x0 as _, x1 as _, x2 as _)),
+        (true, nr::CloseHandle) => hwcontext.apply0(close_handle(x0 as _)),
+        (true, nr::WaitSynchronization) => hwcontext.apply1(wait_synchronization(UserSpacePtr::from_raw_parts(x0 as _, x1), x2)),
+        (true, nr::ConnectToNamedPort) => hwcontext.apply1(connect_to_named_port(UserSpacePtr(x0 as _))),
+        (true, nr::SendSyncRequestWithUserBuffer) => hwcontext.apply0(send_sync_request_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), x2 as _)),
+        (true, nr::OutputDebugString) => hwcontext.apply0(output_debug_string(UserSpacePtr::from_raw_parts(x0 as _, x1), x2, UserSpacePtr::from_raw_parts(x3 as _, x4))),
+        (true, nr::CreateSession) => hwcontext.apply2(create_session(x0 != 0, x1 as _)),
+        (true, nr::AcceptSession) => hwcontext.apply1(accept_session(x0 as _)),
+        (true, nr::ReplyAndReceiveWithUserBuffer) => hwcontext.apply1(reply_and_receive_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), UserSpacePtr::from_raw_parts(x2 as _, x3), x4 as _, x5)),
+        (true, nr::CreateSharedMemory) => hwcontext.apply1(create_shared_memory(x0 as _, x1 as _, x2 as _)),
+        (true, nr::CreateInterruptEvent) => hwcontext.apply1(create_interrupt_event(x0, x1 as u32)),
+        (true, nr::QueryPhysicalAddress) => hwcontext.apply4(query_physical_address(x0 as _)),
+        (true, nr::CreatePort) => hwcontext.apply2(create_port(x0 as _, x1 != 0, UserSpacePtr(x2 as _))),
+        (true, nr::ManageNamedPort) => hwcontext.apply1(manage_named_port(UserSpacePtr(x0 as _), x1 as _)),
+        (true, nr::ConnectToPort) => hwcontext.apply1(connect_to_port(x0 as _)),
+
+        // sunrise extensions
+        (true, nr::MapFramebuffer) => hwcontext.apply4(map_framebuffer()),
+        (true, nr::MapMmioRegion) => hwcontext.apply0(map_mmio_region(x0, x1, x2, x3 != 0)),
+        (true, nr::SetThreadArea) => hwcontext.apply0(set_thread_area(x0)),
+
+        // Unknown/unauthorized syscall.
+        (false, _) => {
+            // Attempted to call unauthorized SVC. Horizon invokes usermode
+            // exception handling in some cases. Let's just kill the process for
+            // now.
+            let curproc = get_current_process();
+            error!("Process {} attempted to use unauthorized syscall {} ({:#04x}), killing",
+                   curproc.name, syscall_name, syscall_nr);
+            ProcessStruct::kill_process(curproc);
+        },
+        _ => {
+            let curproc = get_current_process();
+            error!("Process {} attempted to use unknown syscall {} ({:#04x}), killing",
+                   curproc.name, syscall_name, syscall_nr);
+            ProcessStruct::kill_process(curproc);
+        }
     }
 }
 
@@ -877,7 +993,7 @@ pub unsafe fn init() {
             }
 
             // Add entry for syscalls
-            let syscall_int = (*idt)[0x80].set_interrupt_gate_addr(syscall_handler as u32);
+            let syscall_int = (*idt)[0x80].set_interrupt_gate_addr(syscall_interrupt_asm_wrapper as u32);
             syscall_int.set_privilege_level(PrivilegeLevel::Ring3);
             syscall_int.disable_interrupts(false);
         }
