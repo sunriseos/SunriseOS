@@ -1,9 +1,4 @@
-//! i386 exceptions + syscall handling
-//!
-//! All exceptions are considered unrecoverable errors, and kill the process that issued it.
-//!
-//! Feature `panic-on-exception` makes the kernel stop and panic when a thread generates
-//! an exception. This is useful for debugging.
+//! i386 exceptions + irq + syscall handling
 //!
 //! # Macros
 //!
@@ -11,6 +6,19 @@
 //!
 //! * [`trap_gate_asm`]\: low-level asm wrapper.
 //! * [`generate_trap_gate_handler`]\: high-level rust wrapper.
+//! * [`irq_handler`]\: irq handler generator.
+//!
+//! # Exceptions
+//!
+//! All exceptions are considered unrecoverable errors, and kill the process that issued it.
+//!
+//! Feature `panic-on-exception` makes the kernel stop and panic when a thread generates
+//! an exception. This is useful for debugging.
+//!
+//! # IRQs
+//!
+//! Interrupts are handled like exceptions, whose handler dispatches the event for the irq line.
+//! See [`irq_handler`].
 //!
 //! # Syscalls
 //!
@@ -41,7 +49,6 @@ use crate::interrupts::syscalls::*;
 use bit_field::BitArray;
 use sunrise_libkern::{nr, SYSCALL_NAMES};
 
-mod irq;
 pub mod syscalls;
 
 /// Checks if our thread was killed, in which case unschedule ourselves.
@@ -235,33 +242,44 @@ macro_rules! trap_gate_asm {
         and eax, 0x3
         jz 1f
 
-        // priv changed
+    0: // if priv changed
         // copy the esp pushed by cpu
         mov eax, [esp + 0x2C] // cs is 11 registers away at that time * 4 bytes / reg
         push eax
-        jmp 2f
-    1:
-        // priv unchanged
-        // cpu did not push an esp, we are still running on the same stack: compute it
-        mov eax, esp
-        add eax, 0x2C // old esp is 11 registers away at that time * 4 bytes / reg
-        push eax
-    2:
-        // Push a pointer to the UserspaceHardwareContext we created on the stack
-        push esp
-
-        // Great, registers are now fully backed up
 
         // Load kernel tls segment
         mov ax, 0x18
         mov gs, ax
 
+        jmp 2f
+    1: // else if priv unchanged
+        // cpu did not push an esp, we are still running on the same stack: compute it
+        mov eax, esp
+        add eax, 0x2C // old esp is 11 registers away at that time * 4 bytes / reg
+        push eax
+    2: // endif
+
+        // Push a pointer to the UserspaceHardwareContext we created on the stack
+        push esp
+
+        // Great, registers are now fully backed up
+
         // Call some rust code, passing it a pointer to the UserspaceHardwareContext
         call $0
 
+        // Handler finished, returning
+
+        // Check whether we're returning to the same privilege level
+        mov eax, [esp + 0x2C] // cs is 11 registers away at that time * 4 bytes / reg
+        and eax, 0x3
+        jz 4f
+    3: // if changing priv
         // Load userspace tls segment
         mov ax, 0x43
         mov gs, ax
+        jmp 5f
+    4: // else if not changing priv
+    5: // endif
 
         // Restore registers.
         add esp, 0x8 // pop and ignore the pushed arg ptr and esp cpy
@@ -355,7 +373,7 @@ macro_rules! trap_gate_asm {
 ///
 /// extern "C" fn $wrapper_rust_fnname(userspace_context: &mut UserspaceHardwareContext) {
 ///
-///     if Ring == 0 {
+///     if coming from Ring == 0 {
 ///
 ///         kernel_panic(&PanicOrigin::KernelFault {                                 //
 ///             exception_message: format_args!("{}, exception errcode: {:?}",       //
@@ -364,24 +382,26 @@ macro_rules! trap_gate_asm {
 ///             kernel_hardware_context: userspace_context.clone()                   //
 ///         });                                                                      //
 ///
+///     } else {
+///
+///         // we come from userspace, backup the hardware context in the thread struct
+///         {
+///             *get_current_thread().userspace_hwcontext.lock() = *userspace_context
+///         }
+///
+///         if cfg!(feature = "panic-on-exception") {
+///
+///             kernel_panic(&PanicOrigin::UserspaceFault {                          //
+///                 exception_message: format_args ! ("{}, exception errcode: {:?}", //
+///                     $exception_name,                                             // user_fault_strategy
+///                     userspace_context.errcode),                                  // (here: panic)
+///                 userspace_hardware_context: userspace_context.clone()            //
+///             });                                                                  //
+///         }
+///
 ///     }
 ///
-///     // we come from userspace, backup the hardware context in the thread struct
-///     {
-///         *get_current_thread().userspace_hwcontext.lock() = *userspace_context
-///     }
-///
-///     if Ring == 3 && cfg!(feature = "panic-on-exception") {
-///
-///         kernel_panic(&PanicOrigin::UserspaceFault {                              //
-///             exception_message: format_args ! ("{}, exception errcode: {:?}",     //
-///                 $exception_name,                                                 // user_fault_strategy
-///                 userspace_context.errcode),                                      // (here: panic)
-///             userspace_hardware_context: userspace_context.clone()                //
-///         });                                                                      //
-///
-///     }
-///
+///     // do the handler
 ///     {
 ///         let thread = get_current_thread();                                       //
 ///         error!("{}, errorcode: {}, in {:#?}",                                    // handler_strategy
@@ -389,7 +409,10 @@ macro_rules! trap_gate_asm {
 ///         ProcessStruct::kill_process(thread.process.clone());                     //
 ///     }
 ///
-///     check_thread_killed();
+///     // if we're returning to userspace, check we haven't been killed
+///     if comming from Ring == 3 {
+///         check_thread_killed();
+///     }
 /// }
 /// ```
 ///
@@ -526,16 +549,14 @@ macro_rules! generate_trap_gate_handler {
 
             if let PrivilegeLevel::Ring0 = SegmentSelector(userspace_context.cs as u16).rpl() {
                 generate_trap_gate_handler!(__gen kernel_fault; name: $exception_name, userspace_context, errcode: $has_errcode, strategy: $kernel_fault_strategy);
-            }
+            } else {
+                // we come from userspace, backup the hardware context in the thread struct
+                {
+                    *get_current_thread().userspace_hwcontext.lock() = userspace_context.clone();
+                    // don't leave an Arc in case we're killed in the handler.
+                }
 
-            // we come from userspace, backup the hardware context in the thread struct
-            {
-                *get_current_thread().userspace_hwcontext.lock() = userspace_context.clone();
-                // don't leave an Arc in case we're killed in the handler.
-            }
-
-            if cfg!(feature = "panic-on-exception") {
-                if let PrivilegeLevel::Ring3 = SegmentSelector(userspace_context.cs as u16).rpl() {
+                if cfg!(feature = "panic-on-exception") {
                     generate_trap_gate_handler!(__gen user_fault; name: $exception_name, userspace_context, errcode: $has_errcode, strategy: $user_fault_strategy);
                 }
             }
@@ -543,7 +564,10 @@ macro_rules! generate_trap_gate_handler {
             // call the handler
             generate_trap_gate_handler!(__gen handler; name: $exception_name, userspace_context, errcode: $has_errcode, strategy: $handler_strategy);
 
-            check_thread_killed();
+            // if we're returning to userspace, check we haven't been killed
+            if let PrivilegeLevel::Ring3 = SegmentSelector(userspace_context.cs as u16).rpl() {
+                check_thread_killed();
+            }
         }
     };
 }
@@ -945,6 +969,71 @@ fn syscall_interrupt_dispatcher(_exception_name: &'static str, hwcontext: &mut U
     }
 }
 
+/// Generates irq handlers.
+///
+/// For each irq number it is given, this macro will generate an irq handler that:
+///
+/// 1. acknowledges the irq
+/// 2. dispatches the event for this irq line
+///
+/// It uses [`generate_trap_gate_handler`] internally to generate the asm and low-level rust wrappers.
+/// You must give it an ident for both of those functions that will be passed on to `generate_trap_gate_handler`,
+/// and a third for the name of the generated irq handler function.
+///
+/// This macro will also generate the `IRQ_HANDLERS` array and fill it with function pointers to the
+/// raw asm handlers for each irq, so you can easily copy it into the IDT.
+#[macro_export] // for docs
+macro_rules! irq_handler {
+    ( $($irq_nbr:expr, $handler_name:ident, $asm_wrapper_name:ident, $rust_wrapper_name:ident ; )* ) => {
+
+        $(
+            /// Auto generated irq handler. See [`irq_handler`].
+            fn $handler_name(_exception_name: &'static str, _hwcontext: &mut UserspaceHardwareContext, _has_errcode: bool) {
+                crate::i386::interrupt::acknowledge($irq_nbr);
+                crate::event::dispatch_event($irq_nbr);
+            }
+
+            generate_trap_gate_handler!(name: "Irq handler",
+                    has_errcode: false,
+                    wrapper_asm_fnname: $asm_wrapper_name,
+                    wrapper_rust_fnname: $rust_wrapper_name,
+                    kernel_fault_strategy: ignore, // irqs can happen while we're in kernel mode, don't worry, it's fine ;)
+                    user_fault_strategy: ignore, // don't worry it's fine ;)
+                    handler_strategy: $handler_name
+            );
+        )*
+
+
+        /// Array of interrupt handlers.
+        ///
+        /// The position in the array defines the IRQ this handler is targeting. See [`irq_handler`].
+        static IRQ_HANDLERS : [extern "C" fn(); 16] = [
+            $(
+                $asm_wrapper_name,
+            )*
+        ];
+    }
+}
+
+irq_handler!(
+     0, pin0_handler,          pin0_handler_asm_wrapper,          pin0_handler_rust_wrapper;
+     1, keyboard_handler,      keyboard_handler_asm_wrapper,      keyboard_handler_rust_wrapper;
+     2, timer_handler,         timer_handler_asm_wrapper,         timer_handler_rust_wrapper;
+     3, serial2_handler,       serial2_handler_asm_wrapper,       serial2_handler_rust_wrapper;
+     4, serial1_handler,       serial1_handler_asm_wrapper,       serial1_handler_rust_wrapper;
+     5, sound_handler,         sound_handler_asm_wrapper,         sound_handler_rust_wrapper;
+     6, floppy_handler,        floppy_handler_asm_wrapper,        floppy_handler_rust_wrapper;
+     7, parallel1_handler,     parallel1_handler_asm_wrapper,     parallel1_handler_rust_wrapper;
+     8, rtc_handler,           rtc_handler_asm_wrapper,           rtc_handler_rust_wrapper;
+     9, acpi_handler,          acpi_handler_asm_wrapper,          acpi_handler_rust_wrapper;
+    10, irq10_handler,         irq10_handler_asm_wrapper,         irq10_handler_rust_wrapper;
+    11, irq11_handler,         irq11_handler_asm_wrapper,         irq11_handler_rust_wrapper;
+    12, mouse_handler,         mouse_handler_asm_wrapper,         mouse_handler_rust_wrapper;
+    13, irq13_handler,         irq13_handler_asm_wrapper,         irq13_handler_rust_wrapper;
+    14, primary_ata_handler,   primary_ata_handler_asm_wrapper,   primary_ata_handler_rust_wrapper;
+    15, secondary_ata_handler, secondary_ata_handler_asm_wrapper, secondary_ata_handler_rust_wrapper;
+);
+
 lazy_static! {
     /// IDT address. Initialized in `init()`.
     static ref IDT: SpinLock<Option<VirtualAddress>> = SpinLock::new(None);
@@ -988,7 +1077,7 @@ pub unsafe fn init() {
             (*idt).virtualization.set_handler_fn(virtualization_exception_asm_wrapper);
             (*idt).security_exception.set_handler_fn(security_exception_asm_wrapper);
 
-            for (i, handler) in irq::IRQ_HANDLERS.iter().enumerate() {
+            for (i, handler) in IRQ_HANDLERS.iter().enumerate() {
                 (*idt).interrupts[i].set_interrupt_gate_addr(*handler as u32);
             }
 
