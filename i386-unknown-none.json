@@ -17,6 +17,8 @@
   },
   "relocation-model": "static",
   "executables": true,
+  "has-elf-tls": true,
+  "tls-model": "initial-exec",
   "features": "-mmx,-sse,+soft-float",
   "disable-redzone": true,
   "panic-strategy": "abort"

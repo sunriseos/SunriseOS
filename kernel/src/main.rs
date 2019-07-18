@@ -70,6 +70,7 @@ pub mod ipc;
 pub mod elf_loader;
 pub mod utils;
 pub mod checks;
+pub mod cpu_locals;
 pub mod panic;
 
 #[cfg(target_os = "none")]
@@ -89,6 +90,7 @@ use crate::paging::{PAGE_SIZE, MappingAccessRights};
 use crate::mem::VirtualAddress;
 use crate::process::{ProcessStruct, ThreadStruct};
 use sunrise_libkern::MemoryType;
+use crate::cpu_locals::init_cpu_locals;
 
 /// Forces a double fault by stack overflowing.
 ///
@@ -225,6 +227,9 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
 
     info!("Start ACPI detection");
     unsafe { i386::acpi::init(); }
+
+    info!("Allocating cpu_locals");
+    init_cpu_locals(1);
 
     info!("Enabling interrupts");
     unsafe { interrupts::init(); }
