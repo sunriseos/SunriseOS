@@ -281,7 +281,7 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
     for line in cmd.doc.lines() {
         writeln!(s, "    /// {}", line).unwrap();
     }
-    writeln!(s, "    pub fn {}(&mut self, {}) -> Result<{}, Error> {{", &cmd.name, format_args(&cmd.args, &cmd.ret, false)?, format_ret_ty(&cmd.ret, false)?).unwrap();
+    writeln!(s, "    pub fn {}(&self, {}) -> Result<{}, Error> {{", &cmd.name, format_args(&cmd.args, &cmd.ret, false)?, format_ret_ty(&cmd.ret, false)?).unwrap();
     writeln!(s, "        use self::sunrise_libuser::ipc::Message;").unwrap();
     writeln!(s, "        let mut buf__ = [0; 0x100];").unwrap();
     writeln!(s).unwrap();
@@ -781,7 +781,7 @@ pub fn generate_proxy(ifacename: &str, interface: &Interface) -> String {
     for cmd in &interface.funcs {
         match format_cmd(&cmd) {
             Ok(out) => write!(s, "{}", out).unwrap(),
-            Err(_) => writeln!(s, "    // pub fn {}(&mut self) -> Result<(), Error>", &cmd.name).unwrap()
+            Err(_) => writeln!(s, "    // pub fn {}(&self) -> Result<(), Error>", &cmd.name).unwrap()
         }
     }
     writeln!(s, "}}").unwrap();
