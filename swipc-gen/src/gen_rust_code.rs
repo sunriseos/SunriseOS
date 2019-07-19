@@ -773,6 +773,24 @@ pub fn generate_proxy(ifacename: &str, interface: &Interface) -> String {
             }
 
             writeln!(s, "    }}").unwrap();
+
+            // TODO: Find a way to clean up the shared service handles.
+            // BODY: Service handles returned by `new()` are valid throughout the lifetime
+            // BODY: of the process. Currently, they get cleaned up automatically on process
+            // BODY: exit. This is not ideal: resources should get automatically cleaned up
+            // BODY: through the appropriate calls to CloseHandle (especially for "real"
+            // BODY: homebrew, which don't automatically release leaked resources).
+            writeln!(s, "    /// Acquires the shared handle to the `{}` service - connecting if it wasn't already.", struct_name, service).unwrap();
+            writeln!(s, "    pub fn new{}() -> Result<&'static {}, Error> {{", name, struct_name).unwrap();
+            writeln!(s, "        static HANDLE : spin::Once<{}> = spin::Once::new();", struct_name).unwrap();
+            writeln!(s, "        if let Some(s) = HANDLE.r#try() {{").unwrap();
+            writeln!(s, "            Ok(s)").unwrap();
+            writeln!(s, "        }} else {{").unwrap();
+            writeln!(s, "            let hnd = Self::raw_new()?;").unwrap();
+            writeln!(s, "            let val = HANDLE.call_once(|| hnd);").unwrap();
+            writeln!(s, "            Ok(val)").unwrap();
+            writeln!(s, "        }}").unwrap();
+            writeln!(s, "    }}").unwrap();
         }
         writeln!(s, "}}").unwrap();
     }
