@@ -24,7 +24,7 @@ use sunrise_libuser::syscalls;
 use core::fmt::Write;
 use log::info;
 
-use sunrise_libuser::time::{RTCManager, StaticService, TimeZoneRule, CalendarAdditionalInfo, CalendarTime};
+use sunrise_libuser::time::{RTCManagerProxy, StaticServiceProxy, TimeZoneRule, CalendarAdditionalInfo, CalendarTime};
 use spin::Mutex;
 
 use bstr::BStr;
@@ -95,8 +95,8 @@ fn write_calendar(logger: &mut Terminal, location: &BStr, input: (CalendarTime, 
 
 fn main() {
     let mut logger = Terminal::new(WindowSize::FontLines(1, true)).unwrap();
-    let mut time = StaticService::raw_new_time_u().unwrap();
-    let mut rtc = RTCManager::raw_new().unwrap();
+    let mut time = StaticServiceProxy::raw_new_time_u().unwrap();
+    let mut rtc = RTCManagerProxy::raw_new().unwrap();
     let mut timezone_service = time.get_timezone_service().unwrap();
 
     // Get default timezone name
