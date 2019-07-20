@@ -147,12 +147,12 @@ fn main() {
 
                 let ep = elf_loader::load_builtin(&mut pmemlock, &mapped_module);
 
-                let stack = pmemlock.find_available_space(5 * PAGE_SIZE)
+                let stack = pmemlock.find_available_space(9 * PAGE_SIZE)
                     .unwrap_or_else(|_| panic!("Cannot create a stack for process {:?}", proc));
                 pmemlock.guard(stack, PAGE_SIZE, MemoryType::Reserved).unwrap();
-                pmemlock.create_regular_mapping(stack + PAGE_SIZE, 4 * PAGE_SIZE, MemoryType::Stack, MappingAccessRights::u_rw()).unwrap();
+                pmemlock.create_regular_mapping(stack + PAGE_SIZE, 8 * PAGE_SIZE, MemoryType::Stack, MappingAccessRights::u_rw()).unwrap();
 
-                (VirtualAddress(ep), stack + 5 * PAGE_SIZE)
+                (VirtualAddress(ep), stack + 9 * PAGE_SIZE)
         };
         let thread = ThreadStruct::new(&proc, ep, sp, None)
             .expect("failed creating thread for service");
