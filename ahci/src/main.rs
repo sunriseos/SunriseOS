@@ -75,11 +75,11 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use alloc::sync::Arc;
 use sunrise_libuser::error::{Error, AhciError};
-use sunrise_libuser::ipc::server::{WaitableManager, PortHandler, IWaitable};
+use sunrise_libuser::ipc::server::{WaitableManager, WorkQueue, port_handler, new_session_wrapper};
 use spin::Mutex;
 use sunrise_libuser::syscalls;
-use sunrise_libuser::ipc::server::SessionWrapper;
 use sunrise_libuser::ahci::{AhciInterface as IAhciInterface, IDiskProxy, IDisk as _};
+use futures::future::FutureObj;
 
 /// Array of discovered disk.
 ///
@@ -112,9 +112,9 @@ fn main() {
     debug!("AHCI initialised disks : {:#x?}", DISKS);
 
     // event loop
-    let man = WaitableManager::new();
-    let handler = Box::new(PortHandler::new("ahci:\0", AhciInterface::dispatch).unwrap());
-    man.add_waitable(handler as Box<dyn IWaitable>);
+    let mut man = WaitableManager::new();
+    let handler = port_handler(man.work_queue(), "ahci:\0", AhciInterface::dispatch).unwrap();
+    man.work_queue().spawn(FutureObj::new(Box::new(handler)));
     man.run();
 }
 
@@ -134,7 +134,7 @@ impl IAhciInterface for AhciInterface {
     /// Returns the number of discovered disks.
     ///
     /// Any number in the range `0..disk_count()` is considered a valid disk id.
-    fn discovered_disks_count(&mut self, _manager: &WaitableManager) -> Result<u32, Error> {
+    fn discovered_disks_count(&mut self, _manager: WorkQueue<'static>) -> Result<u32, Error> {
         Ok(DISKS.lock().len() as u32)
     }
 
@@ -145,14 +145,14 @@ impl IAhciInterface for AhciInterface {
     /// # Error
     ///
     /// - InvalidArg: `disk_id` is not a valid disk id.
-    fn get_disk(&mut self, manager: &WaitableManager, disk_id: u32,) -> Result<IDiskProxy, Error> {
+    fn get_disk(&mut self, work_queue: WorkQueue<'static>, disk_id: u32,) -> Result<IDiskProxy, Error> {
         let idisk = IDisk::new(Arc::clone(
             DISKS.lock().get(disk_id as usize)
             .ok_or(AhciError::InvalidArg)?
         ));
         let (server, client) = syscalls::create_session(false, 0)?;
-        let wrapper = SessionWrapper::new(server, idisk, IDisk::dispatch);
-        manager.add_waitable(Box::new(wrapper) as Box<dyn IWaitable>);
+        let wrapper = new_session_wrapper(work_queue.clone(), server, idisk, IDisk::dispatch);
+        work_queue.spawn(FutureObj::new(Box::new(wrapper)));
         Ok(IDiskProxy::from(client))
     }
 }

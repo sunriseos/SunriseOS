@@ -21,6 +21,7 @@
 //! by an unprivileged process.
 //! Service Manager
 
+#![feature(async_await)]
 #![no_std]
 
 // rustc warnings
@@ -43,15 +44,18 @@ extern crate alloc;
 #[macro_use]
 extern crate lazy_static;
 
+use log::*;
 use alloc::boxed::Box;
 use crate::libuser::syscalls;
-use crate::libuser::ipc::server::{WaitableManager, PortHandler, IWaitable};
+use crate::libuser::ipc::server::{WaitableManager, WorkQueue, managed_port_handler};
 use crate::libuser::types::*;
 use crate::libuser::error::Error;
 use crate::libuser::error::SmError;
-use crate::libuser::sm::IUserInterface;
+use crate::libuser::sm::IUserInterfaceAsync;
+use crate::libuser::loop_future::{Loop, loop_fn};
 use hashbrown::hash_map::{HashMap, Entry};
 use spin::Mutex;
+use futures::future::{FutureExt, FutureObj};
 
 /// `sm:` service interface.
 /// The main interface to the Service Manager. Clients can use it to connect to
@@ -64,8 +68,13 @@ struct UserInterface;
 lazy_static! {
     /// Global mapping of Service Name -> ClientPort.
     static ref SERVICES: Mutex<HashMap<u64, ClientPort>> = Mutex::new(HashMap::new());
+    // TODO: Implement a futures-based condvar instead of using event for in-process eventing.
+    // BODY: A futures-based condvar can easily be implemented entirely in userspace, without
+    // BODY: the need for any kernel help. It would have a lot less overhead than using a kernel Event.
+    static ref SERVICES_EVENT: (WritableEvent, ReadableEvent) = {
+        crate::libuser::syscalls::create_event().unwrap()
+    };
 }
-// TODO: global event when services are accessed.
 
 /// Get the length of a service encoded as an u64.
 #[allow(clippy::verbose_bit_mask)] // More readable this way...
@@ -92,48 +101,80 @@ fn get_service_str(servicename: &u64) -> &str {
     }
 }
 
-impl IUserInterface for UserInterface {
+impl IUserInterfaceAsync for UserInterface {
     /// Initialize the UserInterface, acquiring the Pid of the remote
     /// process, which will then be used to validate the permissions of each
     /// calls.
-    fn initialize(&mut self, _manager: &WaitableManager, _pid: Pid) -> Result<(), Error> {
-        Ok(())
+    fn initialize(&mut self, _manager: WorkQueue<'static>, _pid: Pid) -> FutureObj<'_, Result<(), Error>> {
+        FutureObj::new(Box::new(futures::future::ok(())))
     }
 
     /// Get a ClientSession to this service.
-    fn get_service(&mut self, _manager: &WaitableManager, servicename: u64) -> Result<ClientSession, Error> {
-        match SERVICES.lock().get(&servicename) {
-            Some(port) => port.connect(),
-            None => Err(SmError::ServiceNotRegistered.into())
-        }
+    //
+    // Implementation note: There is a possibility of deadlocking in `port.connect()` here!
+    //
+    // Here's what can happen: Someone calls `register_service()`, but then never accepts on it.
+    // The call to `connect()` will block waiting for an accepter, and freeze `sm:` forever.
+    //
+    // It gets worse when you consider the old way of registering: We would get a handle to `sm:`,
+    // register our handle, close the handle to `sm:`, and finally accept. The problem is, closing
+    // the handle requires `sm:` to handle it, but by the time `sm:` gets there, it might already be
+    // trying to connect to the port!
+    //
+    // For this reason, it is recommended for processes to use a global `sm:` handle.
+    fn get_service<'a>(&mut self, work_queue: WorkQueue<'a>, servicename: u64) -> FutureObj<'a, Result<ClientSession, Error>> {
+        FutureObj::new(Box::new(loop_fn(work_queue, move |work_queue| {
+            info!("Trying to acquire {:x}", servicename);
+            if let Some(port) = SERVICES.lock().get(&servicename) {
+                info!("Success!");
+                // Synchronous connect. This can block.
+                let client = port.connect();
+                futures::future::ready(Loop::Break(client)).left_future()
+            } else {
+                info!("Service not currently registered. Sleeping.");
+                SERVICES_EVENT.1.wait_async(work_queue.clone())
+                    .map(|_| {
+                        info!("Waking up, clearing the service event");
+                        SERVICES_EVENT.1.clear_signal().unwrap();
+                        Loop::Continue(work_queue)
+                    }).right_future()
+            }
+        })))
     }
-
     /// Register a new service, returning a ServerPort to the newly
     /// registered service.
-    fn register_service(&mut self, _manager: &WaitableManager, servicename: u64, is_light: bool, max_handles: u32) -> Result<ServerPort, Error> {
-        let (clientport, serverport) = syscalls::create_port(max_handles, is_light, get_service_str(&servicename))?;
+    fn register_service(&mut self, _work_queue: WorkQueue<'static>, servicename: u64, is_light: bool, max_handles: u32) -> FutureObj<'_, Result<ServerPort, Error>> {
+        let (clientport, serverport) = match syscalls::create_port(max_handles, is_light, get_service_str(&servicename)) {
+            Ok(v) => v,
+            Err(err) => return FutureObj::new(Box::new(futures::future::err(err.into())))
+        };
         match SERVICES.lock().entry(servicename) {
-            Entry::Occupied(_) => Err(SmError::ServiceAlreadyRegistered.into()),
+            Entry::Occupied(_) => return FutureObj::new(Box::new(futures::future::err(SmError::ServiceAlreadyRegistered.into()))),
             Entry::Vacant(vacant) => {
                 vacant.insert(clientport);
-                Ok(serverport)
+
+                // Wake up potential get_service.
+                SERVICES_EVENT.0.signal().unwrap();
+
+                FutureObj::new(Box::new(futures::future::ok(serverport)))
             }
         }
     }
 
     /// Unregister a service.
-    fn unregister_service(&mut self, _manager: &WaitableManager, servicename: u64) -> Result<(), Error> {
+    fn unregister_service<'a>(&mut self, _work_queue: WorkQueue<'static>, servicename: u64) -> FutureObj<'_, Result<(), Error>> {
         match SERVICES.lock().remove(&servicename) {
-            Some(_) => Ok(()),
-            None => Err(SmError::ServiceNotRegistered.into())
+            Some(_) => FutureObj::new(Box::new(futures::future::ok(()))),
+            None => FutureObj::new(Box::new(futures::future::err(SmError::ServiceNotRegistered.into())))
         }
     }
 }
 
 fn main() {
-    let man = WaitableManager::new();
-    let handler = Box::new(PortHandler::new_managed("sm:\0", UserInterface::dispatch).unwrap());
-    man.add_waitable(handler as Box<dyn IWaitable>);
+    let mut man = WaitableManager::new();
+    let handler = managed_port_handler(man.work_queue(), "sm:\0", UserInterface::dispatch).unwrap();
+
+    man.work_queue().spawn(FutureObj::new(Box::new(handler)));
 
     man.run();
 }
@@ -153,5 +194,9 @@ capabilities!(CAPABILITIES = Capabilities {
         sunrise_libuser::syscalls::nr::ReplyAndReceiveWithUserBuffer,
         sunrise_libuser::syscalls::nr::CreatePort,
         sunrise_libuser::syscalls::nr::ConnectToPort,
+        sunrise_libuser::syscalls::nr::CreateEvent,
+        sunrise_libuser::syscalls::nr::SignalEvent,
+        sunrise_libuser::syscalls::nr::ClearEvent,
+        sunrise_libuser::syscalls::nr::ResetSignal,
     ]
 });

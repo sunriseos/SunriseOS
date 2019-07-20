@@ -36,7 +36,8 @@ use alloc::vec::Vec;
 use alloc::boxed::Box;
 use alloc::sync::{Arc, Weak};
 use crate::libuser::syscalls;
-use crate::libuser::ipc::server::{WaitableManager, PortHandler, IWaitable, SessionWrapper};
+use crate::libuser::ipc::server::{WaitableManager, port_handler, new_session_wrapper, WorkQueue};
+use futures::future::FutureObj;
 use crate::libuser::types::*;
 use spin::Mutex;
 use crate::libuser::error::Error;
@@ -57,7 +58,7 @@ impl IViInterface for ViInterface {
     /// a framebuffer of type `[[u8; width]; height]`.
     ///
     /// It is allowed to place the framebuffer outside the field of view.
-    fn create_buffer(&mut self, manager: &WaitableManager, sharedmem: SharedMemory, top: i32, left: i32, width: u32, height: u32,) -> Result<IBufferProxy, Error> {
+    fn create_buffer(&mut self, manager: WorkQueue<'static>, sharedmem: SharedMemory, top: i32, left: i32, width: u32, height: u32,) -> Result<IBufferProxy, Error> {
         let size = align_up(width * height * 4, PAGE_SIZE as _);
         let addr = find_free_address(size as _, PAGE_SIZE)?;
         let mapped = sharedmem.map(addr, size as _, MemoryPermissions::READABLE)?;
@@ -72,15 +73,17 @@ impl IViInterface for ViInterface {
         };
         BUFFERS.lock().push(Arc::downgrade(&buf.buffer));
         let (server, client) = syscalls::create_session(false, 0)?;
-        let wrapper = SessionWrapper::new(server, buf, IBuffer::dispatch);
-        manager.add_waitable(Box::new(wrapper) as Box<dyn IWaitable>);
+        let wrapper  = new_session_wrapper(manager.clone(), server, buf, IBuffer::dispatch);
+        //let future : Box<dyn Send + 'static> = Box::new(wrapper);
+        //let future : FutureObj<'static, _> = FutureObj::new(Box::new(wrapper));
+        manager.spawn(  FutureObj::new(Box::new(wrapper)));
         Ok(IBufferProxy::from(client))
     }
 
     /// Gets the screen (width, height) in pixels.
     ///
     /// Cannot fail.
-    fn get_screen_resolution(&mut self, _manager: &WaitableManager) -> Result<(u32, u32,), Error> {
+    fn get_screen_resolution(&mut self, _manager: WorkQueue<'static>) -> Result<(u32, u32,), Error> {
         let fb = FRAMEBUFFER.lock();
         Ok((fb.width() as _, fb.height() as _))
     }
@@ -241,7 +244,7 @@ impl Drop for IBuffer {
 impl IBufferInterface for IBuffer {
     /// Blit the buffer to the framebuffer.
     #[inline(never)]
-    fn draw(&mut self, _manager: &WaitableManager) -> Result<(), Error> {
+    fn draw(&mut self, _manager: WorkQueue<'static>) -> Result<(), Error> {
         let (fullscreen_width, fullscreen_height, bpp) = {
             let fb = FRAMEBUFFER.lock();
             (fb.width(), fb.height(), fb.bpp())
@@ -268,9 +271,10 @@ impl IBufferInterface for IBuffer {
 }
 
 fn main() {
-    let man = WaitableManager::new();
-    let handler = Box::new(PortHandler::new("vi:\0", ViInterface::dispatch).unwrap());
-    man.add_waitable(handler as Box<dyn IWaitable>);
+    let mut man = WaitableManager::new();
+
+    let handler = port_handler(man.work_queue(), "vi:", ViInterface::dispatch).unwrap();
+    man.work_queue().spawn(FutureObj::new(Box::new(handler)));
 
     man.run();
 }
