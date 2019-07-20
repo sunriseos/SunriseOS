@@ -41,7 +41,8 @@ deploy:
     branch: master
     condition: -z "${NO_TESTS_NO_DEPLOY}"
 
-cache: cargo
+# See issue #378
+cache: false
 before_cache:
   # Travis can't cache files that are not readable by "others"
   - chmod -R a+r $HOME/.cargo
