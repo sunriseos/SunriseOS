@@ -18,6 +18,9 @@ font-rs = { git = "https://github.com/SunriseOS/font-rs" }
 log = "0.4"
 lazy_static = "1.3"
 libm = "0.1"
+futures-preview = { version = "0.3.0-alpha.16", default-features = false, features = ["nightly", "alloc"] }
+generational-arena = { version = "0.2", default-features = false }
+core = { package = "core-futures-tls", path = "../../core-futures-tls" }
 
 [dependencies.byteorder]
 default-features = false

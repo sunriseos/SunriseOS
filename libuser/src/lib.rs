@@ -3,7 +3,7 @@
 //! Provides an allocator, various lang items.
 
 #![no_std]
-#![feature(global_asm, asm, start, lang_items, core_intrinsics, const_fn, box_syntax, untagged_unions, naked_functions, proc_macro_hygiene, doc_cfg)]
+#![feature(global_asm, asm, start, lang_items, core_intrinsics, const_fn, box_syntax, untagged_unions, naked_functions, proc_macro_hygiene, doc_cfg, async_await, unboxed_closures, fn_traits)]
 
 #![warn(unused)]
 #![warn(missing_debug_implementations)]
@@ -62,6 +62,7 @@ pub mod window;
 pub mod zero_box;
 mod crt0;
 mod log_impl;
+pub use sunrise_libutils::loop_future;
 
 pub use sunrise_libutils::io;
 

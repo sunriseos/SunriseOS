@@ -27,6 +27,7 @@ use core::fmt::Write;
 pub mod io;
 mod cursor;
 pub use crate::cursor::*;
+pub mod loop_future;
 
 /// Align the address to the next alignment.
 ///

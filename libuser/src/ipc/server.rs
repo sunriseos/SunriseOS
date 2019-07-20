@@ -1,4 +1,4 @@
-//! IPC Server primitives
+//! # IPC Server primitives
 //!
 //! The creation of an IPC server requires a WaitableManager and a PortHandler.
 //! The WaitableManager will manage the event loop: it will wait for a request
@@ -25,121 +25,161 @@
 //! }
 //!
 //! fn main() {
-//!      let man = WaitableManager::new();
-//!      let handler = Box::new(PortHandler::new("hello\0", IExample::dispatch).unwrap());
-//!      man.add_waitable(handler as Box<dyn IWaitable>);
+//!      let mut man = WaitableManager::new();
+//!      let handler = managed_port_handler(man.work_queue(), "hello\0", IExample::dispatch).unwrap();
+//!      man.work_queue().spawn(FutureObj::new(Box::new(handler)));
 //!      man.run()
 //! }
 //! ```
+//!
+//! Future support is very liberally taken from the blog post [Building an
+//! Embedded Futures Executor](https://josh.robsonchase.com/embedded-executor/)
+//! and adapted to the newer version of futures.
+
+// TODO: Rewrite the docs, split future executor from IPC.
 
 use crate::syscalls;
 use crate::types::{HandleRef, ServerPort, ServerSession};
-use core::marker::PhantomData;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 use alloc::boxed::Box;
+use alloc::collections::vec_deque::VecDeque;
+use core::pin::Pin;
 use spin::Mutex;
 use core::ops::{Deref, DerefMut, Index};
-use core::fmt::{self, Debug};
 use crate::error::Error;
 use crate::ipc::Message;
+use core::task::{Poll, Context, Waker};
+use futures::future::{FutureObj, LocalFutureObj, FutureExt};
+use futures::task::ArcWake;
+use core::future::Future;
 
-/// A handle to a waitable object.
-pub trait IWaitable: Debug {
-    /// Gets the handleref for use in the `wait_synchronization` call.
-    fn get_handle(&self) -> HandleRef<'_>;
-    /// Function the manager calls when this object gets signaled.
-    ///
-    /// Takes the manager as a parameter, allowing the handler to add new handles
-    /// to the wait queue.
-    ///
-    /// If the function returns false, remove it from the WaitableManager. If it
-    /// returns an error, log the error somewhere, and remove the handle from the
-    /// waitable manager.
-    fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<bool, Error>;
+#[derive(Debug)]
+struct Task<'a> {
+    future: LocalFutureObj<'a, ()>,
+    // Invariant: waker should always be Some after the task has been spawned.
+    waker: Option<Waker>,
+}
+
+impl<'a> Task<'a> {
+    fn new(future: LocalFutureObj<'a, ()>) -> Task<'a> {
+        Task {
+            future,
+            waker: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct WorkQueue<'a>(Arc<Mutex<VecDeque<WorkItem<'a>>>>);
+
+impl<'a> WorkQueue<'a> {
+    pub(crate) fn wait_for(&self, handles: &[HandleRef], ctx: &mut Context) {
+        for handle in handles {
+            self.0.lock().push_back(WorkItem::WaitHandle(handle.staticify(), ctx.waker().clone()))
+        }
+    }
+
+    pub fn spawn(&self, future: FutureObj<'a, ()>) {
+        self.0.lock().push_back(WorkItem::Spawn(future));
+    }
+}
+
+// Super simple Wake implementation.
+#[derive(Debug, Clone)]
+pub struct QueueWaker<'a> {
+    queue: WorkQueue<'a>,
+    id: generational_arena::Index,
+}
+
+impl<'a> ArcWake for QueueWaker<'a> {
+    fn wake_by_ref(arc_self: &Arc<Self>) {
+        arc_self.queue.0.lock().push_back(WorkItem::Poll(arc_self.id))
+    }
+}
+
+#[derive(Debug)]
+enum WorkItem<'a> {
+    Poll(generational_arena::Index),
+    Spawn(FutureObj<'a, ()>),
+    WaitHandle(HandleRef<'static>, Waker),
 }
 
 /// The event loop manager. Waits on the waitable objects added to it.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct WaitableManager<'a> {
-    /// Vector of items to add to the waitable list on the next loop.
-    to_add_waitables: Mutex<Vec<Box<dyn IWaitable>>>,
-
-    /// Vector of static ref to items to add to the waitable list on the next loop.
-    to_add_waitables_ref: Mutex<Vec<&'a mut dyn IWaitable>>
+    /// Queue of things to do in the next "tick" of the event loop.
+    work_queue: WorkQueue<'a>,
+    /// List of futures that are currently running on this executor.
+    registry: generational_arena::Arena<Task<'a>>
 }
 
 impl<'a> WaitableManager<'a> {
     /// Creates an empty waitable manager.
     pub fn new() -> WaitableManager<'a> {
         WaitableManager {
-            to_add_waitables: Mutex::new(Vec::new()),
-            to_add_waitables_ref: Mutex::new(Vec::new())
+            work_queue: WorkQueue(Arc::new(Mutex::new(VecDeque::new()))),
+            registry: generational_arena::Arena::new(),
         }
     }
 
-    /// Add a new handle for the waitable manager to wait on.
-    pub fn add_waitable(&self, waitable: Box<dyn IWaitable>) {
-        self.to_add_waitables.lock().push(waitable);
+    pub fn work_queue(&self) -> WorkQueue<'a> {
+        self.work_queue.clone()
     }
 
-    /// Add a new handle for the waitable manager to wait on.
-    pub fn add_waitable_ref(&self, waitable: &'a mut dyn IWaitable) {
-        self.to_add_waitables_ref.lock().push(waitable);
-    }
-
-    /// Run the event loop. This will call wait_synchronization on all the
-    /// pending handles, and call handle_signaled on the handle that gets
-    /// signaled.
-    pub fn run(&self) -> ! {
-        let mut waitables_box = Vec::new();
-        let mut waitables_ref = Vec::new();
+    pub fn run(&mut self) {
+        let mut waitables = Vec::new();
+        let mut waiting_on: Vec<Vec<Waker>> = Vec::new();
         loop {
-            {
-                let mut guard = self.to_add_waitables.lock();
-                for waitable in guard.drain(..) {
-                    waitables_box.push(waitable);
-                }
-            }
+            loop {
+                let item = self.work_queue.0.lock().pop_front();
+                let item = if let Some(item) = item { item } else { break };
+                match item {
+                    WorkItem::Poll(id) => {
+                        if let Some(Task { future, waker }) = self.registry.get_mut(id) {
+                            let future = Pin::new(future);
 
-            {
-                let mut guard = self.to_add_waitables_ref.lock();
-                for waitable in guard.drain(..) {
-                    waitables_ref.push(waitable);
-                }
-            }
+                            let waker = waker
+                                .as_ref()
+                                .expect("waker not set, task spawned incorrectly");
 
-            let idx = {
-                let mut handles = waitables_box.iter().map(|v| v.get_handle()).collect::<Vec<HandleRef<'_>>>();
-                let mut handles_waitable_ref = waitables_ref.iter().map(|v| v.get_handle()).collect::<Vec<HandleRef<'_>>>();
-                handles.append(&mut handles_waitable_ref);
-                // TODO: new_waitable_event
-                syscalls::wait_synchronization(&*handles, None).unwrap()
-            };
-
-            let result = if idx < waitables_box.len() {
-                waitables_box[idx].handle_signaled(self)
-            } else {
-                waitables_ref[idx - waitables_box.len()].handle_signaled(self)
-            };
-
-            match result {
-                Ok(false) => (),
-                Ok(true) => {
-                    if idx < waitables_box.len() {
-                        waitables_box.remove(idx);
-                    } else {
-                        waitables_ref.remove(idx - waitables_box.len());
-                    }
-                },
-                Err(err) => {
-                    error!("Error: {}", err);
-                    if idx < waitables_box.len() {
-                        waitables_box.remove(idx);
-                    } else {
-                        waitables_ref.remove(idx - waitables_box.len());
+                            if let Poll::Ready(_) = future.poll(&mut Context::from_waker(waker)) {
+                                self.registry.remove(id);
+                            }
+                        }
+                    },
+                    WorkItem::Spawn(future) => {
+                        let id = self.registry.insert(Task::new(future.into()));
+                        self.registry.get_mut(id).unwrap().waker = Some(Arc::new(QueueWaker {
+                            queue: self.work_queue.clone(),
+                            id,
+                        }).into_waker());
+                        self.work_queue.0.lock().push_back(WorkItem::Poll(id));
+                    },
+                    WorkItem::WaitHandle(hnd, waker) => {
+                        if let Some(idx) = waitables.iter().position(|v| *v == hnd) {
+                            waiting_on[idx].push(waker);
+                        } else {
+                            waitables.push(hnd);
+                            waiting_on.push(vec![waker]);
+                        }
                     }
                 }
             }
+
+            if self.registry.is_empty() {
+                break;
+            }
+
+            assert!(!waitables.is_empty(), "WaitableManager entered invalid state: No waitables to wait on.");
+            info!("Calling WaitSynchronization with {:?}", waitables);
+            let idx = syscalls::wait_synchronization(&*waitables, None).unwrap();
+            info!("Handle idx {} got signaled", idx);
+            for item in waiting_on.remove(idx) {
+                item.wake()
+            }
+
+            waitables.remove(idx);
         }
     }
 }
@@ -179,155 +219,128 @@ fn encode_bytes(s: &str) -> u64 {
         | (u64::from(*s.get(6).unwrap_or(&0))) << 48 | (u64::from(*s.get(7).unwrap_or(&0))) << 56
 }
 
-/// A wrapper around a Server Port that implements the IWaitable trait. Waits
-/// for connection requests, and creates a new SessionWrapper around the
-/// incoming connections, which gets registered on the WaitableManager.
-///
-/// The DISPATCH function is passed to [SessionWrapper]s created from this
-/// port. The DISPATCH function is responsible for parsing and answering an
-/// IPC request. It will usually be found on the interface trait. See, for
-/// instance, [crate::sm::IUserInterface::dispatch()].
-pub struct PortHandler<T, DISPATCH> {
-    /// The kernel object backing this Port Handler. 
-    handle: ServerPort,
-    /// Function called when sessions created from this port receive a request.
-    dispatch: DISPATCH,
-    /// Type of the Object this port creates.
-    phantom: PhantomData<T>,
-}
-
-impl<T, DISPATCH> Debug for PortHandler<T, DISPATCH> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("PortHandler")
-            .field("handle", &self.handle)
-            .finish()
-    }
-}
-
-impl<T, DISPATCH> PortHandler<T, DISPATCH> {
-    /// Registers a new PortHandler of the given name to the `sm:` service.
-    pub fn new(server_name: &str, dispatch: DISPATCH) -> Result<PortHandler<T, DISPATCH>, Error> {
-        use crate::sm::IUserInterfaceProxy;
-        let port = IUserInterfaceProxy::raw_new()?.register_service(encode_bytes(server_name), false, 0)?;
-        Ok(PortHandler {
-            handle: port,
-            dispatch,
-            phantom: PhantomData,
-        })
-    }
-
-    /// Registers a new PortHandler of the given name to the kernel. Note that
-    /// this interface should not be used by most services. Only the service
-    /// manager should register itself through this interface, as kernel managed
-    /// services do not implement any access controls.
-    pub fn new_managed(server_name: &str, dispatch: DISPATCH) -> Result<PortHandler<T, DISPATCH>, Error> {
-        let port = syscalls::manage_named_port(server_name, 0)?;
-        Ok(PortHandler {
-            handle: port,
-            dispatch,
-            phantom: PhantomData,
-        })
-    }
-}
-
-impl<T: Default + Debug + 'static, DISPATCH: Clone + 'static> IWaitable for PortHandler<T, DISPATCH>
+fn common_port_handler<T, DISPATCH>(work_queue: WorkQueue<'static>, port: ServerPort, dispatch: DISPATCH) -> impl Future<Output=()>
 where
-    DISPATCH: FnMut(&mut T, &WaitableManager, u32, &mut [u8]) -> Result<(), Error>
+    DISPATCH: for<'b> FutureCallback<(&'b mut T, WorkQueue<'static>, u32, &'b mut [u8]), Result<(), Error>>,
+    DISPATCH: Clone + Unpin + Send + 'static,
+    T: Default + Unpin + Send + 'static,
 {
-    fn get_handle(&self) -> HandleRef<'_> {
-        self.handle.0.as_ref()
-    }
-
-    fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<bool, Error> {
-        let session = Box::new(SessionWrapper {
-            object: T::default(),
-            handle: self.handle.accept()?,
-            buf: Align16([0; 0x100]),
-            pointer_buf: [0; 0x300],
-            dispatch: self.dispatch.clone(),
-        });
-        manager.add_waitable(session);
-        Ok(false)
-    }
+    crate::loop_future::loop_fn((work_queue, dispatch, port), |(work_queue, dispatch, port)| {
+        port.wait_async(work_queue.clone())
+            .map(move |_| {
+                let handle = port.accept().unwrap();
+                let future = new_session_wrapper(work_queue.clone(), handle, T::default(), dispatch.clone());
+                work_queue.spawn(FutureObj::new(Box::new(future)));
+                crate::loop_future::Loop::Continue((work_queue, dispatch, port))
+            })
+    })
 }
 
-/// A wrapper around an Object backed by an IPC Session that implements the
-/// IWaitable trait.
-///
-/// The DISPATCH function is responsible for parsing and answering an IPC
-/// request. It will usually be found on the interface trait. See, for instance,
-/// [crate::sm::IUserInterface::dispatch()].
-pub struct SessionWrapper<T, DISPATCH> {
-    /// Kernel Handle backing this object.
-    handle: ServerSession,
-    /// Object instance.
-    object: T,
-
-    /// Function called to handle an IPC request.
-    dispatch: DISPATCH,
-
-    /// Command buffer for this session.
-    /// Ensure 16 bytes of alignment so the raw data is properly aligned.
-    buf: Align16<[u8; 0x100]>,
-
-    /// Buffer used for receiving type-X buffers and answering to type-C buffers.
-    // TODO: Pointer Buf should take its size as a generic parameter.
-    // BODY: The Pointer Buffer size should be configurable by the sysmodule.
-    // BODY: We'll wait for const generics to do it however, as otherwise we'd
-    // BODY: have to bend over backwards with typenum.
-    pointer_buf: [u8; 0x300]
-}
-
-impl<T, DISPATCH> SessionWrapper<T, DISPATCH> {
-    /// Create a new SessionWrapper from an open ServerSession and a backing
-    /// Object.
-    pub fn new(handle: ServerSession, object: T, dispatch: DISPATCH) -> SessionWrapper<T, DISPATCH> {
-        SessionWrapper {
-            handle,
-            object,
-            dispatch,
-            buf: Align16([0; 0x100]),
-            pointer_buf: [0; 0x300],
-        }
-    }
-}
-
-impl<T: Debug, DISPATCH> Debug for SessionWrapper<T, DISPATCH> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("SessionWrapper")
-            .field("handle", &self.handle)
-            .field("object", &self.object)
-            .field("buf", &&self.buf[..])
-            .field("pointer_buf", &&self.pointer_buf[..])
-            .finish()
-    }
-}
-
-impl<T: Debug, DISPATCH> IWaitable for SessionWrapper<T, DISPATCH>
+pub fn port_handler<T, DISPATCH>(work_queue: WorkQueue<'static>, server_name: &str, dispatch: DISPATCH) -> Result<impl Future<Output=()>, Error>
 where
-    DISPATCH: FnMut(&mut T, &WaitableManager, u32, &mut [u8]) -> Result<(), Error>
+    DISPATCH: for<'b> FutureCallback<(&'b mut T, WorkQueue<'static>, u32, &'b mut [u8]), Result<(), Error>>,
+    DISPATCH: Clone + Unpin + Send + 'static,
+    T: Default + Unpin + Send + 'static,
 {
-    fn get_handle(&self) -> HandleRef<'_> {
-        self.handle.0.as_ref()
+    use crate::sm::IUserInterfaceProxy;
+    // We use `new()` and not `raw_new()` in order to avoid deadlocking when closing the
+    // IUserInterfaceProxy handle. See implementation note in sm/src/main.rs
+    let port = IUserInterfaceProxy::new()?.register_service(encode_bytes(server_name), false, 0)?;
+    Ok(common_port_handler(work_queue, port, dispatch))
+}
+
+pub fn managed_port_handler<T, DISPATCH>(work_queue: WorkQueue<'static>, server_name: &str, dispatch: DISPATCH) -> Result<impl Future<Output=()>, Error>
+where
+    DISPATCH: for<'b> FutureCallback<(&'b mut T, WorkQueue<'static>, u32, &'b mut [u8]), Result<(), Error>>,
+    DISPATCH: Clone + Unpin + Send + 'static,
+    T: Default + Unpin + Send + 'static,
+{
+    let port = syscalls::manage_named_port(server_name, 0)?;
+    Ok(common_port_handler(work_queue, port, dispatch))
+}
+
+// Ideally, that's what we would want to write
+// But the compiler seems to have trouble reasoning about associated types in
+// an HRTB context (maybe that's just not possible ? Not sure)
+// async fn new_session_wrapper<F>(mut dispatch: F) -> ()
+// where
+//     F: for<'a> FnMut<(&'a mut [u8],)>,
+//     for<'a> <F as FnOnce<(&'a mut [u8],)>>::Output: Future<Output = Result<(), ()>>,
+// {
+//     // Session wrapper code
+// }
+
+// So instead, we'll make a wrapper for `FnMut` that has the right trait bound
+// on its associated output type directly
+pub trait FutureCallback<T, O>: FnMut<T> {
+    type Ret: Future<Output = O> + Send;
+
+    fn call(&mut self, x: T) -> Self::Ret;
+}
+
+// Implement it for all FnMut with Ret = Output
+impl<T, O, F: FnMut<T>> FutureCallback<T, O> for F
+where
+    F::Output: Future<Output = O> + Send,
+{
+    type Ret = F::Output;
+
+    fn call(&mut self, x: T) -> Self::Ret {
+        self.call_mut(x)
     }
+}
 
-    fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<bool, Error> {
-        // Push a C Buffer before receiving.
-        let mut req = Message::<(), [_; 1], [_; 0], [_; 0]>::new_request(None, 0);
-        req.push_in_pointer(&mut self.pointer_buf, false);
-        req.pack(&mut self.buf[..]);
+// And this now magically works
+//fn dispatch<'a>            (&'a mut self,    work_queue: WorkQueue<'static>,    cmdid: u32, buf: &'a mut [u8]) -> FutureObj<'a, Result<(), Error>> {
+// for<'a> core::ops::FnOnce<(&'a mut IBuffer, libuser::ipc::server::WorkQueue<'static>, u32, &'a mut [u8])>`
+//         core::ops::FnOnce<(&mut IBuffer,    libuser::ipc::server::WorkQueue<'_>,      u32, &mut [u8])>`
 
-        self.handle.receive(&mut self.buf[..], Some(0))?;
+// `core::ops::FnOnce<(&'0 mut IBuffer, libuser::ipc::server::WorkQueue<'static>, u32, &'0 mut [u8])>`
+// would have to be implemented for the type
+// `for<'a>         fn(&'a mut IBuffer, libuser::ipc::server::WorkQueue<'static>, u32, &'a mut [u8]) -> futures_core::future::future_obj::FutureObj<'a, core::result::Result<(), libuser::error::Error>> {<IBuffer as libuser::vi::IBuffer>::dispatch}`,
+// for some specific lifetime `'0`, but
+// `core::ops::FnOnce<(&mut IBuffer, libuser::ipc::server::WorkQueue<'_>, u32, &mut [u8])>`
+// is actually implemented for the type
+// `for<'a>         fn(&'a mut IBuffer, libuser::ipc::server::WorkQueue<'static>, u32, &'a mut [u8]) -> futures_core::future::future_obj::FutureObj<'a, core::result::Result<(), libuser::error::Error>> {<IBuffer as libuser::vi::IBuffer>::dispatch}`
+pub fn new_session_wrapper<T, DISPATCH>(work_queue: WorkQueue<'static>, handle: ServerSession, mut object: T, mut dispatch: DISPATCH) -> impl Future<Output = ()> + Send
+where
+    DISPATCH: for<'b> FutureCallback<(&'b mut T, WorkQueue<'static>, u32, &'b mut [u8]), Result<(), Error>>,
+    DISPATCH: Unpin + Send + 'static,
+    T: Unpin + Send + 'static,
+{
+    let mut buf = Align16([0; 0x100]);
+    let mut pointer_buf = [0; 0x300];
 
-        match super::find_ty_cmdid(&self.buf[..]) {
-            // TODO: Handle other types.
-            Some((4, cmdid)) | Some((6, cmdid)) => {
-                (self.dispatch)(&mut self.object, manager, cmdid, &mut self.buf[..])?;
-                self.handle.reply(&mut self.buf[..])?;
-                Ok(false)
-            },
-            Some((2, _)) => Ok(true),
-            _ => Ok(true)
+    async move {
+        loop {
+            info!("Waiting for our handle");
+            handle.wait_async(work_queue.clone()).await;
+
+            // Push a C Buffer before receiving.
+            let mut req = Message::<(), [_; 1], [_; 0], [_; 0]>::new_request(None, 0);
+            req.push_in_pointer(&mut pointer_buf, false);
+            req.pack(&mut buf[..]);
+
+            handle.receive(&mut buf[..], Some(0)).unwrap();
+
+            let tycmdid = super::find_ty_cmdid(&buf[..]);
+            info!("{:?}", tycmdid);
+
+            let close = match super::find_ty_cmdid(&buf[..]) {
+                // TODO: Handle other types.
+                Some((4, cmdid)) | Some((6, cmdid)) => dispatch.call((&mut object, work_queue.clone(), cmdid, &mut buf[..])).await
+                    .map(|_| false)
+                    .unwrap_or_else(|err| { error!("Dispatch method errored out: {:?}", err); true }),
+                Some((2, _)) => true,
+                _ => true
+            };
+
+            if close {
+                break;
+            }
+
+            info!("Replying!");
+            handle.reply(&mut buf[..]).unwrap();
         }
     }
 }
