@@ -9,6 +9,7 @@ PHDRS
   data PT_LOAD FLAGS(6);
   bss PT_LOAD FLAGS(6);
   dynamic PT_DYNAMIC;
+  tls PT_TLS;
 }
 
 SECTIONS
@@ -130,14 +131,21 @@ SECTIONS
 
   /* Thread Local sections */
 
-  .tdata : {
-    *(.tdata .tdata.*)
-  } :data
+  /* Since we don't want our user to have to read its own program headers to find out the size and alignment,
+   * we force the aligment here and expose symbols so they can be deduced at runtime */
+  __tls_align__ = 16;
 
-  .tbss : {
+  . = ALIGN(__tls_align__); /* we want no padding between __tls_start__ and .tdata */
+
+  __tls_start__ = .;
+
+  .tdata : ALIGN(__tls_align__) {
+    *(.tdata .tdata.*)
     *(.tbss .tbss.*)
     *(.tcommon)
-  } :data
+  } :tls :data
+
+  __tls_end__ = .;
 
   /* BSS section */
   . = ALIGN(0x1000);

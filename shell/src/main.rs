@@ -204,6 +204,7 @@ capabilities!(CAPABILITIES = Capabilities {
         libuser::syscalls::nr::CloseHandle,
         libuser::syscalls::nr::WaitSynchronization,
         libuser::syscalls::nr::OutputDebugString,
+        libuser::syscalls::nr::SetThreadArea,
 
         libuser::syscalls::nr::SetHeapSize,
         libuser::syscalls::nr::QueryMemory,

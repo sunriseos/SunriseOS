@@ -2,7 +2,7 @@
 //! This module is a minimal RT0 handling the entry point of the application.
 //! It handles relocation, clean the bss and then finally call start_main.
 
-mod relocation;
+pub mod relocation;
 
 /// Executable entrypoint. Handle relocations and calls real_start.
 #[cfg(target_os = "none")]

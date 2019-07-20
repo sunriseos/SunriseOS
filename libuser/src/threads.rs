@@ -11,7 +11,7 @@
 //! * [`svcStartThread`] : starts a thread created by `svcCreateThread`.
 //! * [`svcExitThread`] : terminates the current thread.
 //!
-//! Note that it is impossible to terminate another thread that our own.
+//! Note that it is impossible to terminate another thread but our own.
 //!
 //! The first thread of a process (referred later in this doc as "main thread") gets the handle to
 //! its own thread in one of its registers when it is started by the kernel.
@@ -59,6 +59,7 @@
 use crate::types::Thread as ThreadHandle;
 use crate::syscalls;
 use crate::error::Error;
+use crate::thread_local_storage::TlsElf;
 use sunrise_libkern::{TLS, IpcBuffer};
 use alloc::boxed::Box;
 use core::mem::ManuallyDrop;
@@ -84,6 +85,10 @@ pub struct ThreadContext {
     ///
     /// `Some` for every other thread.
     stack: Option<Box<[u8; STACK_SIZE]>>,
+    /// The thread local storage of this thread.
+    ///
+    /// This is where `#[thread_local]` statics live.
+    tls_elf: Once<TlsElf>,
     /// The ThreadHandle of this thread.
     ///
     /// The thread needs to be able to access its own ThreadHandle at anytime
@@ -97,6 +102,7 @@ impl fmt::Debug for ThreadContext {
             .field("entry_point", &self.entry_point)
             .field("arg", &self.arg)
             .field("stack_address", &(self.stack.as_ref().map(|v| v as *const _ as usize).unwrap_or(0)))
+            .field("tls", &self.tls_elf)
             .field("thread_handle", &self.thread_handle)
             .finish()
     }
@@ -120,6 +126,7 @@ static MAIN_THREAD_CONTEXT: ThreadContext = ThreadContext {
     entry_point: |_| { },
     arg: 0,
     stack: None,
+    tls_elf: Once::new(), // will be initialised at startup.
     thread_handle: Once::new(), // will be initialized at startup.
 };
 
@@ -180,14 +187,19 @@ impl Thread {
 
     /// Allocates resources for a thread. To start it, call [`start`].
     ///
-    /// Allocates the stack, sets up the context, and calls `svcCreateThread`.
+    /// Allocates the stack, sets up the context and TLS, and calls `svcCreateThread`.
     ///
     /// [`start`]: Thread::start
     pub fn create(entry: fn (usize) -> (), arg: usize) -> Result<Self, Error> {
+
+        let tls_elf = Once::new();
+        tls_elf.call_once(TlsElf::allocate);
+        // allocate a context
         let context = ManuallyDrop::new(Box::new(ThreadContext {
             entry_point: entry,
             arg,
             stack: Some(box [0u8; STACK_SIZE]),
+            tls_elf: tls_elf,
             thread_handle: Once::new(), // will be rewritten in a second
         }));
         match syscalls::create_thread(
@@ -232,6 +244,10 @@ extern "fastcall" fn thread_trampoline(thread_context_addr: usize) -> ! {
 
     let thread_context_addr = thread_context_addr as *mut ThreadContext;
 
+    // make gs point to our tls
+    let tls_elf = unsafe { &(*thread_context_addr).tls_elf };
+    tls_elf.r#try().unwrap().enable_for_current_thread();
+
     // call the routine saved in the context, passing it the arg saved in the context
     unsafe {
         ((*thread_context_addr).entry_point)((*thread_context_addr).arg)
@@ -266,4 +282,9 @@ pub extern fn init_main_thread(handle: ThreadHandle) {
     MAIN_THREAD_CONTEXT.thread_handle.call_once(|| handle);
     // save the address of our context in our TLS region
     unsafe { (*get_my_tls_region()).ptr_thread_context = &MAIN_THREAD_CONTEXT as *const ThreadContext as usize };
+
+    // allocate, enable elf TLS, and save it in our context
+    let tls_elf = TlsElf::allocate();
+    tls_elf.enable_for_current_thread();
+    MAIN_THREAD_CONTEXT.tls_elf.call_once(move || tls_elf);
 }

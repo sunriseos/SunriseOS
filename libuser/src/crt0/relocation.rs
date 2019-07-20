@@ -14,6 +14,8 @@ mod module_header {
         .int __bss_end__ - module_header
         .int __eh_frame_hdr_start__ - module_header
         .int __eh_frame_hdr_end__ - module_header
+        .int __tls_start__ - module_header
+        .int __tls_end__ - module_header
         .int 0 // TODO: runtime-generated module object offset for rtld
     "#);
 }
@@ -42,6 +44,12 @@ pub struct ModuleHeader {
     /// The offset of the end of the eh_frame_hdr section relative to ModuleHeader address.
     pub unwind_end_off: u32,
 
+    /// The offset of the beginning of the TLS initialization image.
+    pub tls_start: u32,
+
+    /// The offset of the end of the TLS initialization image.
+    pub tls_end: u32,
+
     /// The offset of the module object that will be used by the rtld.
     /// This offset is relative to ModuleHeader address.
     pub module_object_off: u32
@@ -50,6 +58,10 @@ pub struct ModuleHeader {
 impl ModuleHeader {
     /// Module Header Magic.
     pub const MAGIC: u32 = 0x30444F4D;
+}
+
+extern "C" {
+    pub static module_header: ModuleHeader;
 }
 
 /// A simple definition of a ELF Dynamic section entry.
@@ -124,15 +136,15 @@ const R_386_RELATIVE: usize = 8;
 #[cfg(target_os = "none")]
 #[no_mangle]
 #[allow(clippy::cast_ptr_alignment)]
-pub unsafe extern fn relocate_self(aslr_base: *mut u8, module_header: *const ModuleHeader) -> u32 {
-    let module_header_address = module_header as *const u8;
-    let module_header = &(*module_header);
+pub unsafe extern fn relocate_self(aslr_base: *mut u8, module_headr: *const ModuleHeader) -> u32 {
+    let module_header_address = module_headr as *const u8;
+    let module_headr = &(*module_headr);
 
-    if module_header.magic != ModuleHeader::MAGIC {
+    if module_headr.magic != ModuleHeader::MAGIC {
         return 1;
     }
 
-    let mut dynamic = module_header_address.add(module_header.dynamic_off as usize) as *const ElfDyn;
+    let mut dynamic = module_header_address.add(module_headr.dynamic_off as usize) as *const ElfDyn;
 
     let mut rela_offset = None;
     let mut rela_entry_size = 0;
