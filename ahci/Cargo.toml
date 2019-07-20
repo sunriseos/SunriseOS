@@ -9,7 +9,7 @@ edition = "2018"
 sunrise-libuser = { path = "../libuser" }
 sunrise-libutils = { path = "../libutils" }
 spin = "0.4"
-log = "0.4.6"
+log = "0.4.7"
 bitfield = "0.13.1"
 
 [dependencies.lazy_static]
