@@ -20,7 +20,7 @@ use core::mem;
 ///
 /// [close_handle]: crate::syscalls::close_handle.
 #[repr(transparent)]
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Handle(pub(crate) NonZeroU32);
 
 impl Handle {
@@ -70,12 +70,48 @@ impl Drop for Handle {
 /// the handle, and without an expensive conversion from an array of pointers to
 /// an array of handles.
 #[repr(transparent)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HandleRef<'a> {
     /// The underlying handle number.
     pub(crate) inner: NonZeroU32,
     /// The real handle this reference is tied to.
     lifetime: PhantomData<&'a Handle>
+}
+
+
+impl<'a> HandleRef<'a> {
+    /// Remove the lifetime on the current HandleRef. See [Handle::as_ref_static()] for
+    /// more information on the safety of this operation.
+    pub fn staticify(&self) -> HandleRef<'static> {
+        HandleRef {
+            inner: self.inner,
+            lifetime: PhantomData
+        }
+    }
+
+    /// Returns a future that waits for the current handle to get signaled. This effectively
+    /// registers it to be polled on with [crate::syscalls::wait_synchronization()].
+    // TODO: Explain what [crate::ipc::WorkQueue] is
+    fn wait_async<'b>(&self, queue: crate::ipc::server::WorkQueue<'b>)-> impl core::future::Future<Output = ()> + Unpin +'b {
+        struct MyFuture<'a> {
+            is_done: bool, queue: crate::ipc::server::WorkQueue<'a>, handle: HandleRef<'static>
+        }
+        impl<'a> core::future::Future for MyFuture<'a> {
+            type Output = ();
+            fn poll(mut self: core::pin::Pin<&mut Self>, cx: &mut core::task::Context) -> core::task::Poll<()> {
+                if self.is_done {
+                    core::task::Poll::Ready(())
+                } else {
+                    self.queue.wait_for(&[self.handle], cx);
+                    self.is_done = true;
+                    core::task::Poll::Pending
+                }
+            }
+        }
+        MyFuture {
+            is_done: false, queue, handle: self.staticify()
+        }
+    }
 }
 
 /// A handle on an IRQ event.
@@ -93,8 +129,12 @@ pub struct ReadableEvent(pub Handle);
 
 impl ReadableEvent {
     /// Clears the signaled state.
-    pub fn clear_signal(&self) -> Result<(), KernelError> {
+    pub fn clear(&self) -> Result<(), KernelError> {
         syscalls::clear_event(self.0.as_ref())
+    }
+
+    pub fn wait_async<'a>(&self, queue: crate::ipc::server::WorkQueue<'a>) -> impl core::future::Future<Output = ()> + Unpin + 'a {
+        self.0.as_ref().wait_async(queue)
     }
 }
 
@@ -166,7 +206,7 @@ impl Drop for ClientSession {
 
 /// The server side of an IPC session.
 ///
-/// Usually obtained by calling [accept], but may also be obtained by calling 
+/// Usually obtained by calling [accept], but may also be obtained by calling
 /// the [create_session] syscall, providing a server/client session pair.
 ///
 /// [accept]: ServerPort::accept
@@ -195,7 +235,7 @@ impl ServerSession {
 
     /// Replies to an IPC request on the given session. If the given session did
     /// not have a pending request, this function will error out.
-    /// 
+    ///
     /// This is a low-level primitives that is usually wrapped by a higher-level
     /// library. Look at the [ipc module] for more information on the IPC
     /// message format.
@@ -210,6 +250,10 @@ impl ServerSession {
                 Err(v)
             })
             .map_err(|v| v.into())
+    }
+
+    pub fn wait_async<'a>(&self, queue: crate::ipc::server::WorkQueue<'a>) -> impl core::future::Future<Output = ()> + Unpin + 'a {
+        self.0.as_ref().wait_async(queue)
     }
 }
 
@@ -249,6 +293,10 @@ impl ServerPort {
         syscalls::accept_session(self)
             .map_err(|v| v.into())
     }
+
+    pub fn wait_async<'a>(&self, queue: crate::ipc::server::WorkQueue<'a>) -> impl core::future::Future<Output = ()> + Unpin + 'a {
+        self.0.as_ref().wait_async(queue)
+    }
 }
 
 /// A Thread. Created with the [create_thread syscall].
@@ -287,7 +335,7 @@ impl Process {
 ///
 /// Special care should be used to ensure multiple processes do not write to the
 /// memory at the same time, or only does so through the use of atomic
-/// operations. Otherwise, UB will occur! 
+/// operations. Otherwise, UB will occur!
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct SharedMemory(pub Handle);
