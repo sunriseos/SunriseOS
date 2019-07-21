@@ -104,7 +104,7 @@ pub enum TimeZoneError {
     /// The time values got out of range internally (usually an overflow was catched)
     OutOfRange,
 
-    /// The given calendar timestamp couldn't be compute.
+    /// The given calendar timestamp couldn't be computed.
     TimeNotFound,
 
     /// The given Tzif file couldn't be stored to a TimeZoneRule because it's too big.
@@ -119,7 +119,7 @@ pub enum TimeZoneError {
     /// An invalid time comparaison occured (is the time in range of the rules?)
     InvalidTimeComparison,
 
-    /// Signed overflow/underflow appened.
+    /// Signed overflow/underflow happened.
     Overflow,
 
     /// Unknown.
@@ -262,7 +262,7 @@ impl Default for CalendarTimeInfo {
 
 assert_eq_size!(CalendarTimeInfo, [u8; 0x10]);
 
-/// Represnet aditional info of a local time.
+/// Represent the aditional information attached to a local time.
 #[repr(C, align(8))]
 #[derive(Copy, Clone, Debug)]
 pub struct CalendarAdditionalInfo {
@@ -398,7 +398,7 @@ fn create_calendar_time(time: Time, gmt_offset: i32) -> TimeZoneResult<CalendarT
     Ok(calendar_time)
 }
 
-/// Compare two CalendarTimeInfo and return the difference of two of them.
+/// Compare two CalendarTimeInfo in the same local time and return the difference of two of them.
 fn compare_calendar_info(a: &CalendarTimeInfo, b: &CalendarTimeInfo) -> isize {
     if a.year != b.year {
         if a.year < b.year {

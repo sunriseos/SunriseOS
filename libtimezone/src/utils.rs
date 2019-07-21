@@ -9,6 +9,7 @@ use core::ops::{Div, Neg, Sub, SubAssign};
 /// Increment the given ``ip`` with ``j`` if it doesn't overflow.
 ///
 /// If the operation overflow, this return true otherwise false.
+#[must_use]
 pub fn increment_overflow<T: Num + CheckedAdd + Copy>(ip: &mut T, j: T) -> bool {
     let res = ip.checked_add(&j);
 
@@ -27,20 +28,18 @@ pub fn increment_overflow<T: Num + CheckedAdd + Copy>(ip: &mut T, j: T) -> bool 
 /// Note:
 /// 
 /// The normalization part allows to remove (or in negative case, add) the amount of ``unit`` we are going to add (or in negative case, remove) to ``ip``.
-pub fn normalize_overflow<
-    T: Num
+pub fn normalize_overflow<T>(
+    ip: &mut T,
+    unit: &mut T,
+    base: T,
+) -> bool where T: Num
         + Sub<Output = T>
         + Div<Output = T>
         + Neg<Output = T>
         + CheckedAdd
         + SubAssign
         + PartialOrd
-        + Copy,
->(
-    ip: &mut T,
-    unit: &mut T,
-    base: T,
-) -> bool {
+        + Copy {
     let time_delta = if *unit >= T::zero() {
         *unit / base
     } else {
@@ -64,7 +63,9 @@ fn get_leap_days_not_neg(y: i64) -> i64 {
     y / 4 - y / 100 + y / 400
 }
 
-/// Get the count of leap days of the given year.
+/// Get the total count of leap days since year 0, at the end of this year.
+/// 
+/// For BC years, the amount of days will be negative. 
 #[inline]
 pub fn get_leap_days(y: i64) -> i64 {
     if y < 0 {

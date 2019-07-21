@@ -259,13 +259,6 @@ impl sunrise_libuser::time::TimeZoneService for TimeZoneService {
         TZ_MANAGER.lock().load_timezone_rule(location, Some(tz_rules))
     }
 
-    /*#[inline(never)]
-    fn test(&mut self, _manager: &WaitableManager, test: &mut LocationName, ) -> Result<(), Error> {
-        let mut test = test;
-        test[0] = b'A';
-        Ok(())
-    }*/
-
     #[inline(never)]
     fn to_calendar_time(&mut self, _manager: &WaitableManager, time: PosixTime, timezone_buffer: &IpcTimeZoneRule, ) -> Result<(CalendarTime, CalendarAdditionalInfo), Error> {
         let timezones = unsafe {

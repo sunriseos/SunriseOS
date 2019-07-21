@@ -284,6 +284,10 @@ mod test {
 #[macro_export]
 /// A macro to initialize a struct directly in global.
 ///
+/// # Note
+/// 
+/// This construct the struct on the stack. For the same behaviours on the heap, please refer to ZeroBox.
+/// 
 /// # Usage
 ///
 /// ```rust

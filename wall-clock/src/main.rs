@@ -22,7 +22,7 @@ extern crate sunrise_libuser;
 use sunrise_libuser::terminal::{Terminal, WindowSize};
 use sunrise_libuser::syscalls;
 use core::fmt::Write;
-use log::info;
+use log::debug;
 
 use sunrise_libuser::time::{RTCManagerProxy, StaticServiceProxy, TimeZoneRule, CalendarAdditionalInfo, CalendarTime};
 use spin::Mutex;
@@ -30,6 +30,10 @@ use spin::Mutex;
 use bstr::BStr;
 
 /// Turns a day of week number from RTC into an english string.
+/// /// 
+/// # Panics
+///
+/// * `dow` isn't valid.
 fn get_day_of_week(dow: u8) -> &'static str {
     match dow {
         2 => "Monday",
@@ -39,11 +43,15 @@ fn get_day_of_week(dow: u8) -> &'static str {
         6 => "Friday",
         7 => "Saturday",
         1 => "Sunday",
-        _ => unreachable!()
+        _ => panic!("Invalid day of week value")
     }
 }
 
 /// Turns a month number from RTC into an english string.
+/// 
+/// # Panics
+///
+/// * `month` isn't valid.
 fn get_month(month: u8) -> &'static str {
     match month {
         01 => "January",
@@ -58,7 +66,7 @@ fn get_month(month: u8) -> &'static str {
         10 => "October",
         11 => "November",
         12 => "December",
-        _ => unreachable!()
+        _ => panic!("Invalid month value")
     }
 }
 
@@ -69,7 +77,7 @@ struct TimeZoneRuleWrapper {
     pub inner: TimeZoneRule,
 }
 
-/// An intance to a custom TimeZoneRule
+/// An instance to a custom TimeZoneRule
 static TIMEZONE_RULE: Mutex<TimeZoneRuleWrapper> = Mutex::new(TimeZoneRuleWrapper { inner: [0x0; 0x4000]});
 
 /// Write a wall clock time into the terminal.
@@ -86,11 +94,11 @@ fn write_calendar(logger: &mut Terminal, location: &BStr, input: (CalendarTime, 
     let year = calendar.year;
 
     if debug_log {
-        info!("{:02}:{:02}:{:02} {} {:02} {} {}", hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year);
+        debug!("{:02}:{:02}:{:02} {} {} {} {}", hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year);
     }
 
     let abbreviation = core::str::from_utf8(&input.1.tz_name[..]).unwrap().trim_matches('\0');
-    let _ = write!(logger, "{}: {:02}:{:02}:{:02} {} {:02} {} {} {}", location, hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year, abbreviation);
+    let _ = write!(logger, "{}: {:02}:{:02}:{:02} {} {} {} {} {}", location, hours, minutes, seconds, get_day_of_week(dayofweek), day, get_month(month), year, abbreviation);
 }
 
 fn main() {

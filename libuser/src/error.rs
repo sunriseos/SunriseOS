@@ -200,9 +200,9 @@ enum_with_val! {
     /// AHCI driver errors.
     #[derive(PartialEq, Eq, Clone, Copy)]
     pub struct TimeError(u32) {
-        /// The given calendar timestamp couldn't be compute.
+        /// The given calendar timestamp couldn't be computed.
         TimeNotFound = 200,
-        /// Signed overflow/underflow appened.
+        /// Signed overflow/underflow happened.
         Overflow = 201,
         /// The given input value was out of the timezone rule range.
         OutOfRange = 902,
