@@ -182,10 +182,10 @@ pub trait SizedIPCBuffer {
     /// Check if the address and size are correct.
     fn is_cool(addr: usize, size: usize) -> bool;
 
-    /// Create a reference to a ipc buffer from part.
+    /// Create a reference to a ipc buffer from an address and a byte size. [see](https://doc.rust-lang.org/std/slice/fn.from_raw_parts.html)
     unsafe fn from_raw_parts<'a>(addr: usize, size: usize) -> &'a Self;
 
-    /// Create a mutable reference to a ipc buffer from part.
+    /// Create a mutable reference to a ipc buffer from an address and a byte size. [see](https://doc.rust-lang.org/std/slice/fn.from_raw_parts_mut.html)
     unsafe fn from_raw_parts_mut<'a>(addr: usize, size: usize) -> &'a mut Self;
 }
 
