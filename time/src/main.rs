@@ -23,9 +23,6 @@ extern crate sunrise_libuser;
 #[macro_use]
 extern crate alloc;
 
-#[macro_use]
-extern crate log;
-
 mod timezone;
 
 use alloc::prelude::v1::*;
@@ -241,9 +238,6 @@ impl sunrise_libuser::time::RTCManager for RTCManager {
         Ok(unsafe {RTC_INSTANCE.get_irq_event_handle() })
     }
 }
-
-use generic_array::GenericArray;
-use generic_array::typenum::consts::U36;
 
 fn main() {
     // Setup a default device location

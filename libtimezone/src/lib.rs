@@ -3,7 +3,6 @@
 //! Allows manipulating timezone data.
 
 #![no_std]
-#![feature(underscore_const_names)]
 #![allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
 
 #[macro_use]

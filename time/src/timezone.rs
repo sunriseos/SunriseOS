@@ -1,16 +1,10 @@
 //! TimeZone module
 //! 
 //! This module takes care of anything related with timezone.
-use core::ops::Deref;
-
 use spin::Mutex;
-
-use generic_array::GenericArray;
-use generic_array::typenum::consts::U36;
 
 use sunrise_libuser::error::Error;
 use sunrise_libuser::error::TimeError;
-use sunrise_libuser::ipc::*;
 
 use sunrise_libuser::time::CalendarTime;
 use sunrise_libuser::time::CalendarAdditionalInfo;
@@ -246,13 +240,13 @@ impl sunrise_libuser::time::TimeZoneService for TimeZoneService {
         TZ_MANAGER.lock().get_total_location_name_count()
     }
 
-    fn load_location_name_list(&mut self, _manager: &WaitableManager, unknown: u32, unknown2: &mut [LocationName]) -> Result<u32, Error> {
+    fn load_location_name_list(&mut self, _manager: &WaitableManager, _unknown: u32, _unknown2: &mut [LocationName]) -> Result<u32, Error> {
         unimplemented!()
     }
 
     #[inline(never)]
     fn load_timezone_rule(&mut self, _manager: &WaitableManager, location: LocationName, tz_rules: &mut IpcTimeZoneRule, ) -> Result<(), Error> {
-        let mut tz_rules = unsafe {
+        let tz_rules = unsafe {
             // TODO: Use plain
             (tz_rules as *mut _ as *mut TimeZoneRule).as_mut().unwrap()
         };
