@@ -392,8 +392,13 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
 /// `TypeDef::Alias`, it will be a rust `type` alias.
 fn format_type(struct_name: &str, ty: &TypeDef) -> Result<String, Error> {
     let mut s = String::new();
-    for line in ty.doc.lines() {
-        writeln!(s, "/// {}", line).unwrap();
+
+    if let Type::Enum(_) = &ty.ty {
+        // Do nothing here
+    } else {
+        for line in ty.doc.lines() {
+            writeln!(s, "/// {}", line).unwrap();
+        }
     }
 
     match &ty.ty {
@@ -415,15 +420,19 @@ fn format_type(struct_name: &str, ty: &TypeDef) -> Result<String, Error> {
             writeln!(s, "}}").unwrap();
         },
         Type::Enum(enu) => {
-            writeln!(s, "#[repr(u32)]").unwrap(); // TODO: Deduce from template
-            writeln!(s, "#[derive(Clone, Copy, Debug)]").unwrap();
-            writeln!(s, "pub enum {} {{", struct_name).unwrap();
+            writeln!(s, "enum_with_val! {{").unwrap();
+            for line in ty.doc.lines() {
+                writeln!(s, "    /// {}", line).unwrap();
+            }
+            writeln!(s, "    #[derive(PartialEq, Eq, Clone, Copy)]").unwrap();
+            writeln!(s, "    pub struct {}({}) {{", struct_name, enu.tyname).unwrap();
             for (doc, name, num) in &enu.fields {
                 for line in doc.lines() {
-                    writeln!(s, "    /// {}", line).unwrap();
+                    writeln!(s, "        /// {}", line).unwrap();
                 }
-                writeln!(s, "    {} = {},", name, num).unwrap();
+                writeln!(s, "        {} = {},", name, num).unwrap();
             }
+            writeln!(s, "    }}").unwrap();
             writeln!(s, "}}").unwrap();
         },
         Type::Alias(alias) => {
