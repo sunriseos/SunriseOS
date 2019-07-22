@@ -367,7 +367,7 @@ macro_rules! trap_gate_asm {
 /// extern "C" fn $wrapper_asm_fnname() {
 ///     unsafe {
 ///         asm!(interrupt_gate_asm!(has_errorcode: $has_errcode)
-///         :: "i"($wrapper_rust_fnname as *const u8) :: "volatile", "intel");
+///         :: "s"($wrapper_rust_fnname as extern "C" fn (&mut UserspaceHardwareContext) : "memory" : "volatile", "intel");
 ///     }
 /// }
 ///
@@ -521,7 +521,7 @@ macro_rules! generate_trap_gate_handler {
         extern "C" fn $wrapper_asm_fnname() {
             unsafe {
                 asm!(trap_gate_asm!(has_errorcode: $errcode)
-                :: "i"($wrapper_rust_fnname as *const u8) :: "volatile", "intel");
+                :: "s"($wrapper_rust_fnname as extern "C" fn (&mut UserspaceHardwareContext)) : "memory" : "volatile", "intel");
             }
         }
     };
