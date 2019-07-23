@@ -35,31 +35,31 @@ pub(crate) struct ConversionBuffer<'a, 'b> {
 #[repr(C, align(4))]
 struct TzifHeader {
     /// The magic number of a Tzif file ("TZif").
-    pub magic: [u8; 4],
+    magic: [u8; 4],
 
     /// The version number of the TzIf file.
-    pub version: u8,
+    version: u8,
 
     /// Reserved for future usage.
     reserved: [u8; 15],
 
     /// The count of GMT TimeTypeInfo.
-    pub ttis_gmt_count: [u8; 4],
+    ttis_gmt_count: [u8; 4],
 
     /// The count of Standard Time Daylight TimeTypeInfo.
-    pub ttis_std_count: [u8; 4],
+    ttis_std_count: [u8; 4],
 
     /// The count of leap definitions.
-    pub leap_count: [u8; 4],
+    leap_count: [u8; 4],
 
     /// The count of time transitions.
-    pub time_count: [u8; 4],
+    time_count: [u8; 4],
 
     /// The count of time type infos.
-    pub type_count: [u8; 4],
+    type_count: [u8; 4],
 
     /// The count of chars.
-    pub char_count: [u8; 4],
+    char_count: [u8; 4],
 }
 
 assert_eq_size!(TzifHeader, [u8; 0x2c]);
@@ -83,19 +83,19 @@ enum RuleType {
 /// Represent a rule of a POSIX TimeZone name.
 struct Rule {
     /// The type of this rule.
-    pub rule_type: RuleType,
+    rule_type: RuleType,
 
     /// The day of this rule.
-    pub day: i64,
+    day: i64,
 
     /// The day of this rule.
-    pub week: i64,
+    week: i64,
 
     /// The month of this rule.
-    pub month: i64,
+    month: i64,
 
     /// The time of this rule.
-    pub time: i64,
+    time: i64,
 }
 
 impl Default for Rule {
@@ -623,8 +623,18 @@ fn parse_timezone_name(name: &[u8], timezone_rule: &mut TimeZoneRule, last_ditch
 }
 
 /// Convert a slice to a ref to a TzifHeader with the appropriate lifetime.
+/// 
+/// # Notes:
+/// 
+/// This function can lead to UB in the the following conditions:
+/// - work_buffer doesn't meet TzifHeader align requirement
+/// 
+/// # Panics:
+///
+/// - work_buffer.len() < sizeof(TzifHeader)
 #[allow(clippy::cast_ptr_alignment)]
 unsafe fn tzif_header_from_bytes(work_buffer: &[u8]) -> &TzifHeader {
+    assert!(work_buffer.len() >= core::mem::size_of::<TzifHeader>());
     &*(work_buffer as *const _ as *const TzifHeader)
 }
 

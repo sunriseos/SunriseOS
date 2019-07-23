@@ -18,6 +18,7 @@ use sunrise_libtimezone::TimeZoneError;
 use sunrise_libuser::ipc::server::WaitableManager;
 
 use sunrise_libutils::initialize_to_zero;
+use lazy_static::lazy_static;
 
 /// A IPC result.
 type IpcResult<T> = Result<T, Error>;
@@ -88,6 +89,10 @@ pub struct TimeZoneManager {
     temp_rules: TimeZoneRule,
 }
 
+lazy_static! {
+    pub static ref ZEROED_TIME_ZONE_RULE: TimeZoneRule = TimeZoneRule::default();
+}
+
 impl TimeZoneManager {
     /// Get the time zone name used on this devie.
     pub fn get_device_location_name(&self) -> LocationName {
@@ -146,7 +151,7 @@ impl TimeZoneManager {
         };
 
         // Before anything else, clear the buffer
-        unsafe { core::ptr::write_bytes(timezone_rule as *mut _ as *mut u8, 0, core::mem::size_of::<TimeZoneRule>()); }
+        *timezone_rule = *ZEROED_TIME_ZONE_RULE;
 
         // Try conversion
         let res = timezone_rule.load_rules(tzdata, &mut self.temp_rules);
@@ -167,6 +172,7 @@ impl TimeZoneManager {
 // https://data.iana.org/time-zones/tzdata-latest.tar.gz
 
 /// Global instance of TimeZoneManager
+/// This is a POD. There isn't any invariants so this should totally be safe.
 pub static TZ_MANAGER: Mutex<TimeZoneManager> = Mutex::new(unsafe { initialize_to_zero!(TimeZoneManager) });
 
 /// TimeZone service object.

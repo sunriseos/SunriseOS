@@ -33,8 +33,8 @@ use sunrise_libuser::time::{TimeZoneServiceProxy, StaticService as _, TimeZoneSe
 use sunrise_libuser::types::*;
 use sunrise_libuser::io::{self, Io};
 use sunrise_libuser::error::Error;
-use sunrise_libutils::initialize_to_zero;
 use spin::Mutex;
+use spin::Once;
 
 capabilities!(CAPABILITIES = Capabilities {
     svcs: [
@@ -89,9 +89,10 @@ impl sunrise_libuser::time::StaticService for StaticService {
 #[derive(Debug)]
 struct Rtc {
     /// Command Register.
-    command: io::Pio<u8>,
+    command: Mutex<io::Pio<u8>>,
+
     /// Data Register.
-    data: io::Pio<u8>,
+    data: Mutex<io::Pio<u8>>,
     
     /// Last RTC time value.
     timestamp: Mutex<i64>,
@@ -105,9 +106,9 @@ impl Rtc {
     pub fn new() -> Rtc {
         let irq = syscalls::create_interrupt_event(0x08, 0).expect("IRQ cannot be acquired");
 
-        let mut rtc = Rtc {
-            command: io::Pio::new(0x70),
-            data: io::Pio::new(0x71),
+        let rtc = Rtc {
+            command: Mutex::new(io::Pio::new(0x70)),
+            data: Mutex::new(io::Pio::new(0x71)),
             timestamp: Mutex::default(),
             irq_event: Some(irq)
         };
@@ -129,21 +130,21 @@ impl Rtc {
     }
 
     /// Read from a CMOS register.
-    fn read_reg(&mut self, reg: u8) -> u8 {
-        self.command.write(reg);
-        self.data.read()
+    fn read_reg(&self, reg: u8) -> u8 {
+        self.command.lock().write(reg);
+        self.data.lock().read()
     }
 
     /// Write to the CMOS register.
-    fn write_reg(&mut self, reg: u8, val: u8) {
-        self.command.write(reg);
-        self.data.write(val)
+    fn write_reg(&self, reg: u8, val: u8) {
+        self.command.lock().write(reg);
+        self.data.lock().write(val)
     }
 
     /// Enable the Update Ended RTC interrupt. This will enable an interruption
     /// on IRQ 8 that will be thrown when the RTC is finished updating its
     /// registers.
-    pub fn enable_update_ended_int(&mut self) {
+    pub fn enable_update_ended_int(&self) {
         // Set the rate to be as slow as possible...
         //let oldval = self.read_reg(0xA);
         //self.write_reg(0xA, (oldval & 0xF0) | 0xF);
@@ -153,26 +154,26 @@ impl Rtc {
 
     /// Acknowledges an interrupt from the RTC. Necessary to receive further
     /// interrupts.
-    fn read_interrupt_kind(&mut self) -> u8 {
+    fn read_interrupt_kind(&self) -> u8 {
         self.read_reg(0xC)
     }
 
     /// Checks if the RTC is in 12 hours or 24 hours mode. Depending on the mode,
     /// the date might be encoded in BCD.
     #[allow(clippy::wrong_self_convention)] // More readable this way.
-    pub fn is_12hr_clock(&mut self) -> bool {
+    pub fn is_12hr_clock(&self) -> bool {
         self.read_reg(0xB) & (1 << 2) != 0
     }
 }
 
-/// Global instance of Rtc. It's safe to actually access it as it isn't modified concurently
-static mut RTC_INSTANCE: Rtc = unsafe { initialize_to_zero!(Rtc) };
+/// Global instance of Rtc.
+static RTC_INSTANCE: Once<Rtc> = Once::new();
 
 /// RTC interface.
 #[derive(Default, Debug)]
 struct RTCManager;
 
-impl IWaitable for Rtc {
+impl IWaitable for &Rtc {
     fn get_handle(&self) -> HandleRef<'_> {
         if let Some(irq_event) = &self.irq_event {
             return irq_event.0.as_ref_static()
@@ -231,11 +232,11 @@ impl IWaitable for Rtc {
 
 impl sunrise_libuser::time::RTCManager for RTCManager {
     fn get_rtc_time(&mut self, _manager: &WaitableManager) -> Result<i64, Error> {
-        Ok(unsafe {RTC_INSTANCE.get_time() })
+        Ok(RTC_INSTANCE.r#try().expect("RTC instance not initialized").get_time())
     }
 
     fn get_rtc_event(&mut self, _manager: &WaitableManager) -> Result<HandleRef<'static>, Error> {
-        Ok(unsafe {RTC_INSTANCE.get_irq_event_handle() })
+        Ok(RTC_INSTANCE.r#try().expect("RTC instance not initialized").get_irq_event_handle())
     }
 }
 
@@ -244,7 +245,8 @@ fn main() {
     let device_location_name = b"Europe/Paris\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
     timezone::TZ_MANAGER.lock().set_device_location_name(*device_location_name).unwrap();
 
-    unsafe { RTC_INSTANCE = Rtc::new() };
+
+    RTC_INSTANCE.call_once(|| Rtc::new());
 
     let man = WaitableManager::new();
     let user_handler = Box::new(PortHandler::new("time:u\0", StaticService::dispatch).unwrap());
@@ -252,13 +254,15 @@ fn main() {
     let system_handler = Box::new(PortHandler::new("time:s\0", StaticService::dispatch).unwrap());
     let rtc_handler = Box::new(PortHandler::new("rtc\0", RTCManager::dispatch).unwrap());
 
-    let rtc_instance = unsafe { Box::from_raw(&mut RTC_INSTANCE as *mut Rtc) };
+    //let rtc_instance = unsafe { Box::from_raw(&mut RTC_INSTANCE as *mut Rtc) };
 
     man.add_waitable(user_handler as Box<dyn IWaitable>);
     man.add_waitable(applet_handler as Box<dyn IWaitable>);
     man.add_waitable(system_handler as Box<dyn IWaitable>);
     man.add_waitable(rtc_handler as Box<dyn IWaitable>);
-    man.add_waitable(rtc_instance as Box<dyn IWaitable>);
+
+    let mut rtc = RTC_INSTANCE.r#try().expect("RTC not initialized");
+    man.add_waitable_ref(&mut rtc);
 
     man.run();
 }

@@ -185,6 +185,7 @@ impl Default for TimeTypeInfo {
 }
 
 /// Represent the rules defining a TimeZone.
+#[derive(Copy, Clone)]
 #[repr(C, align(8))]
 pub struct TimeZoneRule {
     /// The count of time transitions.

@@ -74,3 +74,27 @@ pub fn get_leap_days(y: i64) -> i64 {
         get_leap_days_not_neg(y)
     }
 }
+
+#[cfg(test)]
+mod test {
+    #[test]
+    fn test_leap_year() {
+        use crate::utils::is_leap_year;
+
+        assert_eq!(is_leap_year(-100), false);
+        assert_eq!(is_leap_year(0), true);
+        assert_eq!(is_leap_year(1970), false);
+        assert_eq!(is_leap_year(1980), true);
+        assert_eq!(is_leap_year(1990), false);
+        assert_eq!(is_leap_year(2000), true);
+        assert_eq!(is_leap_year(2010), false);
+        assert_eq!(is_leap_year(2020), true);
+    }
+
+    #[test]
+    fn test_get_leap_days() {
+        use crate::utils::get_leap_days;
+
+        assert_eq!(get_leap_days(0), 0);
+    }
+}
