@@ -307,7 +307,7 @@ pub struct CalendarTime {
     pub additional_info: CalendarAdditionalInfo,
 }
 
-//assert_eq_size!(calendartime; CalendarTime, [u8; 0x20]);
+assert_eq_size!(CalendarTime, [u8; 0x28]);
 
 /// Create a CalendarTime from a timestamp and a GMT offset.
 fn create_calendar_time(time: Time, gmt_offset: i32) -> TimeZoneResult<CalendarTime> {
