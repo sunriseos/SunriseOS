@@ -88,11 +88,8 @@ impl sunrise_libuser::time::StaticService for StaticService {
 /// [Rtc::write_reg].
 #[derive(Debug)]
 struct Rtc {
-    /// Command Register.
-    command: Mutex<io::Pio<u8>>,
-
-    /// Data Register.
-    data: Mutex<io::Pio<u8>>,
+    /// Command and Data Register.
+    registers: Mutex<(io::Pio<u8>, io::Pio<u8>)>,
     
     /// Last RTC time value.
     timestamp: Mutex<i64>,
@@ -107,8 +104,7 @@ impl Rtc {
         let irq = syscalls::create_interrupt_event(0x08, 0).expect("IRQ cannot be acquired");
 
         let rtc = Rtc {
-            command: Mutex::new(io::Pio::new(0x70)),
-            data: Mutex::new(io::Pio::new(0x71)),
+            registers: Mutex::new((io::Pio::new(0x70), io::Pio::new(0x71))),
             timestamp: Mutex::default(),
             irq_event: Some(irq)
         };
@@ -131,14 +127,16 @@ impl Rtc {
 
     /// Read from a CMOS register.
     fn read_reg(&self, reg: u8) -> u8 {
-        self.command.lock().write(reg);
-        self.data.lock().read()
+        let mut registers = self.registers.lock();
+        registers.0.write(reg);
+        registers.1.read()
     }
 
     /// Write to the CMOS register.
     fn write_reg(&self, reg: u8, val: u8) {
-        self.command.lock().write(reg);
-        self.data.lock().write(val)
+        let mut registers = self.registers.lock();
+        registers.0.write(reg);
+        registers.1.write(val)
     }
 
     /// Enable the Update Ended RTC interrupt. This will enable an interruption
@@ -245,7 +243,7 @@ fn main() {
     let device_location_name = b"Europe/Paris\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
     timezone::TZ_MANAGER.lock().set_device_location_name(*device_location_name).unwrap();
 
-    RTC_INSTANCE.call_once(|| Rtc::new());
+    let mut rtc = RTC_INSTANCE.call_once(|| Rtc::new());
 
     let man = WaitableManager::new();
     let user_handler = Box::new(PortHandler::new("time:u\0", StaticService::dispatch).unwrap());
@@ -253,14 +251,11 @@ fn main() {
     let system_handler = Box::new(PortHandler::new("time:s\0", StaticService::dispatch).unwrap());
     let rtc_handler = Box::new(PortHandler::new("rtc\0", RTCManager::dispatch).unwrap());
 
-    //let rtc_instance = unsafe { Box::from_raw(&mut RTC_INSTANCE as *mut Rtc) };
-
     man.add_waitable(user_handler as Box<dyn IWaitable>);
     man.add_waitable(applet_handler as Box<dyn IWaitable>);
     man.add_waitable(system_handler as Box<dyn IWaitable>);
     man.add_waitable(rtc_handler as Box<dyn IWaitable>);
 
-    let mut rtc = RTC_INSTANCE.r#try().expect("RTC not initialized");
     man.add_waitable_ref(&mut rtc);
 
     man.run();
