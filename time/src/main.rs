@@ -245,7 +245,6 @@ fn main() {
     let device_location_name = b"Europe/Paris\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
     timezone::TZ_MANAGER.lock().set_device_location_name(*device_location_name).unwrap();
 
-
     RTC_INSTANCE.call_once(|| Rtc::new());
 
     let man = WaitableManager::new();

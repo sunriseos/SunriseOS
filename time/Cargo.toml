@@ -16,7 +16,3 @@ sunrise-libtimezone = { path = "../libtimezone" }
 
 [build-dependencies]
 cargo-5730 = { git = "https://github.com/auxoncorp/cargo-5730.git", branch = "master" }
-
-[dependencies.lazy_static]
-features = ["spin_no_std"]
-version = "1.3.0"

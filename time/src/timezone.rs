@@ -18,7 +18,6 @@ use sunrise_libtimezone::TimeZoneError;
 use sunrise_libuser::ipc::server::WaitableManager;
 
 use sunrise_libutils::initialize_to_zero;
-use lazy_static::lazy_static;
 
 /// A IPC result.
 type IpcResult<T> = Result<T, Error>;
@@ -89,10 +88,6 @@ pub struct TimeZoneManager {
     temp_rules: TimeZoneRule,
 }
 
-lazy_static! {
-    pub static ref ZEROED_TIME_ZONE_RULE: TimeZoneRule = TimeZoneRule::default();
-}
-
 impl TimeZoneManager {
     /// Get the time zone name used on this devie.
     pub fn get_device_location_name(&self) -> LocationName {
@@ -151,7 +146,7 @@ impl TimeZoneManager {
         };
 
         // Before anything else, clear the buffer
-        *timezone_rule = *ZEROED_TIME_ZONE_RULE;
+        unsafe { core::ptr::write_bytes(timezone_rule as *mut _ as *mut u8, 0, core::mem::size_of::<TimeZoneRule>()); }
 
         // Try conversion
         let res = timezone_rule.load_rules(tzdata, &mut self.temp_rules);

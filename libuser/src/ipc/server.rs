@@ -125,7 +125,6 @@ impl<'a> WaitableManager<'a> {
             match result {
                 Ok(false) => (),
                 Ok(true) => {
-                    waitables_box.remove(idx);
                     if idx < waitables_box.len() {
                         waitables_box.remove(idx);
                     } else {
