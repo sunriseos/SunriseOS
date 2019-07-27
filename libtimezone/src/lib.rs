@@ -14,6 +14,7 @@ mod utils;
 
 use conversion::ConversionBuffer;
 
+use core::cmp::Ordering;
 use core::i64;
 
 use plain::Plain;
@@ -228,7 +229,7 @@ assert_eq_size!(TimeZoneRule, [u8; 0x4000]);
 
 /// Represent the basic informations of a local time.
 #[repr(C, align(8))]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct CalendarTimeInfo {
     /// The year of the local time.
     pub year: i64,
@@ -247,6 +248,34 @@ pub struct CalendarTimeInfo {
 
     /// The seconds of the local time.
     pub second: i8,
+}
+
+impl PartialOrd for CalendarTimeInfo {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        let mut result = self.year.partial_cmp(&other.year);
+
+        if let Some(Ordering::Equal) = result {
+            result = self.month.partial_cmp(&other.month);
+
+            if let Some(Ordering::Equal) = result {
+                result = self.day.partial_cmp(&other.day);
+
+                if let Some(Ordering::Equal) = result {
+                    result = self.hour.partial_cmp(&other.hour);
+
+                    if let Some(Ordering::Equal) = result {
+                        result = self.minute.partial_cmp(&other.minute);
+
+                        if let Some(Ordering::Equal) = result {
+                            result = self.second.partial_cmp(&other.second);
+                        }
+                    }
+                }
+            }
+        }
+
+        result
+    }
 }
 
 impl Default for CalendarTimeInfo {
@@ -398,39 +427,6 @@ fn create_calendar_time(time: Time, gmt_offset: i32) -> TimeZoneResult<CalendarT
     calendar_time.additional_info.gmt_offset = gmt_offset;
 
     Ok(calendar_time)
-}
-
-/// Compare two CalendarTimeInfo in the same local time and return the difference of two of them.
-fn compare_calendar_info(a: &CalendarTimeInfo, b: &CalendarTimeInfo) -> isize {
-    if a.year != b.year {
-        if a.year < b.year {
-            return -1;
-        } else {
-            return 1;
-        }
-    }
-
-    if a.month != b.month {
-        return (a.month - b.month) as isize;
-    }
-
-    if a.day != b.day {
-        return (a.day - b.day) as isize;
-    }
-
-    if a.hour != b.hour {
-        return (a.hour - b.hour) as isize;
-    }
-
-    if a.minute != b.minute {
-        return (a.minute - b.minute) as isize;
-    }
-
-    if a.second != b.second {
-        return (a.second - b.second) as isize;
-    }
-
-    0
 }
 
 impl Default for TimeZoneRule {
@@ -680,17 +676,17 @@ impl TimeZoneRule {
             let res = self.to_calendar_time(t);
             if res.is_err() {
                 if t > 0 {
-                    direction = 1;
+                    direction = Ordering::Greater;
                 } else {
-                    direction = -1;
+                    direction = Ordering::Less;
                 }
             } else {
                 let calendar_time = res.unwrap();
-                direction = compare_calendar_info(&calendar_time.time, &tmp_calendar);
+                direction = calendar_time.time.partial_cmp(&tmp_calendar).expect("CalendarTime aren't comparable??!");
             }
 
             // We have a match
-            if direction == 0 {
+            if direction == Ordering::Equal {
                 let result = t + Time::from(saved_seconds);
 
                 if (result < t) != (saved_seconds < 0) {
@@ -717,7 +713,7 @@ impl TimeZoneRule {
                     return Err(TimeZoneError::TimeNotFound);
                 }
 
-                if direction > 0 {
+                if direction == Ordering::Greater {
                     high = t;
                 } else {
                     low = t;
