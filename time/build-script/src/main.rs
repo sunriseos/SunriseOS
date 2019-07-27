@@ -18,18 +18,19 @@ fn main() -> Result<(), Box<std::error::Error>> {
     let mut option = OpenOptions::new();
     option.write(true).read(true).create(true);
 
+    for env in env::vars() {
+        println!("{:?}", env);
+    }
+
+    // NOTE: this point to the sunrise-time crate directory.
+    let crate_directory = env::var("CARGO_MANIFEST_DIR").unwrap();
+
     let out_dir = env::var("OUT_DIR").unwrap();
     let dest_path = Path::new(&out_dir).join("timezone_data.rs");
-    let tz_data_path = Path::new(&out_dir).join("tzcode-latest.tar.gz");
+    let tz_data_path = Path::new(&crate_directory).parent().unwrap().join("external/time/tzdata-2017c.tar.gz");
 
     let mut tz_data_file = option.open(tz_data_path).unwrap();
     let mut dest_file = File::create(&dest_path).unwrap();
-
-    let mut res = reqwest::get("https://thog.eu/sunrise/tzdata-2017c.tar.gz")?;
-
-    // copy the response body directly to stdout
-    std::io::copy(&mut res, &mut tz_data_file)?;
-    tz_data_file.seek(SeekFrom::Start(0)).unwrap();
 
     let tar = GzDecoder::new(tz_data_file);
     let mut archive = Archive::new(tar);
