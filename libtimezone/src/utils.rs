@@ -27,7 +27,9 @@ pub fn increment_overflow<T: Num + CheckedAdd + Copy>(ip: &mut T, j: T) -> bool 
 /// 
 /// Note:
 /// 
-/// The normalization part allows to remove (or in negative case, add) the amount of ``unit`` we are going to add (or in negative case, remove) to ``ip``.
+/// The normalization part allows to remove (or in negative case, add) the amount of ``unit`` that we are going to add (or in negative case, remove) to ``ip``.
+///
+/// e.g: This can be used to get the number of minutes in a given number of seconds and permit to catches possible overflow on the number of minutes.
 pub fn normalize_overflow<T>(
     ip: &mut T,
     unit: &mut T,
@@ -63,9 +65,13 @@ fn get_leap_days_not_neg(y: i64) -> i64 {
     y / 4 - y / 100 + y / 400
 }
 
-/// Get the total count of leap days since year 0, at the end of this year.
+/// Get the total count of leap days since year 1.
 /// 
 /// For BC years, the amount of days will be negative. 
+///
+/// Note:
+///
+/// Year 0 by convention doesn't exist.
 #[inline]
 pub fn get_leap_days(y: i64) -> i64 {
     if y < 0 {
@@ -95,6 +101,14 @@ mod test {
     fn test_get_leap_days() {
         use crate::utils::get_leap_days;
 
+        assert_eq!(get_leap_days(12), 3);
+        assert_eq!(get_leap_days(8), 2);
+        assert_eq!(get_leap_days(4), 1);
+        assert_eq!(get_leap_days(1), 0);
+
+        // This is an invalid case, that SHOULD return 0.
         assert_eq!(get_leap_days(0), 0);
+
+        assert_eq!(get_leap_days(-1), -1);
     }
 }

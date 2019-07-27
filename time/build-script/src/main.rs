@@ -1,4 +1,6 @@
-// cargo-deps: reqwest = "0.9.17"
+//! Timezone builder script
+//!
+//! This build script ensure the generation of a timezone archive that is needed by the time service.
 
 use std::env;
 use std::fs::File;
