@@ -286,7 +286,8 @@ mod test {
 ///
 /// # Note
 /// 
-/// This construct the struct on the stack. For the same behaviours on the heap, please refer to ZeroBox.
+/// - This construct the struct on the stack. For the same behaviours on the heap, please refer to ZeroBox.
+/// - The type should not contain anything that is not allowed to be initialized to Zero (references, certain enums, and complex types).
 /// 
 /// # Usage
 ///

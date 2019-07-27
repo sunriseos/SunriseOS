@@ -197,10 +197,10 @@ pub struct TimeZoneRule {
     /// The count of chars.
     pub(crate) charcnt: i32,
 
-    /// ?
+    /// Used to control the rule that should apply when a specified time is out of any rules in the past.
     pub(crate) goback: bool,
 
-    /// ?
+    /// Used to control the rule that should apply when a specified time is out of any rules in the future.
     pub(crate) goahead: bool,
 
     /// Time transition timepoints.

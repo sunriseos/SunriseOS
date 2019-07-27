@@ -22,7 +22,6 @@ use sunrise_libutils::initialize_to_zero;
 /// A IPC result.
 type IpcResult<T> = Result<T, Error>;
 
-
 // TODO: Move to FileSystem interface after implementation
 include!(concat!(env!("OUT_DIR"), "/timezone_data.rs"));
 
@@ -146,7 +145,8 @@ impl TimeZoneManager {
         };
 
         // Before anything else, clear the buffer
-        unsafe { core::ptr::write_bytes(timezone_rule as *mut _ as *mut u8, 0, core::mem::size_of::<TimeZoneRule>()); }
+        
+        *timezone_rule = ZEROED_TIME_ZONE_RULE;
 
         // Try conversion
         let res = timezone_rule.load_rules(tzdata, &mut self.temp_rules);
@@ -169,6 +169,10 @@ impl TimeZoneManager {
 /// Global instance of TimeZoneManager
 /// This is a POD. There isn't any invariants so this should totally be safe.
 pub static TZ_MANAGER: Mutex<TimeZoneManager> = Mutex::new(unsafe { initialize_to_zero!(TimeZoneManager) });
+
+// Global clear instance of TimeZoneRule used to avoid copying 16KB on the stack.
+/// This is a POD. There isn't any invariants so this should totally be safe.
+static ZEROED_TIME_ZONE_RULE: TimeZoneRule = unsafe { initialize_to_zero!(TimeZoneRule) };
 
 /// TimeZone service object.
 #[derive(Default, Debug)]

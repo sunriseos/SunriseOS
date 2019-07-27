@@ -25,6 +25,10 @@ const TZ_DEFAULT_RULE: &[u8] = b",M4.1.0,M10.5.0\0";
 #[repr(C, align(8))]
 pub(crate) struct ConversionBuffer<'a, 'b> {
     /// The work buffer containing the TzIf file content.
+    /// 
+    /// Note:
+    /// 
+    /// This *must* be at least 4-byte aligned.
     pub work_buffer: &'a [u8],
 
     /// A temporary storage used to store the result of ``parse_timezone_name`` during the conversion.
