@@ -16,4 +16,3 @@ sunrise-libtimezone = { path = "../libtimezone" }
 
 [build-dependencies]
 cargo-5730 = { git = "https://github.com/auxoncorp/cargo-5730.git", branch = "master" }
-plain = "0.2.3"

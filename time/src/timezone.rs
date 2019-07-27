@@ -253,21 +253,15 @@ impl sunrise_libuser::time::TimeZoneService for TimeZoneService {
     }
 
     #[inline(never)]
-    fn load_timezone_rule(&mut self, _manager: &WaitableManager, location: LocationName, tz_rules: &mut IpcTimeZoneRule, ) -> Result<(), Error> {
-        let tz_rules = unsafe {
-            // TODO: Use plain
-            (tz_rules as *mut _ as *mut TimeZoneRule).as_mut().unwrap()
-        };
-        TZ_MANAGER.lock().load_timezone_rule(location, Some(tz_rules))
+    fn load_timezone_rule(&mut self, _manager: &WaitableManager, location: LocationName, rules: &mut IpcTimeZoneRule, ) -> Result<(), Error> {
+        let rules = TimeZoneRule::from_mut_bytes(rules);
+        TZ_MANAGER.lock().load_timezone_rule(location, Some(rules))
     }
 
     #[inline(never)]
-    fn to_calendar_time(&mut self, _manager: &WaitableManager, time: PosixTime, timezone_buffer: &IpcTimeZoneRule, ) -> Result<(CalendarTime, CalendarAdditionalInfo), Error> {
-        let timezones = unsafe {
-            // TODO: Use plain
-            (timezone_buffer as *const _ as *const TimeZoneRule).as_ref().unwrap()
-        };
-        let res = timezones.to_calendar_time(time);
+    fn to_calendar_time(&mut self, _manager: &WaitableManager, time: PosixTime, rules: &IpcTimeZoneRule, ) -> Result<(CalendarTime, CalendarAdditionalInfo), Error> {
+        let rules = TimeZoneRule::from_bytes(rules);
+        let res = rules.to_calendar_time(time);
         if let Err(error) = res {
             return Err(to_timezone_to_time_error(error));
         }
@@ -293,12 +287,9 @@ impl sunrise_libuser::time::TimeZoneService for TimeZoneService {
     }
 
     #[inline(never)]
-    fn to_posix_time(&mut self, _manager: &WaitableManager, calendar_time: CalendarTime, timezone_buffer: &IpcTimeZoneRule, ) -> Result<PosixTime, Error> {
-        let timezones = unsafe {
-            // TODO: Use plain
-            (timezone_buffer as *const _ as *const TimeZoneRule).as_ref().unwrap()
-        };
-        let res = timezones.to_posix_time(&calendar_to_tzlib(calendar_time));
+    fn to_posix_time(&mut self, _manager: &WaitableManager, calendar_time: CalendarTime, rules: &IpcTimeZoneRule, ) -> Result<PosixTime, Error> {
+        let rules = TimeZoneRule::from_bytes(rules);
+        let res = rules.to_posix_time(&calendar_to_tzlib(calendar_time));
         if let Err(error) = res {
             return Err(to_timezone_to_time_error(error));
         }

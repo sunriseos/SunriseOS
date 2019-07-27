@@ -5,11 +5,11 @@ authors = ["Thog <contact@thog.eu>"]
 edition = "2018"
 
 [dependencies]
+plain = "0.2.3"
 
 [dependencies.num-traits]
 version = "0.2"
 default-features = false
-
 
 [dependencies.static_assertions]
 version  = "0.3.1"

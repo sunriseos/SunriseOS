@@ -16,6 +16,8 @@ use conversion::ConversionBuffer;
 
 use core::i64;
 
+use plain::Plain;
+
 /// The type used to express time internally.
 pub type Time = i64;
 
@@ -449,7 +451,29 @@ impl Default for TimeZoneRule {
     }
 }
 
+// SAFE: TimeZoneRule satisfies all the requirements of `Plain`.
+unsafe impl Plain for TimeZoneRule {}
+
 impl TimeZoneRule {
+    /// Load the given timezones rules from a given slice contains an actual TimeZoneRule.
+    ///
+    /// Panic:
+    ///
+    /// This function panic if the given buffer is either too short or not aligned
+    pub fn from_bytes(buffer: &[u8]) -> &Self {
+        plain::from_bytes(buffer).expect("The buffer is either too short or not aligned!")
+    }
+
+    /// Load the given timezones rules from a given slice contains an actual TimeZoneRule.
+    ///
+    /// Panic:
+    ///
+    /// This function panic if the given buffer is either too short or not aligned
+    pub fn from_mut_bytes(buffer: &mut [u8]) -> &mut Self {
+        plain::from_mut_bytes(buffer).expect("The buffer is either too short or not aligned!")
+    }
+
+
     /// Load the given timezones rules from a given slice containing TzIf2 data and a temporary TimeZoneRule buffer.
     ///
     /// Note:
