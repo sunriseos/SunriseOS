@@ -79,7 +79,9 @@ impl TimeZoneFileSystem {
 
 /// Global instance handling I/O and storage of the device rules.
 pub struct TimeZoneManager {
+    /// The location name of this device.
     location: LocationName,
+
     /// Rules of this device.
     my_rules: TimeZoneRule,
 
@@ -217,6 +219,7 @@ fn calendar_to_ipc(tzlib_calendar: sunrise_libtimezone::CalendarTime) -> (Calend
     (calendar_time, additional_info)
 }
 
+/// Convert a libtimezone TimeZoneError to a IPC Error type.
 fn to_timezone_to_time_error(error: TimeZoneError) -> Error {
     let res = match error {
         TimeZoneError::TimeNotFound | TimeZoneError::InvalidTimeComparison => TimeError::TimeNotFound,

@@ -164,6 +164,12 @@ impl Rtc {
     }
 }
 
+impl Default for Rtc {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Global instance of Rtc.
 static RTC_INSTANCE: Once<Rtc> = Once::new();
 
@@ -243,7 +249,7 @@ fn main() {
     let device_location_name = b"Europe/Paris\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
     timezone::TZ_MANAGER.lock().set_device_location_name(*device_location_name).unwrap();
 
-    let mut rtc = RTC_INSTANCE.call_once(|| Rtc::new());
+    let mut rtc = RTC_INSTANCE.call_once(|| Rtc::default());
 
     let man = WaitableManager::new();
     let user_handler = Box::new(PortHandler::new("time:u\0", StaticService::dispatch).unwrap());
