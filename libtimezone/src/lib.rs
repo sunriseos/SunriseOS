@@ -447,7 +447,7 @@ impl Default for TimeZoneRule {
     }
 }
 
-// SAFE: TimeZoneRule satisfies all the requirements of `Plain`.
+// Safety: TimeZoneRule satisfies all the requirements of `Plain`.
 unsafe impl Plain for TimeZoneRule {}
 
 impl TimeZoneRule {

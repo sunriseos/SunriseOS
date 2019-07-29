@@ -169,12 +169,16 @@ impl TimeZoneManager {
 // https://data.iana.org/time-zones/tzdata-latest.tar.gz
 
 /// Global instance of TimeZoneManager
-/// This is a POD. There isn't any invariants so this should totally be safe.
-pub static TZ_MANAGER: Mutex<TimeZoneManager> = Mutex::new(unsafe { initialize_to_zero!(TimeZoneManager) });
+pub static TZ_MANAGER: Mutex<TimeZoneManager> = Mutex::new(unsafe {
+    // Safety: This is a POD. There isn't any invariants so this should totally be safe.
+    initialize_to_zero!(TimeZoneManager)
+});
 
 // Global clear instance of TimeZoneRule used to avoid copying 16KB on the stack.
-/// This is a POD. There isn't any invariants so this should totally be safe.
-static ZEROED_TIME_ZONE_RULE: TimeZoneRule = unsafe { initialize_to_zero!(TimeZoneRule) };
+ static ZEROED_TIME_ZONE_RULE: TimeZoneRule = unsafe {
+    // Safety: This is a POD. There isn't any invariants so this should totally be safe.
+    initialize_to_zero!(TimeZoneRule)
+};
 
 /// TimeZone service object.
 #[derive(Default, Debug)]
