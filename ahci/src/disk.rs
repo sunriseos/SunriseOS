@@ -9,7 +9,7 @@ use sunrise_libuser::error::{Error, AhciError};
 use sunrise_libuser::types::SharedMemory;
 use sunrise_libuser::syscalls::MemoryPermissions;
 use sunrise_libuser::ahci::IDisk as IDiskInterface;
-use sunrise_libuser::ipc::server::WorkQueue;
+use sunrise_libuser::futures::WorkQueue;
 use sunrise_libuser::zero_box::ZeroBox;
 
 use crate::hba::*;

@@ -45,6 +45,7 @@ pub mod types;
 pub mod ipc;
 pub mod threads;
 pub mod thread_local_storage;
+pub mod futures;
 
 #[gen_ipc(path = "../../ipcdefs/sm.id", prefix = "sunrise_libuser")]
 pub mod sm {}
@@ -54,6 +55,9 @@ pub mod vi {}
 pub mod ahci {}
 #[gen_ipc(path = "../../ipcdefs/time.id", prefix = "sunrise_libuser")]
 pub mod time {}
+#[cfg(rustdoc)]
+#[gen_ipc(path = "../../ipcdefs/example.id", prefix = "sunrise_libuser")]
+pub mod example {}
 
 pub mod error;
 pub mod allocator;

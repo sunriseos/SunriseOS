@@ -1,4 +1,4 @@
-//! Core IPC Routines
+//! # Core IPC Routines
 //!
 //! Horizon/OS is a microkernel. And what would be a microkernel without an
 //! appropriately overengineered IPC layer? The IPC layer of Horizon/NX is split

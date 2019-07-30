@@ -675,14 +675,14 @@ pub fn generate_trait_async(ifacename: &str, interface: &Interface) -> String {
                 for line in cmd.doc.lines() {
                     writeln!(s, "    /// {}", line).unwrap();
                 }
-                writeln!(s, "    fn {}(&mut self, work_queue: self::sunrise_libuser::ipc::server::WorkQueue<'static>, {}) -> futures::future::FutureObj<'_, Result<{}, Error>>;", &cmd.name, args, ret).unwrap();
+                writeln!(s, "    fn {}(&mut self, work_queue: self::sunrise_libuser::futures::WorkQueue<'static>, {}) -> futures::future::FutureObj<'_, Result<{}, Error>>;", &cmd.name, args, ret).unwrap();
             },
             Err(_) => writeln!(s, "    // fn {}(&mut self) -> FutureObj<'_, Result<(), Error>>;", &cmd.name).unwrap()
         }
     }
 
     writeln!(s, "    /// Handle an incoming IPC request.").unwrap();
-    writeln!(s, "    fn dispatch<'a>(&'a mut self, work_queue: self::sunrise_libuser::ipc::server::WorkQueue<'static>, cmdid: u32, buf: &'a mut [u8]) -> futures::future::FutureObj<'_, Result<(), Error>> {{").unwrap();
+    writeln!(s, "    fn dispatch<'a>(&'a mut self, work_queue: self::sunrise_libuser::futures::WorkQueue<'static>, cmdid: u32, buf: &'a mut [u8]) -> futures::future::FutureObj<'_, Result<(), Error>> {{").unwrap();
     writeln!(s, "        use self::sunrise_libuser::ipc::Message;").unwrap();
     writeln!(s, "        use futures::future::FutureExt;").unwrap();
     writeln!(s, "        match cmdid {{").unwrap();
@@ -726,14 +726,14 @@ pub fn generate_trait(ifacename: &str, interface: &Interface) -> String {
                 for line in cmd.doc.lines() {
                     writeln!(s, "/// {}", line).unwrap();
                 }
-                writeln!(s, "    fn {}(&mut self, manager: self::sunrise_libuser::ipc::server::WorkQueue<'static>, {}) -> Result<{}, Error>;", &cmd.name, args, ret).unwrap();
+                writeln!(s, "    fn {}(&mut self, manager: self::sunrise_libuser::futures::WorkQueue<'static>, {}) -> Result<{}, Error>;", &cmd.name, args, ret).unwrap();
             },
             Err(_) => writeln!(s, "    // fn {}(&mut self) -> Result<(), Error>;", &cmd.name).unwrap()
         }
     }
 
     writeln!(s, "    /// Handle an incoming IPC request.").unwrap();
-    writeln!(s, "    fn dispatch<'a>(&'a mut self, manager: self::sunrise_libuser::ipc::server::WorkQueue<'static>, cmdid: u32, buf: &'a mut [u8]) -> futures::future::FutureObj<'_, Result<(), Error>> {{").unwrap();
+    writeln!(s, "    fn dispatch<'a>(&'a mut self, manager: self::sunrise_libuser::futures::WorkQueue<'static>, cmdid: u32, buf: &'a mut [u8]) -> futures::future::FutureObj<'_, Result<(), Error>> {{").unwrap();
     writeln!(s, "        use self::sunrise_libuser::ipc::Message;").unwrap();
     writeln!(s, "        let res = match cmdid {{").unwrap();
     for func in &interface.funcs {
@@ -837,7 +837,7 @@ pub fn generate_proxy(ifacename: &str, interface: &Interface) -> String {
             // BODY: exit. This is not ideal: resources should get automatically cleaned up
             // BODY: through the appropriate calls to CloseHandle (especially for "real"
             // BODY: homebrew, which don't automatically release leaked resources).
-            writeln!(s, "    /// Acquires the shared handle to the `{}` service - connecting if it wasn't already.", struct_name, service).unwrap();
+            writeln!(s, "    /// Acquires the shared handle to the `{}` service - connecting if it wasn't already.", service).unwrap();
             writeln!(s, "    pub fn new{}() -> Result<&'static {}, Error> {{", name, struct_name).unwrap();
             writeln!(s, "        static HANDLE : spin::Once<{}> = spin::Once::new();", struct_name).unwrap();
             writeln!(s, "        if let Some(s) = HANDLE.r#try() {{").unwrap();

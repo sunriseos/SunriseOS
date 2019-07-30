@@ -92,9 +92,10 @@ impl<'a> HandleRef<'a> {
     /// Returns a future that waits for the current handle to get signaled. This effectively
     /// registers it to be polled on with [crate::syscalls::wait_synchronization()].
     // TODO: Explain what [crate::ipc::WorkQueue] is
-    fn wait_async<'b>(&self, queue: crate::ipc::server::WorkQueue<'b>)-> impl core::future::Future<Output = ()> + Unpin +'b {
+    // TODO: Somehow make polling multiple handle possible.
+    fn wait_async<'b>(&self, queue: crate::futures::WorkQueue<'b>)-> impl core::future::Future<Output = ()> + Unpin +'b {
         struct MyFuture<'a> {
-            is_done: bool, queue: crate::ipc::server::WorkQueue<'a>, handle: HandleRef<'static>
+            is_done: bool, queue: crate::futures::WorkQueue<'a>, handle: HandleRef<'static>
         }
         impl<'a> core::future::Future for MyFuture<'a> {
             type Output = ();
@@ -133,7 +134,7 @@ impl ReadableEvent {
         syscalls::clear_event(self.0.as_ref())
     }
 
-    pub fn wait_async<'a>(&self, queue: crate::ipc::server::WorkQueue<'a>) -> impl core::future::Future<Output = ()> + Unpin + 'a {
+    pub fn wait_async<'a>(&self, queue: crate::futures::WorkQueue<'a>) -> impl core::future::Future<Output = ()> + Unpin + 'a {
         self.0.as_ref().wait_async(queue)
     }
 }
@@ -252,7 +253,7 @@ impl ServerSession {
             .map_err(|v| v.into())
     }
 
-    pub fn wait_async<'a>(&self, queue: crate::ipc::server::WorkQueue<'a>) -> impl core::future::Future<Output = ()> + Unpin + 'a {
+    pub fn wait_async<'a>(&self, queue: crate::futures::WorkQueue<'a>) -> impl core::future::Future<Output = ()> + Unpin + 'a {
         self.0.as_ref().wait_async(queue)
     }
 }
@@ -294,7 +295,7 @@ impl ServerPort {
             .map_err(|v| v.into())
     }
 
-    pub fn wait_async<'a>(&self, queue: crate::ipc::server::WorkQueue<'a>) -> impl core::future::Future<Output = ()> + Unpin + 'a {
+    pub fn wait_async<'a>(&self, queue: crate::futures::WorkQueue<'a>) -> impl core::future::Future<Output = ()> + Unpin + 'a {
         self.0.as_ref().wait_async(queue)
     }
 }

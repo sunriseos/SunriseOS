@@ -47,7 +47,8 @@ extern crate lazy_static;
 use log::*;
 use alloc::boxed::Box;
 use crate::libuser::syscalls;
-use crate::libuser::ipc::server::{WaitableManager, WorkQueue, managed_port_handler};
+use crate::libuser::futures::{WaitableManager, WorkQueue};
+use crate::libuser::ipc::server::managed_port_handler;
 use crate::libuser::types::*;
 use crate::libuser::error::Error;
 use crate::libuser::error::SmError;
@@ -135,7 +136,7 @@ impl IUserInterfaceAsync for UserInterface {
                 SERVICES_EVENT.1.wait_async(work_queue.clone())
                     .map(|_| {
                         info!("Waking up, clearing the service event");
-                        SERVICES_EVENT.1.clear_signal().unwrap();
+                        SERVICES_EVENT.1.clear().unwrap();
                         Loop::Continue(work_queue)
                     }).right_future()
             }

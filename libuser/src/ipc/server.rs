@@ -1,42 +1,219 @@
 //! # IPC Server primitives
 //!
-//! The creation of an IPC server requires a WaitableManager and a PortHandler.
-//! The WaitableManager will manage the event loop: it will wait for a request
-//! to arrive on one of the waiters (or for any other event to happen), and call
-//! that waiter's `handle_signal` function.
+//! The IPC System on horizon is made of Ports pair and Session pairs. Each pair
+//! has a client and a server side:
 //!
-//! A PortHandler is a type of Waiter which listens for incoming connections on
-//! a port, creates a new Object from it, wrap it in a SessionWrapper (a kind of
-//! waiter), and adds it to the WaitableManager's wait list.
+//! - For Ports, the client is used to connect, returning a client Session,
+//!   while the server is used to accept connections, returning a server Session
+//! - For Sessions, the client is used to send IPC requests, while lthe server
+//!   is used to receive and reply to those requests.
 //!
-//! When a request comes to the Session, the SessionWrapper's handle_signaled
-//! will call the dispatch function of its underlying object.
+//! An IPC Server is made of a [future executor](crate::futures) on which we
+//! spawn futures to handle Port and Session. Those futures, created through
+//! [port_handler()] and [new_session_wrapper()], will take care of accepting
+//! new sessions from a ServerPort, and answering IPC requests sent on the
+//! ServerSession.
 //!
-//! Here's a very simple example server:
+//! ## Port Handling
 //!
-//! ```ignore
+//! Most interfaces start with a Port, which is basically an object to which
+//! clients can connect to, creating a Session pair. Ports can come from two
+//! places: It can either be kernel-managed, or it can be sm-managed. Almost
+//! all ports are sm-managed, the only exceptions being `sm:` itself.
+//!
+//! Kernel-managed ports are created through the [managed_port_handler()]
+//! function. This will internally call [syscalls::manage_named_port()] to
+//! acquire a [ServerPort]. Sm-managed ports are created through
+//! [port_handler()], which call [IUserInterfaceProxy::register_service()] to
+//! acquire their ServerPort.
+//!
+//! Once the ServerPort is acquired, the port handling functions will run on a
+//! loop, accepting new connections, creating a backing Object for the sessions,
+//! and spawning a new future on the event loop with [new_session_wrapper()].
+//!
+//! ```rust
+//! use futures::future::FutureObj;
+//! use alloc::boxed::Box;
+//! use sunrise_libuser::futures::WaitableManager;
+//! use sunrise_libuser::ipc::server::port_handler;
+//! use sunrise_libuser::example::IExample;
+//!
 //! #[derive(Debug, Default)]
-//! struct IExample;
+//! struct HelloInterface;
 //!
-//! impl sunrise_libuser::example::IExample for IExample {
-//!     fn hello(&mut self, _manager: &WaitableManager) -> Result<([u8; 5]), Error> {
-//!          Ok(b"hello")
+//! impl IExample1 for HelloInterface {}
+//!
+//! fn main() {
+//!     let mut man = WaitableManager::new();
+//!
+//!     let handler = port_handler(man.work_queue(), "hello", HelloInterface::dispatch).unwrap();
+//!     man.work_queue().spawn(FutureObj::new(Box::new(handler)));
+//!
+//!     man.run();
+//! }
+//! ```
+//!
+//! ## Session Handling
+//!
+//! A Session server is represented by an Object implementing an Interface,
+//! receiving and replying to RPC requests on a [ServerSession]. A session
+//! server is created either through a port handler accepting a session, or
+//! through the [new_session_wrapper()] function, which will receive requests,
+//! call the Object's dispatcher function, and reply with the answer.
+//!
+//! ### Interfaces
+//!
+//! IPC Servers expose an API to a given service to other processes using an RPC
+//! interface. The interface is defined using a SwIPC id file which can be found
+//! in the `ipcdefs` folder at the root of the repository. This SwIPC file will
+//! then get compiled by swipc-gen into a rust file containing a Client struct
+//! and two Server traits (one being synchronous, the other asynchronous). Those
+//! will generally be exposed from the `sunrise_libuser` crate.
+//!
+//! Those traits contain two elements:
+//!
+//! 1. A function for every function in the SwIPC interface, having roughly the
+//!    same signature (but with SwIPC types translated to rust). The user is
+//!    expected to implement all those functions to have a complete interface
+//!    implementation.
+//!
+//! 2. A function called `dispatch`. This function will be called by the Session
+//!    Wrapper, and is in charge of parsing the IPC message data to extract all
+//!    the arguments and call the correct function from the trait
+//!    implementation.
+//!
+//! ```
+//! use futures::future::FutureObj;
+//! use alloc::boxed::Box;
+//! use sunrise_libuser::futures::WaitableManager;
+//! use sunrise_libuser::ipc::server::port_handler;
+//! use sunrise_libuser::example::IExample;
+//! use log::*;
+//!
+//! #[derive(Debug, Default)]
+//! struct HelloInterface;
+//!
+//! impl IExample2 for HelloInterface {
+//!     fn function(_manager: WorkQueue<'static>) -> Result<(), Error> {
+//!         info!("hello");
+//!         Ok(())
 //!     }
 //! }
 //!
 //! fn main() {
-//!      let mut man = WaitableManager::new();
-//!      let handler = managed_port_handler(man.work_queue(), "hello\0", IExample::dispatch).unwrap();
-//!      man.work_queue().spawn(FutureObj::new(Box::new(handler)));
-//!      man.run()
+//!     let mut man = WaitableManager::new();
+//!
+//!     let handler = port_handler(man.work_queue(), "hello", HelloInterface::dispatch).unwrap();
+//!     man.work_queue().spawn(FutureObj::new(Box::new(handler)));
+//!
+//!     man.run();
 //! }
 //! ```
 //!
-//! Future support is very liberally taken from the blog post [Building an
-//! Embedded Futures Executor](https://josh.robsonchase.com/embedded-executor/)
-//! and adapted to the newer version of futures.
-
-// TODO: Rewrite the docs, split future executor from IPC.
+//! ### Objects
+//!
+//! An Object backs every Session. This object is the structure which implements
+//! the Interface trait. It contains the state of that specific session, and may
+//! be mutated by any IPC request. A common pattern is to have an IPC request
+//! contain an initialization method containing various parameters to configure
+//! the rest of the operations available on that session.
+//!
+//! Note that a single interface may be implemented by multiple different
+//! Object. This can be used to implement different access control based on the
+//! interface used to access the service, for instance. Nintendo uses this
+//! pattern: `bsd:u` and `bsd:s` use the same interface, but have different
+//! access rights.
+//!
+//! ### Subsessions
+//!
+//! While the "root" session is generally created from a Port Handler, the user
+//! is free to create and return new subsessions. This can be done by creating
+//! a session pair with [syscalls::create_session()], spawning a new Session
+//! Handler with [new_session_wrapper()], and returning the client-side session
+//! handle. Here's an example:
+//!
+//! ```rust
+//! #use futures::future::FutureObj;
+//! #use alloc::boxed::Box;
+//! #use sunrise_libuser::futures::WaitableManager;
+//! #use sunrise_libuser::ipc::server::port_handler;
+//! #use sunrise_libuser::example::{IExample3, IExample3Subsession, IExample3SubsessionProxy};
+//! #use log::*;
+//!
+//! #[derive(Debug, Default)]
+//! struct HelloInterface;
+//!
+//! impl IExample3 for HelloInterface {
+//!     fn function(manager: WorkQueue<'static>) -> Result<IExample3Subsession, Error> {
+//!         let (server, client) = syscalls::create_session(false, 0)?;
+//!         let wrapper = new_session_wrapper(work_queue.clone(), server, Subsession, Subsession::dispatch);
+//!         work_queue.spawn(FutureObj::new(Box::new(wrapper)));
+//!         Ok(IExample3SubsessionProxy::from(client))
+//!     }
+//! }
+//!
+//! struct Subsession;
+//!
+//! impl IExample3Subsession for Subsession {}
+//!
+//! #fn main() {
+//! #    let mut man = WaitableManager::new();
+//!
+//! #    let handler = port_handler(man.work_queue(), "hello", HelloInterface::dispatch).unwrap();
+//! #    man.work_queue().spawn(FutureObj::new(Box::new(handler)));
+//!
+//! #    man.run();
+//! #}
+//! ```
+//!
+//! ### Asynchronous Traits
+//!
+//! A server might want to wait for asynchronous events to occur before
+//! answering: for instance, the `read()` function of a filesystem might want
+//! to wait for an [IRQEvent] to get signaled before getting the data from the
+//! disk and returning it to the client.
+//!
+//! This is doable by using the Asynchronous traits. Those return a Future
+//! instead of directly returning the Result. This has one huge downside: the
+//! futures need to be Boxed, incuring a needless heap allocation. This should
+//! get fixed when `impl Trait` in traits or `async fn` in traits is
+//! implemented.
+//!
+//! Here's an example usage:
+//!
+//! ```rust
+//! #use futures::future::FutureObj;
+//! #use alloc::boxed::Box;
+//! #use sunrise_libuser::futures::WaitableManager;
+//! #use sunrise_libuser::ipc::server::port_handler;
+//! #use sunrise_libuser::example::IExample4Async;
+//! #use log::*;
+//!
+//! #[derive(Debug, Default)]
+//! struct HelloInterface;
+//!
+//! fn do_async_stuff() -> impl Future<Output=()> + Send {
+//!     futures::future::ready(());
+//! }
+//!
+//! impl IExample4Async for HelloInterface {
+//!     fn function<'a>(&'a self, manager: WorkQueue<'static>) -> FutureObj<'a, Result<(), Error>> {
+//!         FutureObj::new(Box::new(async move {
+//!             do_async_stuff().await;
+//!             Ok(())
+//!         }))
+//!     }
+//! }
+//!
+//! #fn main() {
+//! #    let mut man = WaitableManager::new();
+//!
+//! #    let handler = port_handler(man.work_queue(), "hello", HelloInterface::dispatch).unwrap();
+//! #    man.work_queue().spawn(FutureObj::new(Box::new(handler)));
+//!
+//! #    man.run();
+//! #}
+//! ```
 
 use crate::syscalls;
 use crate::types::{HandleRef, ServerPort, ServerSession};
@@ -53,136 +230,7 @@ use core::task::{Poll, Context, Waker};
 use futures::future::{FutureObj, LocalFutureObj, FutureExt};
 use futures::task::ArcWake;
 use core::future::Future;
-
-#[derive(Debug)]
-struct Task<'a> {
-    future: LocalFutureObj<'a, ()>,
-    // Invariant: waker should always be Some after the task has been spawned.
-    waker: Option<Waker>,
-}
-
-impl<'a> Task<'a> {
-    fn new(future: LocalFutureObj<'a, ()>) -> Task<'a> {
-        Task {
-            future,
-            waker: None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct WorkQueue<'a>(Arc<Mutex<VecDeque<WorkItem<'a>>>>);
-
-impl<'a> WorkQueue<'a> {
-    pub(crate) fn wait_for(&self, handles: &[HandleRef], ctx: &mut Context) {
-        for handle in handles {
-            self.0.lock().push_back(WorkItem::WaitHandle(handle.staticify(), ctx.waker().clone()))
-        }
-    }
-
-    pub fn spawn(&self, future: FutureObj<'a, ()>) {
-        self.0.lock().push_back(WorkItem::Spawn(future));
-    }
-}
-
-// Super simple Wake implementation.
-#[derive(Debug, Clone)]
-pub struct QueueWaker<'a> {
-    queue: WorkQueue<'a>,
-    id: generational_arena::Index,
-}
-
-impl<'a> ArcWake for QueueWaker<'a> {
-    fn wake_by_ref(arc_self: &Arc<Self>) {
-        arc_self.queue.0.lock().push_back(WorkItem::Poll(arc_self.id))
-    }
-}
-
-#[derive(Debug)]
-enum WorkItem<'a> {
-    Poll(generational_arena::Index),
-    Spawn(FutureObj<'a, ()>),
-    WaitHandle(HandleRef<'static>, Waker),
-}
-
-/// The event loop manager. Waits on the waitable objects added to it.
-#[derive(Debug)]
-pub struct WaitableManager<'a> {
-    /// Queue of things to do in the next "tick" of the event loop.
-    work_queue: WorkQueue<'a>,
-    /// List of futures that are currently running on this executor.
-    registry: generational_arena::Arena<Task<'a>>
-}
-
-impl<'a> WaitableManager<'a> {
-    /// Creates an empty waitable manager.
-    pub fn new() -> WaitableManager<'a> {
-        WaitableManager {
-            work_queue: WorkQueue(Arc::new(Mutex::new(VecDeque::new()))),
-            registry: generational_arena::Arena::new(),
-        }
-    }
-
-    pub fn work_queue(&self) -> WorkQueue<'a> {
-        self.work_queue.clone()
-    }
-
-    pub fn run(&mut self) {
-        let mut waitables = Vec::new();
-        let mut waiting_on: Vec<Vec<Waker>> = Vec::new();
-        loop {
-            loop {
-                let item = self.work_queue.0.lock().pop_front();
-                let item = if let Some(item) = item { item } else { break };
-                match item {
-                    WorkItem::Poll(id) => {
-                        if let Some(Task { future, waker }) = self.registry.get_mut(id) {
-                            let future = Pin::new(future);
-
-                            let waker = waker
-                                .as_ref()
-                                .expect("waker not set, task spawned incorrectly");
-
-                            if let Poll::Ready(_) = future.poll(&mut Context::from_waker(waker)) {
-                                self.registry.remove(id);
-                            }
-                        }
-                    },
-                    WorkItem::Spawn(future) => {
-                        let id = self.registry.insert(Task::new(future.into()));
-                        self.registry.get_mut(id).unwrap().waker = Some(Arc::new(QueueWaker {
-                            queue: self.work_queue.clone(),
-                            id,
-                        }).into_waker());
-                        self.work_queue.0.lock().push_back(WorkItem::Poll(id));
-                    },
-                    WorkItem::WaitHandle(hnd, waker) => {
-                        if let Some(idx) = waitables.iter().position(|v| *v == hnd) {
-                            waiting_on[idx].push(waker);
-                        } else {
-                            waitables.push(hnd);
-                            waiting_on.push(vec![waker]);
-                        }
-                    }
-                }
-            }
-
-            if self.registry.is_empty() {
-                break;
-            }
-
-            assert!(!waitables.is_empty(), "WaitableManager entered invalid state: No waitables to wait on.");
-            info!("Calling WaitSynchronization with {:?}", waitables);
-            let idx = syscalls::wait_synchronization(&*waitables, None).unwrap();
-            info!("Handle idx {} got signaled", idx);
-            for item in waiting_on.remove(idx) {
-                item.wake()
-            }
-
-            waitables.remove(idx);
-        }
-    }
-}
+use crate::futures::WorkQueue;
 
 /// Wrapper struct that forces the alignment to 0x10. Somewhat necessary for the
 /// IPC command buffer.
@@ -219,9 +267,13 @@ fn encode_bytes(s: &str) -> u64 {
         | (u64::from(*s.get(6).unwrap_or(&0))) << 48 | (u64::from(*s.get(7).unwrap_or(&0))) << 56
 }
 
+/// Infinite loop future that waits for `port` to get signaled, then accepts a
+/// new session on the port, creates a new object backing the session using
+/// `T::default()`, and finally spawns a new session wrapper future using
+/// [new_session_wrapper()].
 fn common_port_handler<T, DISPATCH>(work_queue: WorkQueue<'static>, port: ServerPort, dispatch: DISPATCH) -> impl Future<Output=()>
 where
-    DISPATCH: for<'b> FutureCallback<(&'b mut T, WorkQueue<'static>, u32, &'b mut [u8]), Result<(), Error>>,
+    DISPATCH: for<'b> hrtb_hack::FutureCallback<(&'b mut T, WorkQueue<'static>, u32, &'b mut [u8]), Result<(), Error>>,
     DISPATCH: Clone + Unpin + Send + 'static,
     T: Default + Unpin + Send + 'static,
 {
@@ -236,9 +288,14 @@ where
     })
 }
 
+/// Creates a port through [IUserInterfaceProxy::register_service()] with the
+/// given name, and returns a future which will handle the port - that is, it
+/// will continuously accept new sessions on the port, and create backing
+/// objects through `T::default()`, and spawn a top-level future handling that
+/// sesion with [new_session_wrapper()].
 pub fn port_handler<T, DISPATCH>(work_queue: WorkQueue<'static>, server_name: &str, dispatch: DISPATCH) -> Result<impl Future<Output=()>, Error>
 where
-    DISPATCH: for<'b> FutureCallback<(&'b mut T, WorkQueue<'static>, u32, &'b mut [u8]), Result<(), Error>>,
+    DISPATCH: for<'b> hrtb_hack::FutureCallback<(&'b mut T, WorkQueue<'static>, u32, &'b mut [u8]), Result<(), Error>>,
     DISPATCH: Clone + Unpin + Send + 'static,
     T: Default + Unpin + Send + 'static,
 {
@@ -249,9 +306,14 @@ where
     Ok(common_port_handler(work_queue, port, dispatch))
 }
 
+/// Creates a port through [syscalls::manage_named_port()] with the given name,
+/// and returns a future which will handle the port - that is, it
+/// will continuously accept new sessions on the port, and create backing
+/// objects through `T::default()`, and spawn a top-level future handling that
+/// sesion with [new_session_wrapper()].
 pub fn managed_port_handler<T, DISPATCH>(work_queue: WorkQueue<'static>, server_name: &str, dispatch: DISPATCH) -> Result<impl Future<Output=()>, Error>
 where
-    DISPATCH: for<'b> FutureCallback<(&'b mut T, WorkQueue<'static>, u32, &'b mut [u8]), Result<(), Error>>,
+    DISPATCH: for<'b> hrtb_hack::FutureCallback<(&'b mut T, WorkQueue<'static>, u32, &'b mut [u8]), Result<(), Error>>,
     DISPATCH: Clone + Unpin + Send + 'static,
     T: Default + Unpin + Send + 'static,
 {
@@ -259,52 +321,56 @@ where
     Ok(common_port_handler(work_queue, port, dispatch))
 }
 
-// Ideally, that's what we would want to write
-// But the compiler seems to have trouble reasoning about associated types in
-// an HRTB context (maybe that's just not possible ? Not sure)
-// async fn new_session_wrapper<F>(mut dispatch: F) -> ()
-// where
-//     F: for<'a> FnMut<(&'a mut [u8],)>,
-//     for<'a> <F as FnOnce<(&'a mut [u8],)>>::Output: Future<Output = Result<(), ()>>,
-// {
-//     // Session wrapper code
-// }
+pub mod hrtb_hack {
+    //! Ideally, that's what we would want to write
+    //! async fn new_session_wrapper<F>(mut dispatch: F) -> ()
+    //! where
+    //!     F: for<'a> FnMut<(&'a mut [u8],)>,
+    //!     for<'a> <F as FnOnce<(&'a mut [u8],)>>::Output: Future<Output = Result<(), ()>>,
+    //! {
+    //!     // Session wrapper code
+    //! }
+    //
+    //! But the compiler seems to have trouble reasoning about associated types
+    //! in an HRTB context (maybe that's just not possible ? Not sure).
+    //!
+    //! To work around this, we'll make a supertrait over `FnMut<T>` and make
+    //! use of lifetime ellision rules to get this done.
 
-// So instead, we'll make a wrapper for `FnMut` that has the right trait bound
-// on its associated output type directly
-pub trait FutureCallback<T, O>: FnMut<T> {
-    type Ret: Future<Output = O> + Send;
+    //! So instead, we'll make a wrapper for `FnMut` that has the right trait bound
+    //! on its associated output type directly
 
-    fn call(&mut self, x: T) -> Self::Ret;
-}
+    use core::future::Future;
 
-// Implement it for all FnMut with Ret = Output
-impl<T, O, F: FnMut<T>> FutureCallback<T, O> for F
-where
-    F::Output: Future<Output = O> + Send,
-{
-    type Ret = F::Output;
+    pub trait FutureCallback<T, O>: FnMut<T> {
+        type Ret: Future<Output = O> + Send;
 
-    fn call(&mut self, x: T) -> Self::Ret {
-        self.call_mut(x)
+        fn call(&mut self, x: T) -> Self::Ret;
+    }
+
+    // Implement it for all FnMut with Ret = Output
+    impl<T, O, F: FnMut<T>> FutureCallback<T, O> for F
+    where
+        F::Output: Future<Output = O> + Send,
+    {
+        type Ret = F::Output;
+
+        fn call(&mut self, x: T) -> Self::Ret {
+            self.call_mut(x)
+        }
     }
 }
 
-// And this now magically works
-//fn dispatch<'a>            (&'a mut self,    work_queue: WorkQueue<'static>,    cmdid: u32, buf: &'a mut [u8]) -> FutureObj<'a, Result<(), Error>> {
-// for<'a> core::ops::FnOnce<(&'a mut IBuffer, libuser::ipc::server::WorkQueue<'static>, u32, &'a mut [u8])>`
-//         core::ops::FnOnce<(&mut IBuffer,    libuser::ipc::server::WorkQueue<'_>,      u32, &mut [u8])>`
-
-// `core::ops::FnOnce<(&'0 mut IBuffer, libuser::ipc::server::WorkQueue<'static>, u32, &'0 mut [u8])>`
-// would have to be implemented for the type
-// `for<'a>         fn(&'a mut IBuffer, libuser::ipc::server::WorkQueue<'static>, u32, &'a mut [u8]) -> futures_core::future::future_obj::FutureObj<'a, core::result::Result<(), libuser::error::Error>> {<IBuffer as libuser::vi::IBuffer>::dispatch}`,
-// for some specific lifetime `'0`, but
-// `core::ops::FnOnce<(&mut IBuffer, libuser::ipc::server::WorkQueue<'_>, u32, &mut [u8])>`
-// is actually implemented for the type
-// `for<'a>         fn(&'a mut IBuffer, libuser::ipc::server::WorkQueue<'static>, u32, &'a mut [u8]) -> futures_core::future::future_obj::FutureObj<'a, core::result::Result<(), libuser::error::Error>> {<IBuffer as libuser::vi::IBuffer>::dispatch}`
+/// Creates a new top-level future that handles session.
+///
+/// The returned future will continuously accept new incoming requests on the
+/// handle, call the dispatch function with the given object, and the request'
+/// cmdid and buffer, and finally reply to the request.
+///
+/// It may be used to open subsessions.
 pub fn new_session_wrapper<T, DISPATCH>(work_queue: WorkQueue<'static>, handle: ServerSession, mut object: T, mut dispatch: DISPATCH) -> impl Future<Output = ()> + Send
 where
-    DISPATCH: for<'b> FutureCallback<(&'b mut T, WorkQueue<'static>, u32, &'b mut [u8]), Result<(), Error>>,
+    DISPATCH: for<'b> hrtb_hack::FutureCallback<(&'b mut T, WorkQueue<'static>, u32, &'b mut [u8]), Result<(), Error>>,
     DISPATCH: Unpin + Send + 'static,
     T: Unpin + Send + 'static,
 {

@@ -1,0 +1,25 @@
+# Example interface used for IPC Server documentation.
+# Not actually present.
+interface IExample1 is hello {}
+
+# Example interface used for IPC Server documentation.
+# Not actually present.
+interface IExample2 is hello {
+    [0] function();
+}
+
+# Example interface used for IPC Server documentation.
+# Not actually present.
+interface IExample3 is hello {
+    [0] function() -> object<IExample3Subsession>;
+}
+
+# Example interface used for IPC Server documentation.
+# Not actually present.
+interface IExample3Subsession {}
+
+# Example interface used for IPC Server documentation.
+# Not actually present.
+interface IExample4 {
+    [0] function();
+}
