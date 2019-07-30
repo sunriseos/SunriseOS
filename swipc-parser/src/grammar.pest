@@ -28,9 +28,9 @@ structure = { "struct" ~ structTemplate? ~ "{" ~ structField+ ~ "}" }
 enumeration = { "enum" ~ "<" ~ name ~ ">" ~ "{" ~ enumField+ ~ "}" }
 
 aliasArray = { "array" ~ "<" ~ alias ~ "," ~ number ~ ">" }
-aliasBuffer = { "buffer" ~ "<" ~ alias ~ "," ~ number ~ "," ~ number ~ ">" }
+aliasBuffer = { "buffer" ~ "<" ~ alias ~ "," ~ number ~ ("," ~ number)? ~ ">" }
 aliasObject = { "object" ~ "<" ~ iname ~ ">" }
-aliasBytes = { "bytes" ~ "<" ~ number ~ ">" }
+aliasBytes = { "bytes" ~ ("<" ~ number ~ ">")? }
 aliasAlign = { "align" ~ "<" ~ number ~ "," ~ alias ~ ">" }
 aliasPid = { "pid" }
 

@@ -126,11 +126,11 @@ pub enum Alias {
     /// argument is the size.
     ///
     /// [as described on switchbrew]: https://switchbrew.org/w/index.php?title=IPC_Marshalling#Official_marshalling_code
-    Buffer(Box<Alias>, u64, u64),
+    Buffer(Box<Alias>, u64, Option<u64>),
     /// An IPC Object implementing the given interface.
     Object(String),
     /// A byte blob of the given size.
-    Bytes(u64),
+    Bytes(Option<u64>),
     /// Forces the alignment to the given size for the given underlying type.
     Align(u64, Box<Alias>),
     /// A Kernel Handle of the given type. If the first argument is true, the
@@ -328,10 +328,16 @@ fn parse_alias(mut ty: Pairs<Rule>) -> Alias {
             assert_eq!(alias.as_rule(), Rule::alias, "Broken parser: this is not an alias: {:?}", alias);
             let nextalias = parse_alias(alias.into_inner());
             let num1 = parse_number(&mut inner);
-            let num2 = parse_number(&mut inner);
+            let mut num2 = None;
+
+            if inner.peek().is_some() {
+                let num = parse_number(&mut inner);
+                if num != 0 {
+                    num2 = Some(num);
+                }
+            }
             assert!(inner.next().is_none(), "Broken parser: alias has more than 3 template args: {:?}", inner);
             Alias::Buffer(Box::new(nextalias), num1, num2)
-
         },
         Rule::aliasObject => {
             let mut inner = ty.next().unwrap().into_inner();
@@ -341,7 +347,7 @@ fn parse_alias(mut ty: Pairs<Rule>) -> Alias {
         },
         Rule::aliasBytes => {
             let mut inner = ty.next().unwrap().into_inner();
-            let size = parse_number(&mut inner);
+            let size = inner.peek().map(|_| parse_number(&mut inner));
             assert!(inner.next().is_none(), "Broken parser: alias has more than 1 template args: {:?}", inner);
             Alias::Bytes(size)
         },
