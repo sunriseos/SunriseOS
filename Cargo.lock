@@ -133,6 +133,7 @@ source = "git+https://github.com/SunriseOS/color_quant#3f7a1f3a166ace12001ebd932
 [[package]]
 name = "core-futures-tls"
 version = "0.1.1"
+source = "git+https://github.com/SunriseOS/core-futures-tls?branch=global#519af92375263f2a984e94a64cc70c4a470f3002"
 
 [[package]]
 name = "cty"
@@ -684,7 +685,7 @@ dependencies = [
  "bit_field 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "bitfield 0.13.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "byteorder 1.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "core-futures-tls 0.1.1",
+ "core-futures-tls 0.1.1 (git+https://github.com/SunriseOS/core-futures-tls?branch=global)",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "font-rs 0.1.3 (git+https://github.com/SunriseOS/font-rs)",
  "futures-preview 0.3.0-alpha.17 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -913,6 +914,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum cfg-if 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)" = "b486ce3ccf7ffd79fdeb678eac06a9e6c09fc88d33836340becb8fffe87c5e33"
 "checksum clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)" = "5067f5bb2d80ef5d68b4c87db81601f0b75bca627bc2ef76b141d7b846a3c6d9"
 "checksum color_quant 1.0.1 (git+https://github.com/SunriseOS/color_quant)" = "<none>"
+"checksum core-futures-tls 0.1.1 (git+https://github.com/SunriseOS/core-futures-tls?branch=global)" = "<none>"
 "checksum cty 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "c4e1d41c471573612df00397113557693b5bf5909666a8acb253930612b93312"
 "checksum darling 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)" = "fcfbcb0c5961907597a7d1148e3af036268f2b773886b8bb3eeb1e1281d3d3d6"
 "checksum darling_core 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)" = "6afc018370c3bff3eb51f89256a6bdb18b4fdcda72d577982a14954a7a0b402c"

@@ -20,7 +20,7 @@ lazy_static = "1.3"
 libm = "0.1"
 futures-preview = { version = "0.3.0-alpha.16", default-features = false, features = ["nightly", "alloc"] }
 generational-arena = { version = "0.2", default-features = false }
-core = { package = "core-futures-tls", path = "../../core-futures-tls" }
+core = { package = "core-futures-tls", git = "https://github.com/SunriseOS/core-futures-tls", branch = "global" }
 
 [dependencies.byteorder]
 default-features = false
