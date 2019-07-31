@@ -80,6 +80,7 @@ impl Default for ThreadHardwareContext {
 /// # Panics
 ///
 /// Panics if the locks protecting the ProcessStruct of current or B process cannot be obtained.
+/// Panics if the locks protecting the MAIN_TASK TSS or DOUBLE_FAULT_TSS cannot be obtained.
 ///
 /// # Safety:
 ///
@@ -131,6 +132,9 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
 
     // Set IOPB back to "nothing allowed" state
     // todo do not change iopb if thread_b belongs to the same process.
+
+    // MAIN_TSS should otherwise only be locked during DOUBLE_FAULTING,
+    // in which case we really shouldn't be context-switching.
     let mut main_tss = MAIN_TASK.try_lock()
         .expect("Cannot lock main tss");
     for ioport in &thread_current.process.capabilities.ioports {
@@ -184,6 +188,7 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
     // recreate the Arc to our ThreadStruct from the pointer that was passed to us
     let me = unsafe { Arc::from_raw(whoami) };
 
+    // MAIN_TSS should have been unlocked during schedule-out. Re-take it.
     let mut main_tss = MAIN_TASK.try_lock()
         .expect("Cannot lock main tss");
 
@@ -288,6 +293,7 @@ fn first_schedule() {
         // reconstruct an Arc to our ProcessStruct from the leaked pointer
         let current = unsafe { Arc::from_raw(whoami) };
 
+        // MAIN_TSS must have been unlocked by now.
         let mut main_tss = MAIN_TASK.try_lock()
             .expect("Cannot lock main tss");
 
