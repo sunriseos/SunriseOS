@@ -174,7 +174,7 @@ pub static TZ_MANAGER: Mutex<TimeZoneManager> = Mutex::new(unsafe {
     initialize_to_zero!(TimeZoneManager)
 });
 
-// Global clear instance of TimeZoneRule used to avoid copying 16KB on the stack.
+/// Global clear instance of TimeZoneRule used to avoid copying 16KB on the stack.
  static ZEROED_TIME_ZONE_RULE: TimeZoneRule = unsafe {
     // Safety: This is a POD. There isn't any invariants so this should totally be safe.
     initialize_to_zero!(TimeZoneRule)
