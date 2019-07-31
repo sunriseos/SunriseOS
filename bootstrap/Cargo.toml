@@ -23,7 +23,7 @@ version = "0.6.10"
 
 [dependencies.arrayvec]
 default-features = false
-version = "0.4.10"
+version = "0.4.11"
 
 [dependencies.lazy_static]
 features = ["spin_no_std"]
