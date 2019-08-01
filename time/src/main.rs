@@ -206,12 +206,12 @@ impl IWaitable for &Rtc {
                 year = (year & 0x0F) + ((year / 16) * 10);
             }
 
-            // Convert day range
-            day -= 1;
+            // Convert RTC to a more valid date
+            year += 2000;
 
             // Taken from https://en.wikipedia.org/wiki/Julian_day
             let a = (14 - month) / 12;
-            let y = (year + 2000) + 4800 - a;
+            let y = year + 4800 - a;
             let m = month + (12 * a) - 3;
 
             let mut julian_day_number = day;
