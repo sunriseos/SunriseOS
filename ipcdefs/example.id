@@ -1,25 +1,28 @@
 # Example interface used for IPC Server documentation.
 # Not actually present.
-interface IExample1 is hello {}
+interface sunrise_libuser::example::IExample1 is hello {}
 
 # Example interface used for IPC Server documentation.
 # Not actually present.
-interface IExample2 is hello {
+interface sunrise_libuser::example::IExample2 is hello {
+    # Example function
     [0] function();
 }
 
 # Example interface used for IPC Server documentation.
 # Not actually present.
-interface IExample3 is hello {
+interface sunrise_libuser::example::IExample3 is hello {
+    # Example function
     [0] function() -> object<IExample3Subsession>;
 }
 
 # Example interface used for IPC Server documentation.
 # Not actually present.
-interface IExample3Subsession {}
+interface sunrise_libuser::example::IExample3Subsession {}
 
 # Example interface used for IPC Server documentation.
 # Not actually present.
-interface IExample4 {
+interface sunrise_libuser::example::IExample4 {
+    # Example function
     [0] function();
 }

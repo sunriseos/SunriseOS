@@ -1,13 +1,15 @@
 //! # Futures Executor
 //!
-//! A [WaitableManager] is a future executor, which is more or less a userspace
-//! scheduler, taking a list of [Task] and running them to completion.
-//! Occasionally, a [Task] will need to wait on a resource, usually backed by a
-//! [Handle]. When this happens, it can use its [Waker] to tell the executor to
-//! wake it up once a specified handled is notified.
+//! A [futures::WaitableManager] is a future executor, which is more or less a
+//! userspace scheduler, taking a list of [futures::Task] and running them to
+//! completion. Occasionally, a [futures::Task] will need to wait on a resource,
+//! usually backed by a [types::Handle]. When this happens, it can use its
+//! [core::task::Waker] to tell the executor to wake it up once a specified
+//! handled is notified.
 //!
-//! A [WorkQueue] is a handle to the [WaitableManager]. Work is submitted to the
-//! [WaitableManager] by pushing [WorkItem]s on the [WorkQueue].
+//! A [futures::WorkQueue] is a handle to the [futures::WaitableManager]. Work
+//! is submitted to the [futures::WaitableManager] by pushing
+//! [futures::WorkItem]s on the [futures::WorkQueue].
 //!
 //! The implementation is very liberally taken from the blog post [Building an
 //! Embedded Futures Executor](https://josh.robsonchase.com/embedded-executor/)
@@ -134,7 +136,7 @@ impl<'a> WaitableManager<'a> {
     /// Runs the event loop, popping items from the underlying [WorkQueue] and
     /// executing them. When there isn't any more work to do, we call
     /// [syscalls::wait_synchronization()] on all the handles that were
-    /// registered through [WorkQueue::WaitHandle]. All the tasks that were
+    /// registered through [WorkQueue#WaitHandle]. All the tasks that were
     /// waiting on the handle that got woken up will be polled again, resuming
     /// the event loop.
     ///

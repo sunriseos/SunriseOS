@@ -33,7 +33,10 @@ pub enum Loop<T, S> {
 /// Created by the `loop_fn` function.
 #[derive(Debug)]
 pub struct LoopFn<A, F> {
+    /// Future representing the current loop iteration.
     future: A,
+    /// Function called on every new iteration to generate that iteration's
+    /// future
     func: F,
 }
 

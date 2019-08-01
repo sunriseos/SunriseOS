@@ -430,7 +430,8 @@ pub fn sleep_thread(nanos: usize) -> Result<(), UserspaceError> {
 /// will immediately return - the user has to clear the "signaled" state through
 /// [clear_event()].
 ///
-/// Takes either a [ReadableEvent] or a [WritableEvent].
+/// Takes either a [crate::event::ReadableEvent] or a
+/// [crate::event::WritableEvent].
 pub fn signal_event(handle: u32) -> Result<(), UserspaceError> {
     let proc = scheduler::get_current_process();
     proc.phandles.lock().get_handle(handle)?.as_writable_event()?.signal();
@@ -441,7 +442,8 @@ pub fn signal_event(handle: u32) -> Result<(), UserspaceError> {
 /// event, [wait_synchronization()] on this handle will wait until
 /// [signal_event()] is called once again.
 ///
-/// Takes either a [ReadableEvent] or a [WritableEvent].
+/// Takes either a [crate::event::ReadableEvent] or a
+/// [crate::event::WritableEvent].
 pub fn clear_event(handle: u32) -> Result<(), UserspaceError> {
     let proc = scheduler::get_current_process();
     let handle = proc.phandles.lock().get_handle(handle)?;
@@ -583,6 +585,9 @@ pub fn create_session(_is_light: bool, _unk: usize) -> Result<(usize, usize), Us
 /// Create a [WritableEvent]/[ReadableEvent] pair. Signals on the
 /// [WritableEvent] will cause threads waiting on the [ReadableEvent] to wake
 /// up until the signal is cleared/reset.
+///
+/// [ReadableEvent]: crate::event::ReadableEvent
+/// [WritableEvent]: crate::event::WritableEvent
 pub fn create_event() -> Result<(usize, usize), UserspaceError> {
     let (writable, readable) = crate::event::new_pair();
     let curproc = scheduler::get_current_process();

@@ -660,6 +660,9 @@ fn gen_call(cmd: &Func, is_async: bool) -> Result<String, Error> {
     Ok(s)
 }
 
+/// Generate a trait representing an async IPC interface. Implementors of this
+/// trait may then create IPC Server objects through libuser's
+/// `new_session_wrapper` and `create_port`.
 pub fn generate_trait_async(ifacename: &str, interface: &Interface) -> String {
     let mut s = String::new();
 

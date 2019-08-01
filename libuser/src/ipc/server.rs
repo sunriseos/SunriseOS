@@ -10,7 +10,7 @@
 //!
 //! An IPC Server is made of a [future executor](crate::futures) on which we
 //! spawn futures to handle Port and Session. Those futures, created through
-//! [port_handler()] and [new_session_wrapper()], will take care of accepting
+//! [fn port_handler] and [fn new_session_wrapper], will take care of accepting
 //! new sessions from a ServerPort, and answering IPC requests sent on the
 //! ServerSession.
 //!
@@ -21,15 +21,16 @@
 //! places: It can either be kernel-managed, or it can be sm-managed. Almost
 //! all ports are sm-managed, the only exceptions being `sm:` itself.
 //!
-//! Kernel-managed ports are created through the [managed_port_handler()]
-//! function. This will internally call [syscalls::manage_named_port()] to
-//! acquire a [ServerPort]. Sm-managed ports are created through
-//! [port_handler()], which call [IUserInterfaceProxy::register_service()] to
-//! acquire their ServerPort.
+//! Kernel-managed ports are created through the [fn managed_port_handler]
+//! function. This will internally call [crate::syscalls::manage_named_port()]
+//! to acquire a [crate::types::ServerPort]. Sm-managed ports are created
+//! through [fn port_handler], which call
+//! [crate::sm::IUserInterfaceProxy::register_service()] to acquire their
+//! ServerPort.
 //!
 //! Once the ServerPort is acquired, the port handling functions will run on a
 //! loop, accepting new connections, creating a backing Object for the sessions,
-//! and spawning a new future on the event loop with [new_session_wrapper()].
+//! and spawning a new future on the event loop with [fn new_session_wrapper].
 //!
 //! ```rust
 //! use futures::future::FutureObj;
@@ -56,10 +57,10 @@
 //! ## Session Handling
 //!
 //! A Session server is represented by an Object implementing an Interface,
-//! receiving and replying to RPC requests on a [ServerSession]. A session
-//! server is created either through a port handler accepting a session, or
-//! through the [new_session_wrapper()] function, which will receive requests,
-//! call the Object's dispatcher function, and reply with the answer.
+//! receiving and replying to RPC requests on a [crate::types::ServerSession]. A
+//! session server is created either through a port handler accepting a session,
+//! or through the [fn new_session_wrapper] function, which will receive
+//! requests, call the Object's dispatcher function, and reply with the answer.
 //!
 //! ### Interfaces
 //!
@@ -128,9 +129,9 @@
 //!
 //! While the "root" session is generally created from a Port Handler, the user
 //! is free to create and return new subsessions. This can be done by creating
-//! a session pair with [syscalls::create_session()], spawning a new Session
-//! Handler with [new_session_wrapper()], and returning the client-side session
-//! handle. Here's an example:
+//! a session pair with [crate::syscalls::create_session()], spawning a new
+//! Session Handler with [fn new_session_wrapper], and returning the client-side
+//! session handle. Here's an example:
 //!
 //! ```rust
 //! #use futures::future::FutureObj;
@@ -170,8 +171,8 @@
 //!
 //! A server might want to wait for asynchronous events to occur before
 //! answering: for instance, the `read()` function of a filesystem might want
-//! to wait for an [IRQEvent] to get signaled before getting the data from the
-//! disk and returning it to the client.
+//! to wait for an [crate::types::IRQEvent] to get signaled before getting the
+//! data from the disk and returning it to the client.
 //!
 //! This is doable by using the Asynchronous traits. Those return a Future
 //! instead of directly returning the Result. This has one huge downside: the
@@ -288,9 +289,9 @@ where
     })
 }
 
-/// Creates a port through [IUserInterfaceProxy::register_service()] with the
-/// given name, and returns a future which will handle the port - that is, it
-/// will continuously accept new sessions on the port, and create backing
+/// Creates a port through [crate::sm::IUserInterfaceProxy::register_service()]
+/// with the given name, and returns a future which will handle the port - that
+/// is, it will continuously accept new sessions on the port, and create backing
 /// objects through `T::default()`, and spawn a top-level future handling that
 /// sesion with [new_session_wrapper()].
 pub fn port_handler<T, DISPATCH>(work_queue: WorkQueue<'static>, server_name: &str, dispatch: DISPATCH) -> Result<impl Future<Output=()>, Error>
@@ -338,17 +339,21 @@ pub mod hrtb_hack {
     //! use of lifetime ellision rules to get this done.
 
     //! So instead, we'll make a wrapper for `FnMut` that has the right trait bound
-    //! on its associated output type directly
+    //! on its associated output type directly, Implement it for all FnMut with
+    //! Ret = Output, and use that as a bound instead.
 
     use core::future::Future;
 
+    /// A similar trait to FnMut() but moving the Ret associated trait to a
+    /// generic position, simplifying stuff. See module docs.
     pub trait FutureCallback<T, O>: FnMut<T> {
+        /// See [type FnMut::Output]
         type Ret: Future<Output = O> + Send;
 
+        /// See [FnMut::call_mut()].
         fn call(&mut self, x: T) -> Self::Ret;
     }
 
-    // Implement it for all FnMut with Ret = Output
     impl<T, O, F: FnMut<T>> FutureCallback<T, O> for F
     where
         F::Output: Future<Output = O> + Send,

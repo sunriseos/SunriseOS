@@ -123,7 +123,7 @@ pub struct IRQEvent(pub Handle);
 /// The readable part of an event. The user shall use this end to verify if the
 /// event is signaled, and wait for the signaling through wait_synchronization.
 /// The user can also use this handle to clear the signaled state through
-/// [ReadableEvent::clear_signal()].
+/// [ReadableEvent::clear()].
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct ReadableEvent(pub Handle);
@@ -134,6 +134,7 @@ impl ReadableEvent {
         syscalls::clear_event(self.0.as_ref())
     }
 
+    /// Waits for the event to get signaled.
     pub fn wait_async<'a>(&self, queue: crate::futures::WorkQueue<'a>) -> impl core::future::Future<Output = ()> + Unpin + 'a {
         self.0.as_ref().wait_async(queue)
     }
@@ -253,6 +254,10 @@ impl ServerSession {
             .map_err(|v| v.into())
     }
 
+    /// Waits for the server to receive a request.
+    ///
+    /// Once this function returns, calling [ServerSession::receive()] is
+    /// guaranteed not to block.
     pub fn wait_async<'a>(&self, queue: crate::futures::WorkQueue<'a>) -> impl core::future::Future<Output = ()> + Unpin + 'a {
         self.0.as_ref().wait_async(queue)
     }
@@ -295,6 +300,10 @@ impl ServerPort {
             .map_err(|v| v.into())
     }
 
+    /// Waits for the server to receive a connection.
+    ///
+    /// Once this function returns, [ServerPort::accept()] is guaranteed not to
+    /// block.
     pub fn wait_async<'a>(&self, queue: crate::futures::WorkQueue<'a>) -> impl core::future::Future<Output = ()> + Unpin + 'a {
         self.0.as_ref().wait_async(queue)
     }

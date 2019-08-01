@@ -62,7 +62,7 @@ use futures::future::{FutureExt, FutureObj};
 /// The main interface to the Service Manager. Clients can use it to connect to
 /// or register new services (assuming they have the appropriate capabilities).
 ///
-/// Make sure to call the [IUserInterface::initialize()] method before using it.
+/// Make sure to call the `IUserInterface::initialize` method before using it.
 #[derive(Debug, Default)]
 struct UserInterface;
 
