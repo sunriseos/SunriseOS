@@ -13,11 +13,11 @@
 //! In libuser, we don't make a proper distinction between Cmif and Hipc. Both
 //! are implemented in the same layer, which is backed by the Message structure.
 
-
+use core::convert::TryInto;
 use core::marker::PhantomData;
 use core::mem;
 use core::convert::TryFrom;
-use byteorder::{ByteOrder, LE};
+use byteorder::LE;
 use arrayvec::{ArrayVec, Array};
 use crate::utils::{self, align_up, CursorWrite, CursorRead};
 use crate::types::{Handle, HandleRef, Pid};
@@ -1039,7 +1039,7 @@ fn find_ty_cmdid(buf: &[u8]) -> Option<(u16, u32)> {
     if buf.len() < 8 {
         return None
     }
-    let hdr = LE::read_u64(&buf[0..8]);
+    let hdr = u64::from_le_bytes(buf[0..8].try_into().expect("cmd header is invalid"));
     let ty = hdr.get_bits(0..16) as u16;
     let x_descs = hdr.get_bits(16..20) as usize;
     let a_descs = hdr.get_bits(20..24) as usize;
@@ -1049,7 +1049,7 @@ fn find_ty_cmdid(buf: &[u8]) -> Option<(u16, u32)> {
         if buf.len() < 12 {
             return None
         }
-        let dsc = LE::read_u32(&buf[8..12]);
+        let dsc = u32::from_le_bytes(buf[8..12].try_into().expect("cmd description is invalid"));
         (dsc.get_bit(0) as usize, dsc.get_bits(1..5) as usize, dsc.get_bits(5..9) as usize)
     } else {
         (0, 0, 0)
@@ -1059,7 +1059,7 @@ fn find_ty_cmdid(buf: &[u8]) -> Option<(u16, u32)> {
     if buf.len() < raw + 4 {
         return None
     }
-    let cmdid = LE::read_u32(&buf[raw..raw + 4]);
+    let cmdid = u32::from_le_bytes(buf[raw..raw + 4].try_into().expect("command id is invalid"));
     Some((ty, cmdid))
 }
 

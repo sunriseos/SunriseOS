@@ -28,9 +28,9 @@ use crate::error::UserspaceError;
 use crate::event::Waitable;
 use crate::process::ThreadStruct;
 use crate::sync::MutexGuard;
+use core::convert::TryInto;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::slice;
-use byteorder::{LE, ByteOrder};
 use crate::paging::{PAGE_SIZE, MappingAccessRights, process_memory::ProcessMemory};
 use crate::paging::process_memory::QueryMemory;
 use crate::paging::mapping::MappingFrames;
@@ -238,9 +238,9 @@ struct Buffer {
 /// Should be called from the receiver process.
 #[allow(unused)]
 fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mut ProcessMemory, to_mem: &mut ProcessMemory, flags: MappingAccessRights, buffers: &mut Vec<Buffer>) -> Result<(), UserspaceError> {
-    let lowersize = LE::read_u32(&from_buf[*curoff..*curoff + 4]);
-    let loweraddr = LE::read_u32(&from_buf[*curoff + 4..*curoff + 8]);
-    let rest = LE::read_u32(&from_buf[*curoff + 8..*curoff + 12]);
+    let lowersize = u32::from_le_bytes(from_buf[*curoff..*curoff + 4].try_into().unwrap());
+    let loweraddr = u32::from_le_bytes(from_buf[*curoff + 4..*curoff + 8].try_into().unwrap());
+    let rest = u32::from_le_bytes(from_buf[*curoff + 8..*curoff + 12].try_into().unwrap());
 
     let bufflags = rest.get_bits(0..2);
 
@@ -384,9 +384,9 @@ fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mu
         .set_bits(24..28, (size as u64).get_bits(32..36) as u32)
         .set_bits(28..32, (to_addr as u64).get_bits(32..36) as u32);
 
-    LE::write_u32(&mut to_buf[*curoff + 0..*curoff + 4], lowersize);
-    LE::write_u32(&mut to_buf[*curoff + 4..*curoff + 8], loweraddr);
-    LE::write_u32(&mut to_buf[*curoff + 8..*curoff + 12], rest);
+    (&mut to_buf[*curoff + 0..*curoff + 4]).copy_from_slice(&lowersize.to_le_bytes()[..]);
+    (&mut to_buf[*curoff + 4..*curoff + 8]).copy_from_slice(&loweraddr.to_le_bytes()[..]);
+    (&mut to_buf[*curoff + 8..*curoff + 12]).copy_from_slice(&rest.to_le_bytes()[..]);
 
     buffers.push(Buffer {
         writable: flags.contains(MappingAccessRights::WRITABLE),
@@ -518,7 +518,7 @@ impl ClientSession {
 fn find_c_descriptors(buf: &mut [u8]) -> Result<CBufBehavior, KernelError> {
     let mut curoff = 0;
 
-    let hdr = MsgPackedHdr(LE::read_u64(&buf[curoff..curoff + 8]));
+    let hdr = MsgPackedHdr(u64::from_le_bytes(buf[curoff..curoff + 8].try_into().unwrap()));
     curoff += 8;
 
     let cflag = hdr.c_descriptor_flags();
@@ -532,7 +532,7 @@ fn find_c_descriptors(buf: &mut [u8]) -> Result<CBufBehavior, KernelError> {
     // Go grab C descriptors
 
     if hdr.enable_handle_descriptor() {
-        let descriptor = HandleDescriptorHeader(LE::read_u32(&buf[curoff..curoff + 4]));
+        let descriptor = HandleDescriptorHeader(u32::from_le_bytes(buf[curoff..curoff + 4].try_into().unwrap()));
         curoff += 4;
         if descriptor.send_pid() {
             curoff += 8;
@@ -548,8 +548,8 @@ fn find_c_descriptors(buf: &mut [u8]) -> Result<CBufBehavior, KernelError> {
     match hdr.c_descriptor_flags() {
         0 | 1 => unreachable!(),
         2 => {
-            let word1 = LE::read_u32(&buf[curoff..curoff + 4]);
-            let word2 = LE::read_u32(&buf[curoff + 4..curoff + 8]);
+            let word1 = u32::from_le_bytes(buf[curoff..curoff + 4].try_into().unwrap());
+            let word2 = u32::from_le_bytes(buf[curoff + 4..curoff + 8].try_into().unwrap());
             let addr = *u64::from(word1).set_bits(32..48, u64::from(word2.get_bits(0..16)));
             let size = u64::from(word2.get_bits(16..32));
             Ok(CBufBehavior::Single(addr, size))
@@ -557,8 +557,8 @@ fn find_c_descriptors(buf: &mut [u8]) -> Result<CBufBehavior, KernelError> {
         x => {
             let mut bufs = [(0, 0); 13];
             for i in 0..x - 2 {
-                let word1 = LE::read_u32(&buf[curoff..curoff + 4]);
-                let word2 = LE::read_u32(&buf[curoff + 4..curoff + 8]);
+                let word1 = u32::from_le_bytes(buf[curoff..curoff + 4].try_into().unwrap());
+                let word2 = u32::from_le_bytes(buf[curoff + 4..curoff + 8].try_into().unwrap());
                 let addr = *u64::from(word1).set_bits(32..48, u64::from(word2.get_bits(0..16)));
                 let size = u64::from(word2.get_bits(16..32));
                 bufs[i as usize] = (addr, size);
@@ -678,14 +678,14 @@ fn pass_message(from_buf: &[u8], from_proc: Arc<ThreadStruct>, to_buf: &mut [u8]
     // BODY: page tables.
 
     let mut curoff = 0;
-    let hdr = MsgPackedHdr(LE::read_u64(&from_buf[curoff..curoff + 8]));
-    LE::write_u64(&mut to_buf[curoff..curoff + 8], hdr.0);
+    let hdr = MsgPackedHdr(u64::from_le_bytes(from_buf[curoff..curoff + 8].try_into().unwrap()));
+    (&mut to_buf[curoff..curoff + 8]).copy_from_slice(&hdr.0.to_le_bytes()[..]);
 
     curoff += 8;
 
     let descriptor = if hdr.enable_handle_descriptor() {
-        let descriptor = HandleDescriptorHeader(LE::read_u32(&from_buf[curoff..curoff + 4]));
-        LE::write_u32(&mut to_buf[curoff..curoff + 4], descriptor.0);
+        let descriptor = HandleDescriptorHeader(u32::from_le_bytes(from_buf[curoff..curoff + 4].try_into().unwrap()));
+        (&mut to_buf[curoff..curoff + 4]).copy_from_slice(&descriptor.0.to_le_bytes()[..]);
         curoff += 4;
         descriptor
     } else {
@@ -694,7 +694,7 @@ fn pass_message(from_buf: &[u8], from_proc: Arc<ThreadStruct>, to_buf: &mut [u8]
 
     if descriptor.send_pid() {
         // TODO: Atmosphere patch for fs_mitm.
-        LE::write_u64(&mut to_buf[curoff..curoff + 8], from_proc.process.pid as u64);
+        (&mut to_buf[curoff..curoff + 8]).copy_from_slice(&(from_proc.process.pid as u64).to_le_bytes()[..]);
         curoff += 8;
     }
 
@@ -703,17 +703,17 @@ fn pass_message(from_buf: &[u8], from_proc: Arc<ThreadStruct>, to_buf: &mut [u8]
         let mut to_handle_table = to_proc.process.phandles.lock();
 
         for i in 0..descriptor.num_copy_handles() {
-            let handle = LE::read_u32(&from_buf[curoff..curoff + 4]);
+            let handle = u32::from_le_bytes(from_buf[curoff..curoff + 4].try_into().unwrap());
             let handle = from_handle_table.get_handle(handle)?;
             let handle = to_handle_table.add_handle(handle);
-            LE::write_u32(&mut to_buf[curoff..curoff + 4], handle);
+            (&mut to_buf[curoff..curoff + 4]).copy_from_slice(&handle.to_le_bytes()[..]);
             curoff += 4;
         }
         for i in 0..descriptor.num_move_handles() {
-            let handle = LE::read_u32(&from_buf[curoff..curoff + 4]);
+            let handle = u32::from_le_bytes(from_buf[curoff..curoff + 4].try_into().unwrap());
             let handle = from_handle_table.delete_handle(handle)?;
             let handle = to_handle_table.add_handle(handle);
-            LE::write_u32(&mut to_buf[curoff..curoff + 4], handle);
+            (&mut to_buf[curoff..curoff + 4]).copy_from_slice(&handle.to_le_bytes()[..]);
             curoff += 4;
         }
     }
@@ -721,10 +721,10 @@ fn pass_message(from_buf: &[u8], from_proc: Arc<ThreadStruct>, to_buf: &mut [u8]
     {
         let mut coff = 0;
         for i in 0..hdr.num_x_descriptors() {
-            let word1 = LE::read_u32(&from_buf[curoff..curoff + 4]);
+            let word1 = u32::from_le_bytes(from_buf[curoff..curoff + 4].try_into().unwrap());
             let counter = word1.get_bits(0..6); // Counter can't go higher anyways.
 
-            let from_addr = *u64::from(LE::read_u32(&from_buf[curoff + 4..curoff + 8]))
+            let from_addr = *u64::from(u32::from_le_bytes(from_buf[curoff + 4..curoff + 8].try_into().unwrap()))
                 .set_bits(32..36, u64::from(word1.get_bits(12..16)))
                 .set_bits(36..39, u64::from(word1.get_bits(6..9)));
             let from_size = u64::from(word1.get_bits(16..32));
@@ -784,11 +784,12 @@ fn pass_message(from_buf: &[u8], from_proc: Arc<ThreadStruct>, to_buf: &mut [u8]
             coff += from.len() as u64;
 
             let mut counter = counter;
-            LE::write_u32(&mut to_buf[curoff..curoff + 4], *counter
+            let counter = *counter
                 .set_bits(6..9, to_addr.get_bits(36..39) as u32)
                 .set_bits(12..16, to_addr.get_bits(32..36) as u32)
-                .set_bits(16..32, from_size as u32));
-            LE::write_u32(&mut to_buf[curoff + 4..curoff + 8], to_addr as u32);
+                .set_bits(16..32, from_size as u32);
+            (&mut to_buf[curoff..curoff + 4]).copy_from_slice(&counter.to_le_bytes()[..]);
+            (&mut to_buf[curoff + 4..curoff + 8]).copy_from_slice(&(to_addr as u32).to_le_bytes()[..]);
 
             curoff += 8;
         }
