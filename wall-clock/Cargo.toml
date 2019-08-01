@@ -1,5 +1,5 @@
 [package]
-name = "sunrise-clock"
+name = "sunrise-wall-clock"
 version = "0.1.0"
 authors = ["roblabla <unfiltered@roblab.la>", "orycterope <tvermeilh@gmail.com>"]
 license = "Apache-2.0 OR MIT"
@@ -8,3 +8,5 @@ edition = "2018"
 [dependencies]
 sunrise-libuser = { path = "../libuser" }
 log = "0.4.6"
+spin = "0.5"
+bstr = { version = "0.1", default-features = false }

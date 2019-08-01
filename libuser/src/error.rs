@@ -51,6 +51,8 @@ pub enum Error {
     Libuser(LibuserError, Backtrace),
     /// Ahci driver error.
     Ahci(AhciError, Backtrace),
+    /// Time errors
+    Time(TimeError, Backtrace),
     /// An unknown error type. Either someone returned a custom error, or this
     /// version of libuser is outdated.
     Unknown(u32, Backtrace)
@@ -67,6 +69,7 @@ impl Error {
             Module::Sm => Error::Sm(SmError(description), Backtrace::new()),
             //Module::Vi => Error::Vi(ViError(description), Backtrace::new()),
             Module::Libuser => Error::Libuser(LibuserError(description), Backtrace::new()),
+            Module::Time => Error::Time(TimeError(description), Backtrace::new()),
             Module::Ahci => Error::Ahci(AhciError(description), Backtrace::new()),
             _ => Error::Unknown(errcode, Backtrace::new())
         }
@@ -82,6 +85,7 @@ impl Error {
             //Error::Vi(err, ..) => err.0 << 9 | Module::Vi.0,
             Error::Libuser(err, ..) => err.0 << 9 | Module::Libuser.0,
             Error::Ahci(err, ..) => err.0 << 9 | Module::Ahci.0,
+            Error::Time(err, ..) => err.0 << 9 | Module::Time.0,
             Error::Unknown(err, ..) => err,
         }
     }
@@ -108,8 +112,9 @@ enum_with_val! {
         Kernel = 1,
         Sm = 21,
         Vi = 114,
-        Libuser = 115,
-        Ahci = 116,
+        Time = 116,
+        Libuser = 415,
+        Ahci = 416,
     }
 }
 
@@ -190,3 +195,27 @@ impl From<AhciError> for Error {
         Error::Ahci(error, Backtrace::new())
     }
 }
+
+enum_with_val! {
+    /// AHCI driver errors.
+    #[derive(PartialEq, Eq, Clone, Copy)]
+    pub struct TimeError(u32) {
+        /// The given calendar timestamp couldn't be computed.
+        TimeNotFound = 200,
+        /// Signed overflow/underflow happened.
+        Overflow = 201,
+        /// The given input value was out of the timezone rule range.
+        OutOfRange = 902,
+        /// Something when wrong during timezone conversion.
+        TimeZoneConversionFailed = 903,
+        /// The requested timezone wasn't found
+        TimeZoneNotFound = 989,
+    }
+}
+
+impl From<TimeError> for Error {
+    fn from(error: TimeError) -> Self {
+        Error::Time(error, Backtrace::new())
+    }
+}
+

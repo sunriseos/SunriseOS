@@ -60,16 +60,20 @@ pub trait IWaitable: Debug {
 
 /// The event loop manager. Waits on the waitable objects added to it.
 #[derive(Debug, Default)]
-pub struct WaitableManager {
+pub struct WaitableManager<'a> {
     /// Vector of items to add to the waitable list on the next loop.
-    to_add_waitables: Mutex<Vec<Box<dyn IWaitable>>>
+    to_add_waitables: Mutex<Vec<Box<dyn IWaitable>>>,
+
+    /// Vector of static ref to items to add to the waitable list on the next loop.
+    to_add_waitables_ref: Mutex<Vec<&'a mut dyn IWaitable>>
 }
 
-impl WaitableManager {
+impl<'a> WaitableManager<'a> {
     /// Creates an empty waitable manager.
-    pub fn new() -> WaitableManager {
+    pub fn new() -> WaitableManager<'a> {
         WaitableManager {
-            to_add_waitables: Mutex::new(Vec::new())
+            to_add_waitables: Mutex::new(Vec::new()),
+            to_add_waitables_ref: Mutex::new(Vec::new())
         }
     }
 
@@ -78,31 +82,62 @@ impl WaitableManager {
         self.to_add_waitables.lock().push(waitable);
     }
 
+    /// Add a new handle for the waitable manager to wait on.
+    pub fn add_waitable_ref(&self, waitable: &'a mut dyn IWaitable) {
+        self.to_add_waitables_ref.lock().push(waitable);
+    }
+
     /// Run the event loop. This will call wait_synchronization on all the
     /// pending handles, and call handle_signaled on the handle that gets
     /// signaled.
     pub fn run(&self) -> ! {
-        let mut waitables = Vec::new();
+        let mut waitables_box = Vec::new();
+        let mut waitables_ref = Vec::new();
         loop {
             {
                 let mut guard = self.to_add_waitables.lock();
                 for waitable in guard.drain(..) {
-                    waitables.push(waitable);
+                    waitables_box.push(waitable);
+                }
+            }
+
+            {
+                let mut guard = self.to_add_waitables_ref.lock();
+                for waitable in guard.drain(..) {
+                    waitables_ref.push(waitable);
                 }
             }
 
             let idx = {
-                let handles = waitables.iter().map(|v| v.get_handle()).collect::<Vec<HandleRef<'_>>>();
+                let mut handles = waitables_box.iter().map(|v| v.get_handle()).collect::<Vec<HandleRef<'_>>>();
+                let mut handles_waitable_ref = waitables_ref.iter().map(|v| v.get_handle()).collect::<Vec<HandleRef<'_>>>();
+                handles.append(&mut handles_waitable_ref);
                 // TODO: new_waitable_event
                 syscalls::wait_synchronization(&*handles, None).unwrap()
             };
 
-            match waitables[idx].handle_signaled(self) {
+            let result = if idx < waitables_box.len() {
+                waitables_box[idx].handle_signaled(self)
+            } else {
+                waitables_ref[idx - waitables_box.len()].handle_signaled(self)
+            };
+
+            match result {
                 Ok(false) => (),
-                Ok(true) => { waitables.remove(idx); },
+                Ok(true) => {
+                    if idx < waitables_box.len() {
+                        waitables_box.remove(idx);
+                    } else {
+                        waitables_ref.remove(idx - waitables_box.len());
+                    }
+                },
                 Err(err) => {
                     error!("Error: {}", err);
-                    waitables.remove(idx);
+                    if idx < waitables_box.len() {
+                        waitables_box.remove(idx);
+                    } else {
+                        waitables_ref.remove(idx - waitables_box.len());
+                    }
                 }
             }
         }
