@@ -104,7 +104,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "cargo-5730"
 version = "0.1.0"
-source = "git+https://github.com/Thog/cargo-5730.git?branch=feature/windows-support#f6fb2cb7d22ae246ce92c13bacb887b3f6f70da4"
+source = "git+https://github.com/Thog/cargo-5730.git?branch=feature/windows-support#be3c927c3d38df740db41f41fb872f130b79ea6f"
 
 [[package]]
 name = "cfg-if"
