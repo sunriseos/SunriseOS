@@ -116,6 +116,12 @@ pub struct WaitableManager<'a> {
     registry: generational_arena::Arena<Task<'a>>
 }
 
+impl<'a> Default for WaitableManager<'a> {
+    fn default() -> Self {
+        WaitableManager::new()
+    }
+}
+
 impl<'a> WaitableManager<'a> {
     /// Creates an empty event loop.
     pub fn new() -> WaitableManager<'a> {

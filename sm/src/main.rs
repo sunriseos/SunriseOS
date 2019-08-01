@@ -150,7 +150,7 @@ impl IUserInterfaceAsync for UserInterface {
             Err(err) => return FutureObj::new(Box::new(futures::future::err(err.into())))
         };
         match SERVICES.lock().entry(servicename) {
-            Entry::Occupied(_) => return FutureObj::new(Box::new(futures::future::err(SmError::ServiceAlreadyRegistered.into()))),
+            Entry::Occupied(_) => FutureObj::new(Box::new(futures::future::err(SmError::ServiceAlreadyRegistered.into()))),
             Entry::Vacant(vacant) => {
                 vacant.insert(clientport);
 
@@ -163,7 +163,7 @@ impl IUserInterfaceAsync for UserInterface {
     }
 
     /// Unregister a service.
-    fn unregister_service<'a>(&mut self, _work_queue: WorkQueue<'static>, servicename: u64) -> FutureObj<'_, Result<(), Error>> {
+    fn unregister_service(&mut self, _work_queue: WorkQueue<'static>, servicename: u64) -> FutureObj<'_, Result<(), Error>> {
         match SERVICES.lock().remove(&servicename) {
             Some(_) => FutureObj::new(Box::new(futures::future::ok(()))),
             None => FutureObj::new(Box::new(futures::future::err(SmError::ServiceNotRegistered.into())))

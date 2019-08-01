@@ -217,19 +217,12 @@
 //! ```
 
 use crate::syscalls;
-use crate::types::{HandleRef, ServerPort, ServerSession};
-use alloc::sync::Arc;
-use alloc::vec::Vec;
+use crate::types::{ServerPort, ServerSession};
 use alloc::boxed::Box;
-use alloc::collections::vec_deque::VecDeque;
-use core::pin::Pin;
-use spin::Mutex;
 use core::ops::{Deref, DerefMut, Index};
 use crate::error::Error;
 use crate::ipc::Message;
-use core::task::{Poll, Context, Waker};
-use futures::future::{FutureObj, LocalFutureObj, FutureExt};
-use futures::task::ArcWake;
+use futures::future::{FutureObj, FutureExt};
 use core::future::Future;
 use crate::futures::WorkQueue;
 

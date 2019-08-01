@@ -82,7 +82,7 @@ pub struct HandleRef<'a> {
 impl<'a> HandleRef<'a> {
     /// Remove the lifetime on the current HandleRef. See [Handle::as_ref_static()] for
     /// more information on the safety of this operation.
-    pub fn staticify(&self) -> HandleRef<'static> {
+    pub fn staticify(self) -> HandleRef<'static> {
         HandleRef {
             inner: self.inner,
             lifetime: PhantomData
@@ -93,7 +93,8 @@ impl<'a> HandleRef<'a> {
     /// registers it to be polled on with [crate::syscalls::wait_synchronization()].
     // TODO: Explain what [crate::ipc::WorkQueue] is
     // TODO: Somehow make polling multiple handle possible.
-    fn wait_async<'b>(&self, queue: crate::futures::WorkQueue<'b>)-> impl core::future::Future<Output = ()> + Unpin +'b {
+    fn wait_async<'b>(self, queue: crate::futures::WorkQueue<'b>)-> impl core::future::Future<Output = ()> + Unpin +'b {
+        #[allow(missing_docs, clippy::missing_docs_in_private_items)]
         struct MyFuture<'a> {
             is_done: bool, queue: crate::futures::WorkQueue<'a>, handle: HandleRef<'static>
         }
@@ -143,11 +144,12 @@ impl ReadableEvent {
 
 /// The writable part of an event. The user shall use this end to signal (and
 /// wake up threads waiting on the event).
+#[derive(Debug)]
 pub struct WritableEvent(pub Handle);
 
 impl WritableEvent {
     /// Clears the signaled state.
-    pub fn clear_signal(&self) -> Result<(), KernelError> {
+    pub fn clear(&self) -> Result<(), KernelError> {
         syscalls::clear_event(self.0.as_ref())
     }
 
