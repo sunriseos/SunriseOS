@@ -6,6 +6,7 @@ PHDRS
   boot PT_LOAD ;
   gdt  PT_LOAD ;
   text PT_LOAD ;
+  rodata PT_LOAD ;
   data PT_LOAD ;
   dynamic PT_DYNAMIC ;
 }
@@ -27,12 +28,12 @@ SECTIONS {
 		*(.text .text.*)
 	} : text
 
-	.data ALIGN(4K) : {
-		*(.data .data.*)
-	} : data
-
 	.rodata ALIGN(4K) : {
 		*(.rodata .rodata.*)
+	} : rodata
+
+	.data ALIGN(4K) : {
+		*(.data .data.*)
 	} : data
 
 	.got ALIGN(4K) : {
