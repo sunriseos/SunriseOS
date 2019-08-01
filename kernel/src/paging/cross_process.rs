@@ -37,6 +37,10 @@ use crate::error::KernelError;
 pub struct CrossProcessMapping {
     /// The KernelLand address it was remapped to. Has the desired offset.
     kernel_address: VirtualAddress,
+    /// Length of the region that was requested to be remapped. Note that the
+    /// actual remapped region may be larger (since a Page Table mapping might
+    /// need to be at least 4KB).
+    len: usize,
     /// The frames this mapping covers.
     mapping: Mapping
 }
@@ -91,6 +95,7 @@ impl CrossProcessMapping {
         }
         Ok(CrossProcessMapping {
             kernel_address: kernel_map_start + (offset % PAGE_SIZE),
+            len,
             mapping: new_mapping
         })
     }
@@ -102,7 +107,7 @@ impl CrossProcessMapping {
 
     /// The length of the region asked to be remapped.
     pub fn len(&self) -> usize {
-        self.mapping.length()
+        self.len
     }
 }
 

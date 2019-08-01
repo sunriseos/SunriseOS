@@ -164,6 +164,8 @@ pub enum Handle {
     ClientSession(ClientSession),
     /// A thread.
     Thread(Weak<ThreadStruct>),
+    /// A process.
+    Process(Arc<ProcessStruct>),
     /// A shared memory region. The handle holds on to the underlying physical
     /// memory, which means the memory will only get freed once all handles to
     /// it are dropped.
@@ -211,6 +213,15 @@ impl Handle {
     /// Casts the handle as a Weak<[ThreadStruct]>, or returns a `UserspaceError`.
     pub fn as_thread_handle(&self) -> Result<Weak<ThreadStruct>, UserspaceError> {
         if let Handle::Thread(ref s) = *self {
+            Ok((*s).clone())
+        } else {
+            Err(UserspaceError::InvalidHandle)
+        }
+    }
+
+    /// Casts the handle as an Arc<[ProcessStruct]>, or returns a `UserspaceError`.
+    pub fn as_process(&self) -> Result<Arc<ProcessStruct>, UserspaceError> {
+        if let Handle::Process(ref s) = *self {
             Ok((*s).clone())
         } else {
             Err(UserspaceError::InvalidHandle)
@@ -294,7 +305,11 @@ impl HandleTable {
 
     /// Gets the Kernel Handle associated with the given userspace handle number.
     pub fn get_handle(&self, handle: u32) -> Result<Arc<Handle>, UserspaceError> {
-        self.table.get(&handle).cloned().ok_or(UserspaceError::InvalidHandle)
+        match handle {
+            0xFFFF8000 => Ok(Arc::new(Handle::Thread(Arc::downgrade(&scheduler::get_current_thread())))),
+            0xFFFF8001 => Ok(Arc::new(Handle::Process(scheduler::get_current_process()))),
+            handle => self.table.get(&handle).cloned().ok_or(UserspaceError::InvalidHandle)
+        }
     }
 
     /// Deletes the mapping from the given userspace handle number. Returns the

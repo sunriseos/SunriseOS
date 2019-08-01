@@ -32,15 +32,27 @@ pub fn init() {
     info!("Init pic");
     pic::init();
 
+    info!("Mask all interrupts in PIC");
+    let pic = pic::get();
+    for i in 0..16 {
+        pic.mask(i);
+    }
+
     info!("Acquire INTERRUPT_HANDLER");
     let handler = INTERRUPT_HANDLER.call_once(|| {
         match crate::i386::acpi::try_get_acpi_information().and_then(|v| v.interrupt_model().as_ref()) {
             Some(InterruptModel::Apic { local_apic_address, io_apics, interrupt_source_overrides, .. }) => {
                 unsafe {
                     let lapic = LocalApic::new(PhysicalAddress(*local_apic_address as usize));
-                    let ioapics = io_apics.iter().map(|v|
+                    let ioapics: Vec<IoApic> = io_apics.iter().map(|v|
                        IoApic::new(PhysicalAddress(v.address as usize), v.global_system_interrupt_base, lapic.local_apic_id())
                     ).collect();
+
+                    for over_ride in interrupt_source_overrides {
+                        let mut entry = ioapics[0].redirection_entry(over_ride.global_system_interrupt as u8);
+                        entry.set_interrupt_vector(u64::from(0x20 + over_ride.isa_source));
+                        ioapics[0].set_redirection_entry(over_ride.global_system_interrupt as u8, entry);
+                    }
 
                     InterruptHandler {
                         root_lapic: lapic,
@@ -52,12 +64,6 @@ pub fn init() {
             _ => panic!("ACPI did not find a Local APIC"),
         }
     });
-
-    info!("Mask all interrupts in PIC");
-    let pic = pic::get();
-    for i in 0..16 {
-        pic.mask(i);
-    }
 
     info!("Enable the APIC");
     handler.root_lapic.enable();
@@ -108,11 +114,7 @@ pub fn unmask(irq: u8) {
 
     // First, find the "real" IRQ number:
     let irqisa = irq;
-    let irq = match irqisa {
-        // We use the HPET to replace the PIT.
-        0 => 0,
-        _ => isa_to_ioapic_irq(irq)
-    };
+    let irq = isa_to_ioapic_irq(irq);
 
     debug!("Unmasking IRQ {} (ISA {})", irq, irqisa);
 

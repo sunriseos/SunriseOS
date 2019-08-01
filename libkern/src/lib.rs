@@ -17,8 +17,6 @@
 #![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
 #![deny(intra_doc_link_resolution_failure)]
 
-#![feature(underscore_const_names)]
-
 #[macro_use]
 extern crate sunrise_libutils;
 #[macro_use]

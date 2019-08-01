@@ -229,13 +229,13 @@ impl HpetTimer {
     ///
     /// Panics if the given interrupt route is not supported by this hpet timer.
     pub fn set_interrupt_route(&self, index: u32) {
-        assert!(self.support_interrupt_routing(index), "Illegal interrupt route.");
+        assert!(self.support_interrupt_routing(index), "Illegal interrupt route (as claimed). Supported routes: {}.", self.interrupt_route_capability);
         let mut config = unsafe { (*self.inner).config.read() };
         config.set_interrupt_route(index);
         unsafe { (*self.inner).config.write(config); }
 
         let config = unsafe { (*self.inner).config.read() };
-        assert!(config.interrupt_route() == index, "Illegal interrupt route.");
+        assert!(config.interrupt_route() == index, "Illegal interrupt route (as tested). Supported routes: {}.", self.interrupt_route_capability);
     }
 
     /// Set the timer comparactor value
@@ -511,20 +511,24 @@ pub unsafe fn init(hpet: &acpi::Hpet) -> bool {
     main_timer.enable_interrupt();
     main_timer.set_accumulator_value(irq_period_tick);
     main_timer.set_comparator_value(irq_period_tick);
-    // Route the timer to the IRQ 2.
-    // TODO: Report that IOAPIC IRQ0 is broken under qemu.
-    // BODY: Ideally, we'd use IRQ0 for the timer, in order to match what we have
-    // BODY: with the PIC. Unfortunately, qemu [unconditionally redirects irqs on
-    // BODY: pin0 to pin2](https://github.com/qemu/qemu/blob/37560c259d7a0d6aceb96e9d6903ee002f4e5e0c/hw/intc/ioapic.c#L152).
-    // BODY:
-    // BODY: We should report this upstream bug, and move back to IRQ0 once it is
-    // BODY: fixed.
-    main_timer.set_interrupt_route(2);
+    // TODO: Use IRQ2 for HPET.
+    // BODY: Idealy, HPET should be using IRQ2 (which seems to be generally
+    // BODY: wired properly). Unfortunately, qemu has an unfortunate bug where
+    // BODY: interrupts for IRQ2 gets ignored.
+    // BODY: 
+    // BODY: As a workaround, we currently use IRQ16 as the timer IRQ. This is
+    // BODY: not very portable - but it'll do until we have a proper IRQ
+    // BODY: allocation scheme.
+    // BODY: 
+    // BODY: Upstream bug: https://bugs.launchpad.net/qemu/+bug/1834051
+    // Route the timer to the IRQ 16. IRQ 2 is broken, and IRQ 0 is not
+    // supported.
+    main_timer.set_interrupt_route(16);
 
     // Clear the interrupt state
     hpet_instance.enable();
 
-    timer::set_kernel_timer_info(2, hpet_instance.get_frequency(), irq_period_ns);
+    timer::set_kernel_timer_info(16, hpet_instance.get_frequency(), irq_period_ns);
 
     HPET_INSTANCE = Some(hpet_instance);
     true

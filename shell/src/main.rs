@@ -39,7 +39,6 @@ use crate::libuser::threads::Thread;
 use core::fmt::Write;
 use alloc::vec::Vec;
 use alloc::sync::Arc;
-use byteorder::{ByteOrder, LE};
 use spin::Mutex;
 
 fn main() {
@@ -55,7 +54,7 @@ fn main() {
             "test_divide_by_zero" => test_divide_by_zero(),
             "test_page_fault" => test_page_fault(),
             "connect" => {
-                let handle = sm::IUserInterface::raw_new().unwrap().get_service(LE::read_u64(b"vi:\0\0\0\0\0"));
+                let handle = sm::IUserInterfaceProxy::raw_new().unwrap().get_service(u64::from_le_bytes(*b"vi:\0\0\0\0\0"));
                 let _ = writeln!(&mut terminal, "Got handle {:?}", handle);
             },
             "exit" => return,
@@ -187,15 +186,15 @@ fn test_page_fault() {
 }
 
 /// Meme for KFS1
-static LOUIS1: &'static [u8; 89915] = include_bytes!("../img/meme1.gif");
+static LOUIS1: &[u8; 89915] = include_bytes!("../img/meme1.gif");
 /// Meme for KFS2
-static LOUIS2: &'static [u8; 93818] = include_bytes!("../img/meme2.gif");
+static LOUIS2: &[u8; 93818] = include_bytes!("../img/meme2.gif");
 /// Meme for KFS3
-static LOUIS3: &'static [u8; 1318100] = include_bytes!("../img/meme3.gif");
+static LOUIS3: &[u8; 1318100] = include_bytes!("../img/meme3.gif");
 /// Meme for KFS4
-static LOUIS4: &'static [u8; 103803] = include_bytes!("../img/meme4.gif");
+static LOUIS4: &[u8; 103803] = include_bytes!("../img/meme4.gif");
 /// Meme for KFS5
-static LOUIS5: &'static [u8; 106140] = include_bytes!("../img/meme5.gif");
+static LOUIS5: &[u8; 106140] = include_bytes!("../img/meme5.gif");
 
 capabilities!(CAPABILITIES = Capabilities {
     svcs: [

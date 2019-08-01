@@ -10,13 +10,16 @@
 extern crate proc_macro;
 
 use proc_macro::TokenStream;
-use syn::{AttributeArgs, ItemMod, parse_macro_input, spanned::Spanned};
+use syn::{AttributeArgs, parse_macro_input, spanned::Spanned};
 use darling::FromMeta;
 use std::path::PathBuf;
 use std::fmt::Write;
 use std::fs;
 
 mod gen_rust_code;
+mod itemmod;
+
+use itemmod::ItemMod;
 
 /// Attribute arguments for the gen_ipc macro.
 #[derive(Debug, FromMeta)]
@@ -50,7 +53,7 @@ pub fn gen_ipc(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let id_file = fs::read_to_string(&root.join("src/").join(&args.path)).unwrap();
 
-    let mut generated_mod = gen_rust_code::generate_ipc(&id_file, prefix, item.ident.to_string(), crate_name);
+    let mut generated_mod = gen_rust_code::generate_ipc(&id_file, prefix, item.ident.to_string(), crate_name, false);
 
     // Force a rebuild if the SwIPC definition changes.
     writeln!(generated_mod).unwrap();

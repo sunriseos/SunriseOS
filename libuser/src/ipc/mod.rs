@@ -13,21 +13,18 @@
 //! In libuser, we don't make a proper distinction between Cmif and Hipc. Both
 //! are implemented in the same layer, which is backed by the Message structure.
 
-
+use core::convert::TryInto;
 use core::marker::PhantomData;
 use core::mem;
-use byteorder::{ByteOrder, LE};
+use core::convert::TryFrom;
+use byteorder::LE;
 use arrayvec::{ArrayVec, Array};
 use crate::utils::{self, align_up, CursorWrite, CursorRead};
 use crate::types::{Handle, HandleRef, Pid};
 use bit_field::BitField;
 use crate::error::{Error, LibuserError};
 
-#[macro_use]
-pub mod macros;
 pub mod server;
-mod buffer;
-pub use buffer::*;
 
 bitfield! {
     /// Represenens the header of an HIPC command.
@@ -177,15 +174,95 @@ pub struct IPCBuffer<'a> {
     phantom: PhantomData<&'a ()>
 }
 
+/// Util used for IPC buffer sizing.
+pub trait SizedIPCBuffer {
+    /// Return the size of the type.
+    fn size(&self) -> usize;
+
+    /// Check if the address and size are correct.
+    fn is_cool(addr: usize, size: usize) -> bool;
+
+    /// Create a reference to a ipc buffer from an address and a byte size. [see](https://doc.rust-lang.org/std/slice/fn.from_raw_parts.html)
+    unsafe fn from_raw_parts<'a>(addr: usize, size: usize) -> &'a Self;
+
+    /// Create a mutable reference to a ipc buffer from an address and a byte size. [see](https://doc.rust-lang.org/std/slice/fn.from_raw_parts_mut.html)
+    unsafe fn from_raw_parts_mut<'a>(addr: usize, size: usize) -> &'a mut Self;
+}
+
+impl<T> SizedIPCBuffer for T {
+    fn size(&self) -> usize {
+        core::mem::size_of::<T>()
+    }
+
+    fn is_cool(addr: usize, size: usize) -> bool {
+        size == core::mem::size_of::<T>() &&
+            (addr % core::mem::align_of::<T>()) == 0
+    }
+
+    unsafe fn from_raw_parts<'a>(addr: usize, _size: usize) -> &'a Self {
+        (addr as *const T).as_ref().unwrap()
+    }
+
+    unsafe fn from_raw_parts_mut<'a>(addr: usize, _size: usize) -> &'a mut Self {
+        (addr as *mut T).as_mut().unwrap()
+    }
+}
+
+impl<T> SizedIPCBuffer for [T] {
+    fn size(&self) -> usize {
+        core::mem::size_of::<T>() * self.len()
+    }
+
+    fn is_cool(addr: usize, size: usize) -> bool {
+        size % core::mem::size_of::<T>() == 0 && size != 0 &&
+           (addr % core::mem::align_of::<T>()) == 0
+    }
+
+    unsafe fn from_raw_parts<'a>(addr: usize, size: usize) -> &'a Self {
+        core::slice::from_raw_parts(addr as *const T, size / core::mem::size_of::<T>())
+    }
+
+    unsafe fn from_raw_parts_mut<'a>(addr: usize, size: usize) -> &'a mut Self {
+        core::slice::from_raw_parts_mut(addr as *mut T, size / core::mem::size_of::<T>())
+    }
+}
+
 impl<'a> IPCBuffer<'a> {
+    /// Creates a Type-A IPCBuffer from the given reference.
+    fn out_buffer<T: SizedIPCBuffer + ?Sized>(data: &T, flags: u8) -> IPCBuffer {
+        IPCBuffer {
+            addr: data as *const T as *const u8 as usize as u64,
+            // The dereference is necessary because &T implements SizedIPCBuffer too...
+            size: (*data).size() as u64,
+            ty: IPCBufferType::A {
+                flags
+            },
+            phantom: PhantomData
+        }
+    }
+
+    /// Creates a Type-B IPCBuffer from the given reference.
+    fn in_buffer<T: SizedIPCBuffer + ?Sized>(data: &mut T, flags: u8) -> IPCBuffer {
+        IPCBuffer {
+            addr: data as *mut T as *const u8 as usize as u64,
+            // The dereference is necessary because &T implements SizedIPCBuffer too...
+            size: (*data).size() as u64,
+            ty: IPCBufferType::B {
+                flags
+            },
+            phantom: PhantomData
+        }
+    }
+
     /// Creates a Type-C IPCBuffer from the given reference.
     ///
     /// If has_u16_size is true, the size of the pointer will be written after
     /// the raw data. This is only used when sending client-sized arrays.
-    fn in_pointer<T>(data: &mut T, has_u16_size: bool) -> IPCBuffer {
+    fn in_pointer<T: SizedIPCBuffer + ?Sized>(data: &mut T, has_u16_size: bool) -> IPCBuffer {
         IPCBuffer {
-            addr: data as *mut T as usize as u64,
-            size: core::mem::size_of::<T>() as u64,
+            addr: data as *mut T as *const u8 as usize as u64,
+            // The dereference is necessary because &T implements SizedIPCBuffer too...
+            size: (*data).size() as u64,
             ty: IPCBufferType::C {
                 has_u16_size
             },
@@ -196,10 +273,11 @@ impl<'a> IPCBuffer<'a> {
     /// Creates a Type-X IPCBuffer from the given reference.
     ///
     /// The counter defines which type-C buffer this should be copied into.
-    fn out_pointer<T>(data: &T, counter: u8) -> IPCBuffer {
+    fn out_pointer<T: SizedIPCBuffer + ?Sized>(data: &T, counter: u8) -> IPCBuffer {
         IPCBuffer {
-            addr: data as *const T as usize as u64,
-            size: core::mem::size_of::<T>() as u64,
+            addr: data as *const T as *const u8 as usize as u64,
+            // The dereference is necessary because &T implements SizedIPCBuffer too...
+            size: (*data).size() as u64,
             ty: IPCBufferType::X {
                 counter
             },
@@ -255,7 +333,7 @@ where
     BUFF: Array<Item=IPCBuffer<'a>>,
     COPY: Array<Item=u32>,
     MOVE: Array<Item=u32>,
-    RAW: Copy + Default,
+    RAW: Copy,
 {
     /// Type of the message. This is derived from [MessageTy] and
     /// [Message::token].
@@ -294,7 +372,7 @@ where
     /// make their own requests.
     token: Option<u32>,
     /// The raw arguments included in this message.
-    raw: RAW
+    raw: Option<RAW>
 }
 
 impl<'a, RAW, BUFF, COPY, MOVE> Message<'a, RAW, BUFF, COPY, MOVE>
@@ -302,7 +380,7 @@ where
     BUFF: Array<Item=IPCBuffer<'a>>,
     COPY: Array<Item=u32>,
     MOVE: Array<Item=u32>,
-    RAW: Copy + Default
+    RAW: Copy
 {
     /// Create a new request for the given cmdid. If a token is passed, the new
     /// IPC version will be used. The tokens allow for tracking an IPC request
@@ -318,7 +396,7 @@ where
             is_request: true,
             cmdid_error: cmdid,
             token: token,
-            raw: RAW::default()
+            raw: None
         }
     }
 
@@ -335,7 +413,7 @@ where
             is_request: false,
             cmdid_error: 0,
             token: token,
-            raw: RAW::default()
+            raw: None
         }
     }
 
@@ -378,13 +456,13 @@ where
 
     /// Sets the raw data of the message.
     pub fn push_raw(&mut self, raw: RAW) -> &mut Self {
-        self.raw = raw;
+        self.raw = Some(raw);
         self
     }
 
     /// Gets the raw data of the message.
     pub fn raw(&self) -> RAW {
-        self.raw
+        self.raw.unwrap()
     }
 
     /// Gets the token of a message. This token is used to track IPC call chains.
@@ -483,11 +561,59 @@ where
     ///
     /// This method is unsafe as it allows creating references to arbitrary
     /// memory, and of arbitrary type.
-    pub unsafe fn pop_in_buffer<T>(&mut self) -> Result<InBuffer<'_, T>, Error> {
-        self.buffers.iter().position(|buf| buf.buftype().is_type_a())
+    pub unsafe fn pop_in_buffer<'b, T: SizedIPCBuffer + ?Sized>(&mut self) -> Result<&'b T, Error> {
+        let buffer = self.buffers.iter().position(|buf| buf.buftype().is_type_a())
             .and_then(|pos| self.buffers.pop_at(pos))
-            .ok_or_else(|| LibuserError::InvalidIpcBufferCount.into())
-            .and_then(|buf| InBuffer::<T>::new(buf))
+            .ok_or_else(|| LibuserError::InvalidIpcBufferCount)?;
+
+        let addr = usize::try_from(buffer.addr).map_err(|_| LibuserError::InvalidIpcBuffer)?;
+        let size = usize::try_from(buffer.size).map_err(|_| LibuserError::InvalidIpcBuffer)?;
+
+        if T::is_cool(addr, size) {
+            Ok(T::from_raw_parts(addr, size))
+        } else {
+            Err(LibuserError::InvalidIpcBuffer.into())
+        }
+    }
+
+    /// Retreive the next OutBuffer (type-B buffer) in the message.
+    ///
+    /// # Errors
+    ///
+    /// Returns an InvalidIpcBufferCount if not enough buffers are present
+    ///
+    /// Returns an InvalidIpcBuffer if the next buffer was not of the appropriate
+    /// size.
+    ///
+    /// # Safety
+    ///
+    /// This method is unsafe as it allows creating references to arbitrary
+    /// memory, and of arbitrary type.
+    pub unsafe fn pop_out_buffer<'b, T: SizedIPCBuffer + ?Sized>(&mut self) -> Result<&'b mut T, Error> {
+        let buffer = self.buffers.iter().position(|buf| buf.buftype().is_type_b())
+            .and_then(|pos| self.buffers.pop_at(pos))
+            .ok_or_else(|| LibuserError::InvalidIpcBufferCount)?;
+
+        let addr = usize::try_from(buffer.addr).map_err(|_| LibuserError::InvalidIpcBuffer)?;
+        let size = usize::try_from(buffer.size).map_err(|_| LibuserError::InvalidIpcBuffer)?;
+
+        if T::is_cool(addr, size) {
+            Ok(T::from_raw_parts_mut(addr, size))
+        } else {
+            Err(LibuserError::InvalidIpcBuffer.into())
+        }
+    }
+
+    /// Push an OutBuffer (type-A buffer) backed by the specified data.
+    pub fn push_out_buffer<T: SizedIPCBuffer + ?Sized>(&mut self, data: &'a T) -> &mut Self {
+        self.buffers.push(IPCBuffer::out_buffer(data, 0));
+        self
+    }
+
+    /// Push an InBuffer (type-B buffer) backed by the specified data.
+    pub fn push_in_buffer<T: SizedIPCBuffer + ?Sized>(&mut self, data: &'a mut T) -> &mut Self {
+        self.buffers.push(IPCBuffer::in_buffer(data, 0));
+        self
     }
 
     /// Push an InPointer (type-C buffer) backed by the specified data.
@@ -495,7 +621,7 @@ where
     /// If `has_u16_count` is true, the size of the X buffer will be appended
     /// to the Raw Data. See Buffer 0xA on the IPC Marshalling page of
     /// switchbrew.
-    pub fn push_in_pointer<T>(&mut self, data: &'a mut T, has_u16_count: bool) -> &mut Self {
+    pub fn push_in_pointer<T: SizedIPCBuffer + ?Sized>(&mut self, data: &'a mut T, has_u16_count: bool) -> &mut Self {
         self.buffers.push(IPCBuffer::in_pointer(data, has_u16_count));
         self
     }
@@ -505,9 +631,19 @@ where
     /// If `has_u16_count` is true, the size of the X buffer will be appended
     /// to the Raw Data. See Buffer 0xA on the IPC Marshalling page of
     /// switchbrew.
-    pub fn push_out_pointer<T>(&mut self, data: &'a T) -> &mut Self {
+    pub fn push_out_pointer<T: SizedIPCBuffer + ?Sized>(&mut self, data: &'a T) -> &mut Self {
         let index = self.buffers.iter().filter(|buf| buf.buftype().is_type_x()).count();
         self.buffers.push(IPCBuffer::out_pointer(data, index as u8));
+        self
+    }
+
+    /// Send a Pid with this IPC request.
+    ///
+    /// If `pid` is None, sends the current process' Pid. If it's Some, then it
+    /// will attempt to send that process Pid. Note however that this requires a
+    /// kernel patch to work properly.
+    pub fn send_pid(&mut self, pid: Option<Pid>) -> &mut Self {
+        self.pid = Some(pid.map(|v| v.0).unwrap_or(0));
         self
     }
 
@@ -524,11 +660,19 @@ where
     ///
     /// This method is unsafe as it allows creating references to arbitrary
     /// memory, and of arbitrary type.
-    pub unsafe fn pop_in_pointer<T>(&mut self) -> Result<InPointer<'_, T>, Error> {
-        self.buffers.iter().position(|buf| buf.buftype().is_type_x())
+    pub unsafe fn pop_in_pointer<'b, T: SizedIPCBuffer + ?Sized>(&mut self) -> Result<&'b T, Error> {
+        let buffer = self.buffers.iter().position(|buf| buf.buftype().is_type_x())
             .and_then(|pos| self.buffers.pop_at(pos))
-            .ok_or_else(|| LibuserError::InvalidIpcBufferCount.into())
-            .and_then(|buf| InPointer::<T>::new(buf))
+            .ok_or_else(|| LibuserError::InvalidIpcBufferCount)?;
+
+        let addr = usize::try_from(buffer.addr).map_err(|_| LibuserError::InvalidIpcBuffer)?;
+        let size = usize::try_from(buffer.size).map_err(|_| LibuserError::InvalidIpcBuffer)?;
+
+        if T::is_cool(addr, size) {
+            Ok(T::from_raw_parts(addr, size))
+        } else {
+            Err(LibuserError::InvalidIpcBuffer.into())
+        }
     }
 
     // TODO: Move pack to a non-generic function
@@ -611,7 +755,8 @@ where
                 cursor.write_u32::<LE>(descriptor_hdr.0);
             }
 
-            // Seek 8 if we have to send pid. We don't actually write the pid.
+            // Seek 8 if we have to send pid. Write the PID, useful if we want
+            // to pretend to be another process (requires a kernel patch).
             if let Some(pid) = self.pid {
                 cursor.write_u64::<LE>(pid);
             }
@@ -713,7 +858,9 @@ where
         // Send the token if we have one, or zero.
         cursor.write_u32::<LE>(self.token.unwrap_or(0));
 
-        cursor.write_raw(self.raw);
+        if let Some(raw) = self.raw {
+            cursor.write_raw(raw);
+        }
 
         // Write input object IDs. For now: none.
 
@@ -859,7 +1006,7 @@ where
         /*if this.domain_obj.is_none() {
         assert_eq!(hdr.get_raw_section_size() as usize, (mem::size_of::<T>() + 8 + 8 + 0x10) / 4);
     }*/
-        let raw = cursor.read_raw::<RAW>();
+        let raw = Some(cursor.read_raw::<RAW>());
 
         /*if let Some(input_objects) = input_objects {
             for _ in 0..input_objects {
@@ -892,7 +1039,7 @@ fn find_ty_cmdid(buf: &[u8]) -> Option<(u16, u32)> {
     if buf.len() < 8 {
         return None
     }
-    let hdr = LE::read_u64(&buf[0..8]);
+    let hdr = u64::from_le_bytes(buf[0..8].try_into().expect("cmd header is invalid"));
     let ty = hdr.get_bits(0..16) as u16;
     let x_descs = hdr.get_bits(16..20) as usize;
     let a_descs = hdr.get_bits(20..24) as usize;
@@ -902,7 +1049,7 @@ fn find_ty_cmdid(buf: &[u8]) -> Option<(u16, u32)> {
         if buf.len() < 12 {
             return None
         }
-        let dsc = LE::read_u32(&buf[8..12]);
+        let dsc = u32::from_le_bytes(buf[8..12].try_into().expect("cmd description is invalid"));
         (dsc.get_bit(0) as usize, dsc.get_bits(1..5) as usize, dsc.get_bits(5..9) as usize)
     } else {
         (0, 0, 0)
@@ -912,7 +1059,7 @@ fn find_ty_cmdid(buf: &[u8]) -> Option<(u16, u32)> {
     if buf.len() < raw + 4 {
         return None
     }
-    let cmdid = LE::read_u32(&buf[raw..raw + 4]);
+    let cmdid = u32::from_le_bytes(buf[raw..raw + 4].try_into().expect("command id is invalid"));
     Some((ty, cmdid))
 }
 

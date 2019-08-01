@@ -27,14 +27,21 @@ use crate::sync::SpinLock;
 use crate::error::UserspaceError;
 use crate::event::Waitable;
 use crate::process::ThreadStruct;
+use crate::sync::MutexGuard;
+use core::convert::TryInto;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::slice;
-use byteorder::{LE, ByteOrder};
-use crate::paging::{MappingAccessRights, process_memory::ProcessMemory};
+use crate::paging::{PAGE_SIZE, MappingAccessRights, process_memory::ProcessMemory};
+use crate::paging::process_memory::QueryMemory;
+use crate::paging::mapping::MappingFrames;
 use crate::mem::{UserSpacePtr, UserSpacePtrMut, VirtualAddress};
 use bit_field::BitField;
 use crate::error::KernelError;
 use crate::checks::check_lower_than_usize;
+use sunrise_libkern::MemoryType;
+use sunrise_libutils::align_up;
+
+use failure::Backtrace;
 
 /// Wrapper around the currently active session and the incoming request list.
 /// They are kept together so they are locked together.
@@ -191,6 +198,25 @@ struct Request {
     /// insert a result (potentially an error) in this option before waking up
     /// the sender.
     answered: Arc<SpinLock<Option<Result<(), UserspaceError>>>>,
+    /// A/B/W buffers that were mapped during the request. We should unmap them
+    /// when replying.
+    buffers: Vec<Buffer>,
+}
+
+/// Information about a Buffer during a Request.
+#[derive(Debug)]
+struct Buffer {
+    /// Is the buffer writable.
+    writable: bool,
+
+    /// The source virtual address of the buffer.
+    source_addr: VirtualAddress,
+
+    /// The destination virtual address of the buffer.
+    dest_addr: VirtualAddress,
+
+    /// The size of the buffer.
+    size: usize,
 }
 
 /// Send an IPC Buffer from the sender into the receiver.
@@ -208,11 +234,13 @@ struct Request {
 /// In practice, the performance lost by memcpying the data can be made up by not
 /// requiring to flush the page table cache, so care must be taken when chosing
 /// between Buffer or Pointer family of IPC.
+///
+/// Should be called from the receiver process.
 #[allow(unused)]
-fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mut ProcessMemory, to_mem: &mut ProcessMemory, flags: MappingAccessRights) -> Result<(), UserspaceError> {
-    let lowersize = LE::read_u32(&from_buf[*curoff..*curoff + 4]);
-    let loweraddr = LE::read_u32(&from_buf[*curoff + 4..*curoff + 8]);
-    let rest = LE::read_u32(&from_buf[*curoff + 8..*curoff + 12]);
+fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mut ProcessMemory, to_mem: &mut ProcessMemory, flags: MappingAccessRights, buffers: &mut Vec<Buffer>) -> Result<(), UserspaceError> {
+    let lowersize = u32::from_le_bytes(from_buf[*curoff..*curoff + 4].try_into().unwrap());
+    let loweraddr = u32::from_le_bytes(from_buf[*curoff + 4..*curoff + 8].try_into().unwrap());
+    let rest = u32::from_le_bytes(from_buf[*curoff + 8..*curoff + 12].try_into().unwrap());
 
     let bufflags = rest.get_bits(0..2);
 
@@ -220,7 +248,7 @@ fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mu
         .set_bits(32..36, u64::from(rest.get_bits(28..32)))
         .set_bits(36..39, u64::from(rest.get_bits(2..5)));
 
-    let size = *(u64::from(loweraddr))
+    let size = *(u64::from(lowersize))
         .set_bits(32..36, u64::from(rest.get_bits(24..28)));
 
     // 64-bit address on a 32-bit kernel!
@@ -243,12 +271,110 @@ fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mu
         // BODY: Whatever mechanism we setup for UserSpacePtr, we should probably
         // BODY: reuse it here.
 
-        // Map the descriptor in the other process.
-        return Err(UserspaceError::NotImplemented);
-        /*let mapping = from_mem.share_existing_mapping(VirtualAddress(addr), size)?;
-        let to_addr = to_mem.find_available_space(size)?;
-        to_mem.map_shared_mapping(mapping, to_addr, MappingAccessRights::u_rw())?;
-        to_addr.addr()*/
+        let to_addr_full = to_mem.find_available_space(align_up(size + (addr % PAGE_SIZE), PAGE_SIZE))?;
+        let to_addr = to_addr_full + (addr % PAGE_SIZE);
+
+        let mut first_page_info_opt: Option<(VirtualAddress, usize)> = None;
+        let mut middle_page_info_opt: Option<(VirtualAddress, usize)> = None;
+        let mut last_page_info_opt: Option<(VirtualAddress, usize)> = None;
+
+
+        // Closure in charge of the unmaping logic in case of error during mapping.
+        let mut mapping_error_handling_logic =
+            |to_mem: &mut ProcessMemory, error: KernelError, mut first_page_info_opt: Option<(VirtualAddress, usize)>, mut middle_page_info_opt: Option<(VirtualAddress, usize)>, mut last_page_info_opt: Option<(VirtualAddress, usize)>| {
+                if let Some(first_page_info) = first_page_info_opt.take() {
+                    to_mem.unmap(first_page_info.0, first_page_info.1).expect("Cannot unmap first unaligned page of buffer");;
+                }
+
+                if let Some(middle_page_info) = middle_page_info_opt {
+                    to_mem.unmap(middle_page_info.0, middle_page_info.1).expect("Cannot unmap buffer");;
+                }
+
+                if let Some(last_page_info) = last_page_info_opt.take() {
+                    to_mem.unmap(last_page_info.0, last_page_info.1).expect("Cannot unmap last unaligned page of buffer");;
+                }
+
+                Err(error.into())
+            };
+
+        let mut size_handled = 0;
+        if addr % PAGE_SIZE != 0 || size < PAGE_SIZE {
+            // memcpy the first page.
+            let first_page_size = core::cmp::min(PAGE_SIZE - (addr % PAGE_SIZE), size);
+
+            let from_mapping = from_mem.mirror_mapping(VirtualAddress(addr), first_page_size)?;
+            let from = UserSpacePtr::from_raw_parts(from_mapping.addr().addr() as *const u8, from_mapping.len());
+
+            let res_mapping = to_mem.create_regular_mapping(to_addr_full, PAGE_SIZE, MemoryType::Ipc, MappingAccessRights::u_rw());
+
+            if let Err(error) = res_mapping {
+                return mapping_error_handling_logic(to_mem, error, first_page_info_opt, middle_page_info_opt, last_page_info_opt);
+            }
+
+            first_page_info_opt = Some((to_addr_full, PAGE_SIZE));
+
+            let mut to = UserSpacePtrMut::from_raw_parts_mut(to_addr.addr() as *mut u8, first_page_size);
+            to.copy_from_slice(&from);
+            size_handled += first_page_size;
+        }
+
+        if (addr + size) % PAGE_SIZE != 0 && (to_addr + size).floor() != to_addr_full {
+            // memcpy the last page.
+            let last_page_size = (addr + size) % PAGE_SIZE;
+
+            let from_mapping = from_mem.mirror_mapping((VirtualAddress(addr) + size).floor(), last_page_size)?;
+            let from = UserSpacePtr::from_raw_parts(from_mapping.addr().addr() as *const u8, from_mapping.len());
+
+            let to_last_page = (to_addr + size).floor();
+            let res_mapping = to_mem.create_regular_mapping(to_last_page, PAGE_SIZE, MemoryType::Ipc, MappingAccessRights::u_rw());
+
+            if let Err(error) = res_mapping {
+                return mapping_error_handling_logic(to_mem, error, first_page_info_opt, middle_page_info_opt, last_page_info_opt);
+            }
+
+            last_page_info_opt = Some((to_last_page, PAGE_SIZE));
+
+            let mut to = UserSpacePtrMut::from_raw_parts_mut(to_last_page.addr() as *mut u8, last_page_size);
+            to.copy_from_slice(&from);
+            size_handled += last_page_size;
+        }
+
+        if size - size_handled != 0 {
+            // Share middle pages
+            assert!((size - size_handled) % PAGE_SIZE == 0, "Remaining size ({} - {}, {}) should be a multiple of PAGE_SIZE", size, size_handled, size - size_handled);
+
+            let addr = align_up(addr, PAGE_SIZE);
+            let to_addr = to_addr.ceil();
+
+            let mapping = match from_mem.query_memory(VirtualAddress(addr)) {
+                QueryMemory::Used(mapping) => mapping,
+                QueryMemory::Available(mapping) =>
+                return mapping_error_handling_logic(to_mem, KernelError::InvalidMemState { address: mapping.address(), ty: mapping.state().ty(), backtrace: Backtrace::new() },
+                                                    first_page_info_opt,
+                                                    middle_page_info_opt,
+                                                    last_page_info_opt),
+            };
+
+            let frames = match mapping.frames() {
+                MappingFrames::Shared(shared) => shared.clone(),
+                _ =>
+                return mapping_error_handling_logic(to_mem, KernelError::InvalidMemState { address: mapping.address(), ty: mapping.state().ty(), backtrace: Backtrace::new() },
+                                                    first_page_info_opt,
+                                                    middle_page_info_opt,
+                                                    last_page_info_opt),
+            };
+
+            let offset = addr - mapping.address().addr();
+
+            let res_mapping = to_mem.map_partial_shared_mapping(frames, to_addr, mapping.phys_offset() + offset, size - size_handled, MemoryType::Ipc, MappingAccessRights::u_rw());
+            if let Err(error) = res_mapping {
+                return mapping_error_handling_logic(to_mem, error, first_page_info_opt, middle_page_info_opt, last_page_info_opt);
+            }
+
+            middle_page_info_opt = Some((to_addr, size - size_handled));
+        }
+
+        to_addr.addr()
     };
 
     let loweraddr = to_addr as u32;
@@ -258,12 +384,84 @@ fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mu
         .set_bits(24..28, (size as u64).get_bits(32..36) as u32)
         .set_bits(28..32, (to_addr as u64).get_bits(32..36) as u32);
 
-    LE::write_u32(&mut to_buf[*curoff + 0..*curoff + 4], lowersize);
-    LE::write_u32(&mut to_buf[*curoff + 4..*curoff + 8], loweraddr);
-    LE::write_u32(&mut to_buf[*curoff + 8..*curoff + 12], rest);
+    (&mut to_buf[*curoff + 0..*curoff + 4]).copy_from_slice(&lowersize.to_le_bytes()[..]);
+    (&mut to_buf[*curoff + 4..*curoff + 8]).copy_from_slice(&loweraddr.to_le_bytes()[..]);
+    (&mut to_buf[*curoff + 8..*curoff + 12]).copy_from_slice(&rest.to_le_bytes()[..]);
+
+    buffers.push(Buffer {
+        writable: flags.contains(MappingAccessRights::WRITABLE),
+        source_addr: VirtualAddress(addr),
+        dest_addr: VirtualAddress(to_addr),
+        size
+    });
 
     *curoff += 12;
     Ok(())
+}
+
+/// Unmap an IPC Buffer from the receiver.
+fn buf_unmap(buffer: &Buffer, from_mem: &mut ProcessMemory, to_mem: &mut ProcessMemory) -> Result<(), UserspaceError> {
+    let addr = buffer.dest_addr;
+    let size = buffer.size;
+    let to_addr = buffer.source_addr;
+    let to_addr_full = to_addr.floor();
+    let mut size_handled = 0;
+
+    let mut result: Result<(), UserspaceError> = Ok(());
+
+    if addr.addr() % PAGE_SIZE != 0 || size < PAGE_SIZE {
+        let first_page_size = core::cmp::min(PAGE_SIZE - (addr.addr() % PAGE_SIZE), size);
+
+        if buffer.writable {
+            // memcpy the first page.
+            let from = UserSpacePtr::from_raw_parts(addr.addr() as *const u8, first_page_size);
+
+            // This needs explicit error handling since the user might unmap `to_addr` in-between sending the request and receiving the response.
+            result = match to_mem.mirror_mapping(to_addr, first_page_size) {
+                Ok(to_mapping) => {
+                    let mut to = UserSpacePtrMut::from_raw_parts_mut(to_mapping.addr().addr() as *mut u8, first_page_size);
+                    to.copy_from_slice(&from);
+                    Ok(())
+                },
+                Err(err) => Err(err.into()),
+            };
+        }
+
+        from_mem.unmap(addr.floor(), PAGE_SIZE).expect("Cannot unmap first unaligned page of buffer");
+        size_handled += first_page_size;
+    }
+
+    if (addr.addr() + size) % PAGE_SIZE != 0 && (to_addr + size).floor() != to_addr_full {
+        let last_page_size = (addr.addr() + size) % PAGE_SIZE;
+
+        if buffer.writable {
+            // memcpy the last page.
+            let from = UserSpacePtr::from_raw_parts((addr.addr() + size) as *const u8, last_page_size);
+
+            let to_last_page = (to_addr + size).floor();
+
+            // This needs explicit error handling since the user might unmap `to_addr` in-between sending the request and receiving the response.
+            result = match to_mem.mirror_mapping(to_last_page, last_page_size) {
+                Ok(to_mapping) => {
+                    let mut to = UserSpacePtrMut::from_raw_parts_mut(to_mapping.addr().addr() as *mut u8, last_page_size);
+                    to.copy_from_slice(&from);
+                    Ok(())
+                },
+                Err(err) => Err(err.into()),
+            };
+
+        }
+
+        from_mem.unmap((addr + size).floor(), PAGE_SIZE).expect("Cannot unmap last unaligned page of buffer");
+        size_handled += last_page_size;
+    }
+
+    assert!((size - size_handled) % PAGE_SIZE == 0, "Remaining size should be a multiple of PAGE_SIZE");
+    if size < size_handled {
+        from_mem.unmap(addr.ceil(), size - size_handled).expect("Cannot unmap buffer");
+    }
+
+    result
 }
 
 impl ClientSession {
@@ -295,6 +493,7 @@ impl ClientSession {
                 sender_bufsize: buf.len(),
                 answered: answered.clone(),
                 sender: scheduler::get_current_thread(),
+                buffers: Vec::new(),
             })
         }
 
@@ -319,7 +518,7 @@ impl ClientSession {
 fn find_c_descriptors(buf: &mut [u8]) -> Result<CBufBehavior, KernelError> {
     let mut curoff = 0;
 
-    let hdr = MsgPackedHdr(LE::read_u64(&buf[curoff..curoff + 8]));
+    let hdr = MsgPackedHdr(u64::from_le_bytes(buf[curoff..curoff + 8].try_into().unwrap()));
     curoff += 8;
 
     let cflag = hdr.c_descriptor_flags();
@@ -333,7 +532,7 @@ fn find_c_descriptors(buf: &mut [u8]) -> Result<CBufBehavior, KernelError> {
     // Go grab C descriptors
 
     if hdr.enable_handle_descriptor() {
-        let descriptor = HandleDescriptorHeader(LE::read_u32(&buf[curoff..curoff + 4]));
+        let descriptor = HandleDescriptorHeader(u32::from_le_bytes(buf[curoff..curoff + 4].try_into().unwrap()));
         curoff += 4;
         if descriptor.send_pid() {
             curoff += 8;
@@ -349,8 +548,8 @@ fn find_c_descriptors(buf: &mut [u8]) -> Result<CBufBehavior, KernelError> {
     match hdr.c_descriptor_flags() {
         0 | 1 => unreachable!(),
         2 => {
-            let word1 = LE::read_u32(&buf[curoff..curoff + 4]);
-            let word2 = LE::read_u32(&buf[curoff + 4..curoff + 8]);
+            let word1 = u32::from_le_bytes(buf[curoff..curoff + 4].try_into().unwrap());
+            let word2 = u32::from_le_bytes(buf[curoff + 4..curoff + 8].try_into().unwrap());
             let addr = *u64::from(word1).set_bits(32..48, u64::from(word2.get_bits(0..16)));
             let size = u64::from(word2.get_bits(16..32));
             Ok(CBufBehavior::Single(addr, size))
@@ -358,8 +557,8 @@ fn find_c_descriptors(buf: &mut [u8]) -> Result<CBufBehavior, KernelError> {
         x => {
             let mut bufs = [(0, 0); 13];
             for i in 0..x - 2 {
-                let word1 = LE::read_u32(&buf[curoff..curoff + 4]);
-                let word2 = LE::read_u32(&buf[curoff + 4..curoff + 8]);
+                let word1 = u32::from_le_bytes(buf[curoff..curoff + 4].try_into().unwrap());
+                let word2 = u32::from_le_bytes(buf[curoff + 4..curoff + 8].try_into().unwrap());
                 let addr = *u64::from(word1).set_bits(32..48, u64::from(word2.get_bits(0..16)));
                 let size = u64::from(word2.get_bits(16..32));
                 bufs[i as usize] = (addr, size);
@@ -379,11 +578,11 @@ impl ServerSession {
     /// been set by a prior call to wait.
     pub fn receive(&self, mut buf: UserSpacePtrMut<[u8]>, has_c_descriptors: bool) -> Result<(), UserspaceError> {
         // Read active session
-        let internal = self.0.internal.lock();
+        let mut internal = self.0.internal.lock();
 
         // TODO: In case of a race, we might want to check that receive is only called once.
         // Can races even happen ?
-        let active = internal.active_request.as_ref().unwrap();
+        let active = internal.active_request.as_mut().unwrap();
 
         let sender = active.sender.process.clone();
         let memlock = sender.pmemory.lock();
@@ -399,7 +598,7 @@ impl ServerSession {
             CBufBehavior::Disabled
         };
 
-        pass_message(sender_buf, active.sender.clone(), &mut *buf, scheduler::get_current_thread(), false, &*memlock, c_bufs)?;
+        pass_message(sender_buf, active.sender.clone(), &mut *buf, scheduler::get_current_thread(), false, memlock, &mut active.buffers, c_bufs)?;
 
         Ok(())
     }
@@ -421,7 +620,7 @@ impl ServerSession {
         // TODO: This probably has an errcode.
         assert!(self.0.internal.lock().active_request.is_some(), "Called reply without an active session");
 
-        let active = self.0.internal.lock().active_request.take().unwrap();
+        let mut active = self.0.internal.lock().active_request.take().unwrap();
 
         let sender = active.sender.process.clone();
 
@@ -432,7 +631,7 @@ impl ServerSession {
             slice::from_raw_parts_mut(mapping.addr().addr() as *mut u8, mapping.len())
         };
 
-        pass_message(&*buf, scheduler::get_current_thread(), sender_buf, active.sender.clone(), true, &*memlock, CBufBehavior::Disabled)?;
+        pass_message(&*buf, scheduler::get_current_thread(), sender_buf, active.sender.clone(), true, memlock, &mut active.buffers, CBufBehavior::Disabled)?;
 
         *active.answered.lock() = Some(Ok(()));
 
@@ -471,22 +670,22 @@ enum CBufBehavior {
 ///
 /// This function should always be called from the context of the receiver/
 /// server.
-#[allow(unused)]
-fn pass_message(from_buf: &[u8], from_proc: Arc<ThreadStruct>, to_buf: &mut [u8], to_proc: Arc<ThreadStruct>, is_reply: bool, other_memlock: &ProcessMemory, c_bufs: CBufBehavior) -> Result<(), UserspaceError> {
+#[allow(unused, clippy::too_many_arguments)]
+fn pass_message(from_buf: &[u8], from_proc: Arc<ThreadStruct>, to_buf: &mut [u8], to_proc: Arc<ThreadStruct>, is_reply: bool, mut other_memlock: MutexGuard<ProcessMemory>, buffers: &mut Vec<Buffer>, c_bufs: CBufBehavior) -> Result<(), UserspaceError> {
     // TODO: pass_message deadlocks when sending message to the same process.
     // BODY: If from_proc and to_proc are the same process, pass_message will
     // BODY: deadlock trying to acquire the locks to the handle table or the
     // BODY: page tables.
 
     let mut curoff = 0;
-    let hdr = MsgPackedHdr(LE::read_u64(&from_buf[curoff..curoff + 8]));
-    LE::write_u64(&mut to_buf[curoff..curoff + 8], hdr.0);
+    let hdr = MsgPackedHdr(u64::from_le_bytes(from_buf[curoff..curoff + 8].try_into().unwrap()));
+    (&mut to_buf[curoff..curoff + 8]).copy_from_slice(&hdr.0.to_le_bytes()[..]);
 
     curoff += 8;
 
     let descriptor = if hdr.enable_handle_descriptor() {
-        let descriptor = HandleDescriptorHeader(LE::read_u32(&from_buf[curoff..curoff + 4]));
-        LE::write_u32(&mut to_buf[curoff..curoff + 4], descriptor.0);
+        let descriptor = HandleDescriptorHeader(u32::from_le_bytes(from_buf[curoff..curoff + 4].try_into().unwrap()));
+        (&mut to_buf[curoff..curoff + 4]).copy_from_slice(&descriptor.0.to_le_bytes()[..]);
         curoff += 4;
         descriptor
     } else {
@@ -495,7 +694,7 @@ fn pass_message(from_buf: &[u8], from_proc: Arc<ThreadStruct>, to_buf: &mut [u8]
 
     if descriptor.send_pid() {
         // TODO: Atmosphere patch for fs_mitm.
-        LE::write_u64(&mut to_buf[curoff..curoff + 8], from_proc.process.pid as u64);
+        (&mut to_buf[curoff..curoff + 8]).copy_from_slice(&(from_proc.process.pid as u64).to_le_bytes()[..]);
         curoff += 8;
     }
 
@@ -504,17 +703,17 @@ fn pass_message(from_buf: &[u8], from_proc: Arc<ThreadStruct>, to_buf: &mut [u8]
         let mut to_handle_table = to_proc.process.phandles.lock();
 
         for i in 0..descriptor.num_copy_handles() {
-            let handle = LE::read_u32(&from_buf[curoff..curoff + 4]);
+            let handle = u32::from_le_bytes(from_buf[curoff..curoff + 4].try_into().unwrap());
             let handle = from_handle_table.get_handle(handle)?;
             let handle = to_handle_table.add_handle(handle);
-            LE::write_u32(&mut to_buf[curoff..curoff + 4], handle);
+            (&mut to_buf[curoff..curoff + 4]).copy_from_slice(&handle.to_le_bytes()[..]);
             curoff += 4;
         }
         for i in 0..descriptor.num_move_handles() {
-            let handle = LE::read_u32(&from_buf[curoff..curoff + 4]);
+            let handle = u32::from_le_bytes(from_buf[curoff..curoff + 4].try_into().unwrap());
             let handle = from_handle_table.delete_handle(handle)?;
             let handle = to_handle_table.add_handle(handle);
-            LE::write_u32(&mut to_buf[curoff..curoff + 4], handle);
+            (&mut to_buf[curoff..curoff + 4]).copy_from_slice(&handle.to_le_bytes()[..]);
             curoff += 4;
         }
     }
@@ -522,10 +721,10 @@ fn pass_message(from_buf: &[u8], from_proc: Arc<ThreadStruct>, to_buf: &mut [u8]
     {
         let mut coff = 0;
         for i in 0..hdr.num_x_descriptors() {
-            let word1 = LE::read_u32(&from_buf[curoff..curoff + 4]);
+            let word1 = u32::from_le_bytes(from_buf[curoff..curoff + 4].try_into().unwrap());
             let counter = word1.get_bits(0..6); // Counter can't go higher anyways.
 
-            let from_addr = *u64::from(LE::read_u32(&from_buf[curoff + 4..curoff + 8]))
+            let from_addr = *u64::from(u32::from_le_bytes(from_buf[curoff + 4..curoff + 8].try_into().unwrap()))
                 .set_bits(32..36, u64::from(word1.get_bits(12..16)))
                 .set_bits(36..39, u64::from(word1.get_bits(6..9)));
             let from_size = u64::from(word1.get_bits(16..32));
@@ -585,30 +784,48 @@ fn pass_message(from_buf: &[u8], from_proc: Arc<ThreadStruct>, to_buf: &mut [u8]
             coff += from.len() as u64;
 
             let mut counter = counter;
-            LE::write_u32(&mut to_buf[curoff..curoff + 4], *counter
+            let counter = *counter
                 .set_bits(6..9, to_addr.get_bits(36..39) as u32)
                 .set_bits(12..16, to_addr.get_bits(32..36) as u32)
-                .set_bits(16..32, from_size as u32));
-            LE::write_u32(&mut to_buf[curoff + 4..curoff + 8], to_addr as u32);
+                .set_bits(16..32, from_size as u32);
+            (&mut to_buf[curoff..curoff + 4]).copy_from_slice(&counter.to_le_bytes()[..]);
+            (&mut to_buf[curoff + 4..curoff + 8]).copy_from_slice(&(to_addr as u32).to_le_bytes()[..]);
 
             curoff += 8;
         }
     }
 
     if hdr.num_a_descriptors() != 0 || hdr.num_b_descriptors() != 0 {
-        let mut from_mem = from_proc.process.pmemory.lock();
-        let mut to_mem = to_proc.process.pmemory.lock();
+        if is_reply {
+            // TODO: Error to return when replying with A/B/W descriptors
+            // BODY: We currently reply with a broken ass error when replying
+            // BODY: with A/B/W descriptors (which is illegal).
+            return Err(UserspaceError::PortRemoteDead)
+        }
+
+        let mut current_memlock = to_proc.process.pmemory.lock();
+
+        let (mut from_mem, mut to_mem) = (&mut *other_memlock, &mut *current_memlock);
 
         for i in 0..hdr.num_a_descriptors() {
-            buf_map(from_buf, to_buf, &mut curoff, &mut *from_mem, &mut *to_mem, MappingAccessRights::empty())?;
+            buf_map(from_buf, to_buf, &mut curoff, &mut *from_mem, &mut *to_mem, MappingAccessRights::empty(), buffers)?;
         }
 
         for i in 0..hdr.num_b_descriptors() {
-            buf_map(from_buf, to_buf, &mut curoff, &mut *from_mem, &mut *to_mem, MappingAccessRights::WRITABLE)?;
+            buf_map(from_buf, to_buf, &mut curoff, &mut *from_mem, &mut *to_mem, MappingAccessRights::WRITABLE, buffers)?;
         }
 
         for i in 0..hdr.num_w_descriptors() {
-            buf_map(from_buf, to_buf, &mut curoff, &mut *from_mem, &mut *to_mem, MappingAccessRights::WRITABLE)?;
+            buf_map(from_buf, to_buf, &mut curoff, &mut *from_mem, &mut *to_mem, MappingAccessRights::WRITABLE, buffers)?;
+        }
+    }
+
+    if is_reply && !buffers.is_empty() {
+        let (mut from_mem, mut to_mem) = (from_proc.process.pmemory.lock(), other_memlock);
+
+        // Unmap A-B-W buffers
+        for buffer in buffers {
+            buf_unmap(buffer, &mut *from_mem, &mut *to_mem)?;
         }
     }
 

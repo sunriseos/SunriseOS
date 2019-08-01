@@ -1,26 +1,37 @@
 language: rust
-rust:
-- stable
 
-addons:
-  apt:
-    packages:
-    - gcc-multilib
+matrix:
+  include:
+    - os: linux
+      dist: xenial
+    - os: osx
+      env: NO_TESTS_NO_DEPLOY=1
+    - os: windows
+      env: NO_TESTS_NO_DEPLOY=1
 
 # Install cargo-make and rust-src rustup component
 before_install:
-- cargo install cargo-update || echo "cargo-update already installed"
-- cargo install cargo-travis --git "https://github.com/roblabla/cargo-travis" --rev "doc-upload-target" || echo "cargo-travis already installed"
-- cargo install cargo-make || echo "cargo-make already installed"
-- cargo install-update cargo-update cargo-make cargo-xbuild
-- rustup target install i686-unknown-linux-gnu || echo "target i686-unknown-linux-gnu already installed"
+- cargo install cargo-make --git "https://github.com/roblabla/cargo-make" --rev "kfs" -Z install-upgrade
+- if [ -z "${NO_TESTS_NO_DEPLOY}" ]; then cargo install cargo-travis --git "https://github.com/roblabla/cargo-travis" --rev "cargo-metadata" -Z install-upgrade; fi
+- if [ -z "${NO_TESTS_NO_DEPLOY}" ]; then rustup target install i686-unknown-linux-gnu || echo "target i686-unknown-linux-gnu already installed"; fi
+- if [ -z "${NO_TESTS_NO_DEPLOY}" ]; then sudo apt-get install -y gcc-multilib; fi
 
 script:
+# On windows, we want to make sure the PATH is minimal. In particular, we only
+# want windows built-in stuff and cargo. Note that `test`/`[` is a bash
+# built-in, so despite not being present anymore, it should still work (fingers
+# crossed).
+# Link.exe (the only other dependency) is not in the PATH anyways, so it should
+# still be found by rustc.
+- OLDPATH=$PATH
+- if [ "windows" = "${TRAVIS_OS_NAME}" ]; then export PATH=${TRAVIS_HOME}/.cargo/bin:/c/Windows/system32:/c/Windows:/c/Windows/System32/Wbem:/c/Windows/System32/WindowsPowerShell/v1.0; fi
 - cargo make iso
 - cargo make iso-release
-- cargo make test
-- cargo make doc-full
-- cargo make clippy -- -D warnings
+- cargo make create-disk-if-not-exist
+- if [ -z "${NO_TESTS_NO_DEPLOY}" ]; then cargo make test; fi
+- if [ -z "${NO_TESTS_NO_DEPLOY}" ]; then cargo make doc-full; fi
+- if [ -z "${NO_TESTS_NO_DEPLOY}" ]; then cargo make clippy -- -D warnings; fi
+- export PATH=$OLDPATH
 
 deploy:
 - provider: script
@@ -28,5 +39,10 @@ deploy:
   skip_cleanup: true
   on:
     branch: master
+    condition: -z "${NO_TESTS_NO_DEPLOY}"
 
-cache: cargo
+# See issue #378
+cache: false
+before_cache:
+  # Travis can't cache files that are not readable by "others"
+  - chmod -R a+r $HOME/.cargo

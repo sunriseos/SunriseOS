@@ -833,7 +833,7 @@ impl UserspaceHardwareContext {
                 self.ebp = 0;
             },
             Err(err) => {
-                self.eax = err.make_ret();
+                self.eax = err.make_ret() as usize;
                 self.ebx = 0;
                 self.ecx = 0;
                 self.edx = 0;
@@ -1007,7 +1007,7 @@ macro_rules! irq_handler {
         /// Array of interrupt handlers.
         ///
         /// The position in the array defines the IRQ this handler is targeting. See [`irq_handler`].
-        static IRQ_HANDLERS : [extern "C" fn(); 16] = [
+        static IRQ_HANDLERS : [extern "C" fn(); 17] = [
             $(
                 $asm_wrapper_name,
             )*
@@ -1016,9 +1016,9 @@ macro_rules! irq_handler {
 }
 
 irq_handler!(
-     0, pin0_handler,          pin0_handler_asm_wrapper,          pin0_handler_rust_wrapper;
+     0, pit_handler,           pit_handler_asm_wrapper,           pit_handler_rust_wrapper;
      1, keyboard_handler,      keyboard_handler_asm_wrapper,      keyboard_handler_rust_wrapper;
-     2, timer_handler,         timer_handler_asm_wrapper,         timer_handler_rust_wrapper;
+     2, cascade_handler,       cascade_handler_asm_wrapper,       cascade_handler_rust_wrapper;
      3, serial2_handler,       serial2_handler_asm_wrapper,       serial2_handler_rust_wrapper;
      4, serial1_handler,       serial1_handler_asm_wrapper,       serial1_handler_rust_wrapper;
      5, sound_handler,         sound_handler_asm_wrapper,         sound_handler_rust_wrapper;
@@ -1032,6 +1032,7 @@ irq_handler!(
     13, irq13_handler,         irq13_handler_asm_wrapper,         irq13_handler_rust_wrapper;
     14, primary_ata_handler,   primary_ata_handler_asm_wrapper,   primary_ata_handler_rust_wrapper;
     15, secondary_ata_handler, secondary_ata_handler_asm_wrapper, secondary_ata_handler_rust_wrapper;
+    16, hpet_handler,          hpet_handler_asm_wrapper,          hpet_handler_rust_wrapper;
 );
 
 lazy_static! {

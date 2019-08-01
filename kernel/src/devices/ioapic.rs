@@ -256,10 +256,7 @@ impl IoApic {
         for i in 0..ret.redirection_entry_count() {
             let mut entry = ret.redirection_entry(i as u8);
             entry.set_interrupt_mask(true);
-            if i + interrupt_base < 16 {
-                // Legacy interrupt, set the interrupt vector.
-                entry.set_interrupt_vector((0x20 + i + interrupt_base).into());
-            }
+            entry.set_interrupt_vector((0x20 + i + interrupt_base).into());
             entry.set_destination_field(root_cpu_id.into());
             ret.set_redirection_entry(i as u8, entry);
         }

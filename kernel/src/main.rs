@@ -1,12 +1,16 @@
 //! Sunrise kernel
 //!
+//! > Writing an Operating System is easy. Explaining how to write one isn't.
+//!
+//! - PoC||GTFO, 4:3.
+//!
 //! A small kernel written in rust for shit and giggles. Also, hopefully the
 //! last project I'll do before graduating from 42 >_>'.
 //!
 //! Currently doesn't do much, besides booting and printing Hello World on the
 //! screen. But hey, that's a start.
 
-#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, allocator_api, box_syntax, no_more_cas, const_vec_new, step_trait, thread_local, nll, underscore_const_names, doc_cfg, exclusive_range_pattern)]
+#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, allocator_api, box_syntax, no_more_cas, const_vec_new, step_trait, thread_local, nll, doc_cfg, exclusive_range_pattern)]
 #![no_std]
 #![cfg_attr(target_os = "none", no_main)]
 #![recursion_limit = "1024"]

@@ -39,11 +39,27 @@ impl Handle {
             lifetime: PhantomData
         }
     }
+
+    /// Creates a new static reference to this handle. See the documentation of
+    /// [HandleRef] for more information.
+    ///
+    /// The kernel guarantees that a Handle is never reused. If the parent [Handle]
+    /// dies before this HandleRef is dropped, every function taking this HandleRef
+    /// will fail with [sunrise_libkern::error::KernelError::InvalidHandle]
+    pub fn as_ref_static(&self) -> HandleRef<'static> {
+        HandleRef {
+            inner: self.0,
+            lifetime: PhantomData
+        }
+    }
 }
 
 impl Drop for Handle {
     fn drop(&mut self) {
-        let _ = syscalls::close_handle(self.0.get());
+        match self.0.get() {
+            0xFFFF8000 | 0xFFFF8001 => (),
+            handle => { let _ = syscalls::close_handle(handle); },
+        }
     }
 }
 
@@ -211,6 +227,28 @@ impl ServerPort {
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct Thread(pub Handle);
+
+impl Thread {
+    /// Gets the current process handle. Uses the 0xFFFF8000 meta-handle, which
+    /// may not be valid in all contexts!
+    fn current() -> Thread {
+        Thread(Handle::new(0xFFFF8000))
+    }
+}
+
+/// A Process. Created with `create_process` syscall, or by calling
+/// [Process::current()].
+#[repr(transparent)]
+#[derive(Debug)]
+pub struct Process(pub Handle);
+
+impl Process {
+    /// Gets the current process handle. Uses the 0xFFFF8001 meta-handle, which
+    /// may not be valid in all contexts!
+    fn current() -> Process {
+        Process(Handle::new(0xFFFF8001))
+    }
+}
 
 /// A handle to memory that may be mapped in multiple processes at the same time.
 ///

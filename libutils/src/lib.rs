@@ -109,6 +109,9 @@ macro_rules! enum_with_val {
 }
 
 /// Displays memory as hexdump
+///
+/// This function follows the output format of the `xxd` command so you can easily diff
+/// between two hexdumps on the host machine, to help debugging sessions.
 pub fn print_hexdump<T: Write>(f: &mut T, mem: &[u8]) {
     // just print as if at its own address ... which it is
     print_hexdump_as_if_at_addr(f, mem, mem.as_ptr() as usize)
@@ -116,6 +119,9 @@ pub fn print_hexdump<T: Write>(f: &mut T, mem: &[u8]) {
 
 /// Makes a hexdump of a slice, but display different addresses.
 /// Used for displaying memory areas which are not identity mapped in the current pages
+///
+/// This function follows the output format of the `xxd` command so you can easily diff
+/// between two hexdumps on the host machine, to help debugging sessions.
 pub fn print_hexdump_as_if_at_addr<T: Write>(f: &mut T, mem: &[u8], display_addr: usize) {
     for chunk in mem.chunks(16) {
         let mut arr = [None; 16];
@@ -124,7 +130,7 @@ pub fn print_hexdump_as_if_at_addr<T: Write>(f: &mut T, mem: &[u8], display_addr
         }
 
         let offset_in_mem = chunk.as_ptr() as usize - mem.as_ptr() as usize;
-        let _ = write!(f, "{:#0x}:", display_addr + offset_in_mem);
+        let _ = write!(f, "{:08x}:", display_addr + offset_in_mem);
 
         for pair in arr.chunks(2) {
             let _ = write!(f, " ");
@@ -138,7 +144,7 @@ pub fn print_hexdump_as_if_at_addr<T: Write>(f: &mut T, mem: &[u8], display_addr
         }
         let _ = write!(f, "  ");
         for i in chunk {
-            if i.is_ascii_graphic() {
+            if i.is_ascii_graphic() || *i == 0x20 {
                 let _ = write!(f, "{}", *i as char);
             } else {
                 let _ = write!(f, ".");
