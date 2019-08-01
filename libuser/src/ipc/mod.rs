@@ -17,7 +17,7 @@ use core::convert::TryInto;
 use core::marker::PhantomData;
 use core::mem;
 use core::convert::TryFrom;
-use byteorder::{ByteOrder, LE};
+use byteorder::LE;
 use arrayvec::{ArrayVec, Array};
 use crate::utils::{self, align_up, CursorWrite, CursorRead};
 use crate::types::{Handle, HandleRef, Pid};
