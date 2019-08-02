@@ -738,6 +738,8 @@ name = "sunrise-time"
 version = "0.1.0"
 dependencies = [
  "cargo-5730 0.1.0 (git+https://github.com/Thog/cargo-5730.git?branch=feature/windows-support)",
+ "core-futures-tls 0.1.1 (git+https://github.com/SunriseOS/core-futures-tls?branch=global)",
+ "futures-preview 0.3.0-alpha.17 (registry+https://github.com/rust-lang/crates.io-index)",
  "generic-array 0.13.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "spin 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
