@@ -673,7 +673,7 @@ pub fn generate_trait_async(ifacename: &str, interface: &Interface) -> String {
     }
     writeln!(s, "pub trait {} {{", trait_name).unwrap();
     for cmd in &interface.funcs {
-        match format_args(&cmd.args, &cmd.ret, true).and_then(|v| format_ret_ty(&cmd.ret).map(|u| (v, u))) {
+        match format_args(&cmd.args, &cmd.ret, true).and_then(|v| format_ret_ty(&cmd.ret, true).map(|u| (v, u))) {
             Ok((args, ret)) => {
                 for line in cmd.doc.lines() {
                     writeln!(s, "    /// {}", line).unwrap();
@@ -846,7 +846,7 @@ pub fn generate_proxy(ifacename: &str, interface: &Interface) -> String {
             writeln!(s, "        if let Some(s) = HANDLE.r#try() {{").unwrap();
             writeln!(s, "            Ok(s)").unwrap();
             writeln!(s, "        }} else {{").unwrap();
-            writeln!(s, "            let hnd = Self::raw_new()?;").unwrap();
+            writeln!(s, "            let hnd = Self::raw_new{}()?;", name).unwrap();
             writeln!(s, "            let val = HANDLE.call_once(|| hnd);").unwrap();
             writeln!(s, "            Ok(val)").unwrap();
             writeln!(s, "        }}").unwrap();
