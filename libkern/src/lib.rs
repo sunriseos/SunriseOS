@@ -335,7 +335,7 @@ pub struct TLS {
     /// Buffer used for IPC. Kernel reads, interprets, and copies data from/to it.
     pub ipc_command_buffer: IpcBuffer,
     /// reserved or unknown.
-    _reserved1: [u8; 0x200 - size_of::<IpcBuffer>() - 2 * size_of::<usize>() - (16 - size_of::<*mut TLS>())],
+    _reserved1: [u8; 0x200 - 16 - size_of::<IpcBuffer>() - size_of::<usize>()],
     /// User controlled pointer to thread context. Not observed by the kernel.
     pub ptr_thread_context: usize,
 }

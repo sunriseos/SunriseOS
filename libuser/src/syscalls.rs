@@ -463,11 +463,16 @@ pub fn map_mmio_region(physical_address: usize, size: usize, virtual_address: us
 ///
 /// `fs` is used instead of `gs`, because reasons.
 ///
+/// # Safety
+///
+/// `address` should point to a valid TLS image, unique to the current thread.
+/// Setting `gs` to random data, malformed image, or shared image is UB.
+///
 /// # Errors
 ///
 /// * The whole initial design of TLS on x86 should be considered an error.
 /// * No returned error otherwise.
-pub fn set_thread_area(address: usize) -> Result<(), KernelError> {
+pub unsafe fn set_thread_area(address: usize) -> Result<(), KernelError> {
     unsafe {
         syscall(nr::SetThreadArea, address, 0, 0, 0, 0, 0)?;
         Ok(())

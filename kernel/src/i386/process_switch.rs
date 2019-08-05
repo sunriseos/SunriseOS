@@ -274,9 +274,14 @@ pub unsafe fn prepare_for_first_schedule(t: &ThreadStruct, entrypoint: usize, us
 /// At this point, interrupts are still off. This function should ensure the thread is properly
 /// switched (set up ESP0, IOPB and whatnot) and call [`scheduler_first_schedule`].
 ///
+/// # Safety:
+///
+/// * Interrupts must be disabled.
+/// * Arguments must respect the [`prepare_for_first_schedule`] ABI, and be popped into registers.
+///
 /// [`scheduler_first_schedule`]: crate::scheduler::scheduler_first_schedule.
 #[naked]
-fn first_schedule() {
+unsafe fn first_schedule() {
     // just get the ProcessStruct pointer in $edi, the entrypoint in $eax, and call a rust function
     unsafe {
         asm!("
@@ -311,7 +316,7 @@ fn first_schedule() {
 
         // call the scheduler to finish the high-level process switch mechanics
         unsafe {
-            // safety: interrupts are off
+            // safe: interrupts are off
             crate::scheduler::scheduler_first_schedule(current, || jump_to_entrypoint(entrypoint, userspace_stack, userspace_arg));
         }
 

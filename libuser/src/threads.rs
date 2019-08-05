@@ -143,12 +143,29 @@ fn get_my_tls_region() -> *mut TLS {
 }
 
 
-/// Get a pointer to this thread's [ThreadContext], from the [TLS] region pointed to by `fs`.
-#[inline]
-pub fn get_my_thread_context() -> *mut ThreadContext {
+/// Get a reference to this thread's [ThreadContext], from the [TLS] region pointed to by `fs`.
+///
+/// # Panics
+///
+/// Panics if the thread context hasn't been initialized yet.
+/// This happens immediately in the startup of a thread, and relatively early for the main thread.
+pub fn get_my_thread_context() -> &'static ThreadContext {
+    // read the last bytes of TLS region and treat it as a pointer
+    let context_ptr = unsafe {
+        // safe: - get_my_tls returns a valid 0x200 aligned ptr,
+        //       - .ptr_thread_context is correctly aligned in the TLS region to usize.
+        (*get_my_tls_region()).ptr_thread_context as *const ThreadContext
+    };
+    // The TLS region is initially memset to 0 by the kernel.
+    // If the context_ptr is 0 it means it hasn't been written yet.
+    debug_assert!(!context_ptr.is_null(), "thread context not initialized yet");
+    // create a ref
     unsafe {
-        // safe: just pointer arithmetic
-        &(*get_my_tls_region()).ptr_thread_context as *const usize as *mut _
+        // safe: the context will never be accessed mutably after its allocation,
+        //       it is guaranteed to live for the whole lifetime of the current thread,
+        //       it is guaranteed to be well-formed since we allocated it ourselves,
+        //       => creating a ref is safe.
+        &*(context_ptr)
     }
 }
 
@@ -240,18 +257,24 @@ impl Thread {
 extern "fastcall" fn thread_trampoline(thread_context_addr: usize) -> ! {
     debug!("starting from new thread, context at address {:#010x}", thread_context_addr);
     // first save the address of our context in our TLS region
-    unsafe { (*get_my_tls_region()).ptr_thread_context = thread_context_addr };
+    unsafe {
+        // safe: - get_my_tls returns a valid 0x200 aligned ptr,
+        //       - .ptr_thread_context is correctly aligned in the TLS region to usize,
+        //       - we're a private fn, thread_context_addr is guaranteed by our caller to point to the context.
+        (*get_my_tls_region()).ptr_thread_context = thread_context_addr
+    };
 
-    let thread_context_addr = thread_context_addr as *mut ThreadContext;
+    // use get_my_thread_context to create a ref for us
+    let thread_context = get_my_thread_context();
 
     // make gs point to our tls
-    let tls_elf = unsafe { &(*thread_context_addr).tls_elf };
-    tls_elf.r#try().unwrap().enable_for_current_thread();
+    unsafe {
+        // safe: this module guarantees that the TLS region is unique to this thread.
+        thread_context.tls_elf.r#try().unwrap().enable_for_current_thread();
+    }
 
     // call the routine saved in the context, passing it the arg saved in the context
-    unsafe {
-        ((*thread_context_addr).entry_point)((*thread_context_addr).arg)
-    }
+    (thread_context.entry_point)(thread_context.arg);
 
     debug!("exiting thread");
     syscalls::exit_thread()
@@ -281,10 +304,17 @@ pub extern fn init_main_thread(handle: ThreadHandle) {
     // save the handle in our context
     MAIN_THREAD_CONTEXT.thread_handle.call_once(|| handle);
     // save the address of our context in our TLS region
-    unsafe { (*get_my_tls_region()).ptr_thread_context = &MAIN_THREAD_CONTEXT as *const ThreadContext as usize };
+    unsafe {
+        // safe: - get_my_tls returns a valid 0x200 aligned ptr,
+        //       - .ptr_thread_context is correctly aligned in the TLS region to usize,
+        (*get_my_tls_region()).ptr_thread_context = &MAIN_THREAD_CONTEXT as *const ThreadContext as usize
+    };
 
     // allocate, enable elf TLS, and save it in our context
     let tls_elf = TlsElf::allocate();
-    tls_elf.enable_for_current_thread();
+    unsafe {
+        // safe: this module guarantees that the TLS region is unique to this thread.
+        tls_elf.enable_for_current_thread();
+    }
     MAIN_THREAD_CONTEXT.tls_elf.call_once(move || tls_elf);
 }

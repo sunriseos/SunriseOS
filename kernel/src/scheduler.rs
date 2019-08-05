@@ -292,7 +292,7 @@ where
 
                 let whoami = if !Arc::ptr_eq(&process_b, &proc) {
                     unsafe {
-                        // safety: interrupts are off
+                        // safety: interrupts are disabled by the interrupt_lock.
                         process_switch(process_b, proc)
                     }
                 } else {
@@ -306,7 +306,7 @@ where
                 // If previously running thread had deleted all other references to itself, this
                 // is where its drop actually happens
                 unsafe {
-                    // safety: interrupts are off.
+                    // safety: interrupts are disabled by the interrupt_lock.
                     set_current_thread(whoami.clone(), || lock.lock())
                 }
             }

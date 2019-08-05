@@ -11,7 +11,7 @@
 //! | Index                    | Found in                               | Maps to                        | Purpose                                                           |
 //! |--------------------------|----------------------------------------|--------------------------------|-------------------------------------------------------------------|
 //! | [`GdtIndex::Null`]       | nowhere (hopefully)                    | _                              | _                                                                 |
-//! | [`GdtIndex::KCode`]      | `cs`, while in kernel code             | flat: `0x00000000..0xffffffff` | kernel's code segment                                             |                                                    |
+//! | [`GdtIndex::KCode`]      | `cs`, while in kernel code             | flat: `0x00000000..0xffffffff` | kernel's code segment                                             |
 //! | [`GdtIndex::KData`]      | `ds`, `es`, while in kernel code       | flat: `0x00000000..0xffffffff` | kernel's data segment                                             |
 //! | [`GdtIndex::KTls`]       | `gs`, while in kernel code             | kernel's cpu-locals            | kernel sets-up cpu-locals at this address                         |
 //! | [`GdtIndex::KStack`]     | `ss`, while in kernel code             | flat: `0x00000000..0xffffffff` | kernel's stack segment                                            |
@@ -257,7 +257,7 @@ pub fn init_gdt() {
         fault_task.eip = 0; // will be set by IDT init.
         let fault_task_ref: &'static TssStruct = unsafe {
             // creating a static ref to tss.
-            // kinda-safe: the tss is in a static so it is 'static, but is behind a lock
+            // safety: the tss is in a static so it is 'static, but is behind a lock
             // and will still be accessed by the hardware with no consideration for the lock.
             (&*fault_task as *const TssStruct).as_ref().unwrap()
         };

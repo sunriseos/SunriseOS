@@ -61,10 +61,16 @@ pub enum PanicOrigin<'a> {
 /// Takes a panic origin, so we can personalize the kernel panic message.
 pub fn kernel_panic(panic_origin: &PanicOrigin) -> ! {
 
+    // TODO: permanently_disable_interrupts shouldn't be unsafe.
+    // BODY: disabling interrupts doesn't break any safety guidelines, and is perfectly safe as far as rustc is concerned.
     // Disable interrupts forever!
     unsafe { sync::permanently_disable_interrupts(); }
     // Don't deadlock in the logger
-    unsafe { SerialLogger.force_unlock(); }
+    unsafe {
+        // safe: All CPUs are halted at this point, and interrupts are stopped.
+        //       Any code relying on locked mutex will not run anymore, so unlocking mutexes is fine now.
+        SerialLogger.force_unlock();
+    }
 
     // Get the process we were running, and its name. Gonna be quite useful.
     let current_thread = try_get_current_thread();

@@ -121,12 +121,12 @@ static CPU_LOCAL_REGIONS: Once<Vec<CpuLocalRegion>> = Once::new();
 /// # Panics
 ///
 /// Panics if `cpu_id` is greater than the `cpu_count` that was supplied to [`init_cpu_locals`].
-pub fn get_cpu_locals_ptr_for_core(cpu_id: usize) -> *mut u8 {
+pub fn get_cpu_locals_ptr_for_core(cpu_id: usize) -> *const u8 {
     CPU_LOCAL_REGIONS.r#try()
         .expect("CPU_LOCAL_REGIONS not initialized")
         .get(cpu_id)
         .unwrap_or_else(|| panic!("cpu locals not initialized for cpu id {}", cpu_id))
-        .tcb()
+        .tcb() as *const ThreadControlBlock as *const u8
 }
 
 /// Initializes cpu locals during early boot stage.
@@ -188,7 +188,7 @@ pub fn init_cpu_locals(cpu_count: usize) {
             .expect("GDT not initialized")
             .lock();
         gdt.table[GdtIndex::KTls as usize].set_base(
-            cpu_local_regions[0].tcb() as usize as u32
+            cpu_local_regions[0].tcb() as *const _ as usize as u32
         );
         gdt.commit(None, None, None, None, None, None);
 
@@ -244,10 +244,12 @@ impl CpuLocalRegion {
     ///
     /// For TLS to work, the value stored at this address should be the address itself, i.e.
     /// having a pointer pointing to itself.
-    fn tcb(&self) -> *mut u8 {
+    fn tcb(&self) -> &ThreadControlBlock {
         unsafe {
-            // safe: guaranteed to be aligned, and still in the allocation
-            (self.ptr as *mut u8).add(self.tcb_offset)
+            // safe: - guaranteed to be aligned, and still in the allocation,
+            //       - no one should ever have a mut reference to the ThreadControlBlock after its
+            //         initialisation.
+            &*((self.ptr + self.tcb_offset) as *const ThreadControlBlock)
         }
     }
 
@@ -299,10 +301,14 @@ impl CpuLocalRegion {
             tcb_offset + size_of::<ThreadControlBlock>(),
             tcb_align
         ).unwrap();
-        let alloc = unsafe { alloc_zeroed(layout) };
+        let alloc = unsafe {
+            // safe: layout.size >= sizeof::<TCB> -> layout.size != 0
+            alloc_zeroed(layout)
+        };
         assert!(!alloc.is_null(), "cpu_locals: failed static area allocation");
 
         unsafe {
+            // safe: everything is done within our allocation, u8 is always aligned.
             // copy data
             core::ptr::copy_nonoverlapping(
                 block_src as *const [u8] as *const u8,
@@ -317,11 +323,11 @@ impl CpuLocalRegion {
                     tp_self_ptr: alloc.add(tcb_offset) as *const ThreadControlBlock
                 }
             );
-            Self {
-                ptr: alloc as usize,
-                layout,
-                tcb_offset
-            }
+        };
+        Self {
+            ptr: alloc as usize,
+            layout,
+            tcb_offset
         }
     }
 }
@@ -329,7 +335,11 @@ impl CpuLocalRegion {
 impl Drop for CpuLocalRegion {
     /// Dropping a CpuLocalRegion deallocates it.
     fn drop(&mut self) {
-        unsafe { dealloc(self.ptr as *mut u8, self.layout) };
+        unsafe {
+            // safe: - self.ptr is obviously allocated.
+            //       - self.layout is the same argument that was used for alloc.
+            dealloc(self.ptr as *mut u8, self.layout)
+        };
     }
 }
 

@@ -163,12 +163,20 @@ impl TlsElf {
 
     /// Calls [`syscalls::set_thread_area`] with the address of this TlsElf's [`ThreadControlBlock`].
     ///
+    /// # Safety
+    ///
+    /// The TlsElf should not be enabled_for_current_thread by any other thread.
+    /// Having a TLS shared by multiple threads is UB.
+    ///
     /// # Panics
     ///
     /// Panics if the syscall returned an error, as this is unrecoverable.
-    pub fn enable_for_current_thread(&self) {
+    pub unsafe fn enable_for_current_thread(&self) {
         unsafe {
-            syscalls::set_thread_area(self.static_region.tcb() as usize)
+            // safe: TlsElf is RAII so self is a valid well-formed TLS region.
+            //       However, we cannot guarantee that it's not used by anybody else,
+            //       so propagate this constraint.
+            syscalls::set_thread_area(self.static_region.tcb() as *const _ as usize)
                 .expect("Cannot set thread TLS pointer");
         }
     }
@@ -219,10 +227,12 @@ impl ThreadLocalStaticRegion {
     ///
     /// For TLS to work, the value stored at this address should be the address itself, i.e.
     /// having a pointer pointing to itself.
-    fn tcb(&self) -> *mut u8 {
+    fn tcb(&self) -> &ThreadControlBlock {
         unsafe {
-            // safe: guaranteed to be aligned, and still in the allocation
-            (self.ptr as *mut u8).add(self.tcb_offset)
+            // safe: - guaranteed to be aligned, and still in the allocation,
+            //       - no one should ever have a mut reference to the ThreadControlBlock after its
+            //         initialisation.
+            &*((self.ptr + self.tcb_offset) as *const ThreadControlBlock)
         }
     }
 
@@ -274,10 +284,14 @@ impl ThreadLocalStaticRegion {
             tcb_offset + size_of::<ThreadControlBlock>(),
             tcb_align
         ).unwrap();
-        let alloc = unsafe { alloc_zeroed(layout) };
+        let alloc = unsafe {
+            // safe: layout.size >= sizeof::<TCB> -> layout.size != 0
+            alloc_zeroed(layout)
+        };
         assert!(!alloc.is_null(), "thread_locals: failed static area allocation");
 
         unsafe {
+            // safe: everything is done within our allocation, u8 is always aligned.
             // copy data
             core::ptr::copy_nonoverlapping(
                 block_src as *const [u8] as *const u8,
@@ -292,11 +306,11 @@ impl ThreadLocalStaticRegion {
                     tp_self_ptr: alloc.add(tcb_offset) as *const ThreadControlBlock
                 }
             );
-            Self {
-                ptr: alloc as usize,
-                layout,
-                tcb_offset
-            }
+        };
+        Self {
+            ptr: alloc as usize,
+            layout,
+            tcb_offset
         }
     }
 }
@@ -304,7 +318,11 @@ impl ThreadLocalStaticRegion {
 impl Drop for ThreadLocalStaticRegion {
     /// Dropping a ThreadLocalStaticRegion deallocates it.
     fn drop(&mut self) {
-        unsafe { dealloc(self.ptr as *mut u8, self.layout) };
+        unsafe {
+            // safe: - self.ptr is obviously allocated.
+            //       - self.layout is the same argument that was used for alloc.
+            dealloc(self.ptr as *mut u8, self.layout)
+        };
     }
 }
 
