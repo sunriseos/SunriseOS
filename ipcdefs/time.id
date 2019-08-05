@@ -1,0 +1,92 @@
+# An opaque type that represent a time zone rule.
+type sunrise_libuser::time::TimeZoneRule = bytes<0x4000>;
+
+# Represent a time zone location name
+type sunrise_libuser::time::LocationName = bytes<0x24>;
+
+# Represent a POSIX Timestamp
+type sunrise_libuser::time::PosixTime = i64;
+
+# Represent the basic informations of a local time.
+type sunrise_libuser::time::CalendarTime = struct<0x8> {
+    # The year of the local time
+    i16 year;
+
+    # The month of the local time
+    i8 month;
+
+    # The day of the local time
+    i8 day;
+
+    # The hour of the local time
+    i8 hour;
+
+    # The minute of the local time
+    i8 minute;
+
+    # The second of the local time
+    i8 second;
+};
+
+# Represent aditional info of a local time
+type sunrise_libuser::time::CalendarAdditionalInfo = struct<0x18> {
+    # The day of the week of the local time
+    u32 day_of_week;
+
+    # The day of the year of the local time
+    u32 day_of_year;
+
+    # The name of the timezone of the local time
+    bytes<8> tz_name;
+
+    # True if the local time represent a Day Saving Time
+    bool is_daylight_saving_time;
+
+    # The GMT offset of the timezone used to generate this local time
+    i32 gmt_offset;
+};
+
+# Entry point interface
+interface sunrise_libuser::time::StaticService is time:u, time:a, time:s {
+    # Get the TimeZone service object
+    [3] get_timezone_service() -> object<sunrise_libuser::time::TimeZoneService>;
+}
+
+# RTC interface
+interface sunrise_libuser::time::RTCManager is rtc {
+    # Get the current RTC time
+    [1] get_rtc_time() -> sunrise_libuser::time::PosixTime;
+
+    # Event triggered on RTC time update
+    [3] get_rtc_event() -> handle<copy>;
+}
+
+# TimeZone service object
+interface sunrise_libuser::time::TimeZoneService {
+    # Get the time zone name used on this devie
+    [0] get_device_location_name() -> sunrise_libuser::time::LocationName;
+
+    # Set the time zone name used on this devie
+    [1] set_device_location_name(sunrise_libuser::time::LocationName);
+
+    # Get the total count of location name available
+    [2] get_total_location_name_count() -> u32;
+
+    # Load the list of location name available
+    [3] load_location_name_list(u32) -> (u32, array<sunrise_libuser::time::LocationName, 0x6>);
+
+    # Load a time zone rule
+    [4] load_timezone_rule(sunrise_libuser::time::LocationName) -> buffer<sunrise_libuser::time::TimeZoneRule, 0x16, 0x4000>;
+
+    # Convert a PosixTime to a local time using a TimeZoneRule
+    [100] to_calendar_time(sunrise_libuser::time::PosixTime, buffer<sunrise_libuser::time::TimeZoneRule, 0x15, 0x4000>) -> (sunrise_libuser::time::CalendarTime, sunrise_libuser::time::CalendarAdditionalInfo);
+
+    # Convert a PosixTime to a local time using the device TimeZoneRule
+    [101] to_calendar_time_with_my_rule(sunrise_libuser::time::PosixTime) -> (sunrise_libuser::time::CalendarTime, sunrise_libuser::time::CalendarAdditionalInfo);
+
+    # Convert a local time to a PosixTime using a TimeZoneRule.
+    [4201] to_posix_time(sunrise_libuser::time::CalendarTime, buffer<sunrise_libuser::time::TimeZoneRule, 0x15, 0x4000>) -> sunrise_libuser::time::PosixTime;
+
+    # Convert a local time to a PosixTime using the device TimeZoneRule
+    [4202] to_posix_time_with_my_rule(sunrise_libuser::time::CalendarTime) -> sunrise_libuser::time::PosixTime;
+}

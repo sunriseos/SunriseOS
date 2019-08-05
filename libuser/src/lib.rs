@@ -52,6 +52,8 @@ pub mod sm {}
 pub mod vi {}
 #[gen_ipc(path = "../../ipcdefs/ahci.id", prefix = "sunrise_libuser")]
 pub mod ahci {}
+#[gen_ipc(path = "../../ipcdefs/time.id", prefix = "sunrise_libuser")]
+pub mod time {}
 
 pub mod error;
 pub mod allocator;

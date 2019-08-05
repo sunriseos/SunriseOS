@@ -1,0 +1,18 @@
+[package]
+name = "sunrise-time"
+version = "0.1.0"
+authors = ["Thog <contact@thog.eu>"]
+license = "Apache-2.0 OR MIT"
+edition = "2018"
+
+
+[dependencies]
+generic-array = "0.13.0"
+spin = "0.5"
+log = "0.4.6"
+sunrise-libuser = { path = "../libuser" }
+sunrise-libutils = { path = "../libutils" }
+sunrise-libtimezone = { path = "../libtimezone" }
+
+[build-dependencies]
+cargo-5730 = { git = "https://github.com/Thog/cargo-5730.git", branch = "feature/windows-support" }
