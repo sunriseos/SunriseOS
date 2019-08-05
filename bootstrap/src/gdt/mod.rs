@@ -18,7 +18,7 @@ use core::fmt::Write;
 use self::segment_selector::SegmentSelector;
 use self::i386::{PrivilegeLevel, TssStruct};
 
-#[cfg_attr(not(test), link_section = ".gdt")]
+/// The GDT set-up by the bootstrap
 static GDT: Once<DescriptorTable> = Once::new();
 
 /// The global LDT used by all the processes.
