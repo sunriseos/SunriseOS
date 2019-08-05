@@ -44,9 +44,9 @@
 //! Since we don't have access to our program headers, we instead use the linker to expose the following
 //! symbols:
 //!
-//! * `__tls_start__`: The start address of our TLS initialisation image.
-//! * `__tls_end__`: The end address of our TLS initialisation image.
-//! * `__tls_align__`: The linker forced TLS alignment to this value.
+//! * [`__tls_start__`], The start address of our TLS initialisation image.
+//! * [`__tls_end__`], The end address of our TLS initialisation image.
+//! * [`__tls_align__`], The linker forced TLS alignment to this value.
 //!
 //! Those symbols are the addresses of the initialization in our `.tdata`, so it can directly be copied.
 //!
@@ -66,8 +66,10 @@
 //! [Ulrich Drepper's paper on TLS]: https://web.archive.org/web/20190710135250/https://akkadia.org/drepper/tls.pdf
 //! [`set_thread_area`]: crate::syscalls::set_thread_area
 //! [#\[thread_local\] attribute]: https://github.com/rust-lang/rust/issues/10310
+//! [`__tls_start__`]: self::thread_local_storage::__tls_start__
+//! [`__tls_end__`]: self::thread_local_storage::__tls_end__
+//! [`__tls_align__`]: self::thread_local_storage::__tls_align__
 
-use crate::crt0::relocation::module_header;
 use crate::syscalls;
 use sunrise_libutils::div_ceil;
 use alloc::alloc::{alloc_zeroed, dealloc, Layout};
@@ -75,6 +77,30 @@ use core::mem::{align_of, size_of};
 use core::fmt::Debug;
 
 extern "C" {
+    /// The address of the start of the TLS initialisation image in our `.tdata`.
+    ///
+    /// Because we don't want to read our own `P_TLS` program header,
+    /// the linker provides a symbol for the start of the init image.
+    ///
+    /// This is an **absolute symbol**, which means its "address" is actually its value,
+    /// i.e. to get a pointer do:
+    ///
+    /// ```
+    /// let tls_start: *const u8 = unsafe { &__tls_start__ as *const u8 };
+    /// ```
+    static __tls_start__: u8;
+    /// The address of the end of the TLS initialisation image in our `.tdata`.
+    ///
+    /// Because we don't want to read our own `P_TLS` program header,
+    /// the linker provides a symbol for the end of the init image.
+    ///
+    /// This is an **absolute symbol**, which means its "address" is actually its value,
+    /// i.e. to get a pointer do:
+    ///
+    /// ```
+    /// let tls_end: *const u8 = unsafe { &__tls_end__ as *const u8 };
+    /// ```
+    static __tls_end__: u8;
     /// The alignment of the TLS segment.
     ///
     /// Because we don't want to read our own `P_TLS` program header,
@@ -106,10 +132,25 @@ impl TlsElf {
     /// Finds out the location of the initialization image from linker defined symbols.
     pub fn allocate() -> Self {
         // copy tls static area
-        let static_block_start = unsafe { (&module_header as *const _ as usize + module_header.tls_start as usize) as *const u8 };
-        let static_block_len = unsafe { (module_header.tls_end - module_header.tls_start) as usize };
-        let static_block = unsafe { core::slice::from_raw_parts(static_block_start, static_block_len) };
-        let static_block_align = unsafe { &__tls_align__ as *const _ as usize };
+        let static_block_start = unsafe {
+            // safe: set by linker
+            (&__tls_start__ as *const u8)
+        };
+        let static_block_len = unsafe {
+            // safe: set by the linker
+            (&__tls_end__ as *const u8 as usize) - (&__tls_start__ as *const u8 as usize)
+        };
+        let static_block = unsafe {
+            // safe: - the initialization image will never be accessed mutably,
+            //       - it lives in our .data so its lifetime is &'static,
+            //       - u8 is POD and always aligned,
+            //       => creating a const slice is ok.
+            core::slice::from_raw_parts(static_block_start, static_block_len)
+        };
+        let static_block_align = unsafe {
+            // safe: set by the linker
+            &__tls_align__ as *const _ as usize
+        };
         let tls_static_region = ThreadLocalStaticRegion::allocate(
             static_block,
             static_block_len,

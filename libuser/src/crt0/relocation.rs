@@ -14,8 +14,6 @@ mod module_header {
         .int __bss_end__ - module_header
         .int __eh_frame_hdr_start__ - module_header
         .int __eh_frame_hdr_end__ - module_header
-        .int __tls_start__ - module_header
-        .int __tls_end__ - module_header
         .int 0 // TODO: runtime-generated module object offset for rtld
     "#);
 }
@@ -43,12 +41,6 @@ pub struct ModuleHeader {
 
     /// The offset of the end of the eh_frame_hdr section relative to ModuleHeader address.
     pub unwind_end_off: u32,
-
-    /// The offset of the beginning of the TLS initialization image.
-    pub tls_start: u32,
-
-    /// The offset of the end of the TLS initialization image.
-    pub tls_end: u32,
 
     /// The offset of the module object that will be used by the rtld.
     /// This offset is relative to ModuleHeader address.
