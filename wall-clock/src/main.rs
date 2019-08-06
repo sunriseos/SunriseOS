@@ -28,6 +28,7 @@ use sunrise_libuser::time::{RTCManagerProxy, StaticServiceProxy, TimeZoneRule, C
 use spin::Mutex;
 
 use bstr::BStr;
+use bstr::ByteSlice;
 
 /// Turns a day of week number from RTC into an english string.
 /// /// 
@@ -109,11 +110,11 @@ fn main() {
 
     // Get default timezone name
     let device_location = timezone_service.get_device_location_name().unwrap();
-    let device_location_trimed = BStr::from_bytes(&device_location).trim_with(|c| c == '\0');
+    let device_location_trimed = device_location.as_bstr().trim_with(|c| c == '\0').as_bstr();
 
     // Let's get New York time
     let custom_location = b"America/New_York\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
-    let custom_location_trimed = BStr::from_bytes(&custom_location[..]).trim_with(|c| c == '\0');
+    let custom_location_trimed = custom_location.as_bstr().trim_with(|c| c == '\0').as_bstr();
 
     // Load a custom one
     let mut rule = TIMEZONE_RULE.lock();
