@@ -38,7 +38,7 @@ use alloc::sync::{Arc, Weak};
 use crate::libuser::syscalls;
 use crate::libuser::futures::{WaitableManager, WorkQueue};
 use crate::libuser::ipc::server::{port_handler, new_session_wrapper};
-use futures::future::FutureObj;
+use sunrise_libuser::futures_rs::future::FutureObj;
 use crate::libuser::types::*;
 use spin::Mutex;
 use crate::libuser::error::Error;

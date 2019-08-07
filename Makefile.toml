@@ -142,9 +142,15 @@ dependencies = ["install-xargo"]
 command = "xargo"
 args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-keyboard", "@@split(COMPILER_FLAGS, )"]
 
+[tasks.std_hello_world]
+description = "Compiles std_hello_world"
+dependencies = ["install-xargo"]
+command = "xargo"
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=std_hello_world", "@@split(COMPILER_FLAGS, )"]
+
 [tasks.userspace]
 description = "Compiles userspace apps"
-dependencies = ["shell", "wall-clock", "sm", "vi", "ahci", "time", "fs", "loader", "keyboard"]
+dependencies = ["shell", "wall-clock", "sm", "vi", "ahci", "time", "fs", "loader", "keyboard", "std_hello_world"]
 
 [tasks.iso]
 description = "Creates a bootable ISO containing the kernel and grub."
@@ -163,6 +169,7 @@ cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-ahci           isofile
 cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-fs             isofiles/boot/
 cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-loader         isofiles/boot/
 cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-keyboard       isofiles/boot/
+cp target/i386-unknown-sunrise-user/$PROFILE_NAME/std_hello_world        isofiles/boot/
 mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
 '''
 ]

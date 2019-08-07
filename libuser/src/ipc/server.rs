@@ -35,9 +35,9 @@
 // no_run because port_handler will fail on linux.
 //! ```no_run
 //! # extern crate alloc;
-//! use futures::future::FutureObj;
 //! use alloc::boxed::Box;
 //! use sunrise_libuser::futures::WaitableManager;
+//! use sunrise_libuser::futures_rs::future::FutureObj;
 //! use sunrise_libuser::ipc::server::port_handler;
 //! use sunrise_libuser::example::IExample1;
 //!
@@ -97,9 +97,9 @@
 //! ```no_run
 //! extern crate alloc;
 //!
-//! use futures::future::FutureObj;
 //! use alloc::boxed::Box;
 //! use sunrise_libuser::futures::{WorkQueue, WaitableManager};
+//! use sunrise_libuser::futures_rs::future::FutureObj;
 //! use sunrise_libuser::ipc::server::port_handler;
 //! use sunrise_libuser::example::IExample2;
 //! use sunrise_libuser::error::Error;
@@ -160,9 +160,9 @@
 // no_run because port_handler will fail on linux...
 //! ```no_run
 //! extern crate alloc;
-//! use futures::future::FutureObj;
 //! use alloc::boxed::Box;
 //! use sunrise_libuser::futures::WorkQueue;
+//! use sunrise_libuser::futures_rs::future::FutureObj;
 //! use sunrise_libuser::example::{IExample3, IExample3Subsession, IExample3SubsessionProxy};
 //! use sunrise_libuser::syscalls;
 //! use sunrise_libuser::error::Error;
@@ -215,9 +215,9 @@
 //! extern crate alloc;
 //!
 //! use core::future::Future;
-//! use futures::future::FutureObj;
 //! use alloc::boxed::Box;
 //! use sunrise_libuser::futures::WorkQueue;
+//! use sunrise_libuser::futures_rs::future::FutureObj;
 //! use sunrise_libuser::example::IExample4Async;
 //! use sunrise_libuser::types::SharedMemory;
 //! use sunrise_libuser::error::{Error, KernelError};

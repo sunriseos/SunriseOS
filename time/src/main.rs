@@ -33,7 +33,7 @@ use alloc::prelude::v1::*;
 use sunrise_libuser::syscalls;
 use sunrise_libuser::futures::{WaitableManager, WorkQueue};
 use sunrise_libuser::ipc::server::{new_session_wrapper, port_handler};
-use futures::future::FutureObj;
+use sunrise_libuser::futures_rs::future::FutureObj;
 use sunrise_libuser::time::{TimeZoneServiceProxy, StaticService as _, TimeZoneService as _, RTCManager as _};
 use sunrise_libuser::types::*;
 use sunrise_libuser::io::{self, Io};

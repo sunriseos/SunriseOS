@@ -14,7 +14,6 @@ log = "0.4.6"
 storage_device = { git = "https://github.com/sunriseos/storage_device.git", default-features = false, features = ["cached-block-device-nightly", "alloc"] }
 libfat = { git = "https://github.com/sunriseos/libfat.git" }
 plain = "0.2"
-futures-preview = { version = "0.3.0-alpha.16", default-features = false, features = ["nightly", "alloc"] }
 arrayvec = {version = "0.4", default-features = false}
 
 [dependencies.lazy_static]

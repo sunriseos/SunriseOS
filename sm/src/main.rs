@@ -52,11 +52,13 @@ use crate::libuser::ipc::server::managed_port_handler;
 use crate::libuser::types::*;
 use crate::libuser::error::Error;
 use crate::libuser::error::SmError;
+use crate::libuser::futures_rs::future::{FutureExt, FutureObj};
 use crate::libuser::sm::IUserInterfaceAsync;
 use crate::libuser::loop_future::{Loop, loop_fn};
 use hashbrown::hash_map::{HashMap, Entry};
 use spin::Mutex;
-use futures::future::{FutureExt, FutureObj};
+
+use crate::libuser::futures_rs as futures;
 
 /// `sm:` service interface.
 /// The main interface to the Service Manager. Clients can use it to connect to

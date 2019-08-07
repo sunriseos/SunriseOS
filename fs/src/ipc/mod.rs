@@ -9,7 +9,7 @@ use sunrise_libuser::error::Error;
 use sunrise_libuser::error::FileSystemError;
 use sunrise_libuser::syscalls;
 use sunrise_libuser::futures::WorkQueue;
-use futures::future::FutureObj;
+use sunrise_libuser::futures_rs::future::FutureObj;
 
 use sunrise_libuser::ipc::server::new_session_wrapper;
 

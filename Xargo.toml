@@ -1,5 +1,6 @@
 [dependencies.core]
 stage = 0
+path = "../rust-sunrise/src/libcore/"
 
 [dependencies.compiler_builtins]
 version = "=0.1.16"
@@ -8,3 +9,22 @@ features = ["core", "mem"]
 
 [dependencies.alloc]
 stage = 0
+path = "../rust-sunrise/src/liballoc/"
+
+[target.i386-unknown-sunrise-user.dependencies.std]
+stage = 1
+path = "../rust-sunrise/src/libstd/"
+
+[patch.crates-io.rustc-std-workspace-core]
+path = "../rust-sunrise/src/tools/rustc-std-workspace-core"
+
+[patch.crates-io.rustc-std-workspace-alloc]
+path = "../rust-sunrise/src/tools/rustc-std-workspace-alloc"
+
+[patch.crates-io.libc]
+git = "https://github.com/sunriseos/libc.git"
+branch = "sunrise"
+features = ['rustc-dep-of-std']
+
+[patch.crates-io.sunrise-libuser]
+path = "libuser"

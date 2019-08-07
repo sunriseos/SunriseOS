@@ -79,11 +79,13 @@ pub use sunrise_libutils::io;
 
 use sunrise_libutils as utils;
 
+pub use ::futures as futures_rs;
+
 /// Global allocator. Every implicit allocation in the rust liballoc library (for
 /// instance for Vecs, Arcs, etc...) are allocated with this allocator.
 #[cfg(all(target_os = "sunrise", not(test), not(rustdoc)))]
 #[global_allocator]
-static ALLOCATOR: allocator::Allocator = allocator::Allocator::new();
+pub static ALLOCATOR: allocator::Allocator = allocator::Allocator::new();
 
 // Runtime functions
 //
@@ -94,12 +96,12 @@ static ALLOCATOR: allocator::Allocator = allocator::Allocator::new();
 /// The exception handling personality function for use in the bootstrap.
 ///
 /// We currently have no userspace exception handling, so make it do nothing.
-#[cfg(all(target_os = "sunrise", not(test), not(rustdoc)))]
+#[cfg(any(all(target_os = "sunrise", not(test), not(feature = "rustc-dep-of-std")), not(rustdoc)))]
 #[lang = "eh_personality"] #[no_mangle] pub extern fn eh_personality() {}
 
 /// Function called on `panic!` invocation. Prints the panic information to the
 /// kernel debug logger, and exits the process.
-#[cfg(all(target_os = "sunrise", not(test), not(rustdoc)))]
+#[cfg(any(all(target_os = "sunrise", not(test), not(feature = "rustc-dep-of-std")), not(rustdoc)))]
 #[panic_handler] #[no_mangle]
 pub extern fn panic_fmt(p: &core::panic::PanicInfo<'_>) -> ! {
     let _ = syscalls::output_debug_string(&format!("{}", p), 10, "sunrise_libuser::panic_fmt");
@@ -110,7 +112,7 @@ pub extern fn panic_fmt(p: &core::panic::PanicInfo<'_>) -> ! {
 // BODY: Panicking may allocate, so calling panic in the OOM handler is a
 // BODY: terrible idea.
 /// OOM handler. Causes a panic.
-#[cfg(all(target_os = "sunrise", not(test), not(rustdoc)))]
+#[cfg(any(all(target_os = "sunrise", not(test), not(feature = "rustc-dep-of-std")), not(rustdoc)))]
 #[lang = "oom"]
 #[no_mangle]
 pub fn rust_oom(_: core::alloc::Layout) -> ! {
@@ -140,7 +142,7 @@ pub unsafe extern fn real_start() -> ! {
 ///
 /// The default implementations are returning 0 to indicate a successful
 /// execution. In case of a failure, 1 is returned.
-#[cfg(all(target_os = "sunrise", not(test), not(rustdoc)))]
+#[cfg(any(all(target_os = "sunrise", not(test), not(feature = "rustc-dep-of-std")), not(rustdoc)))]
 #[lang = "termination"]
 trait Termination {
     /// Is called to get the representation of the value as status code.
@@ -148,13 +150,13 @@ trait Termination {
     fn report(self) -> i32;
 }
 
-#[cfg(all(target_os = "sunrise", not(test), not(rustdoc)))]
+#[cfg(any(all(target_os = "sunrise", not(test), not(feature = "rustc-dep-of-std")), not(rustdoc)))]
 impl Termination for () {
     #[inline]
     fn report(self) -> i32 { 0 }
 }
 
-#[cfg(all(target_os = "sunrise", not(test), not(rustdoc)))]
+#[cfg(any(all(target_os = "sunrise", not(test), not(feature = "rustc-dep-of-std")), not(rustdoc)))]
 #[lang = "start"]
 #[allow(clippy::unit_arg)]
 fn main<T: Termination>(main: fn(), _argc: isize, _argv: *const *const u8) -> isize {
