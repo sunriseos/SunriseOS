@@ -320,9 +320,10 @@ fn buf_map(from_buf: &[u8], to_buf: &mut [u8], curoff: &mut usize, from_mem: &mu
 
         if (addr + size) % PAGE_SIZE != 0 && (to_addr + size).floor() != to_addr_full {
             // memcpy the last page.
+            let last_page = (VirtualAddress(addr) + size).floor();
             let last_page_size = (addr + size) % PAGE_SIZE;
 
-            let from_mapping = from_mem.mirror_mapping((VirtualAddress(addr) + size).floor(), last_page_size)?;
+            let from_mapping = from_mem.mirror_mapping(last_page, last_page_size)?;
             let from = UserSpacePtr::from_raw_parts(from_mapping.addr().addr() as *const u8, from_mapping.len());
 
             let to_last_page = (to_addr + size).floor();
@@ -432,11 +433,12 @@ fn buf_unmap(buffer: &Buffer, from_mem: &mut ProcessMemory, to_mem: &mut Process
     }
 
     if (addr.addr() + size) % PAGE_SIZE != 0 && (to_addr + size).floor() != to_addr_full {
+        let last_page = (addr + size).floor();
         let last_page_size = (addr.addr() + size) % PAGE_SIZE;
 
         if buffer.writable {
             // memcpy the last page.
-            let from = UserSpacePtr::from_raw_parts((addr.addr() + size) as *const u8, last_page_size);
+            let from = UserSpacePtr::from_raw_parts(last_page.addr() as *const u8, last_page_size);
 
             let to_last_page = (to_addr + size).floor();
 
