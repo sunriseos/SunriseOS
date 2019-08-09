@@ -7,7 +7,7 @@
 use crate::i386;
 use crate::mem::{VirtualAddress, PhysicalAddress};
 use crate::mem::{UserSpacePtr, UserSpacePtrMut};
-use crate::paging::MappingAccessRights;
+use crate::paging::{MappingAccessRights, PAGE_SIZE};
 use crate::frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
 use crate::paging::mapping::MappingFrames;
 use crate::process::{Handle, ThreadStruct, ProcessStruct};
@@ -22,6 +22,7 @@ use crate::sync::SpinRwLock;
 use crate::timer;
 use failure::Backtrace;
 use sunrise_libkern::{MemoryInfo, MemoryAttributes, MemoryPermissions, MemoryType};
+use sunrise_libkern::process::*;
 use bit_field::BitArray;
 use crate::i386::gdt::{GDT, GdtIndex};
 use core::convert::TryFrom;
@@ -673,4 +674,80 @@ pub fn set_thread_area(segment_base_address: usize) -> Result<(), UserspaceError
     let thread = get_current_thread();
     *thread.tls_elf.lock() = segment_base_address;
     Ok(())
+}
+
+/// Creates a new process. This will create an empty address space without any
+/// thread yet. The size of this address space is controlled through
+/// the [ProcInfoAddrSpace] found in `procinfo`.
+///
+/// It will create an empty memory region at `code_addr` spanning
+/// `code_num_pages` pages. This region will initially not have any user
+/// permissions - the user is expected to call set_process_memory_permissions.
+///
+/// The code region needs to fall within a region called the code allowed
+/// region, which depends on the address space:
+///
+/// For 32-bit address space: 0x00200000-0x003FFFFFFF
+///
+/// For 36-bit address space: 0x08000000-0x007FFFFFFF
+///
+/// For 39-bit address space: 0x08000000-0x7FFFFFFFFF
+///
+/// # Errors
+///
+/// * `InvalidEnum`
+///    * ProcInfo contains invalid bitfields
+/// * `InvalidAddress`
+///    * ProcInfo's `code_addr` is not 21-bit aligned.
+/// * `InvalidMemRange`
+///    * ProcInfo's `code_addr` is not within the allowed code region.
+/// * All the errors from [crate::process::capabilities::ProcessCapabilities#parse_kacs]
+pub fn create_process(procinfo: UserSpacePtr<ProcInfo>, caps: UserSpacePtr<[u8]>) -> Result<usize, UserspaceError> {
+    // Ensure the procinfo structure is well-formed.
+    procinfo.flags.check()?;
+
+    let code_allowed_region = match procinfo.flags.address_space_type() {
+        ProcInfoAddrSpace::AS32BitNoMap |
+        ProcInfoAddrSpace::AS32Bit => 0x00200000..=0x003FFFFFFF,
+        ProcInfoAddrSpace::AS36Bit => 0x08000000..=0x007FFFFFFF,
+        ProcInfoAddrSpace::AS39Bit => 0x08000000..=0x7FFFFFFFFF
+    };
+
+    // The code address must be aligned with 21 bit.
+    if procinfo.code_addr & ((1 << 21) - 1) != 0 {
+        return Err(UserspaceError::InvalidAddress);
+    }
+
+    // Check code_num_pages < 0 => InvalidSize. Our code_num_pages is unsigned,
+    // we don't need to do this.
+
+    // Check personalMmHeapNumPages < 0 => InvalidSize. Again, unsigned.
+    // Check !((code_num_pages | personal_mm_heap_num_pages) & 0xFFF0000000000000) => InvalidSize.
+    // Check code_num_pages + personal_mm_heap_num_pages overflows => MemoryExhaustion
+    // Check !((code_num_pages + personal_mm_heap_num_pages) & 0xFFF0000000000000) => InvalidSize.
+    // No clue what these checks are for.
+
+    // Check that our region is contained in the code_allowed_region.
+    if !(code_allowed_region.contains(&procinfo.code_addr) &&
+        code_allowed_region.contains(&(procinfo.code_addr + (u64::from(procinfo.code_num_pages) * PAGE_SIZE as u64))))
+    {
+        return Err(UserspaceError::InvalidMemRange)
+    }
+
+    // Check (code_num_pages | personal_mm_heap_num_pages) >> 21 => MemoryExhaustion
+    // Check (code_num_pages + personal_mm_heap_num_pages) >> 21 => MemoryExhaustion
+
+    let newproc = ProcessStruct::new(&procinfo, Some(&caps[..]))?;
+
+    // Enter KProcess::CreateFromUserData
+
+    // TODO: Create memory region reservations
+    // BODY: Memory region reservations is sort of insane in HOS/NX - especially
+    // BODY: for 32-bit. I'll figure it out later.
+
+    newproc.pmemory.lock().create_regular_mapping(VirtualAddress(procinfo.code_addr as usize), procinfo.code_num_pages as usize * PAGE_SIZE, MemoryType::CodeStatic, MappingAccessRights::k_r())?;
+
+    let curproc = scheduler::get_current_process();
+    let hnd = curproc.phandles.lock().add_handle(Arc::new(Handle::Process(newproc)));
+    Ok(hnd as _)
 }

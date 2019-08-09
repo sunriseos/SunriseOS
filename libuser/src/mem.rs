@@ -21,7 +21,26 @@ pub const PAGE_SIZE: usize = 4096;
 ///
 /// Panics on underflow when align = 0.
 pub fn find_free_address(size: usize, align: usize) -> Result<usize, Error> {
-    let mut addr = 0;
+
+    // TODO: Use svcGetInfo to get the address space in find_free_address
+    // BODY: We should use svcGetInfo to get the address space in
+    // BODY: `find_free_address`. This is extremely important as the low
+    // BODY: addresses (from 0 to ADDRESS_SPACE_MIN) are not usable, but are
+    // BODY: marked as available by QueryMemory.
+    // BODY:
+    // BODY: Here's a sample implementation for when we'll have GetInfo impl'd.
+    // BODY:
+    // BODY: ```rust
+    // BODY: lazy_static! {
+    // BODY:     static ref ADDRESS_SPACE: (usize, usize) = {
+    // BODY:         let addr_space_base = syscalls::get_info(Process::current(), 12, 0).unwrap();
+    // BODY:         let addr_space_size = syscalls::get_info(Process::current(), 13, 0).unwrap();
+    // BODY:         (addr_space_base, addr_space_base + addr_space_size)
+    // BODY:     };
+    // BODY: }
+    // BODY: ```
+
+    let mut addr = 0x00200000;
     // Go over the address space.
     loop {
         let (meminfo, _) = syscalls::query_memory(addr)?;

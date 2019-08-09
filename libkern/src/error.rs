@@ -30,7 +30,8 @@ enum_with_val! {
         InvalidMemState = 106,
         /// The memory permissions passed are wrong.
         InvalidMemPerms = 108,
-        // InvalidMemRange = 110,
+        /// Memory range is not at an expected location.
+        InvalidMemRange = 110,
         // InvalidThreadPrio = 112,
         // InvalidProcId = 113,
         /// Passed handle is invalid.
@@ -48,7 +49,8 @@ enum_with_val! {
         Canceled = 118,
         /// A size or address was given exceeding the maximum allowed value.
         ExceedingMaximum = 119,
-        // InvalidEnum = 120,
+        /// No enum variants match this integer value.
+        InvalidEnum = 120,
         /// The given entry does not exist.
         NoSuchEntry = 121,
         // AlreadyRegistered = 122,

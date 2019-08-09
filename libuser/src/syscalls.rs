@@ -4,6 +4,7 @@ use core::slice;
 use crate::types::*;
 pub use sunrise_libkern::nr;
 pub use sunrise_libkern::{MemoryInfo, MemoryPermissions};
+pub use sunrise_libkern::process::*;
 use crate::error::KernelError;
 
 // Assembly blob can't get documented, but clippy requires it.
@@ -524,5 +525,16 @@ pub unsafe fn set_thread_area(address: usize) -> Result<(), KernelError> {
     unsafe {
         syscall(nr::SetThreadArea, address, 0, 0, 0, 0, 0)?;
         Ok(())
+    }
+}
+
+/// Creates a new process with the given parameters.
+///
+/// Note that you probably don't want to use this! Look instead for
+/// ProcessMana's `LaunchTitle` function.
+pub fn create_process(procinfo: &ProcInfo, caps: &[u32]) -> Result<Process, KernelError> {
+    unsafe {
+        let (hnd, ..) = syscall(nr::CreateProcess, procinfo as *const _ as usize, caps.as_ptr() as usize, caps.len(), 0, 0, 0)?;
+        Ok(Process(Handle::new(hnd as _)))
     }
 }

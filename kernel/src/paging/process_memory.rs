@@ -150,14 +150,11 @@ impl Default for ProcessMemory {
         // we don't have ASRL yet :(
         let heap_base_address = VirtualAddress(0x80000000);
 
-        let mut ret = ProcessMemory {
+        let ret = ProcessMemory {
             userspace_bookkeping: UserspaceBookkeeping::new(),
             table_hierarchy: InactiveHierarchy::new(),
             heap_base_address,
         };
-        // unconditionally guard the very first page, for NULL pointers.
-        ret.guard(VirtualAddress(0x00000000), PAGE_SIZE, MemoryType::Reserved)
-            .expect("Cannot guard first page of ProcessMemory");
         ret
     }
 }

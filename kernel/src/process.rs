@@ -25,6 +25,7 @@ pub use self::capabilities::ProcessCapabilities;
 use crate::paging::{InactiveHierarchy, InactiveHierarchyTrait};
 use self::thread_local_storage::TLSManager;
 use crate::i386::interrupt_service_routines::UserspaceHardwareContext;
+use sunrise_libkern::process::ProcInfo;
 
 /// The struct representing a process. There's one for every process.
 ///
@@ -51,6 +52,9 @@ pub struct ProcessStruct {
     pub threads:              SpinLockIRQ<Vec<Weak<ThreadStruct>>>,
     /// Marks when the process is dying.
     pub killed:               AtomicBool,
+
+    /// The entrypoint of the main thread.
+    pub entrypoint:           usize,
 
     /// Permissions of this process.
     pub capabilities:             ProcessCapabilities,
@@ -449,7 +453,7 @@ impl ProcessStruct {
     ///
     /// Panics if max PID has been reached, which it shouldn't have since we're the first process.
     // todo: return an error instead of panicking
-    pub fn new(name: String, kacs: Option<&[u8]>) -> Result<Arc<ProcessStruct>, KernelError> {
+    pub fn new(procinfo: &ProcInfo, kacs: Option<&[u8]>) -> Result<Arc<ProcessStruct>, KernelError> {
         // allocate its memory space
         let pmemory = Mutex::new(ProcessMemory::default());
 
@@ -469,7 +473,8 @@ impl ProcessStruct {
         let p = Arc::new(
             ProcessStruct {
                 pid,
-                name,
+                name: String::from_utf8_lossy(&procinfo.name).into_owned(),
+                entrypoint: procinfo.code_addr as usize,
                 pmemory,
                 threads: SpinLockIRQ::new(Vec::new()),
                 phandles: SpinLockIRQ::new(HandleTable::default()),
@@ -516,6 +521,7 @@ impl ProcessStruct {
         ProcessStruct {
                 pid,
                 name: String::from("init"),
+                entrypoint: 0,
                 pmemory: Mutex::new(pmemory),
                 threads: SpinLockIRQ::new(Vec::new()),
                 phandles: SpinLockIRQ::new(HandleTable::default()),

@@ -22,7 +22,7 @@ use super::{PAGE_SIZE, ENTRY_COUNT};
 #[derive(Debug)] pub struct RecursiveTablesLand;
 
 impl VirtualSpaceLand for UserLand {
-    const START: VirtualAddress = VirtualAddress(0x00000000);
+    const START: VirtualAddress = VirtualAddress(0x00200000);
     const END:   VirtualAddress = VirtualAddress(0xbfffffff);
 }
 
@@ -58,5 +58,6 @@ const_assert!(UserLand::START.0 < UserLand::END.0);
 const_assert!(RecursiveTablesLand::START.0 < RecursiveTablesLand::END.0);
 
 const_assert!(KernelLand::START.0 % (ENTRY_COUNT * PAGE_SIZE) == 0);
-const_assert!(UserLand::START.0   % (ENTRY_COUNT * PAGE_SIZE) == 0);
+// TODO: Ask the weird animal if this will unleash the kraken.
+//const_assert!(UserLand::START.0   % (ENTRY_COUNT * PAGE_SIZE) == 0);
 const_assert!(RecursiveTablesLand::START.0 % (ENTRY_COUNT * PAGE_SIZE) == 0);

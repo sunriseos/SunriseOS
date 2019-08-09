@@ -1,7 +1,7 @@
 //! Bookkeeping of mappings in UserLand
 
 use crate::mem::VirtualAddress;
-use crate::paging::lands::{KernelLand, RecursiveTablesLand, VirtualSpaceLand};
+use crate::paging::lands::{UserLand, KernelLand, RecursiveTablesLand, VirtualSpaceLand};
 use crate::paging::mapping::MappingFrames;
 use crate::paging::MappingAccessRights;
 use sunrise_libkern::MemoryType;
@@ -200,7 +200,7 @@ impl UserspaceBookkeeping {
     /// Returns a KernelError if `length` is 0.
     pub fn find_available_space(&self, length: usize) -> Result<VirtualAddress, KernelError> {
         check_nonzero_length(length)?;
-        let mut last_address = VirtualAddress(0x00000000);
+        let mut last_address = UserLand::START;
         for m in self.mappings.values() {
             if m.address() - last_address >= length {
                 return Ok(last_address)

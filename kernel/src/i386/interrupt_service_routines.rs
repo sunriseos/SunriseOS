@@ -945,6 +945,7 @@ fn syscall_interrupt_dispatcher(_exception_name: &'static str, hwcontext: &mut U
         (true, nr::CreatePort) => hwcontext.apply2(create_port(x0 as _, x1 != 0, UserSpacePtr(x2 as _))),
         (true, nr::ManageNamedPort) => hwcontext.apply1(manage_named_port(UserSpacePtr(x0 as _), x1 as _)),
         (true, nr::ConnectToPort) => hwcontext.apply1(connect_to_port(x0 as _)),
+        (true, nr::CreateProcess) => hwcontext.apply1(create_process(UserSpacePtr(x0 as _), UserSpacePtr::from_raw_parts(x1 as _, x2 * 4))),
 
         // sunrise extensions
         (true, nr::MapFramebuffer) => hwcontext.apply4(map_framebuffer()),

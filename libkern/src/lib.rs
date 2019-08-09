@@ -31,6 +31,8 @@ use bitfield::bitfield;
 use static_assertions::assert_eq_size;
 use core::mem::size_of;
 
+pub mod process;
+
 bitfield! {
     /// Represents the current state of a memory region: why is it allocated, and
     /// what operations are allowed.

@@ -40,7 +40,7 @@ pub struct MappedGrubModule<'a> {
 /// Maps a grub module, which already lives in reserved physical memory, into the KernelLand.
 ///
 /// # Error:
-/// 
+///
 /// * VirtualMemoryExhaustion: cannot find virtual memory where to map it.
 pub fn map_grub_module(module: &ModuleTag) -> Result<MappedGrubModule<'_>, KernelError> {
     let start_address_aligned = PhysicalAddress(utils::align_down(module.start_address() as usize, PAGE_SIZE));
@@ -97,20 +97,19 @@ pub fn get_kacs<'a>(module: &'a MappedGrubModule<'_>) -> Option<&'a [u8]> {
 
 /// Loads the given kernel built-in into the given page table.
 /// Returns address of entry point
-pub fn load_builtin(process_memory: &mut ProcessMemory, module: &MappedGrubModule<'_>) -> usize {
+pub fn load_builtin(process_memory: &mut ProcessMemory, module: &MappedGrubModule<'_>, base: usize) -> usize {
     let elf = module.elf.as_ref().expect("Failed parsing multiboot module as elf");
 
     // load all segments into the page_table we had above
     for ph in elf.program_iter().filter(|ph|
         ph.get_type().expect("Failed to get type of elf program header") == Load)
     {
-        load_segment(process_memory, ph, &elf);
+        load_segment(process_memory, ph, &elf, base);
     }
 
     // return the entry point
-    // TODO: ASLR
-    // BODY: We should generate a random aslr base.
-    let entry_point = 0x400000 + elf.header.pt2.entry_point();
+    let entry_point = base + elf.header.pt2.entry_point() as usize;
+    assert_eq!(entry_point, base);
     info!("Entry point : {:#x?}", entry_point);
 
     entry_point as usize
@@ -120,7 +119,7 @@ pub fn load_builtin(process_memory: &mut ProcessMemory, module: &MappedGrubModul
 /// and filling remaining with 0s.
 /// This is used by NOBITS sections (.bss), this way we initialize them to 0.
 #[allow(clippy::match_bool)] // more readable
-fn load_segment(process_memory: &mut ProcessMemory, segment: ProgramHeader<'_>, elf_file: &ElfFile) {
+fn load_segment(process_memory: &mut ProcessMemory, segment: ProgramHeader<'_>, elf_file: &ElfFile, base: usize) {
     // Map the segment memory in KernelLand
     let mem_size_total = align_up(segment.mem_size() as usize, PAGE_SIZE);
 
@@ -138,7 +137,7 @@ fn load_segment(process_memory: &mut ProcessMemory, segment: ProgramHeader<'_>, 
         flags |= MappingAccessRights::EXECUTABLE
     }
 
-    let virtual_addr = 0x400000 + segment.virtual_addr() as usize;
+    let virtual_addr = base + segment.virtual_addr() as usize;
 
     // Create the mapping in UserLand
     let userspace_addr = VirtualAddress(virtual_addr);
