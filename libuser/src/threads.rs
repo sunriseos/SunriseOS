@@ -206,6 +206,14 @@ impl Thread {
     /// Allocates the stack, sets up the context and TLS, and calls `svcCreateThread`.
     ///
     /// [`start`]: Thread::start
+    // TODO: Libuser Thread stack guard
+    // BODY: Currently the stack of every non-main thread is allocated in the heap, and no page
+    // BODY: guard protects from stack-overflowing and rewriting all the heap.
+    // BODY:
+    // BODY: This is of course terrible for security, as with this stack overflowing is U.B.
+    // BODY:
+    // BODY: The simpler way to fix this would be to continue allocating the stack on the heap,
+    // BODY: but remap the last page with no permissions with the yet unimplemented svcMapMemory syscall.
     pub fn create(entry: fn (usize) -> (), arg: usize) -> Result<Self, Error> {
 
         let tls_elf = Once::new();
@@ -218,12 +226,16 @@ impl Thread {
             tls_elf: tls_elf,
             thread_handle: Once::new(), // will be rewritten in a second
         }));
-        match syscalls::create_thread(
-            thread_trampoline,
-            &**context as *const ThreadContext as usize,
-            (&**context.stack.as_ref().unwrap() as *const u8).wrapping_add(STACK_SIZE),
-            0,
-            0) {
+        match unsafe {
+            // safe: sp is valid and points to memory only owned by the thread,
+            //       which is used exclusively for stack.
+            syscalls::create_thread(
+                thread_trampoline,
+                &**context as *const ThreadContext as usize,
+                (&**context.stack.as_ref().unwrap() as *const u8).wrapping_add(STACK_SIZE),
+                0,
+                0)
+        } {
             Err(err) => {
                 error!("Failed to create thread {:?}: {}", &*context, err);
                 // dealloc the stack and context

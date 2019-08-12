@@ -145,7 +145,11 @@ pub fn exit_process() -> ! {
 }
 
 /// Creates a thread in the current process.
-pub fn create_thread(ip: extern "fastcall" fn(usize) -> !, arg: usize, sp: *const u8, priority: u32, processor_id: u32) -> Result<Thread, KernelError> {
+///
+/// # Unsafety
+///
+/// `sp` must a valid pointer to a stack that is uniquely owned, as the thread will write to it.
+pub unsafe fn create_thread(ip: extern "fastcall" fn(usize) -> !, arg: usize, sp: *const u8, priority: u32, processor_id: u32) -> Result<Thread, KernelError> {
     unsafe {
         let (out_handle, ..) = syscall(nr::CreateThread, ip as usize, arg, sp as _, priority as _, processor_id as _, 0)?;
         Ok(Thread(Handle::new(out_handle as _)))
