@@ -299,6 +299,11 @@ impl InactiveHierarchyTrait for InactiveHierarchy {
         // Copy the kernel space tables
         self.copy_active_kernel_space();
         super::swap_cr3(self.directory_physical_address);
+        // Update the cr3 DOUBLE_FAULT_TSS will switch to when we double fault
+        // DOUBLE_FAULT_TASK should only be locked during init and update, and switch_to is not re-entrant.
+        crate::i386::gdt::DOUBLE_FAULT_TASK
+            .try_lock().expect("Cannot update DOUBLE_FAULT_TASK's cr3")
+            .cr3 = self.directory_physical_address.addr() as u32;
     }
 
     fn copy_active_kernel_space(&mut self) {

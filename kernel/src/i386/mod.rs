@@ -4,9 +4,6 @@
 #![cfg(any(target_arch = "x86", test, rustdoc))]
 #![allow(dead_code)]
 
-use alloc::boxed::Box;
-use core::ops::{Deref, DerefMut};
-
 pub mod acpi;
 
 #[macro_use]
@@ -127,6 +124,41 @@ pub mod instructions {
         pub fn cs() -> SegmentSelector {
             let segment: u16;
             unsafe { asm!("mov %cs, $0" : "=r" (segment) ) };
+            SegmentSelector(segment)
+        }
+
+        /// Read the value of the stack segment register.
+        pub fn ss() -> SegmentSelector {
+            let segment: u16;
+            unsafe { asm!("mov %ss, $0" : "=r" (segment) ) };
+            SegmentSelector(segment)
+        }
+
+        /// Read the value of the data segment register.
+        pub fn ds() -> SegmentSelector {
+            let segment: u16;
+            unsafe { asm!("mov %ds, $0" : "=r" (segment) ) };
+            SegmentSelector(segment)
+        }
+
+        /// Read the value of the es segment register.
+        pub fn es() -> SegmentSelector {
+            let segment: u16;
+            unsafe { asm!("mov %es, $0" : "=r" (segment) ) };
+            SegmentSelector(segment)
+        }
+
+        /// Read the value of the fs segment register.
+        pub fn fs() -> SegmentSelector {
+            let segment: u16;
+            unsafe { asm!("mov %fs, $0" : "=r" (segment) ) };
+            SegmentSelector(segment)
+        }
+
+        /// Read the value of the gs segment register.
+        pub fn gs() -> SegmentSelector {
+            let segment: u16;
+            unsafe { asm!("mov %gs, $0" : "=r" (segment) ) };
             SegmentSelector(segment)
         }
     }
@@ -256,7 +288,17 @@ impl PrivilegeLevel {
 /// information about a task. The TSS is primarily suited for hardware multitasking,
 /// where each individual process has its own TSS.
 /// ([see OSDEV](https://wiki.osdev.org/TSS))
-#[repr(C)]
+#[repr(C, align(128))] // According to the IA32-E PDF, volume 3, 7.2.1:
+// If paging is used:
+// - Avoid placing a page boundary in the part of the TSS that the processor
+//   reads during a task switch (the first 104 bytes). The processor may not
+//   correctly perform address translations if a boundary occurs in this area.
+//   During a task switch, the processor reads and writes into the first 104
+//   bytes of each TSS (using contiguous physical addresses beginning with the
+//   physical address of the first byte of the TSS). So, after TSS access
+//   begins, if part of the 104 bytes is not physically contiguous, the
+//   processor will access incorrect information without generating a
+//   page-fault exception.
 #[derive(Copy, Clone, Debug)]
 #[allow(missing_docs, clippy::missing_docs_in_private_items)]
 pub struct TssStruct {
@@ -300,8 +342,17 @@ pub struct TssStruct {
     pub iopboffset: u16,
 }
 
-impl Default for TssStruct {
-    fn default() -> TssStruct {
+impl TssStruct {
+    /// Creates an empty TssStruct.
+    ///
+    /// All fields are set to `0`, suitable for static declarations, so that it can live in the `.bss`.
+    ///
+    /// The TssStruct must then be initialized with [init].
+    ///
+    /// Note that until it is initialized properly, the `.iopboffset` field will be invalid.
+    ///
+    /// [init]: TssStruct::init
+    pub const fn empty() -> TssStruct {
         TssStruct {
             _reserved1: 0,
             link: 0,
@@ -339,40 +390,23 @@ impl Default for TssStruct {
             gs: 0,
             _reservedb: 0,
             ldt_selector: 0,
-            iopboffset: ::core::mem::size_of::<TssStruct>() as u16,
+            iopboffset: 0,
             _reservedc: 0,
         }
     }
-}
 
-const_assert_eq!(::core::mem::size_of::<TssStruct>(), 0x68);
-
-impl TssStruct {
-    /// Creates a new TssStruct.
+    /// Fills the TSS.
     ///
-    /// The new struct inherits the current task's values (except registers, which are set to 0)
-    pub fn new() -> TssStruct {
-        let ds: u16;
-        let cs: u16;
-        let ss: u16;
-        let cr3: u32;
-        let ldt_selector: u16;
+    /// The TSS is filled with kernel segments selectors, and the current cr3.
+    /// Registers are set to 0.
+    pub fn init(&mut self) {
+        let ds = gdt::GdtIndex::KData.selector().0;
+        let cs = gdt::GdtIndex::KCode.selector().0;
+        let ss = gdt::GdtIndex::KStack.selector().0;
+        let cr3 = crate::paging::read_cr3().addr() as u32;
+        let ldt_selector = gdt::GdtIndex::LDT.selector().0;
 
-        unsafe {
-            // Safety: this is perfectly safe. Maybe I should do safe wrappers for this however...
-            asm!("
-                 mov AX, DS
-                 mov $0, AX
-                 mov AX, CS
-                 mov $1, AX
-                 mov AX, SS
-                 mov $2, AX
-                 mov $3, CR3
-                 sldt $4
-             " : "=r"(ds), "=r"(cs), "=r"(ss), "=r"(cr3), "=r"(ldt_selector) :: "ax" : "intel");
-        }
-
-        TssStruct {
+        *self = TssStruct {
             ss0: ss,
             ss1: ss,
             ss2: ss,
@@ -384,7 +418,8 @@ impl TssStruct {
             ds: ds,
             fs: ds,
             gs: ds,
-            ..TssStruct::default()
+            iopboffset: ::core::mem::size_of::<TssStruct>() as u16,
+            ..TssStruct::empty()
         }
     }
 
@@ -403,45 +438,5 @@ impl TssStruct {
     /// this TSS, we will resume running at the given instruction.
     pub fn set_ip(&mut self, eip: u32) {
         self.eip = eip;
-    }
-}
-
-/// Wrapper around TssStruct ensuring it is kept at the page boundary.
-///
-/// According to the IA32-E PDF, volume 3, 7.2.1:
-///
-/// If paging is used:
-/// - Avoid placing a page boundary in the part of the TSS that the processor
-///   reads during a task switch (the first 104 bytes). The processor may not
-///   correctly perform address translations if a boundary occurs in this area.
-///   During a task switch, the processor reads and writes into the first 104
-///   bytes of each TSS (using contiguous physical addresses beginning with the
-///   physical address of the first byte of the TSS). So, after TSS access
-///   begins, if part of the 104 bytes is not physically contiguous, the
-///   processor will access incorrect information without generating a
-///   page-fault exception.
-#[derive(Debug)]
-#[repr(C, align(4096))]
-pub struct AlignedTssStruct(TssStruct);
-
-impl AlignedTssStruct {
-    /// Create a new AlignedTssStruct, using boxing to avoid putting a ridiculously large
-    /// object (4kb) on the stack.
-    pub fn new(tss: TssStruct) -> Box<AlignedTssStruct> {
-        box AlignedTssStruct(tss)
-    }
-}
-
-impl Deref for AlignedTssStruct {
-    type Target = TssStruct;
-
-    fn deref(&self) -> &TssStruct {
-        &self.0
-    }
-}
-
-impl DerefMut for AlignedTssStruct {
-    fn deref_mut(&mut self) -> &mut TssStruct {
-        &mut self.0
     }
 }

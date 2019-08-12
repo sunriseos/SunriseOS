@@ -52,6 +52,12 @@ impl ModuleHeader {
     pub const MAGIC: u32 = 0x30444F4D;
 }
 
+extern "C" {
+    /// After relocations have been performed, you can access the module_header in Rust code
+    /// through this symbol.
+    pub static module_header: ModuleHeader;
+}
+
 /// A simple definition of a ELF Dynamic section entry.
 #[repr(C)]
 #[derive(Debug)]
@@ -124,15 +130,15 @@ const R_386_RELATIVE: usize = 8;
 #[cfg(target_os = "none")]
 #[no_mangle]
 #[allow(clippy::cast_ptr_alignment)]
-pub unsafe extern fn relocate_self(aslr_base: *mut u8, module_header: *const ModuleHeader) -> u32 {
-    let module_header_address = module_header as *const u8;
-    let module_header = &(*module_header);
+pub unsafe extern fn relocate_self(aslr_base: *mut u8, module_headr: *const ModuleHeader) -> u32 {
+    let module_header_address = module_headr as *const u8;
+    let module_headr = &(*module_headr);
 
-    if module_header.magic != ModuleHeader::MAGIC {
+    if module_headr.magic != ModuleHeader::MAGIC {
         return 1;
     }
 
-    let mut dynamic = module_header_address.add(module_header.dynamic_off as usize) as *const ElfDyn;
+    let mut dynamic = module_header_address.add(module_headr.dynamic_off as usize) as *const ElfDyn;
 
     let mut rela_offset = None;
     let mut rela_entry_size = 0;

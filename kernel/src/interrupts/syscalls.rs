@@ -14,13 +14,13 @@ use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use crate::ipc;
-use super::check_thread_killed;
 use crate::error::{UserspaceError, KernelError};
 use crate::sync::RwLock;
 use crate::timer;
 use failure::Backtrace;
-use sunrise_libkern::{nr, SYSCALL_NAMES, MemoryInfo, MemoryAttributes, MemoryPermissions, MemoryType};
+use sunrise_libkern::{MemoryInfo, MemoryAttributes, MemoryPermissions, MemoryType};
 use bit_field::BitArray;
+use crate::i386::gdt::{GDT, GdtIndex};
 
 /// Resize the heap of a process, just like a brk.
 /// It can both expand, and shrink the heap.
@@ -36,7 +36,7 @@ use bit_field::BitArray;
 /// * `new_size` must be [PAGE_SIZE] aligned.
 ///
 /// [PAGE_SIZE]: crate::paging::PAGE_SIZE
-fn set_heap_size(new_size: usize) -> Result<usize, UserspaceError> {
+pub fn set_heap_size(new_size: usize) -> Result<usize, UserspaceError> {
     let p = get_current_process();
     let mut pmemory = p.pmemory.lock();
     let heap_addr = pmemory.resize_heap(new_size)?;
@@ -44,7 +44,7 @@ fn set_heap_size(new_size: usize) -> Result<usize, UserspaceError> {
 }
 
 /// Maps the vga frame buffer mmio in userspace memory
-fn map_framebuffer() -> Result<(usize, usize, usize, usize), UserspaceError> {
+pub fn map_framebuffer() -> Result<(usize, usize, usize, usize), UserspaceError> {
     let tag = i386::multiboot::get_boot_information().framebuffer_tag()
         .expect("Framebuffer to be provided");
     let framebuffer_size = tag.bpp as usize
@@ -81,7 +81,7 @@ fn map_framebuffer() -> Result<(usize, usize, usize, usize), UserspaceError> {
 /// # Error
 ///
 /// NoSuchEntry: IRQ above 0x3FF or outside the IRQ access mask was given.
-fn create_interrupt_event(irq_num: usize, _flag: u32) -> Result<usize, UserspaceError> {
+pub fn create_interrupt_event(irq_num: usize, _flag: u32) -> Result<usize, UserspaceError> {
     // TODO: Properly handle flags in create_interrupt_event.
     // BODY: The flags in create_interrupt_event configure the triggering of the
     // BODY: event. If it is false, the IRQ is active HIGH level sensitive. If it
@@ -135,7 +135,7 @@ fn create_interrupt_event(irq_num: usize, _flag: u32) -> Result<usize, Userspace
 // BODY:
 // BODY: For now `query_physical_address` is providing an additional "offset in physical region" return value,
 // BODY: to help KFS drivers doing a virt_to_phys without needing to walk the list of physical regions.
-fn query_physical_address(virtual_address: usize) -> Result<(usize, usize, usize, usize), UserspaceError> {
+pub fn query_physical_address(virtual_address: usize) -> Result<(usize, usize, usize, usize), UserspaceError> {
     let virtual_address = VirtualAddress(virtual_address);
     let proc = scheduler::get_current_process();
     let mem = proc.pmemory.lock();
@@ -168,7 +168,7 @@ fn query_physical_address(virtual_address: usize) -> Result<(usize, usize, usize
 ///
 /// - Timeout: the timeout was reached without a signal occuring on the given handles.
 /// - InvalidHandle: A handle in the handle table does not exist.
-fn wait_synchronization(handles_ptr: UserSpacePtr<[u32]>, timeout_ns: usize) -> Result<usize, UserspaceError> {
+pub fn wait_synchronization(handles_ptr: UserSpacePtr<[u32]>, timeout_ns: usize) -> Result<usize, UserspaceError> {
     // A list of underlying handles to wait for...
     let mut handle_arr = Vec::new();
     let proc = scheduler::get_current_process();
@@ -212,7 +212,7 @@ fn wait_synchronization(handles_ptr: UserSpacePtr<[u32]>, timeout_ns: usize) -> 
 }
 
 /// Print the passed string to the serial port.
-fn output_debug_string(msg: UserSpacePtr<[u8]>, level: usize, target: UserSpacePtr<[u8]>) -> Result<(), UserspaceError> {
+pub fn output_debug_string(msg: UserSpacePtr<[u8]>, level: usize, target: UserSpacePtr<[u8]>) -> Result<(), UserspaceError> {
     let level = match level {
         00..20    => log::Level::Error,
         20..40    => log::Level::Warn,
@@ -226,7 +226,7 @@ fn output_debug_string(msg: UserSpacePtr<[u8]>, level: usize, target: UserSpaceP
 }
 
 /// Kills our own process.
-fn exit_process() -> Result<(), UserspaceError> {
+pub fn exit_process() -> Result<(), UserspaceError> {
     ProcessStruct::kill_process(get_current_process());
     Ok(())
 }
@@ -241,7 +241,7 @@ fn exit_process() -> Result<(), UserspaceError> {
 ///
 /// - InvalidHandle: The passed handle does not exist, or is not a ClientPort.
 /// - PortRemoteDead: All associated ServerPort handles are closed
-fn connect_to_port(handle: u32) -> Result<usize, UserspaceError> {
+pub fn connect_to_port(handle: u32) -> Result<usize, UserspaceError> {
     let curproc = scheduler::get_current_process();
     let clientport = curproc.phandles.lock().get_handle(handle)?.as_client_port()?;
     let clientsess = clientport.connect()?;
@@ -250,7 +250,7 @@ fn connect_to_port(handle: u32) -> Result<usize, UserspaceError> {
 }
 
 /// Kills our own thread.
-fn exit_thread() -> Result<(), UserspaceError> {
+pub fn exit_thread() -> Result<(), UserspaceError> {
     ThreadStruct::kill(get_current_thread());
     Ok(())
 }
@@ -269,9 +269,9 @@ fn exit_thread() -> Result<(), UserspaceError> {
 /// # Returns
 ///
 /// A thread_handle to the created thread.
-fn create_thread(ip: usize, arg: usize, sp: usize, _priority: u32, _processor_id: u32) -> Result<usize, UserspaceError> {
+pub fn create_thread(ip: usize, arg: usize, sp: usize, _priority: u32, _processor_id: u32) -> Result<usize, UserspaceError> {
     let cur_proc = get_current_process();
-    let thread = ThreadStruct::new(&cur_proc, VirtualAddress(ip), VirtualAddress(sp), arg)?;
+    let thread = ThreadStruct::new(&cur_proc, VirtualAddress(ip), VirtualAddress(sp), Some(arg))?;
     let handle = Handle::Thread(thread);
     let mut handles_table = cur_proc.phandles.lock();
     Ok(handles_table.add_handle(Arc::new(handle)) as usize)
@@ -284,7 +284,7 @@ fn create_thread(ip: usize, arg: usize, sp: usize, _priority: u32, _processor_id
 /// * `InvalidHandle` if the handle is not a thread_handle,
 /// * `ProcessAlreadyStarted` if the thread has already started,
 #[allow(clippy::unit_arg)]
-fn start_thread(thread_handle: u32) -> Result<(), UserspaceError> {
+pub fn start_thread(thread_handle: u32) -> Result<(), UserspaceError> {
     let cur_proc = get_current_process();
     let handles_table = cur_proc.phandles.lock();
     let thread = handles_table.get_handle(thread_handle)?.as_thread_handle()?;
@@ -303,7 +303,7 @@ fn start_thread(thread_handle: u32) -> Result<(), UserspaceError> {
 /// - ExceedingMaximum: Name is bigger than 12 character, or is missing a \0.
 /// - NoSuchEntry: No named port were registered with this name.
 /// - PortRemoteDead: All associated ServerPort handles are closed.
-fn connect_to_named_port(name: UserSpacePtr<[u8; 12]>) -> Result<usize, UserspaceError> {
+pub fn connect_to_named_port(name: UserSpacePtr<[u8; 12]>) -> Result<usize, UserspaceError> {
     let session = ipc::connect_to_named_port(*name)?;
     let curproc = scheduler::get_current_process();
     let hnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ClientSession(session)));
@@ -321,7 +321,7 @@ fn connect_to_named_port(name: UserSpacePtr<[u8; 12]>) -> Result<usize, Userspac
 /// # Error
 ///
 /// - ExceedingMaximum: Name is bigger than 12 character, or is missing a \0.
-fn manage_named_port(name_ptr: UserSpacePtr<[u8; 12]>, max_sessions: u32) -> Result<usize, UserspaceError> {
+pub fn manage_named_port(name_ptr: UserSpacePtr<[u8; 12]>, max_sessions: u32) -> Result<usize, UserspaceError> {
     let server = ipc::create_named_port(*name_ptr, max_sessions)?;
     let curproc = scheduler::get_current_process();
     let hnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ServerPort(server)));
@@ -338,7 +338,7 @@ fn manage_named_port(name_ptr: UserSpacePtr<[u8; 12]>, max_sessions: u32) -> Res
 /// # Error
 ///
 /// - InvalidHandle: Handles does not exist or is not a ServerPort.
-fn accept_session(porthandle: u32) -> Result<usize, UserspaceError> {
+pub fn accept_session(porthandle: u32) -> Result<usize, UserspaceError> {
     let curproc = scheduler::get_current_process();
     let handle = curproc.phandles.lock().get_handle(porthandle)?;
     let port = match *handle {
@@ -358,7 +358,7 @@ fn accept_session(porthandle: u32) -> Result<usize, UserspaceError> {
 /// # Error
 ///
 /// - PortRemoteDead: All ServerSession associated with this handle are closed.
-fn send_sync_request_with_user_buffer(buf: UserSpacePtrMut<[u8]>, handle: u32) -> Result<(), UserspaceError> {
+pub fn send_sync_request_with_user_buffer(buf: UserSpacePtrMut<[u8]>, handle: u32) -> Result<(), UserspaceError> {
     let proc = scheduler::get_current_process();
     let sess = proc.phandles.lock().get_handle(handle)?.as_client_session()?;
     sess.send_request(buf)
@@ -379,7 +379,7 @@ fn send_sync_request_with_user_buffer(buf: UserSpacePtrMut<[u8]>, handle: u32) -
 /// session has been closed, if one that appears earlier in the list has an
 /// incoming message, it will take priority and a result code of 0x0 will be
 /// returned.
-fn reply_and_receive_with_user_buffer(buf: UserSpacePtrMut<[u8]>, handles: UserSpacePtr<[u32]>, reply_target: u32, timeout: usize) -> Result<usize, UserspaceError> {
+pub fn reply_and_receive_with_user_buffer(buf: UserSpacePtrMut<[u8]>, handles: UserSpacePtr<[u32]>, reply_target: u32, timeout: usize) -> Result<usize, UserspaceError> {
     let proc = scheduler::get_current_process();
     if reply_target != 0 {
         // get session
@@ -398,7 +398,7 @@ fn reply_and_receive_with_user_buffer(buf: UserSpacePtrMut<[u8]>, handles: UserS
 /// Closed the passed handle.
 ///
 /// Does not accept 0xFFFF8001 or 0xFFFF8000 as handles.
-fn close_handle(handle: u32) -> Result<(), UserspaceError> {
+pub fn close_handle(handle: u32) -> Result<(), UserspaceError> {
     let proc = scheduler::get_current_process();
     proc.phandles.lock().delete_handle(handle)?;
     Ok(())
@@ -411,7 +411,7 @@ fn close_handle(handle: u32) -> Result<(), UserspaceError> {
 /// - 0 Yielding without core migration
 /// - -1 Yielding with core migration
 /// - -2 Yielding to any other thread
-fn sleep_thread(nanos: usize) -> Result<(), UserspaceError> {
+pub fn sleep_thread(nanos: usize) -> Result<(), UserspaceError> {
     if nanos == 0 {
         scheduler::schedule();
         Ok(())
@@ -422,7 +422,7 @@ fn sleep_thread(nanos: usize) -> Result<(), UserspaceError> {
 
 /// Create a new Port pair. Those ports are linked to each-other: The server will
 /// receive connections from the client.
-fn create_port(max_sessions: u32, _is_light: bool, _name_ptr: UserSpacePtr<[u8; 12]>) -> Result<(usize, usize), UserspaceError>{
+pub fn create_port(max_sessions: u32, _is_light: bool, _name_ptr: UserSpacePtr<[u8; 12]>) -> Result<(usize, usize), UserspaceError>{
     let (server, client) = ipc::port::new(max_sessions);
     let curproc = scheduler::get_current_process();
     let serverhnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ServerPort(server)));
@@ -436,7 +436,7 @@ fn create_port(max_sessions: u32, _is_light: bool, _name_ptr: UserSpacePtr<[u8; 
 ///
 /// Other perm can be used to enforce permission 1, 3, or 0x10000000 if don't
 /// care.
-fn create_shared_memory(size: u32, _myperm: u32, _otherperm: u32) -> Result<usize, UserspaceError> {
+pub fn create_shared_memory(size: u32, _myperm: u32, _otherperm: u32) -> Result<usize, UserspaceError> {
     let frames = FrameAllocator::allocate_frames_fragmented(size as usize)?;
     let handle = Arc::new(Handle::SharedMemory(Arc::new(RwLock::new(frames))));
     let curproc = get_current_process();
@@ -450,7 +450,7 @@ fn create_shared_memory(size: u32, _myperm: u32, _otherperm: u32) -> Result<usiz
 /// Increases reference count for the SharedMemory object. Thus in order to
 /// release the memory associated with the object, all handles to it must be
 /// closed and all mappings must be unmapped.
-fn map_shared_memory(handle: u32, addr: usize, size: usize, perm: u32) -> Result<(), UserspaceError> {
+pub fn map_shared_memory(handle: u32, addr: usize, size: usize, perm: u32) -> Result<(), UserspaceError> {
     let perm = MemoryPermissions::from_bits(perm).ok_or(UserspaceError::InvalidMemPerms)?;
     let curproc = get_current_process();
     let mem = curproc.phandles.lock().get_handle(handle)?.as_shared_memory()?;
@@ -470,7 +470,7 @@ fn map_shared_memory(handle: u32, addr: usize, size: usize, perm: u32) -> Result
 ///
 /// - InvalidAddress: address is not the start of a shared mapping
 /// - InvalidSize: Size is not the same as the mapping size.
-fn unmap_shared_memory(handle: u32, addr: usize, size: usize) -> Result<(), UserspaceError> {
+pub fn unmap_shared_memory(handle: u32, addr: usize, size: usize) -> Result<(), UserspaceError> {
     let curproc = get_current_process();
     let hmem = curproc.phandles.lock().get_handle(handle)?.as_shared_memory()?;
     let addr = VirtualAddress(addr);
@@ -508,7 +508,7 @@ fn unmap_shared_memory(handle: u32, addr: usize, size: usize) -> Result<(), User
 /// mapping that contains the provided address. Writes the output to the
 /// given userspace pointer to a MemoryInfo structure.
 #[inline(never)]
-fn query_memory(mut meminfo: UserSpacePtrMut<MemoryInfo>, _unk: usize, addr: usize) -> Result<usize, UserspaceError> {
+pub fn query_memory(mut meminfo: UserSpacePtrMut<MemoryInfo>, _unk: usize, addr: usize) -> Result<usize, UserspaceError> {
     let curproc = scheduler::get_current_process();
     let memlock = curproc.pmemory.lock();
     let qmem = memlock.query_memory(VirtualAddress(addr));
@@ -539,7 +539,7 @@ fn query_memory(mut meminfo: UserSpacePtrMut<MemoryInfo>, _unk: usize, addr: usi
 ///
 /// - A handle to a ServerSession
 /// - A handle to a ClientSession
-fn create_session(_is_light: bool, _unk: usize) -> Result<(usize, usize), UserspaceError> {
+pub fn create_session(_is_light: bool, _unk: usize) -> Result<(usize, usize), UserspaceError> {
     let (server, client) = ipc::session::new();
     let curproc = scheduler::get_current_process();
     let serverhnd = curproc.phandles.lock().add_handle(Arc::new(Handle::ServerSession(server)));
@@ -570,162 +570,40 @@ pub fn map_mmio_region(physical_address: usize, size: usize, virtual_address: us
     Ok(())
 }
 
-impl Registers {
-    /// Update the Registers with the passed result.
-    fn apply0(&mut self, ret: Result<(), UserspaceError>) {
-        self.apply3(ret.map(|_| (0, 0, 0)))
-    }
-
-    /// Update the Registers with the passed result.
-    fn apply1(&mut self, ret: Result<usize, UserspaceError>) {
-        self.apply3(ret.map(|v| (v, 0, 0)))
-    }
-
-    /// Update the Registers with the passed result.
-    fn apply2(&mut self, ret: Result<(usize, usize), UserspaceError>) {
-        self.apply3(ret.map(|(v0, v1)| (v0, v1, 0)))
-    }
-
-    /// Update the Registers with the passed result.
-    fn apply3(&mut self, ret: Result<(usize, usize, usize), UserspaceError>) {
-        self.apply4(ret.map(|(v0, v1, v2)| (v0, v1, v2, 0)))
-    }
-
-    /// Update the Registers with the passed result.
-    fn apply4(&mut self, ret: Result<(usize, usize, usize, usize), UserspaceError>) {
-        match ret {
-            Ok((v0, v1, v2, v3)) => {
-                self.eax = 0;
-                self.ebx = v0;
-                self.ecx = v1;
-                self.edx = v2;
-                self.esi = v3;
-                self.edi = 0;
-                self.ebp = 0;
-            },
-            Err(err) => {
-                self.eax = err.make_ret() as _;
-                self.ebx = 0;
-                self.ecx = 0;
-                self.edx = 0;
-                self.esi = 0;
-                self.edi = 0;
-                self.ebp = 0;
-            }
-        }
-    }
+/// Set thread local area pointer.
+///
+/// Akin to `set_thread_area` on Linux, this syscall sets the `gs` segment selector's base address
+/// to the address passed as argument.
+///
+/// The user will likely want to make it point to its elf thread local storage, as `gs:0` is expected
+/// to contain the thread pointer `tp`.
+///
+/// Unlike linux, you only have **one** user controlled segment, found in `gs`, and you can only set its address.
+///
+/// The limit will always be set to `0xFFFFFFFF`, and adding this offset to a non-zero base address
+/// means that the resulting address will "wrap around" the address space, and end-up **under**
+/// the base address.
+/// You can use this property to implement thread local storage variant II - gnu model,
+/// as thread local variable are expected to be found "below" `gs:0`, with "negative" offset such as
+/// `gs:0xFFFFFFFC`.
+///
+/// ## x86_64
+///
+/// ![same, but different, but still same](https://media.giphy.com/media/C6JQPEUsZUyVq/giphy.gif)
+///
+/// `fs` is used instead of `gs`, because reasons.
+///
+/// # Errors
+///
+/// * The whole initial design of TLS on x86 should be considered an error.
+/// * No returned error otherwise.
+pub fn set_thread_area(segment_base_address: usize) -> Result<(), UserspaceError> {
+    let segment_base_address = VirtualAddress(segment_base_address);
+    let mut gdt = GDT.r#try().expect("GDT not initialized").lock();
+    gdt.table[GdtIndex::UTlsElf as usize].set_base(segment_base_address.addr() as u32);
+    gdt.commit(None, None, None, None, None, None);
+    // store it in the thread struct.
+    let thread = get_current_thread();
+    *thread.tls_elf.lock() = segment_base_address;
+    Ok(())
 }
-
-/// Represents a register backup. The syscall wrapper constructs this structure
-/// before calling syscall_handler_inner, and then pops it before returning to
-/// userspace, allowing precise control over register state.
-#[repr(C)]
-#[derive(Debug)]
-#[allow(clippy::missing_docs_in_private_items)]
-pub struct Registers {
-    eax: usize,
-    ebx: usize,
-    ecx: usize,
-    edx: usize,
-    esi: usize,
-    edi: usize,
-    ebp: usize,
-}
-
-
-// TODO: Missing argument slot for SVCs on i386 backend
-// BODY: Our i386 SVC ABI is currently fairly different from the ABI used by
-// BODY: Horizon/NX. This is for two reasons:
-// BODY:
-// BODY: 1. We are missing one argument slot compared to the official SVCs, so
-// BODY:    we changed the ABI to work around it.
-// BODY:
-// BODY: 2. The Horizon ABI "skipping" over some register is an optimization for
-// BODY:    ARM, but doesn't help on i386.
-// BODY:
-// BODY: That being said, there is a way for us to recover the missing SVC slot.
-// BODY: We are currently "wasting" x0 for the syscall number. We could avoid
-// BODY: this by instead using different IDT entries for the different syscalls.
-// BODY: This is actually more in line with what the Horizon/NX kernel is doing
-// BODY: anyways.
-// BODY:
-// BODY: Once we've regained this missing slot, we'll be able to make our ABI
-// BODY: match the Horizon/NX 32-bit ABI. While the "skipping over" doesn't help
-// BODY: our performances, it doesn't really hurt it either, and having a uniform
-// BODY: ABI across platforms would make for lower maintenance.
-/// Syscall dispatcher. Dispatches to the various syscall handling functions
-/// based on registers.eax, and updates the registers struct with the correct
-/// return values.
-pub extern fn syscall_handler_inner(registers: &mut Registers) {
-
-    let (syscall_nr, x0, x1, x2, x3, x4, x5) = (registers.eax, registers.ebx, registers.ecx, registers.edx, registers.esi, registers.edi, registers.ebp);
-    let syscall_name = SYSCALL_NAMES.get(syscall_nr).unwrap_or(&"Unknown");
-
-    debug!("Handling syscall {} - x0: {}, x1: {}, x2: {}, x3: {}, x4: {}, x5: {}",
-          syscall_name, x0, x1, x2, x3, x4, x5);
-
-    let allowed = get_current_process().capabilities.syscall_mask.get_bit(syscall_nr);
-
-    if cfg!(feature = "no-security-check") && !allowed {
-        let curproc = get_current_process();
-        error!("Process {} attempted to use unauthorized syscall {} ({:#04x})",
-               curproc.name, syscall_name, syscall_nr);
-    }
-
-    let allowed = cfg!(feature = "no-security-check") || allowed;
-
-    match (allowed, syscall_nr) {
-        // Horizon-inspired syscalls!
-        (true, nr::SetHeapSize) => registers.apply1(set_heap_size(x0)),
-        (true, nr::QueryMemory) => registers.apply1(query_memory(UserSpacePtrMut(x0 as _), x1, x2)),
-        (true, nr::ExitProcess) => registers.apply0(exit_process()),
-        (true, nr::CreateThread) => registers.apply1(create_thread(x0, x1, x2, x3 as _, x4 as _)),
-        (true, nr::StartThread) => registers.apply0(start_thread(x0 as _)),
-        (true, nr::ExitThread) => registers.apply0(exit_thread()),
-        (true, nr::SleepThread) => registers.apply0(sleep_thread(x0)),
-        (true, nr::MapSharedMemory) => registers.apply0(map_shared_memory(x0 as _, x1 as _, x2 as _, x3 as _)),
-        (true, nr::UnmapSharedMemory) => registers.apply0(unmap_shared_memory(x0 as _, x1 as _, x2 as _)),
-        (true, nr::CloseHandle) => registers.apply0(close_handle(x0 as _)),
-        (true, nr::WaitSynchronization) => registers.apply1(wait_synchronization(UserSpacePtr::from_raw_parts(x0 as _, x1), x2)),
-        (true, nr::ConnectToNamedPort) => registers.apply1(connect_to_named_port(UserSpacePtr(x0 as _))),
-        (true, nr::SendSyncRequestWithUserBuffer) => registers.apply0(send_sync_request_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), x2 as _)),
-        (true, nr::OutputDebugString) => registers.apply0(output_debug_string(UserSpacePtr::from_raw_parts(x0 as _, x1), x2, UserSpacePtr::from_raw_parts(x3 as _, x4))),
-        (true, nr::CreateSession) => registers.apply2(create_session(x0 != 0, x1 as _)),
-        (true, nr::AcceptSession) => registers.apply1(accept_session(x0 as _)),
-        (true, nr::ReplyAndReceiveWithUserBuffer) => registers.apply1(reply_and_receive_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), UserSpacePtr::from_raw_parts(x2 as _, x3), x4 as _, x5)),
-        (true, nr::CreateSharedMemory) => registers.apply1(create_shared_memory(x0 as _, x1 as _, x2 as _)),
-        (true, nr::CreateInterruptEvent) => registers.apply1(create_interrupt_event(x0, x1 as u32)),
-        (true, nr::QueryPhysicalAddress) => registers.apply4(query_physical_address(x0 as _)),
-        (true, nr::CreatePort) => registers.apply2(create_port(x0 as _, x1 != 0, UserSpacePtr(x2 as _))),
-        (true, nr::ManageNamedPort) => registers.apply1(manage_named_port(UserSpacePtr(x0 as _), x1 as _)),
-        (true, nr::ConnectToPort) => registers.apply1(connect_to_port(x0 as _)),
-
-        // sunrise extensions
-        (true, nr::MapFramebuffer) => registers.apply4(map_framebuffer()),
-        (true, nr::MapMmioRegion) => registers.apply0(map_mmio_region(x0, x1, x2, x3 != 0)),
-
-        // Unknown/unauthorized syscall.
-        (false, _) => {
-            // Attempted to call unauthorized SVC. Horizon invokes usermode
-            // exception handling in some cases. Let's just kill the process for
-            // now.
-            let curproc = get_current_process();
-            error!("Process {} attempted to use unauthorized syscall {} ({:#04x}), killing",
-                   curproc.name, syscall_name, syscall_nr);
-            ProcessStruct::kill_process(curproc);
-        },
-        _ => {
-            let curproc = get_current_process();
-            error!("Process {} attempted to use unknown syscall {} ({:#04x}), killing",
-                   curproc.name, syscall_name, syscall_nr);
-            ProcessStruct::kill_process(curproc);
-        }
-    }
-
-    debug!("Returning from syscall {} - x0: {}, x1: {}, x2: {}, x3: {}, x4: {}, x5: {}, x6: {}", 
-        syscall_name, registers.eax, registers.ebx, registers.ecx, registers.edx, registers.esi, registers.edi, registers.ebp);
-
-    // Effectively kill the thread at syscall boundary
-    check_thread_killed();
-}
-

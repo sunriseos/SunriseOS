@@ -43,6 +43,8 @@ pub mod syscalls;
 pub mod mem;
 pub mod types;
 pub mod ipc;
+pub mod threads;
+pub mod thread_local_storage;
 
 #[gen_ipc(path = "../../ipcdefs/sm.id", prefix = "sunrise_libuser")]
 pub mod sm {}

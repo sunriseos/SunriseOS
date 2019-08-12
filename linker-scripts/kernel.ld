@@ -7,6 +7,7 @@ PHDRS
   rodata PT_LOAD ;
   data PT_LOAD ;
   dynamic PT_DYNAMIC ;
+  tls PT_TLS;
 }
 
 /* The kernel should be mapped in high memory */
@@ -42,6 +43,17 @@ SECTIONS {
 		*(.data.rel.ro.local.*) *(data.rel.ro .data.rel.ro.*)
 	    . = ALIGN(4K);
 	} : data
+
+    /* Thread Local sections */
+
+	.tdata : {
+	    *(.tdata .tdata.*)
+	} :tls :data
+
+	.tbss : {
+	    *(.tbss .tbss.*)
+	    *(.tcommon)
+	} :tls :data
 
 	/DISCARD/ : {
 		*(.comment*)

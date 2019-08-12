@@ -9,6 +9,9 @@ use crate::i386::process_switch::process_switch;
 use crate::sync::{Lock, SpinLockIRQ, SpinLockIRQGuard};
 use core::sync::atomic::Ordering;
 use crate::error::{UserspaceError};
+use sunrise_libkern::TLS;
+use core::cell::RefCell;
+use crate::cpu_locals::ARE_CPU_LOCALS_INITIALIZED_YET;
 
 /// An Arc to the currently running thread.
 ///
@@ -25,16 +28,18 @@ use crate::error::{UserspaceError};
 ///
 /// Setting this value should be done through set_current_thread, otherwise Bad Things:tm:
 /// will happen.
-static mut CURRENT_THREAD: Option<Arc<ThreadStruct>> = None;
+#[thread_local] // this is a cpu_local
+static CURRENT_THREAD: RefCell<Option<Arc<ThreadStruct>>> = RefCell::new(None);
 
 /// Gets the current ThreadStruct, incrementing its refcount.
 /// Will return None if we're in an early boot state, and it has not yet been initialized.
 pub fn try_get_current_thread() -> Option<Arc<ThreadStruct>> {
-    unsafe {
-        // Safe because modifications only happens in the schedule() function,
-        // and outside of that function, seen from a thread' perspective,
-        // CURRENT_THREAD will always have the same value
-        CURRENT_THREAD.clone()
+    // if cpu_locals haven't been initialized, accessing gs:0 will triple fault,
+    // so don't even remotely try to access it.
+    if !ARE_CPU_LOCALS_INITIALIZED_YET.load(Ordering::Relaxed) {
+        None
+    } else {
+        CURRENT_THREAD.borrow().clone()
     }
 }
 
@@ -56,15 +61,28 @@ pub fn get_current_process() -> Arc<ProcessStruct> {
 
 /// Sets the current ThreadStruct.
 ///
+/// Note that if `CURRENT_THREAD` was the last reference to the current thread, this is where it will
+/// be dropped.
+///
 /// Setting the current thread should *always* go through this function, and never
-/// by setting CURRENT_PROCESS directly. This function uses mem::replace to ensure
+/// by setting [`CURRENT_THREAD`] directly. This function uses mem::replace to ensure
 /// that the ThreadStruct's Drop is run with CURRENT_THREAD set to the *new* value.
 ///
 /// The passed function will be executed after setting the CURRENT_THREAD, but before
 /// setting it back to the RUNNING state.
+///
+/// # Unsafety
+///
+/// Interrupts must be disabled when calling this function. It will mutably borrow [`CURRENT_THREAD`],
+/// so we can't have interrupts on top of that which try to access it while it is borrowed mutably by us,
+/// otherwise the kernel will panic.
 #[allow(clippy::needless_pass_by_value)] // more readable
 unsafe fn set_current_thread<R, F: FnOnce() -> R>(t: Arc<ThreadStruct>, f: F) -> R {
-    mem::replace(&mut CURRENT_THREAD, Some(t.clone()));
+    let old_thread = {
+        mem::replace(&mut *CURRENT_THREAD.borrow_mut(), Some(t.clone()))
+    };
+    // drop RefMut first, then old thread.
+    drop(old_thread);
 
     let r = f();
 
@@ -109,7 +127,7 @@ pub fn add_to_schedule_queue(thread: Arc<ThreadStruct>) {
 /// Checks if a thread is already either in the schedule queue or currently running.
 pub fn is_in_schedule_queue(queue: &SpinLockIRQGuard<'_, Vec<Arc<ThreadStruct>>>,
                             thread: &Arc<ThreadStruct>) -> bool {
-    unsafe { CURRENT_THREAD.iter() }.filter(|v| {
+    CURRENT_THREAD.borrow().iter().filter(|v| {
         v.state.load(Ordering::SeqCst) != ThreadState::Stopped
     }).chain(queue.iter()).any(|elem| Arc::ptr_eq(thread, elem))
 }
@@ -274,7 +292,7 @@ where
 
                 let whoami = if !Arc::ptr_eq(&process_b, &proc) {
                     unsafe {
-                        // safety: interrupts are off
+                        // safety: interrupts are disabled by the interrupt_lock.
                         process_switch(process_b, proc)
                     }
                 } else {
@@ -287,7 +305,10 @@ where
                 // replace CURRENT_THREAD with ourself.
                 // If previously running thread had deleted all other references to itself, this
                 // is where its drop actually happens
-                unsafe { set_current_thread(whoami.clone(), || lock.lock()) }
+                unsafe {
+                    // safety: interrupts are disabled by the interrupt_lock.
+                    set_current_thread(whoami.clone(), || lock.lock())
+                }
             }
         };
         break retguard;
@@ -303,15 +324,33 @@ where
 ///
 /// The passed function should take care to change the protection level, and ensure it cleans up all
 /// the registers before calling the EIP, in order to avoid leaking information to userspace.
-pub fn scheduler_first_schedule<F: FnOnce()>(current_thread: Arc<ThreadStruct>, jump_to_entrypoint: F) {
+///
+/// # Unsafety:
+///
+/// Interrupts must be off when calling this function. It will set [`CURRENT_THREAD`], and then
+/// turn them on, as we are running a new thread, no SpinLockIRQ is held.
+pub unsafe fn scheduler_first_schedule<F: FnOnce()>(current_thread: Arc<ThreadStruct>, jump_to_entrypoint: F) {
     // replace CURRENT_THREAD with ourself.
     // If previously running thread had deleted all other references to itself, this
     // is where its drop actually happens
-    unsafe { set_current_thread(current_thread, || ()) };
+    unsafe {
+        // safety: interrupts are off
+        set_current_thread(current_thread, || ())
+    };
 
     unsafe {
         // this is a new process, no SpinLockIRQ is held
         crate::i386::instructions::interrupts::sti();
+    }
+
+    // memset the TLS, to clear previous owner's data.
+    // we do it here so don't have to CrossProcessMap it earlier.
+    unsafe {
+        // safe: we manage this memory, ptr is aligned, 0 is valid for every field of the TLS,
+        //       and TLS contains no padding bytes.
+        let tls_ptr = get_current_thread().tls_region.addr() as *mut TLS;
+        core::ptr::write_bytes(tls_ptr, 0u8, 1);
+        (*tls_ptr).ptr_self = tls_ptr
     }
 
     jump_to_entrypoint()

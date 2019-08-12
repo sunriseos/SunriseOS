@@ -220,7 +220,10 @@ impl ServerPort {
 
 /// A Thread. Created with the [create_thread syscall].
 ///
+/// See the [threads] module.
+///
 /// [create_thread syscall]: crate::syscalls::create_thread.
+/// [threads]: crate::threads
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct Thread(pub Handle);
@@ -230,12 +233,6 @@ impl Thread {
     /// may not be valid in all contexts!
     fn current() -> Thread {
         Thread(Handle::new(0xFFFF8000))
-    }
-
-    /// Start the thread.
-    pub fn start(&self) -> Result<(), Error> {
-        syscalls::start_thread(self)
-            .map_err(|v| v.into())
     }
 }
 

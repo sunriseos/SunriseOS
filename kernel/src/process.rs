@@ -20,9 +20,12 @@ use failure::Backtrace;
 use crate::frame_allocator::PhysicalMemRegion;
 use crate::sync::RwLock;
 
+pub mod thread_local_storage;
 mod capabilities;
 pub use self::capabilities::ProcessCapabilities;
 use crate::paging::{InactiveHierarchy, InactiveHierarchyTrait};
+use self::thread_local_storage::TLSManager;
+use crate::interrupts::UserspaceHardwareContext;
 
 /// The struct representing a process. There's one for every process.
 ///
@@ -52,6 +55,9 @@ pub struct ProcessStruct {
 
     /// Permissions of this process.
     pub capabilities:             ProcessCapabilities,
+
+    /// Tracks used and free allocated Thread Local Storage regions of this process.
+    pub tls_manager: Mutex<TLSManager>,
 
     /// An array of the created but not yet started threads.
     ///
@@ -108,8 +114,22 @@ pub struct ThreadStruct {
     /// The currently running process is indirectly kept alive by the `CURRENT_THREAD` global in scheduler.
     pub process: Arc<ProcessStruct>,
 
-    /// Argument passed to the entrypoint on first schedule.
-    pub arg: usize
+    /// Pointer to the Thread Local Storage region of this thread.
+    ///
+    /// * x86_32: loaded in the `fs` segment selector.
+    /// * x86_64: loaded in the `gs` segment selector.
+    pub tls_region: VirtualAddress,
+
+    /// Userspace's elf `Thread Pointer`.
+    ///
+    /// * x86_32: loaded in the `gs` segment selectors.
+    /// * x86_64: loaded in the `fs` segment selectors.
+    pub tls_elf: Mutex<VirtualAddress>,
+
+    /// Userspace hardware context of this thread.
+    ///
+    /// Registers are backed up every time we enter the kernel via a syscall/exception, for debug purposes.
+    pub userspace_hwcontext: SpinLock<UserspaceHardwareContext>,
 }
 
 /// A handle to a userspace-accessible resource.
@@ -433,6 +453,7 @@ impl ProcessStruct {
                 threads: SpinLockIRQ::new(Vec::new()),
                 phandles: SpinLockIRQ::new(HandleTable::default()),
                 killed: AtomicBool::new(false),
+                tls_manager: Mutex::new(TLSManager::default()),
                 thread_maternity: SpinLock::new(Vec::new()),
                 capabilities
             }
@@ -480,6 +501,7 @@ impl ProcessStruct {
                 phandles: SpinLockIRQ::new(HandleTable::default()),
                 killed: AtomicBool::new(false),
                 thread_maternity: SpinLock::new(Vec::new()),
+                tls_manager: Mutex::new(TLSManager::default()),
                 capabilities: ProcessCapabilities::default(),
             }
         )
@@ -531,7 +553,19 @@ impl ThreadStruct {
     ///
     /// The thread's only strong reference is stored in the process' maternity,
     /// and we return only a weak to it, that can directly be put in a thread_handle.
-    pub fn new(belonging_process: &Arc<ProcessStruct>, ep: VirtualAddress, stack: VirtualAddress, arg: usize) -> Result<Weak<Self>, KernelError> {
+    ///
+    /// ##### Argument
+    ///
+    /// * When creating a new thread from `svcCreateThread` you should pass `Some(thread_entry_arg)`.
+    ///   This should be the argument provided by the userspace, and will be passed to the thread
+    ///   when it starts.
+    /// * When creating the first thread of a process ("main thread") you should pass `None`.
+    ///   This function will recognise this condition, automatically push a handle to the created
+    ///   thread in the process' handle table, and this handle will be given as an argument to
+    ///   the thread itself when it starts, so that the main thread can know its thread handle.
+    pub fn new(belonging_process: &Arc<ProcessStruct>, ep: VirtualAddress, stack: VirtualAddress, arg: Option<usize>) -> Result<Weak<Self>, KernelError> {
+        // get its process memory
+        let mut pmemory = belonging_process.pmemory.lock();
 
         // allocate its kernel stack
         let kstack = KernelStack::allocate_stack()?;
@@ -542,21 +576,37 @@ impl ThreadStruct {
         // the state of the process, Stopped
         let state = ThreadStateAtomic::new(ThreadState::Stopped);
 
+        // allocate its thread local storage region
+        let tls = belonging_process.tls_manager.lock().allocate_tls(&mut pmemory)?;
+
         let t = Arc::new(
             ThreadStruct {
                 state,
                 kstack,
                 hwcontext : empty_hwcontext,
                 process: Arc::clone(belonging_process),
-                arg
+                tls_region: tls,
+                tls_elf: Mutex::new(VirtualAddress(0x00000000)),
+                userspace_hwcontext: SpinLock::new(UserspaceHardwareContext::default()),
             }
         );
+
+        // if we're creating the main thread, push a handle to it in the process' handle table,
+        // and give it to the thread as an argument.
+        let arg = match arg {
+            Some(arg) => arg,
+            None => {
+                debug_assert!(belonging_process.threads.lock().is_empty() &&
+                              belonging_process.thread_maternity.lock().is_empty(), "Argument shouldn't be None");
+                belonging_process.phandles.lock().add_handle(Arc::new(Handle::Thread(Arc::downgrade(&t)))) as usize
+            }
+        };
 
         // prepare the thread's stack for its first schedule-in
         unsafe {
             // Safety: We just created the ThreadStruct, and own the only reference
             // to it, so we *know* it never has been scheduled, and cannot be.
-            prepare_for_first_schedule(&t, ep.addr(), stack.addr());
+            prepare_for_first_schedule(&t, ep.addr(), arg, stack.addr());
         }
 
         // make a weak copy that we will return
@@ -614,13 +664,22 @@ impl ThreadStruct {
         // the saved esp will be overwritten on schedule-out anyway
         let hwcontext = SpinLockIRQ::new(ThreadHardwareContext::default());
 
+        // create our thread local storage region
+        let tls = {
+            let mut pmemory = process.pmemory.lock();
+            let mut tls_manager = process.tls_manager.lock();
+            tls_manager.allocate_tls(&mut pmemory).expect("Failed to allocate TLS for first thread")
+        };
+
         let t = Arc::new(
             ThreadStruct {
                 state,
                 kstack,
                 hwcontext,
                 process: Arc::clone(&process),
-                arg: 0
+                tls_region: tls,
+                tls_elf: Mutex::new(VirtualAddress(0x00000000)),
+                userspace_hwcontext: SpinLock::new(UserspaceHardwareContext::default()),
             }
         );
 
@@ -683,7 +742,14 @@ impl ThreadStruct {
 }
 
 impl Drop for ThreadStruct {
+    /// Late thread death notifications:
+    ///
+    /// * notifies our process that our TLS can be re-used.
     fn drop(&mut self) {
+        unsafe {
+            // safe: we're being dropped, our TLS will not be reused by us.
+            self.process.tls_manager.lock().free_tls(self.tls_region);
+        }
         // todo this should be a debug !
         info!("💀 Dropped a thread : {}", self.process.name)
     }

@@ -3,10 +3,10 @@
 //! This modules describe low-level functions and structures needed to perform a process switch
 
 use crate::process::ThreadStruct;
-use crate::i386::gdt;
 use alloc::sync::Arc;
 use core::mem::size_of;
-use crate::i386::TssStruct;
+use crate::i386::gdt::{GDT, MAIN_TASK};
+use crate::i386::gdt::GdtIndex;
 
 /// The hardware context of a paused thread. It contains just enough registers to get the thread
 /// running again.
@@ -80,6 +80,7 @@ impl Default for ThreadHardwareContext {
 /// # Panics
 ///
 /// Panics if the locks protecting the ProcessStruct of current or B process cannot be obtained.
+/// Panics if the locks protecting the MAIN_TASK TSS or DOUBLE_FAULT_TSS cannot be obtained.
 ///
 /// # Safety:
 ///
@@ -100,6 +101,14 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
 
         // Switch the memory pages
         thread_b_lock_pmemory.switch_to();
+
+        // Update the TLS segments. They are not loaded yet.
+        let mut gdt = GDT
+            .r#try().expect("GDT not initialized")
+            .try_lock().expect("Could not lock GDT");
+        gdt.table[GdtIndex::UTlsRegion as usize].set_base(thread_b.tls_region.addr() as u32);
+        gdt.table[GdtIndex::UTlsElf as usize].set_base(thread_b.tls_elf.lock().addr() as u32);
+        gdt.commit(None, None, None, None, None, None);
 
         let current_esp: usize;
         asm!("mov $0, esp" : "=r"(current_esp) : : : "intel", "volatile");
@@ -123,11 +132,16 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
 
     // Set IOPB back to "nothing allowed" state
     // todo do not change iopb if thread_b belongs to the same process.
-    let iopb = gdt::get_main_iopb();
+
+    // MAIN_TSS should otherwise only be locked during DOUBLE_FAULTING,
+    // in which case we really shouldn't be context-switching.
+    let mut main_tss = MAIN_TASK.try_lock()
+        .expect("Cannot lock main tss");
     for ioport in &thread_current.process.capabilities.ioports {
         let ioport = *ioport as usize;
-        iopb[ioport / 8] = 0xFF;
+        main_tss.iopb[ioport / 8] = 0xFF;
     }
+    drop(main_tss);
 
     // current is still stored in scheduler's global CURRENT_PROCESS, so it's not dropped yet.
     drop(thread_current);
@@ -174,14 +188,17 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
     // recreate the Arc to our ThreadStruct from the pointer that was passed to us
     let me = unsafe { Arc::from_raw(whoami) };
 
+    // MAIN_TSS should have been unlocked during schedule-out. Re-take it.
+    let mut main_tss = MAIN_TASK.try_lock()
+        .expect("Cannot lock main tss");
+
     // Set the ESP0
-    let tss = gdt::MAIN_TASK.addr() as *mut TssStruct;
-    (*tss).esp0 = me.kstack.get_stack_start() as u32;
+    main_tss.tss.esp0 = me.kstack.get_stack_start() as u32;
 
     // Set IOPB
     for ioport in &me.process.capabilities.ioports {
         let ioport = *ioport as usize;
-        iopb[ioport / 8] &= !(1 << (ioport % 8));
+        main_tss.iopb[ioport / 8] &= !(1 << (ioport % 8));
     }
 
     me
@@ -198,7 +215,7 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
 /// This function will definitely fuck up your stack, so make sure you're calling it on a
 /// never-scheduled thread's empty-stack.
 #[allow(clippy::fn_to_numeric_cast)]
-pub unsafe fn prepare_for_first_schedule(t: &ThreadStruct, entrypoint: usize, userspace_stack: usize) {
+pub unsafe fn prepare_for_first_schedule(t: &ThreadStruct, entrypoint: usize, userspace_arg: usize, userspace_stack: usize) {
     #[repr(packed)]
     #[allow(clippy::missing_docs_in_private_items)]
     struct RegistersOnStack {
@@ -234,7 +251,7 @@ pub unsafe fn prepare_for_first_schedule(t: &ThreadStruct, entrypoint: usize, us
         ebp: stack_start,                         // -+
         esp: 0, // ignored by the popad anyway    //  |
         ebx: userspace_stack as u32,              //  |
-        edx: 0,                                   //  |
+        edx: userspace_arg as u32,                //  |
         ecx: 0,                                   //  |
         eax: entrypoint as u32,                   //  |
         callback_eip: first_schedule as u32       //  |
@@ -255,13 +272,21 @@ pub unsafe fn prepare_for_first_schedule(t: &ThreadStruct, entrypoint: usize, us
 /// The function ret'd on, on a thread's first schedule - as setup by the prepare_for_first_schedule.
 ///
 /// At this point, interrupts are still off. This function should ensure the thread is properly
-/// switched (set up ESP0, IOPB and whatnot) and call scheduler_first_schedule.
+/// switched (set up ESP0, IOPB and whatnot) and call [`scheduler_first_schedule`].
+///
+/// # Safety:
+///
+/// * Interrupts must be disabled.
+/// * Arguments must respect the [`prepare_for_first_schedule`] ABI, and be popped into registers.
+///
+/// [`scheduler_first_schedule`]: crate::scheduler::scheduler_first_schedule.
 #[naked]
-fn first_schedule() {
+unsafe fn first_schedule() {
     // just get the ProcessStruct pointer in $edi, the entrypoint in $eax, and call a rust function
     unsafe {
         asm!("
         push ebx
+        push edx
         push eax
         push edi
         call $0
@@ -269,30 +294,31 @@ fn first_schedule() {
     }
 
     /// Stack is set-up, now we can run rust code.
-    extern "C" fn first_schedule_inner(whoami: *const ThreadStruct, entrypoint: usize, userspace_stack: usize) -> ! {
+    extern "C" fn first_schedule_inner(whoami: *const ThreadStruct, entrypoint: usize, userspace_arg: usize, userspace_stack: usize) -> ! {
         // reconstruct an Arc to our ProcessStruct from the leaked pointer
         let current = unsafe { Arc::from_raw(whoami) };
 
+        // MAIN_TSS must have been unlocked by now.
+        let mut main_tss = MAIN_TASK.try_lock()
+            .expect("Cannot lock main tss");
+
         // Set the ESP0
-        let tss = gdt::MAIN_TASK.addr() as *mut TssStruct;
-        unsafe {
-            // Safety: TSS is always valid.
-            (*tss).esp0 = current.kstack.get_stack_start() as u32;
-        }
+        main_tss.tss.esp0 = current.kstack.get_stack_start() as u32;
 
         // todo do not touch iopb if we come from a thread of the same process.
         // Set IOPB
-        let iopb = unsafe {
-            gdt::get_main_iopb()
-        };
         for ioport in &current.process.capabilities.ioports {
             let ioport = *ioport as usize;
-            iopb[ioport / 8] &= !(1 << (ioport % 8));
+            main_tss.iopb[ioport / 8] &= !(1 << (ioport % 8));
         }
 
+        drop(main_tss); // unlock it
+
         // call the scheduler to finish the high-level process switch mechanics
-        let arg = current.arg;
-        crate::scheduler::scheduler_first_schedule(current, || jump_to_entrypoint(entrypoint, userspace_stack, arg));
+        unsafe {
+            // safe: interrupts are off
+            crate::scheduler::scheduler_first_schedule(current, || jump_to_entrypoint(entrypoint, userspace_stack, userspace_arg));
+        }
 
         unreachable!()
     }
@@ -311,25 +337,34 @@ fn first_schedule() {
 /// This way, just after the `iret`, cpu will be in ring 3, witl all of its registers cleared,
 /// `$eip` pointing to `ep`, and `$esp` pointing to `userspace_stack_ptr`.
 fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize, arg: usize) -> ! {
+    // gonna write constants in the code, cause not enough registers.
+    // just check we aren't hard-coding the wrong values.
+    const_assert_eq!((GdtIndex::UCode as u16) << 3 | 0b11, 0x2B);
+    const_assert_eq!((GdtIndex::UData as u16) << 3 | 0b11, 0x33);
+    const_assert_eq!((GdtIndex::UTlsRegion as u16) << 3 | 0b11, 0x3B);
+    const_assert_eq!((GdtIndex::UTlsElf as u16) << 3 | 0b11, 0x43);
+    const_assert_eq!((GdtIndex::UStack as u16) << 3 | 0b11, 0x4B);
     unsafe {
         asm!("
-        mov ax,0x2B // Set data segment selector to Userland Data, Ring 3
+        mov ax,0x33  // ds, es <- UData, Ring 3
         mov ds,ax
         mov es,ax
+        mov ax,0x3B  // fs     <- UTlsRegion, Ring 3
         mov fs,ax
+        mov ax, 0x43 // gs     <- UTlsElf, Ring 3
         mov gs,ax
 
         // Build the fake stack for IRET
-        push 0x33   // Userland Stack, Ring 3
+        push 0x4B   // Userland Stack, Ring 3
         push $1     // Userspace ESP
         pushfd
-        push 0x23   // Userland Code, Ring 3
+        push 0x2B   // Userland Code, Ring 3
         push $0     // Entrypoint
 
         // Clean up all registers. Also setup arguments.
-        mov eax, $2
+        mov ecx, $2
+        mov eax, 0
         mov ebx, 0
-        mov ecx, 0
         mov edx, 0
         mov ebp, 0
         mov edi, 0

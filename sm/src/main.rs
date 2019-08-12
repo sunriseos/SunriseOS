@@ -145,6 +145,7 @@ capabilities!(CAPABILITIES = Capabilities {
         sunrise_libuser::syscalls::nr::CloseHandle,
         sunrise_libuser::syscalls::nr::WaitSynchronization,
         sunrise_libuser::syscalls::nr::OutputDebugString,
+        sunrise_libuser::syscalls::nr::SetThreadArea,
 
         sunrise_libuser::syscalls::nr::SetHeapSize,
         sunrise_libuser::syscalls::nr::ManageNamedPort,
