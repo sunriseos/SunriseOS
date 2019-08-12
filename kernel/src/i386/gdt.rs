@@ -446,53 +446,53 @@ impl MainTask {
 ///
 /// The only exception to this is double faulting, which does use Hardware Task Switching, and
 /// for which we allocate a second TSS, see [DOUBLE_FAULT_TASK].
-// todo: per-cpu TSSs / GDT
-// body: There are multiple things that aren't ideal about the way we handle TSSs.
-// body:
-// body: ## Initialization
-// body:
-// body: TSSs must always be initialized with an iopb_offset of `size_of::<TSS>()`,
-// body: so that the TSS's data is not interpreted as the iopb.
-// body:
-// body: However, because MAIN_TASK has a huge iopb (0x2001 bytes), we want it to live in the
-// body: .bss, and be lazy initialized (iopb_offset value, and iopb array memset to 0xFF).
-// body: `lazy_static` seems appropriate for that, and we should use it, so we cannot *forget* to
-// body: initialize a TSS.
-// body:
-// body: DOUBLE_FAULT_TASK could be statically initialized, except for the `cr3` field.
-// body:
-// body: ## Per-cpu
-// body:
-// body: But we will likely want a MAIN and DOUBLE_FAULT TSS per core. However, they cannot trivially
-// body: be put behind a `#[thread_local]`, as they are initialized with the GDT, before cpu-locals
-// body: are initialized. It might be possible to make them `#[thread_local]` with some
-// body: post-initialization routine that switches to using the MAIN and DOUBLE_FAULT_TASK in the
-// body: cpu-local memory area instead of the static early one, after cpu-local have been initialized,
-// body: for core 0.
-// body: The static early one could do without an iopb, since we're not going to userspace with it.
-// body:
-// body: For other cores, having a `#[thead_local]` inside a `lazy_static!` seems to work, but I don't
-// body: yet know how cores are going to be started, whether they allocate/initialize their own
-// body: GDT + MAIN + DOUBLE_FAULT TSS, if it their parent core do it.
-// body:
-// body: Because of these unknowns, the search for a good design for TSSs/GDT is postponed.
-// body:
-// body: ## Locking
-// body:
-// body: Since the TSSs are supposed to be cpu-local, there is no reason for them to have a mutex
-// body: around them. An ideal design would be lock-less, which can either be achieved with `#[thread_local]`,
-// body: or some custom wrapper around an UnsafeCell just for TSSs.
-// body:
-// body: ## DOUBLE_FAULT's cr3
-// body:
-// body: The DOUBLE_FAULT TSS(s)'s cr3 must point to a valid page directory, which will remain valid
-// body: (i.e. not be freed) for the entire lifetime of the kernel, and possibly updated when kernel
-// body: page tables are modified.
-// body:
-// body: For now, because we have no such hierarchy, we always make DOUBLE_FAULT's cr3 point
-// body: to the current cr3, and update it when we switch page table hierarchies. However the current
-// body: way we do kernel paging is not viable for SMP, and we might finally implement such a hierarchy
-// body: for SMP, we could then make DOUBLE_FAULT TSS(s) point to it.
+// TODO: per-cpu TSSs / GDT
+// BODY: There are multiple things that aren't ideal about the way we handle TSSs.
+// BODY:
+// BODY: ## Initialization
+// BODY:
+// BODY: TSSs must always be initialized with an iopb_offset of `size_of::<TSS>()`,
+// BODY: so that the TSS's data is not interpreted as the iopb.
+// BODY:
+// BODY: However, because MAIN_TASK has a huge iopb (0x2001 bytes), we want it to live in the
+// BODY: .bss, and be lazy initialized (iopb_offset value, and iopb array memset to 0xFF).
+// BODY: `lazy_static` seems appropriate for that, and we should use it, so we cannot *forget* to
+// BODY: initialize a TSS.
+// BODY:
+// BODY: DOUBLE_FAULT_TASK could be statically initialized, except for the `cr3` field.
+// BODY:
+// BODY: ## Per-cpu
+// BODY:
+// BODY: But we will likely want a MAIN and DOUBLE_FAULT TSS per core. However, they cannot trivially
+// BODY: be put behind a `#[thread_local]`, as they are initialized with the GDT, before cpu-locals
+// BODY: are initialized. It might be possible to make them `#[thread_local]` with some
+// BODY: post-initialization routine that switches to using the MAIN and DOUBLE_FAULT_TASK in the
+// BODY: cpu-local memory area instead of the static early one, after cpu-local have been initialized,
+// BODY: for core 0.
+// BODY: The static early one could do without an iopb, since we're not going to userspace with it.
+// BODY:
+// BODY: For other cores, having a `#[thead_local]` inside a `lazy_static!` seems to work, but I don't
+// BODY: yet know how cores are going to be started, whether they allocate/initialize their own
+// BODY: GDT + MAIN + DOUBLE_FAULT TSS, if it their parent core do it.
+// BODY:
+// BODY: Because of these unknowns, the search for a good design for TSSs/GDT is postponed.
+// BODY:
+// BODY: ## Locking
+// BODY:
+// BODY: Since the TSSs are supposed to be cpu-local, there is no reason for them to have a mutex
+// BODY: around them. An ideal design would be lock-less, which can either be achieved with `#[thread_local]`,
+// BODY: or some custom wrapper around an UnsafeCell just for TSSs.
+// BODY:
+// BODY: ## DOUBLE_FAULT's cr3
+// BODY:
+// BODY: The DOUBLE_FAULT TSS(s)'s cr3 must point to a valid page directory, which will remain valid
+// BODY: (i.e. not be freed) for the entire lifetime of the kernel, and possibly updated when kernel
+// BODY: page tables are modified.
+// BODY:
+// BODY: For now, because we have no such hierarchy, we always make DOUBLE_FAULT's cr3 point
+// BODY: to the current cr3, and update it when we switch page table hierarchies. However the current
+// BODY: way we do kernel paging is not viable for SMP, and we might finally implement such a hierarchy
+// BODY: for SMP, we could then make DOUBLE_FAULT TSS(s) point to it.
 pub static MAIN_TASK: Mutex<MainTask> = Mutex::new(MainTask::empty());
 
 /// Double fault TSS

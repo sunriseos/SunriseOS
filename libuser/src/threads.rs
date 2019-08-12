@@ -206,14 +206,14 @@ impl Thread {
     /// Allocates the stack, sets up the context and TLS, and calls `svcCreateThread`.
     ///
     /// [`start`]: Thread::start
-    // TODO: Libuser Thread stack guard
-    // BODY: Currently the stack of every non-main thread is allocated in the heap, and no page
-    // BODY: guard protects from stack-overflowing and rewriting all the heap.
-    // BODY:
-    // BODY: This is of course terrible for security, as with this stack overflowing is U.B.
-    // BODY:
-    // BODY: The simpler way to fix this would be to continue allocating the stack on the heap,
-    // BODY: but remap the last page with no permissions with the yet unimplemented svcMapMemory syscall.
+    // todo: Libuser Thread stack guard
+    // body: Currently the stack of every non-main thread is allocated in the heap, and no page
+    // body: guard protects from stack-overflowing and rewriting all the heap.
+    // body:
+    // body: This is of course terrible for security, as with this stack overflowing is U.B.
+    // body:
+    // body: The simpler way to fix this would be to continue allocating the stack on the heap,
+    // body: but remap the last page with no permissions with the yet unimplemented svcMapMemory syscall.
     pub fn create(entry: fn (usize) -> (), arg: usize) -> Result<Self, Error> {
 
         let tls_elf = Once::new();
@@ -294,11 +294,11 @@ extern "fastcall" fn thread_trampoline(thread_context_addr: usize) -> ! {
 
 impl Drop for Thread {
     fn drop(&mut self) {
-        // todo: Properly free resource after thread detach
-        // body: When detaching a thread, we should ensure that the associated resources (stack,
-        // body: handle, context, etc...) are properly freed before the Process exits. This can be
-        // body: done by adding the ThreadContext to a global Vec<> of ThreadContext that gets freed
-        // body: when the main thread (or the last thread alive?) exits.
+        // TODO: Properly free resource after thread detach
+        // BODY: When detaching a thread, we should ensure that the associated resources (stack,
+        // BODY: handle, context, etc...) are properly freed before the Process exits. This can be
+        // BODY: done by adding the ThreadContext to a global Vec<> of ThreadContext that gets freed
+        // BODY: when the main thread (or the last thread alive?) exits.
     }
 }
 
