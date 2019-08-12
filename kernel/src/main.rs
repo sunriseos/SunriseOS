@@ -60,7 +60,6 @@ pub mod log_impl;
 #[cfg(any(target_arch = "x86", test, rustdoc))]
 #[macro_use]
 pub mod i386;
-pub mod interrupts;
 pub mod syscalls;
 pub mod frame_allocator;
 
@@ -237,7 +236,7 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     init_cpu_locals(1);
 
     info!("Enabling interrupts");
-    unsafe { interrupts::init(); }
+    unsafe { i386::interrupt_service_routines::init(); }
 
     devices::init_timer();
 

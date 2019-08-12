@@ -14,6 +14,7 @@ pub mod structures;
 pub mod process_switch;
 pub mod gdt;
 pub mod interrupt;
+pub mod interrupt_service_routines;
 
 pub mod pio {
     //! Port IO

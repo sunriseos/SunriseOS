@@ -25,7 +25,7 @@ mod capabilities;
 pub use self::capabilities::ProcessCapabilities;
 use crate::paging::{InactiveHierarchy, InactiveHierarchyTrait};
 use self::thread_local_storage::TLSManager;
-use crate::interrupts::UserspaceHardwareContext;
+use crate::i386::interrupt_service_routines::UserspaceHardwareContext;
 
 /// The struct representing a process. There's one for every process.
 ///

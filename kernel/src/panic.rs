@@ -3,7 +3,7 @@
 //! ![minor mistake marvin](https://github.com/sunriseos/SunriseOS/blob/master/kernel/res/kernel_panic_doc.jpg)
 
 use crate::sync;
-use crate::interrupts::UserspaceHardwareContext;
+use crate::i386::interrupt_service_routines::UserspaceHardwareContext;
 use tinybmp::Bmp;
 use crate::syscalls::map_framebuffer;
 use crate::devices::rs232::SerialLogger;
