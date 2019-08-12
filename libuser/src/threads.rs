@@ -162,8 +162,9 @@ pub fn get_my_thread_context() -> &'static ThreadContext {
     // create a ref
     unsafe {
         // safe: the context will never be accessed mutably after its allocation,
-        //       it is guaranteed to live for the whole lifetime of the current thread,
         //       it is guaranteed to be well-formed since we allocated it ourselves,
+        //       the thread context is never deallocated, so 'static is appropriate.
+        //       We will want to return an Arc in the future.
         //       => creating a ref is safe.
         &*(context_ptr)
     }
@@ -196,10 +197,8 @@ pub struct Thread(ManuallyDrop<Box<ThreadContext>>);
 impl Thread {
     /// Start this thread.
     pub fn start(&self) -> Result<(), Error> {
-        unsafe {
-            syscalls::start_thread(&(*self.0).thread_handle.r#try().unwrap())
-            .map_err(|v| v.into())
-        }
+        syscalls::start_thread(&(*self.0).thread_handle.r#try().unwrap())
+        .map_err(|v| v.into())
     }
 
     /// Allocates resources for a thread. To start it, call [`start`].

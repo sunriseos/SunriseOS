@@ -346,7 +346,8 @@ pub unsafe fn scheduler_first_schedule<F: FnOnce()>(current_thread: Arc<ThreadSt
     // memset the TLS, to clear previous owner's data.
     // we do it here so don't have to CrossProcessMap it earlier.
     unsafe {
-        // safe: we manage this memory, ptr is aligned, and 0 is valid for every field of the TLS.
+        // safe: we manage this memory, ptr is aligned, 0 is valid for every field of the TLS,
+        //       and TLS contains no padding bytes.
         let tls_ptr = get_current_thread().tls_region.addr() as *mut TLS;
         core::ptr::write_bytes(tls_ptr, 0u8, 1);
         (*tls_ptr).ptr_self = tls_ptr

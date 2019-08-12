@@ -53,6 +53,8 @@ impl ModuleHeader {
 }
 
 extern "C" {
+    /// After relocations have been performed, you can access the module_header in Rust code
+    /// through this symbol.
     pub static module_header: ModuleHeader;
 }
 
