@@ -1,28 +1,79 @@
-# Example interface used for IPC Server documentation.
-# Not actually present.
-interface sunrise_libuser::example::IExample1 is hello {}
+// This is a SwIPC file. SwIPC is used to define IPC interfaces on HOS/NX and,
+// by extension, in SunriseOS. The SwIPC file is then used to generate client
+// and server code that will automatically parse messages, call remote functions
+// and reply to requests.
+//
+// This file serves as an introduction to the SwIPC format. More information can
+// be found on the SwIPC repo: https://github.com/reswitched/swipc
 
-# Example interface used for IPC Server documentation.
-# Not actually present.
-interface sunrise_libuser::example::IExample2 is hello {
-    # Example function
+# Here's a simple example of an interface. This is a service that can be
+# connected to by connecting to "hello:1" with sm's get_service function.
+#
+# Lines starting with # are documentation comments: They will end up in the
+# documentation for the structs and traits generated from this interface.
+#
+# This interface has no command - the only useful thing you can do with it is
+# close it.
+#
+# Interface names dictate where the generated structs and traits will be
+# generated. They must follow the scheme crate_name::module::path::IFaceName.
+interface sunrise_libuser::example::IExample1 is hello:1 {}
+
+# Let's make things a bit more interesting by adding a function or two.
+interface sunrise_libuser::example::IExample2 is hello:2 {
+    # This is the most simple kind of function: It takes no argument, and
+    # returns no value. It has cmdid 0, and is named "function".
+    #
+    # Even though it returns no value, it may still return an error! Any command
+    # is allowed to return any error.
     [0] function();
+
+    # Here's a more complex function. This function takes two u32 as an
+    # argument, and return two bools.
+    #
+    # Notice that cmdid don't need to be sequential, and don't need to start at
+    # 0. The only requirement is that they are unique within an interface.
+    [1001] function2(u32 val1, u32 val2) -> (bool, bool);
 }
 
-# Example interface used for IPC Server documentation.
-# Not actually present.
-interface sunrise_libuser::example::IExample3 is hello {
-    # Example function
-    [0] function() -> object<IExample3Subsession>;
+# Interfaces can also return other interfaces. We call an instance of an
+# interface an object. This is often used to give each interface its own state.
+# For instance, a filesystem may return an object of interface file when the
+# user requests to open one.
+interface sunrise_libuser::example::IExample3 is hello:3 {
+    # The type of an instance of an interface is `object<InterfaceName>`. You
+    # always need to use the fully qualified name, path and all.
+    #
+    # It is also allowed to pass objects as arguments to function, though this
+    # is rarely used in practice.
+    [0] function() -> object<sunrise_libuser::example::IExample3Subsession>;
 }
 
-# Example interface used for IPC Server documentation.
-# Not actually present.
+# An instance of this interface cannot be acquired by asking SM. Instead, the
+# user has to go through IExample3's function in order to get one.
 interface sunrise_libuser::example::IExample3Subsession {}
 
-# Example interface used for IPC Server documentation.
-# Not actually present.
-interface sunrise_libuser::example::IExample4 {
-    # Example function
-    [0] function();
+# There are two more kinds of types that are important: buffers and handles.
+#
+# When passing around "raw" arguments and return values, there is only a bit
+# less than 0x100 bytes available. This can be inconvenient when trying to move
+# around large chunks of data, such as trying to read from a file. To remedy
+# this, buffers may be used, which allows the user to pass a pointer to a chunk
+# of data to a remote process, which can either read or write from it (depending
+# on if it's a return buffer or an argument buffer).
+#
+# Handles are used to pass around "special" types. Examples of handles include
+# process, readable_event, server_port, client_session, and many more.
+interface sunrise_libuser::example::IExample4 is hello:4 {
+    # Here's a simple function taking a buffer as an argument and returning a
+    # client handle.
+    #
+    # A buffer takes the format `buffer<data_type, transfer_type, size>`. To
+    # find the correct transfer_type to use, look at the [IPC Marshalling] page
+    # of switchbrew. Make sure data_type and size matches!
+    #
+    # The format for a handle is `handle<move/copy, type>`.
+    #
+    # [IPC Marshalling]: https://switchbrew.org/w/index.php?title=IPC_Marshalling
+    [0] function(buffer<u8, 0x9, 1> very_large_thing) -> handle<move, shared_memory>;
 }

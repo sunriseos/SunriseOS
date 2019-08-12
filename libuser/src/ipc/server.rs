@@ -32,12 +32,14 @@
 //! loop, accepting new connections, creating a backing Object for the sessions,
 //! and spawning a new future on the event loop with [fn new_session_wrapper].
 //!
-//! ```rust
+// no_run because port_handler will fail on linux.
+//! ```no_run
+//! # extern crate alloc;
 //! use futures::future::FutureObj;
 //! use alloc::boxed::Box;
 //! use sunrise_libuser::futures::WaitableManager;
 //! use sunrise_libuser::ipc::server::port_handler;
-//! use sunrise_libuser::example::IExample;
+//! use sunrise_libuser::example::IExample1;
 //!
 //! /// Every time the port accepts a connection and a session is created, it
 //! /// will spawn a HelloInterface.
@@ -52,8 +54,13 @@
 //!     let handler = port_handler(man.work_queue(), "hello", HelloInterface::dispatch).unwrap();
 //!     man.work_queue().spawn(FutureObj::new(Box::new(handler)));
 //!
+//! #   let man = FakeMan;
 //!     man.run();
 //! }
+//! # // We can't run the WaitableManager, since that'll attempt to run syscalls
+//! # // that aren't implemented.
+//! # struct FakeMan;
+//! # impl FakeMan { fn run(&self) {} }
 //! ```
 //!
 //! ## Session Handling
@@ -86,21 +93,29 @@
 //!    the arguments and call the correct function from the trait
 //!    implementation.
 //!
-//! ```
+// no_run because port_handler will fail on linux...
+//! ```no_run
+//! extern crate alloc;
+//!
 //! use futures::future::FutureObj;
 //! use alloc::boxed::Box;
-//! use sunrise_libuser::futures::WaitableManager;
+//! use sunrise_libuser::futures::{WorkQueue, WaitableManager};
 //! use sunrise_libuser::ipc::server::port_handler;
-//! use sunrise_libuser::example::IExample;
+//! use sunrise_libuser::example::IExample2;
+//! use sunrise_libuser::error::Error;
 //! use log::*;
 //!
 //! #[derive(Debug, Default)]
 //! struct HelloInterface;
 //!
 //! impl IExample2 for HelloInterface {
-//!     fn function(_manager: WorkQueue<'static>) -> Result<(), Error> {
+//!     fn function(&mut self, _manager: WorkQueue<'static>) -> Result<(), Error> {
 //!         info!("hello");
 //!         Ok(())
+//!     }
+//!     fn function2(&mut self, _manager: WorkQueue<'static>, val1: u32, val2: u32) -> Result<(bool, bool), Error> {
+//!         info!("hello");
+//!         Ok((false, true))
 //!     }
 //! }
 //!
@@ -110,8 +125,14 @@
 //!     let handler = port_handler(man.work_queue(), "hello", HelloInterface::dispatch).unwrap();
 //!     man.work_queue().spawn(FutureObj::new(Box::new(handler)));
 //!
+//! #   let man = FakeMan;
+//!
 //!     man.run();
 //! }
+//! # // We can't run the WaitableManager, since that'll attempt to run syscalls
+//! # // that aren't implemented.
+//! # struct FakeMan;
+//! # impl FakeMan { fn run(&self) {} }
 //! ```
 //!
 //! ### Objects
@@ -136,19 +157,22 @@
 //! Session Handler with [fn new_session_wrapper], and returning the client-side
 //! session handle. Here's an example:
 //!
-//! ```rust
-//! #use futures::future::FutureObj;
-//! #use alloc::boxed::Box;
-//! #use sunrise_libuser::futures::WaitableManager;
-//! #use sunrise_libuser::ipc::server::port_handler;
-//! #use sunrise_libuser::example::{IExample3, IExample3Subsession, IExample3SubsessionProxy};
-//! #use log::*;
+// no_run because port_handler will fail on linux...
+//! ```no_run
+//! extern crate alloc;
+//! use futures::future::FutureObj;
+//! use alloc::boxed::Box;
+//! use sunrise_libuser::futures::WorkQueue;
+//! use sunrise_libuser::example::{IExample3, IExample3Subsession, IExample3SubsessionProxy};
+//! use sunrise_libuser::syscalls;
+//! use sunrise_libuser::error::Error;
+//! use sunrise_libuser::ipc::server::new_session_wrapper;
 //!
 //! #[derive(Debug, Default)]
 //! struct HelloInterface;
 //!
 //! impl IExample3 for HelloInterface {
-//!     fn function(manager: WorkQueue<'static>) -> Result<IExample3Subsession, Error> {
+//!     fn function(&mut self, work_queue: WorkQueue<'static>) -> Result<IExample3SubsessionProxy, Error> {
 //!         let (server, client) = syscalls::create_session(false, 0)?;
 //!         let wrapper = new_session_wrapper(work_queue.clone(), server, Subsession, Subsession::dispatch);
 //!         work_queue.spawn(FutureObj::new(Box::new(wrapper)));
@@ -160,14 +184,14 @@
 //!
 //! impl IExample3Subsession for Subsession {}
 //!
-//! #fn main() {
-//! #    let mut man = WaitableManager::new();
+//! # fn main() {
+//! #     use sunrise_libuser::futures::WaitableManager;
+//! #     use sunrise_libuser::ipc::server::port_handler;
+//! #     let mut man = WaitableManager::new();
 //!
-//! #    let handler = port_handler(man.work_queue(), "hello", HelloInterface::dispatch).unwrap();
-//! #    man.work_queue().spawn(FutureObj::new(Box::new(handler)));
-//!
-//! #    man.run();
-//! #}
+//! #     let handler = port_handler(man.work_queue(), "hello", HelloInterface::dispatch).unwrap();
+//! #     man.work_queue().spawn(FutureObj::new(Box::new(handler)));
+//! # }
 //! ```
 //!
 //! ### Asynchronous Traits
@@ -185,38 +209,43 @@
 //!
 //! Here's an example usage:
 //!
-//! ```rust
-//! #use futures::future::FutureObj;
-//! #use alloc::boxed::Box;
-//! #use sunrise_libuser::futures::WaitableManager;
-//! #use sunrise_libuser::ipc::server::port_handler;
-//! #use sunrise_libuser::example::IExample4Async;
-//! #use log::*;
+// no_run because port_handler will fail on linux.
+//! ```no_run
+//! #![feature(async_await)]
+//! extern crate alloc;
+//!
+//! use core::future::Future;
+//! use futures::future::FutureObj;
+//! use alloc::boxed::Box;
+//! use sunrise_libuser::futures::WorkQueue;
+//! use sunrise_libuser::example::IExample4Async;
+//! use sunrise_libuser::types::SharedMemory;
+//! use sunrise_libuser::error::{Error, KernelError};
 //!
 //! #[derive(Debug, Default)]
 //! struct HelloInterface;
 //!
 //! fn do_async_stuff() -> impl Future<Output=()> + Send {
-//!     futures::future::ready(());
+//!     futures::future::ready(())
 //! }
 //!
 //! impl IExample4Async for HelloInterface {
-//!     fn function<'a>(&'a self, manager: WorkQueue<'static>) -> FutureObj<'a, Result<(), Error>> {
+//!     fn function<'a>(&'a mut self, manager: WorkQueue<'static>, val: &u8) -> FutureObj<'a, Result<SharedMemory, Error>> {
 //!         FutureObj::new(Box::new(async move {
 //!             do_async_stuff().await;
-//!             Ok(())
+//!             Err(KernelError::PortRemoteDead.into())
 //!         }))
 //!     }
 //! }
 //!
-//! #fn main() {
-//! #    let mut man = WaitableManager::new();
+//! # fn main() {
+//! #     use sunrise_libuser::futures::WaitableManager;
+//! #     use sunrise_libuser::ipc::server::port_handler;
+//! #     let mut man = WaitableManager::new();
 //!
-//! #    let handler = port_handler(man.work_queue(), "hello", HelloInterface::dispatch).unwrap();
-//! #    man.work_queue().spawn(FutureObj::new(Box::new(handler)));
-//!
-//! #    man.run();
-//! #}
+//! #     let handler = port_handler(man.work_queue(), "hello", HelloInterface::dispatch).unwrap();
+//! #     man.work_queue().spawn(FutureObj::new(Box::new(handler)));
+//! # }
 //! ```
 
 use crate::syscalls;

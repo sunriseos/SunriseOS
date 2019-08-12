@@ -55,8 +55,9 @@ pub struct LoopFn<A, F> {
 /// # Examples
 ///
 /// ```
-/// use futures::future::{ok, loop_fn, Future, FutureResult, Loop};
-/// use std::io::Error;
+/// use sunrise_libutils::loop_future::{loop_fn, Loop};
+/// use core::future::Future;
+/// use futures::future::{FutureExt, ready};
 ///
 /// struct Client {
 ///     ping_count: u8,
@@ -67,24 +68,24 @@ pub struct LoopFn<A, F> {
 ///         Client { ping_count: 0 }
 ///     }
 ///
-///     fn send_ping(self) -> FutureResult<Self, Error> {
-///         ok(Client { ping_count: self.ping_count + 1 })
+///     fn send_ping(self) -> impl Future<Output=Self> {
+///         ready(Client { ping_count: self.ping_count + 1 })
 ///     }
 ///
-///     fn receive_pong(self) -> FutureResult<(Self, bool), Error> {
+///     fn receive_pong(self) -> impl Future<Output=(Self, bool)> {
 ///         let done = self.ping_count >= 5;
-///         ok((self, done))
+///         ready((self, done))
 ///     }
 /// }
 ///
 /// let ping_til_done = loop_fn(Client::new(), |client| {
 ///     client.send_ping()
-///         .and_then(|client| client.receive_pong())
-///         .and_then(|(client, done)| {
+///         .then(|client| client.receive_pong())
+///         .map(|(client, done)| {
 ///             if done {
-///                 Ok(Loop::Break(client))
+///                 Loop::Break(client)
 ///             } else {
-///                 Ok(Loop::Continue(client))
+///                 Loop::Continue(client)
 ///             }
 ///         })
 /// });

@@ -55,7 +55,6 @@ pub mod vi {}
 pub mod ahci {}
 #[gen_ipc(path = "../../ipcdefs/time.id", prefix = "sunrise_libuser")]
 pub mod time {}
-#[cfg(rustdoc)]
 #[gen_ipc(path = "../../ipcdefs/example.id", prefix = "sunrise_libuser")]
 pub mod example {}
 
