@@ -5,7 +5,7 @@
 //!
 //! - For Ports, the client is used to connect, returning a client Session,
 //!   while the server is used to accept connections, returning a server Session
-//! - For Sessions, the client is used to send IPC requests, while lthe server
+//! - For Sessions, the client is used to send IPC requests, while the server
 //!   is used to receive and reply to those requests.
 //!
 //! An IPC Server is made of a [future executor](crate::futures) on which we
@@ -39,6 +39,8 @@
 //! use sunrise_libuser::ipc::server::port_handler;
 //! use sunrise_libuser::example::IExample;
 //!
+//! /// Every time the port accepts a connection and a session is created, it
+//! /// will spawn a HelloInterface.
 //! #[derive(Debug, Default)]
 //! struct HelloInterface;
 //!
@@ -57,10 +59,11 @@
 //! ## Session Handling
 //!
 //! A Session server is represented by an Object implementing an Interface,
-//! receiving and replying to RPC requests on a [crate::types::ServerSession]. A
-//! session server is created either through a port handler accepting a session,
-//! or through the [fn new_session_wrapper] function, which will receive
-//! requests, call the Object's dispatcher function, and reply with the answer.
+//! receiving and replying to Remote Process Call (RPC) requests on a
+//! [crate::types::ServerSession]. A session server is created either through a
+//! port handler accepting a session, or through the [fn new_session_wrapper]
+//! function, which will receive requests, call the Object's dispatcher
+//! function, and reply with the answer.
 //!
 //! ### Interfaces
 //!
@@ -377,7 +380,7 @@ where
 
     async move {
         loop {
-            info!("Waiting for our handle");
+            debug!("Waiting for a new session on handle {:?}", handle);
             handle.wait_async(work_queue.clone()).await;
 
             // Push a C Buffer before receiving.
@@ -388,9 +391,9 @@ where
             handle.receive(&mut buf[..], Some(0)).unwrap();
 
             let tycmdid = super::find_ty_cmdid(&buf[..]);
-            info!("{:?}", tycmdid);
+            debug!("Got request for: {:?}", tycmdid);
 
-            let close = match super::find_ty_cmdid(&buf[..]) {
+            let close = match tycmdid {
                 // TODO: Handle other types.
                 Some((4, cmdid)) | Some((6, cmdid)) => dispatch.call((&mut object, work_queue.clone(), cmdid, &mut buf[..])).await
                     .map(|_| false)
@@ -403,7 +406,6 @@ where
                 break;
             }
 
-            info!("Replying!");
             handle.reply(&mut buf[..]).unwrap();
         }
     }

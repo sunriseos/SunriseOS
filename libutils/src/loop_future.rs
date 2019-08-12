@@ -1,6 +1,6 @@
 //! Definition of the `LoopFn` combinator, implementing `Future` loops.
 //!
-//! Shamelessly stolen from [the old futures](https://docs.rs/futures/0.1.27/src/futures/future/loop_fn.rs.html#74-82).
+//! Shamelessly stolen from [the old futures](https://docs.rs/futures/0.1.27/futures/future/fn.loop_fn.html).
 use core::future::Future;
 use core::task::Context;
 use core::pin::Pin;

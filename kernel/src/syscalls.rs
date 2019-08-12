@@ -442,6 +442,8 @@ pub fn signal_event(handle: u32) -> Result<(), UserspaceError> {
 /// event, [wait_synchronization()] on this handle will wait until
 /// [signal_event()] is called once again.
 ///
+/// Calling this on a non-signaled event is a noop.
+///
 /// Takes either a [crate::event::ReadableEvent] or a
 /// [crate::event::WritableEvent].
 pub fn clear_event(handle: u32) -> Result<(), UserspaceError> {
@@ -591,8 +593,9 @@ pub fn create_session(_is_light: bool, _unk: usize) -> Result<(usize, usize), Us
 pub fn create_event() -> Result<(usize, usize), UserspaceError> {
     let (writable, readable) = crate::event::new_pair();
     let curproc = scheduler::get_current_process();
-    let readable = curproc.phandles.lock().add_handle(Arc::new(Handle::ReadableEvent(readable)));
-    let writable = curproc.phandles.lock().add_handle(Arc::new(Handle::WritableEvent(writable)));
+    let mut phandles = curproc.phandles.lock();
+    let readable = phandles.add_handle(Arc::new(Handle::ReadableEvent(readable)));
+    let writable = phandles.add_handle(Arc::new(Handle::WritableEvent(writable)));
     Ok((usize::try_from(writable).unwrap(), usize::try_from(readable).unwrap()))
 }
 

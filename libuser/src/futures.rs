@@ -12,9 +12,11 @@
 //! [futures::WorkItem]s on the [futures::WorkQueue].
 //!
 //! The implementation is very liberally taken from the blog post [Building an
-//! Embedded Futures Executor](https://josh.robsonchase.com/embedded-executor/)
+//! Embedded Futures Executor]
 //! and adapted to work with the current Futures API and to work with our
 //! Operating System.
+//!
+//! [Building an Embedded Futures Executor]: https://web.archive.org/web/20190812080700/https://josh.robsonchase.com/embedded-executor/
 
 use core::task::{Context, Waker, Poll};
 use core::future::Future;
@@ -195,9 +197,9 @@ impl<'a> WaitableManager<'a> {
             }
 
             assert!(!waitables.is_empty(), "WaitableManager entered invalid state: No waitables to wait on.");
-            info!("Calling WaitSynchronization with {:?}", waitables);
+            debug!("Calling WaitSynchronization with {:?}", waitables);
             let idx = syscalls::wait_synchronization(&*waitables, None).unwrap();
-            info!("Handle idx {} got signaled", idx);
+            debug!("Handle idx {} got signaled", idx);
             for item in waiting_on.remove(idx) {
                 item.wake()
             }

@@ -21,10 +21,10 @@ use crate::scheduler;
 /// A waitable item.
 ///
 /// There are essentially two kinds of Waitables: user-signaled and IRQ-backed.
-/// Right now, only IRQ-backed waitables are implemented. See IRQEvent for more
-/// information on them.
+/// IRQ-backed waitables are implemented by [IRQEvent], while user-signaled
+/// events are implemented by [ReadableEvent].
 ///
-/// It is possible that the raw IRQEvent is not flexible enough though. For
+/// It is possible that a raw waitable is not flexible enough though. For
 /// instance, if we want to wait for 1 second, it might be necessary to wait on
 /// the timer event multiple times. To do this, it is possible to implement our
 /// own Waitable, that defers register to the underlying IRQEvent, but adds

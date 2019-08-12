@@ -72,6 +72,8 @@ lazy_static! {
     // TODO: Implement a futures-based condvar instead of using event for in-process eventing.
     // BODY: A futures-based condvar can easily be implemented entirely in userspace, without
     // BODY: the need for any kernel help. It would have a lot less overhead than using a kernel Event.
+    /// Event signaled whenever a new service is registered. `get_service` waits on this event
+    /// if the wanted service is not found, to try again when a new service comes up later.
     static ref SERVICES_EVENT: (WritableEvent, ReadableEvent) = {
         crate::libuser::syscalls::create_event().unwrap()
     };
@@ -125,17 +127,15 @@ impl IUserInterfaceAsync for UserInterface {
     // For this reason, it is recommended for processes to use a global `sm:` handle.
     fn get_service<'a>(&mut self, work_queue: WorkQueue<'a>, servicename: u64) -> FutureObj<'a, Result<ClientSession, Error>> {
         FutureObj::new(Box::new(loop_fn(work_queue, move |work_queue| {
-            info!("Trying to acquire {:x}", servicename);
             if let Some(port) = SERVICES.lock().get(&servicename) {
-                info!("Success!");
+                debug!("Acquired service {}!", servicename);
                 // Synchronous connect. This can block.
                 let client = port.connect();
                 futures::future::ready(Loop::Break(client)).left_future()
             } else {
-                info!("Service not currently registered. Sleeping.");
+                debug!("Service {} not currently registered. Sleeping.", servicename);
                 SERVICES_EVENT.1.wait_async(work_queue.clone())
                     .map(|_| {
-                        info!("Waking up, clearing the service event");
                         SERVICES_EVENT.1.clear().unwrap();
                         Loop::Continue(work_queue)
                     }).right_future()
