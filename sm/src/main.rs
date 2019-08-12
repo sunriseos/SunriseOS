@@ -177,21 +177,28 @@ impl IUserInterfaceAsync for UserInterface {
     /// registered service.
     fn register_service(&mut self, _work_queue: WorkQueue<'static>, servicename: u64, is_light: bool, max_handles: u32) -> FutureObj<'_, Result<ServerPort, Error>> {
         let servicename = ServiceName(servicename);
-        let (clientport, serverport) = match syscalls::create_port(max_handles, is_light, &servicename.0.to_ne_bytes()) {
-            Ok(v) => v,
-            Err(err) => return FutureObj::new(Box::new(futures::future::err(err.into())))
+
+        let serverport = {
+            let mut services_lock = SERVICES.lock();
+            let entry = match services_lock.entry(servicename) {
+                Entry::Occupied(_) => return FutureObj::new(Box::new(futures::future::err(SmError::ServiceAlreadyRegistered.into()))),
+                Entry::Vacant(vacant) => vacant,
+            };
+
+            let (clientport, serverport) = match syscalls::create_port(max_handles, is_light, &servicename.0.to_ne_bytes()) {
+                Ok(v) => v,
+                Err(err) => return FutureObj::new(Box::new(futures::future::err(err.into())))
+            };
+
+            entry.insert(clientport);
+
+            serverport
         };
-        match SERVICES.lock().entry(servicename) {
-            Entry::Occupied(_) => FutureObj::new(Box::new(futures::future::err(SmError::ServiceAlreadyRegistered.into()))),
-            Entry::Vacant(vacant) => {
-                vacant.insert(clientport);
 
-                // Wake up potential get_service.
-                SERVICES_EVENT.0.signal().unwrap();
+        // Wake up potential get_service.
+        SERVICES_EVENT.0.signal().unwrap();
 
-                FutureObj::new(Box::new(futures::future::ok(serverport)))
-            }
-        }
+        FutureObj::new(Box::new(futures::future::ok(serverport)))
     }
 
     /// Unregister a service.
