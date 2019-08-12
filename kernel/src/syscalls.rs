@@ -1,4 +1,8 @@
 //! Syscall implementations
+//!
+//! ![i can has cheezburger](https://raw.githubusercontent.com/sunriseos/SunriseOS/master/kernel/res/syscalls_doc.jpg)
+//!
+//! The syscall handlers of Sunrise.
 
 use crate::i386;
 use crate::mem::{VirtualAddress, PhysicalAddress};

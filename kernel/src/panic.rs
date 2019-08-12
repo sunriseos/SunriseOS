@@ -5,7 +5,7 @@
 use crate::sync;
 use crate::interrupts::UserspaceHardwareContext;
 use tinybmp::Bmp;
-use crate::interrupts::syscalls::map_framebuffer;
+use crate::syscalls::map_framebuffer;
 use crate::devices::rs232::SerialLogger;
 use crate::i386::gdt::MAIN_TASK;
 use crate::scheduler::try_get_current_thread;

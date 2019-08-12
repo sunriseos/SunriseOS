@@ -61,6 +61,7 @@ pub mod log_impl;
 #[macro_use]
 pub mod i386;
 pub mod interrupts;
+pub mod syscalls;
 pub mod frame_allocator;
 
 pub mod heap_allocator;

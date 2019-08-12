@@ -45,11 +45,9 @@ use crate::i386::structures::gdt::SegmentSelector;
 use crate::i386::registers::eflags::EFlags;
 use crate::mem::{UserSpacePtr, UserSpacePtrMut};
 use crate::error::UserspaceError;
-use crate::interrupts::syscalls::*;
+use crate::syscalls::*;
 use bit_field::BitArray;
 use sunrise_libkern::{nr, SYSCALL_NAMES};
-
-pub mod syscalls;
 
 /// Checks if our thread was killed, in which case unschedule ourselves.
 ///

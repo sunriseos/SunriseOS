@@ -70,7 +70,7 @@
 //! [`TLS`]: sunrise_libkern::TLS
 //! [`GLOBAL_LDT`]: gdt::GLOBAL_LDT
 //! [`MAIN_TASK`]: gdt::MAIN_TASK
-//! [`svcSetThreadArea`]: crate::interrupts::syscalls::set_thread_area
+//! [`svcSetThreadArea`]: crate::syscalls::set_thread_area
 
 #![allow(dead_code)]
 
