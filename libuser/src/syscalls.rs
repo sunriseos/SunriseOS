@@ -279,7 +279,7 @@ pub(crate) fn close_handle(handle: u32) -> Result<(), KernelError> {
 /// Does not accept 0xFFFF8001 or 0xFFFF8000 meta-handles.
 ///
 /// # Object types
-/// 
+///
 /// - KDebug: signals when there is a new DebugEvent (retrievable via
 ///   GetDebugEvent).
 /// - KClientPort: signals when the number of sessions is less than the maximum
@@ -295,7 +295,7 @@ pub(crate) fn close_handle(handle: u32) -> Result<(), KernelError> {
 /// - KThread: signals when the thread has exited.
 ///
 /// # Result codes
-/// 
+///
 /// - 0x0000: Success. One of the objects was signaled before the timeout
 ///   expired, or one of the objects is a Session with a closed remote. Handle
 ///   index is updated to indicate which object signaled.
@@ -435,7 +435,7 @@ pub fn query_physical_address(virtual_address: usize) -> Result<(usize, usize, u
 }
 
 /// Creates an anonymous port.
-pub fn create_port(max_sessions: u32, is_light: bool, name_ptr: &str) -> Result<(ClientPort, ServerPort), KernelError> {
+pub fn create_port(max_sessions: u32, is_light: bool, name_ptr: &[u8]) -> Result<(ClientPort, ServerPort), KernelError> {
     unsafe {
         let (out_client_handle, out_server_handle, ..) = syscall(nr::CreatePort, max_sessions as _, is_light as _, name_ptr.as_ptr() as _, 0, 0, 0)?;
         Ok((ClientPort(Handle::new(out_client_handle as _)), ServerPort(Handle::new(out_server_handle as _))))
