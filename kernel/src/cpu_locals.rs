@@ -68,7 +68,7 @@
 //!
 //! Illustration:
 //!
-//! ![cpu backflip](https://github.com/sunriseos/SunriseOS/blob/master/kernel/res/cpu_locals_segmentation_doc.gif)
+//! ![cpu backflip](https://raw.githubusercontent.com/sunriseos/SunriseOS/master/kernel/res/cpu_locals_segmentation_doc.gif)
 //!
 //! ##### dtv and `__tls_get_addr`
 //!

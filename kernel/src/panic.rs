@@ -1,6 +1,6 @@
 //! Kernel panic
 //!
-//! ![minor mistake marvin](https://github.com/sunriseos/SunriseOS/blob/master/kernel/res/kernel_panic_doc.jpg)
+//! ![minor mistake marvin](https://raw.githubusercontent.com/sunriseos/SunriseOS/master/kernel/res/kernel_panic_doc.jpg)
 
 use crate::sync;
 use crate::interrupts::UserspaceHardwareContext;
