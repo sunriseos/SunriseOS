@@ -61,8 +61,8 @@ pub enum PanicOrigin<'a> {
 /// Takes a panic origin, so we can personalize the kernel panic message.
 pub fn kernel_panic(panic_origin: &PanicOrigin) -> ! {
 
-    // TODO: permanently_disable_interrupts shouldn't be unsafe.
-    // BODY: disabling interrupts doesn't break any safety guidelines, and is perfectly safe as far as rustc is concerned.
+    // todo: permanently_disable_interrupts shouldn't be unsafe.
+    // body: disabling interrupts doesn't break any safety guidelines, and is perfectly safe as far as rustc is concerned.
     // Disable interrupts forever!
     unsafe { sync::permanently_disable_interrupts(); }
     // Don't deadlock in the logger
@@ -183,12 +183,12 @@ pub fn kernel_panic(panic_origin: &PanicOrigin) -> ! {
         let _ = writeln!(SerialLogger, "Panic handler: Failed to get kernel elf symbols");
     }
 
-    // todo: Kernel Stack dump update
-    // body: Update the kernel stack dump functions to be compatible the new and improved
-    // body: kernel panic.
-    // body:
-    // body: Now that know the origin (userspace or kernelspace) in the panic, this should
-    // body: be easy, and we can finally have userspace stack dumps that actually work.
+    // TODO: Kernel Stack dump update
+    // BODY: Update the kernel stack dump functions to be compatible the new and improved
+    // BODY: kernel panic.
+    // BODY:
+    // BODY: Now that know the origin (userspace or kernelspace) in the panic, this should
+    // BODY: be easy, and we can finally have userspace stack dumps that actually work.
     let stackdump_source = None;
 
     // Then print the stack
