@@ -12,3 +12,4 @@ add-symbol-file isofiles/boot/sunrise-shell 0x00400000
 
 # Source sunrise scripts.
 source scripts/gdb/break_userspace.py
+source scripts/gdb/get_frame_sizes.py
