@@ -1,6 +1,7 @@
 [config]
 skip_core_tasks = true
 min_version = "0.22.0"
+default_to_workspace = false
 
 [env]
 RUST_TARGET_PATH = "${PWD}"
@@ -26,12 +27,10 @@ CLIPPY_RULES = """
 
 
 [tasks.bootstrap-linker]
-workspace = false
 script_runner = "@shell"
 script = ["cp linker-scripts/bootstrap.ld link.T"]
 
 [tasks.kernel-linker]
-workspace = false
 script_runner = "@shell"
 script = ["cp linker-scripts/kernel.ld    link.T"]
 
@@ -46,129 +45,110 @@ dependencies = ["install-rust-src"]
 install_crate = { crate_name = "cargo-xbuild", binary = "cargo", test_arg = ["xbuild", "--help"], min_version = "0.5.14" }
 
 [tasks.bootstrap]
-workspace = false
 description = "Compiles the i386 bootstrap for debug"
 dependencies = ["bootstrap-linker", "install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-bootstrap" ]
 
 [tasks.bootstrap-release]
-workspace = false
 description = "Compiles the i386 bootstrap for release"
 dependencies = ["bootstrap-linker", "install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-bootstrap", "--release" ]
 
 [tasks.kernel]
-workspace = false
 description = "Compiles the kernel for debug"
 dependencies = ["kernel-linker", "install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-kernel", "-Z", "package-features", "--features=panic-on-exception"]
 
 [tasks.kernel-release]
-workspace = false
 description = "Compiles the kernel for release"
 dependencies = ["kernel-linker", "install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-kernel", "--release" ]
 
 [tasks.vi]
-workspace = false
 description = "Compiles sunrise-vi"
 dependencies = ["install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-vi"]
 
 [tasks.vi-release]
-workspace = false
 description = "Compiles sunrise-vi"
 dependencies = ["install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-vi", "--release"]
 
 [tasks.sm]
-workspace = false
 description = "Compiles sunrise-sm"
 dependencies = ["install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-sm"]
 
 [tasks.sm-release]
-workspace = false
 description = "Compiles sunrise-sm"
 dependencies = ["install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-sm", "--release"]
 
 [tasks.shell]
-workspace = false
 description = "Compiles sunrise-shell"
 dependencies = ["install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-shell"]
 
 [tasks.shell-release]
-workspace = false
 description = "Compiles sunrise-shell"
 dependencies = ["install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-shell", "--release"]
 
 [tasks.wall-clock]
-workspace = false
 description = "Compiles sunrise-wall-clock"
 dependencies = ["install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-wall-clock"]
 
 [tasks.wall-clock-release]
-workspace = false
 description = "Compiles sunrise-wall-clock"
 dependencies = ["install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-wall-clock", "--release"]
 
 [tasks.ahci]
-workspace = false
 description = "Compiles sunrise-ahci"
 dependencies = ["install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-ahci"]
 
 [tasks.ahci-release]
-workspace = false
 description = "Compiles sunrise-ahci"
 dependencies = ["install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-ahci", "--release"]
 
 [tasks.time]
-workspace = false
 description = "Compiles sunrise-time"
 dependencies = ["install-cargo-xbuild"]
 command = "cargo"
 args = ["xrustc", "--target=i386-unknown-none-user", "--package=sunrise-time", "--", "-Zexternal-macro-backtrace"]
 
 [tasks.time-release]
-workspace = false
 description = "Compiles sunrise-time"
 dependencies = ["install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-time", "--release"]
 
 [tasks.userspace]
-workspace = false
 description = "Compiles userspace apps"
 dependencies = ["shell", "wall-clock", "sm", "vi", "ahci", "time"]
 
 [tasks.userspace-release]
-workspace = false
 description = "Compiles userspace apps"
 dependencies = ["shell-release", "wall-clock-release", "sm-release", "vi-release", "ahci-release", "time-release"]
 
 [tasks.iso]
-workspace = false
 description = "Creates a bootable ISO containing the kernel and grub."
 dependencies = ["bootstrap", "kernel", "userspace", "install-mkisofs-rs"]
 script_runner = "@shell"
@@ -187,7 +167,6 @@ mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltori
 ]
 
 [tasks.iso-release]
-workspace = false
 description = "Creates a bootable ISO containing the kernel and grub."
 dependencies = ["bootstrap-release", "kernel-release", "userspace-release", "install-mkisofs-rs"]
 script_runner = "@shell"
@@ -206,7 +185,6 @@ mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltori
 ]
 
 [tasks.disk]
-workspace = false
 description = "Creates an empty disk image."
 command = "dd"
 # 16384 = 8MiB / 512
@@ -221,7 +199,6 @@ args = [ "file", "createnew", "DISK.img", "8388608" ]
 
 # because we can't have a dependency on a file ರ_ರ
 [tasks.create-disk-if-not-exist]
-workspace = false
 description = "Invokes the task `disk` if DISK.img does not already exist."
 condition_script = [ "[ ! -e DISK.img ]" ]
 run_task = "disk"
@@ -230,7 +207,6 @@ run_task = "disk"
 condition_script = [ "if exists DISK.img exit 1" ]
 
 [tasks.qemu]
-workspace = false
 description = "Runs the bootable ISO in qemu."
 dependencies = ["iso-release", "create-disk-if-not-exist"]
 command = "qemu-system-i386"
@@ -245,7 +221,6 @@ args = [
 ]
 
 [tasks.qemu-debug]
-workspace = false
 description = "Runs the bootable ISO in qemu with gdb support"
 dependencies = ["iso", "create-disk-if-not-exist"]
 command = "qemu-system-i386"
@@ -261,21 +236,18 @@ args = [
 ]
 
 [tasks.doc]
-workspace = false
 description = "Generate the project's documentation"
 env = { "RUSTDOCFLAGS" = "-Z unstable-options --enable-index-page" }
 command = "cargo"
 args = ["doc", "--no-deps"]
 
 [tasks.doc-full]
-workspace = false
 description = "Generate the project's documentation, including private items"
 env = { "RUSTDOCFLAGS" = "-Z unstable-options --enable-index-page" }
 command = "cargo"
 args = ["doc", "--no-deps", "--document-private-items"]
 
 [tasks.deploy-doc]
-workspace = false
 install_crate = { crate_name = "cargo-travis", binary = "cargo", test_arg = ["doc-upload", "--help"] }
 install_crate_args = ["--git", "https://github.com/roblabla/cargo-travis", "--rev", "doc-upload-target"]
 description = "Upload this project's documentation on github pages. Should only run on CI."
@@ -283,13 +255,11 @@ command = "cargo"
 args = ["doc-upload", "--clobber-index"]
 
 [tasks.test]
-workspace = false
 description = "Run the tests in 32bit mode"
 command = "cargo"
 args = ["test", "--target=i686-unknown-linux-gnu"]
 
 [tasks.refresh-crates]
-workspace = false
 description = "Make cargo-clippy work..."
 command = "touch"
 args = ["-c", "kernel/src/main.rs", "bootstrap/src/main.rs",
@@ -300,7 +270,6 @@ args = ["-c", "kernel/src/main.rs", "bootstrap/src/main.rs",
 ]
 
 [tasks.clippy-sunrise-target]
-workspace = false
 description = "Run clippy on sunrise components"
 dependencies = ["install-cargo-xbuild", "refresh-crates"]
 install_crate = { rustup_component_name = "clippy" }
@@ -314,7 +283,6 @@ args = ["xclippy", "--target=i386-unknown-none",
 	]
 
 [tasks.clippy-host-target]
-workspace = false
 description = "Run clippy on host components (relying on std)"
 dependencies = ["refresh-crates"]
 install_crate = { rustup_component_name = "clippy" }
@@ -327,15 +295,12 @@ args = ["clippy",
 	]
 
 [tasks.clippy]
-workspace = false
 dependencies = ["clippy-host-target", "clippy-sunrise-target"]
 
 [tasks.swipc-gen]
-workspace = false
 description = "Get the output of running gen_ipc on an ipcdef file"
 command = "cargo"
 args = ["run", "--manifest-path", "swipc-gen/Cargo.toml", "--features=binaries", "--", "${@}"]
 
 [tasks.default]
-workspace = false
 run_task = "qemu"
