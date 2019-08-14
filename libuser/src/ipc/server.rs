@@ -252,7 +252,7 @@ use crate::syscalls;
 use crate::types::{ServerPort, ServerSession};
 use alloc::boxed::Box;
 use core::ops::{Deref, DerefMut, Index};
-use crate::error::Error;
+use crate::error::{KernelError, Error};
 use crate::ipc::Message;
 use futures::future::{FutureObj, FutureExt};
 use core::future::Future;
@@ -417,7 +417,11 @@ where
             req.push_in_pointer(&mut pointer_buf, false);
             req.pack(&mut buf[..]);
 
-            handle.receive(&mut buf[..], Some(0)).unwrap();
+            // Use a timeout of 0 to avoid blocking.
+            match handle.receive(&mut buf[..], Some(0)) {
+                Err(Error::Kernel(KernelError::Timeout, _)) => continue,
+                res => res.unwrap(),
+            }
 
             let tycmdid = super::find_ty_cmdid(&buf[..]);
             debug!("Got request for: {:?}", tycmdid);

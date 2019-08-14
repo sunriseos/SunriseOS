@@ -276,6 +276,8 @@ pub(crate) fn close_handle(handle: u32) -> Result<(), KernelError> {
 /// When zero handles are passed, this will wait forever until either timeout or
 /// cancellation occurs.
 ///
+/// If a timeout of 0 is passed, this function is guaranteed not to reschedule.
+///
 /// Does not accept 0xFFFF8001 or 0xFFFF8000 meta-handles.
 ///
 /// # Object types
@@ -299,7 +301,8 @@ pub(crate) fn close_handle(handle: u32) -> Result<(), KernelError> {
 /// - 0x0000: Success. One of the objects was signaled before the timeout
 ///   expired, or one of the objects is a Session with a closed remote. Handle
 ///   index is updated to indicate which object signaled.
-/// - 0x7601: Thread termination requested. Handle index is not updated.
+/// - 0x7601: Thread termination requested. Handle index is not updated. Cannot
+///   happen when timeout is 0.
 /// - 0xe401: Invalid handle. Returned when one of the handles passed is invalid.
 ///   Handle index is not updated.
 /// - 0xe601: Invalid address. Returned when the handles pointer is not a
@@ -308,7 +311,7 @@ pub(crate) fn close_handle(handle: u32) -> Result<(), KernelError> {
 ///   timeout. Handle index is not updated.
 /// - 0xec01: Interrupted. Returned when another thread uses
 ///   svcCancelSynchronization to cancel this thread. Handle index is not
-///   updated.
+///   updated. Cannot happen when timeout is 0.
 /// - 0xee01: Too many handles. Returned when the number of handles passed is
 ///   >0x40. Note: Sunrise kernel currently does not return this error. It is perfectly able
 ///   to wait on more than 0x40 handles.

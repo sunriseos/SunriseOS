@@ -162,6 +162,9 @@ pub fn query_physical_address(virtual_address: usize) -> Result<(usize, usize, u
 ///
 /// When zero handles are passed, this will wait forever until either timeout or cancellation occurs.
 ///
+/// If timeout is 0, the function will not schedule or register intent, but merely check if the handles are currently
+/// signaled.
+///
 /// Does not accept 0xFFFF8001 or 0xFFFF8000 as handles.
 ///
 /// # Result
@@ -187,7 +190,7 @@ pub fn wait_synchronization(handles_ptr: UserSpacePtr<[u32]>, timeout_ns: usize)
     }
 
     // Add a waitable for the timeout.
-    let timeout_waitable = if timeout_ns != usize::max_value() {
+    let timeout_waitable = if timeout_ns != usize::max_value() && timeout_ns != 0 {
         Some(timer::wait_ns(timeout_ns))
     } else {
         None
@@ -199,18 +202,30 @@ pub fn wait_synchronization(handles_ptr: UserSpacePtr<[u32]>, timeout_ns: usize)
         .chain(timeout_waitable.iter().map(|v| v as &dyn Waitable));
 
     // And now, wait!
-    let val = event::wait(waitables.clone())?;
-
-    // Figure out which waitable got triggered.
-    for (idx, handle) in waitables.enumerate() {
-        if handle as *const _ == val as *const _ {
-            if idx == handle_arr.len() {
-                return Err(UserspaceError::Timeout);
-            } else {
-                return Ok(idx);
+    if timeout_ns == 0 {
+        // Avoid rescheduling if we have a timeout of 0. We shouldn't even
+        // register intent in this case!
+        for (idx, item) in waitables.enumerate() {
+            if item.is_signaled() {
+                return Ok(idx)
             }
         }
-    }
+
+        return Err(UserspaceError::Timeout);
+    } else {
+        let val = event::wait(waitables.clone())?;
+
+        // Figure out which waitable got triggered.
+        for (idx, handle) in waitables.enumerate() {
+            if handle as *const _ == val as *const _ {
+                if idx == handle_arr.len() {
+                    return Err(UserspaceError::Timeout);
+                } else {
+                    return Ok(idx);
+                }
+            }
+        }
+    };
     // That's not supposed to happen. I heard that *sometimes*, dyn pointers will not turn up equal...
     unreachable!("No waitable triggered??!?");
 }
