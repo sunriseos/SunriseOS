@@ -3,9 +3,9 @@
 //! ![minor mistake marvin](https://raw.githubusercontent.com/sunriseos/SunriseOS/master/kernel/res/kernel_panic_doc.jpg)
 
 use crate::sync;
-use crate::interrupts::UserspaceHardwareContext;
+use crate::i386::interrupt_service_routines::UserspaceHardwareContext;
 use tinybmp::Bmp;
-use crate::interrupts::syscalls::map_framebuffer;
+use crate::syscalls::map_framebuffer;
 use crate::devices::rs232::SerialLogger;
 use crate::i386::gdt::MAIN_TASK;
 use crate::scheduler::try_get_current_thread;

@@ -51,7 +51,7 @@ pub struct ProcessMemory {
     ///
     /// The location of each process's heap should be random, to implement ASLR.
     ///
-    /// [set_heap_size]: crate::interrupts::syscalls::set_heap_size
+    /// [set_heap_size]: crate::syscalls::set_heap_size
     heap_base_address: VirtualAddress,
 }
 

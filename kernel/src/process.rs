@@ -25,7 +25,7 @@ mod capabilities;
 pub use self::capabilities::ProcessCapabilities;
 use crate::paging::{InactiveHierarchy, InactiveHierarchyTrait};
 use self::thread_local_storage::TLSManager;
-use crate::interrupts::UserspaceHardwareContext;
+use crate::i386::interrupt_service_routines::UserspaceHardwareContext;
 
 /// The struct representing a process. There's one for every process.
 ///
@@ -145,7 +145,7 @@ pub struct ThreadStruct {
 /// IPC. This can be used, for instance, to share a handle to a memory region,
 /// allowing for the mapping of Shared Memory.
 ///
-/// Most handles can be waited on via [crate::interrupts::syscalls::wait_synchronization], which
+/// Most handles can be waited on via [crate::syscalls::wait_synchronization], which
 /// will have relevant behavior for all the different kind of handles.
 #[derive(Debug)]
 pub enum Handle {

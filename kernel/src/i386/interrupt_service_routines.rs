@@ -25,7 +25,7 @@
 //! Syscalls are handled as if they were exceptions, but instead of killing the process the handler
 //! calls [syscall_interrupt_dispatcher].
 //!
-//! [syscall_interrupt_dispatcher]: self::interrupts::syscall_interrupt_dispatcher
+//! [syscall_interrupt_dispatcher]: self::interrupt_service_routines::syscall_interrupt_dispatcher
 
 use crate::i386::structures::idt::{PageFaultErrorCode, Idt};
 use crate::i386::instructions::interrupts::sti;
@@ -45,11 +45,9 @@ use crate::i386::structures::gdt::SegmentSelector;
 use crate::i386::registers::eflags::EFlags;
 use crate::mem::{UserSpacePtr, UserSpacePtrMut};
 use crate::error::UserspaceError;
-use crate::interrupts::syscalls::*;
+use crate::syscalls::*;
 use bit_field::BitArray;
 use sunrise_libkern::{nr, SYSCALL_NAMES};
-
-pub mod syscalls;
 
 /// Checks if our thread was killed, in which case unschedule ourselves.
 ///
@@ -222,7 +220,7 @@ const_assert_eq!((GdtIndex::UTlsElf as u16) << 3 | 0b11, 0x43);
 /// When returning from the exception, the isr will unconditionally pop the errcode,
 /// with no regards for whether it was real or not, and call `iret`.
 ///
-/// [UserspaceHardwareContext]: crate::interrupts::UserspaceHardwareContext
+/// [UserspaceHardwareContext]: crate::i386::interrupt_service_routines::UserspaceHardwareContext
 #[macro_export] // for docs
 macro_rules! trap_gate_asm {
     (has_errorcode: true) => { "
@@ -417,7 +415,7 @@ macro_rules! trap_gate_asm {
 /// ```
 ///
 /// [ThreadStruct]: crate::process::ThreadStruct
-/// [UserspaceHardwareContext]: crate::interrupts::UserspaceHardwareContext
+/// [UserspaceHardwareContext]: crate::i386::interrupt_service_routines::UserspaceHardwareContext
 #[macro_export] // for docs
 macro_rules! generate_trap_gate_handler {
 

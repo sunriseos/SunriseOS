@@ -85,7 +85,7 @@
 //! [Ulrich Drepper's paper on TLS]: https://web.archive.org/web/20190710135250/https://akkadia.org/drepper/tls.pdf
 //! [`CPU_LOCAL_REGIONS`]: crate::cpu_locals::CPU_LOCAL_REGIONS
 //! [GDT]: crate::i386::gdt
-//! [`set_thread_area`]: crate::interrupts::syscalls::set_thread_area
+//! [`set_thread_area`]: crate::syscalls::set_thread_area
 //! [#\[thread_local\] attribute]: https://github.com/rust-lang/rust/issues/10310
 
 use crate::i386::multiboot;
