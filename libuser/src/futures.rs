@@ -29,6 +29,7 @@ use futures::task::ArcWake;
 use futures::future::{FutureObj, LocalFutureObj};
 use spin::Mutex;
 
+use crate::error::KernelError;
 use crate::types::HandleRef;
 use crate::syscalls;
 
@@ -249,13 +250,34 @@ impl<'a> WaitableManager<'a> {
 
             assert!(!waitables.is_empty(), "WaitableManager entered invalid state: No waitables to wait on.");
             debug!("Calling WaitSynchronization with {:?}", waitables);
-            let idx = syscalls::wait_synchronization(&*waitables, None).unwrap();
-            debug!("Handle idx {} got signaled", idx);
-            for (_, item) in handle_to_waker.remove(idx) {
-                item.wake()
+            match syscalls::wait_synchronization(&*waitables, None) {
+                Ok(idx) => {
+                    debug!("Handle idx {} got signaled", idx);
+                    for (_, item) in handle_to_waker.remove(idx) {
+                        item.wake()
+                    }
+                    waitables.remove(idx);
+                },
+                Err(KernelError::Timeout) => {
+                    // TODO: Handle timeouts in wait_sync
+                },
+                Err(KernelError::InvalidHandle) /* | Err(KernelError::Interrupted) */ => {
+                    // We'll need to wake up every future, and let the culprit
+                    // deal with the mess. There isn't a better way
+                    // unfortunately, as the kernel does not tell us which
+                    // handle is invalid.
+                    for hnd_wakers in handle_to_waker.drain(..) {
+                        for (_, item) in hnd_wakers {
+                            item.wake()
+                        }
+                    }
+                    waitables.clear();
+                    handle_to_waker.clear();
+                },
+                // The following errors are handled, and will cause a panic:
+                // InvalidAddress, TooManyHandles, ThreadTerminationRequested
+                err => { err.expect("WaitSynchronization to return a handled error."); }
             }
-
-            waitables.remove(idx);
         }
     }
 }
