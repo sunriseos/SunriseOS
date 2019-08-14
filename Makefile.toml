@@ -1,5 +1,6 @@
 [config]
 skip_core_tasks = true
+min_version = "0.22.0"
 
 [env]
 RUST_TARGET_PATH = "${PWD}"
@@ -38,117 +39,121 @@ script = ["cp linker-scripts/kernel.ld    link.T"]
 install_crate = { rustup_component_name = "rust-src" }
 
 [tasks.install-mkisofs-rs]
-install_crate = { crate_name = "mkisofs-rs", binary = "mkisofs-rs", test_arg = "--help" }
+install_crate = { crate_name = "mkisofs-rs", binary = "mkisofs-rs", test_arg = "--help", min_version = "0.1.1" }
+
+[tasks.install-cargo-xbuild]
+dependencies = ["install-rust-src"]
+install_crate = { crate_name = "cargo-xbuild", binary = "cargo", test_arg = ["xbuild", "--help"], min_version = "0.5.14" }
 
 [tasks.bootstrap]
 workspace = false
 description = "Compiles the i386 bootstrap for debug"
-dependencies = ["bootstrap-linker", "install-rust-src"]
+dependencies = ["bootstrap-linker", "install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-bootstrap" ]
 
 [tasks.bootstrap-release]
 workspace = false
 description = "Compiles the i386 bootstrap for release"
-dependencies = ["bootstrap-linker", "install-rust-src"]
+dependencies = ["bootstrap-linker", "install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-bootstrap", "--release" ]
 
 [tasks.kernel]
 workspace = false
 description = "Compiles the kernel for debug"
-dependencies = ["kernel-linker", "install-rust-src"]
+dependencies = ["kernel-linker", "install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-kernel", "-Z", "package-features", "--features=panic-on-exception"]
 
 [tasks.kernel-release]
 workspace = false
 description = "Compiles the kernel for release"
-dependencies = ["kernel-linker", "install-rust-src"]
+dependencies = ["kernel-linker", "install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-kernel", "--release" ]
 
 [tasks.vi]
 workspace = false
 description = "Compiles sunrise-vi"
-dependencies = ["install-rust-src"]
+dependencies = ["install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-vi"]
 
 [tasks.vi-release]
 workspace = false
 description = "Compiles sunrise-vi"
-dependencies = ["install-rust-src"]
+dependencies = ["install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-vi", "--release"]
 
 [tasks.sm]
 workspace = false
 description = "Compiles sunrise-sm"
-dependencies = ["install-rust-src"]
+dependencies = ["install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-sm"]
 
 [tasks.sm-release]
 workspace = false
 description = "Compiles sunrise-sm"
-dependencies = ["install-rust-src"]
+dependencies = ["install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-sm", "--release"]
 
 [tasks.shell]
 workspace = false
 description = "Compiles sunrise-shell"
-dependencies = ["install-rust-src"]
+dependencies = ["install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-shell"]
 
 [tasks.shell-release]
 workspace = false
 description = "Compiles sunrise-shell"
-dependencies = ["install-rust-src"]
+dependencies = ["install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-shell", "--release"]
 
 [tasks.wall-clock]
 workspace = false
 description = "Compiles sunrise-wall-clock"
-dependencies = ["install-rust-src"]
+dependencies = ["install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-wall-clock"]
 
 [tasks.wall-clock-release]
 workspace = false
 description = "Compiles sunrise-wall-clock"
-dependencies = ["install-rust-src"]
+dependencies = ["install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-wall-clock", "--release"]
 
 [tasks.ahci]
 workspace = false
 description = "Compiles sunrise-ahci"
-dependencies = ["install-rust-src"]
+dependencies = ["install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-ahci"]
 
 [tasks.ahci-release]
 workspace = false
 description = "Compiles sunrise-ahci"
-dependencies = ["install-rust-src"]
+dependencies = ["install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-ahci", "--release"]
 
 [tasks.time]
 workspace = false
 description = "Compiles sunrise-time"
-dependencies = ["install-rust-src"]
+dependencies = ["install-cargo-xbuild"]
 command = "cargo"
 args = ["xrustc", "--target=i386-unknown-none-user", "--package=sunrise-time", "--", "-Zexternal-macro-backtrace"]
 
 [tasks.time-release]
 workspace = false
 description = "Compiles sunrise-time"
-dependencies = ["install-rust-src"]
+dependencies = ["install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-time", "--release"]
 
@@ -297,7 +302,7 @@ args = ["-c", "kernel/src/main.rs", "bootstrap/src/main.rs",
 [tasks.clippy-sunrise-target]
 workspace = false
 description = "Run clippy on sunrise components"
-dependencies = ["install-rust-src", "refresh-crates"]
+dependencies = ["install-cargo-xbuild", "refresh-crates"]
 install_crate = { rustup_component_name = "clippy" }
 command = "cargo"
 args = ["xclippy", "--target=i386-unknown-none",
@@ -311,7 +316,7 @@ args = ["xclippy", "--target=i386-unknown-none",
 [tasks.clippy-host-target]
 workspace = false
 description = "Run clippy on host components (relying on std)"
-dependencies = ["install-rust-src", "refresh-crates"]
+dependencies = ["refresh-crates"]
 install_crate = { rustup_component_name = "clippy" }
 command = "cargo"
 args = ["clippy",
