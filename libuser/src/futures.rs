@@ -19,6 +19,7 @@
 //! [Building an Embedded Futures Executor]: https://web.archive.org/web/20190812080700/https://josh.robsonchase.com/embedded-executor/
 
 use core::task::{Context, Waker, Poll};
+use core::cell::Cell;
 use core::future::Future;
 use core::pin::Pin;
 use alloc::sync::Arc;
@@ -40,11 +41,17 @@ struct Task<'a> {
     /// The waker used to wake this task up from sleep, rescheduling it to be polled.
     // Invariant: waker should always be Some after the task has been spawned.
     waker: Option<Waker>,
+    /// List of handles that this task is currently waiting on.
+    waiting_on: Vec<u32>,
 }
+
+/// Task currently executing on this thread, or None.
+#[thread_local]
+static CURRENT_TASK: Cell<Option<generational_arena::Index>> = Cell::new(None);
 
 /// A WorkQueue represents a handle to a [WaitableManager] on which you can spawn
 /// new Futures with [WorkQueue::spawn()] or put the current future to sleep until
-/// a handle (or list of handle) is signaled through [WorkQueue::wait_for()].
+/// a handle is signaled through [WorkQueue::wait_for()].
 ///
 /// This handle may be cloned - it will still point to the same [WaitableManager].
 /// It may be shared with other threads, sent to other event loops, etc... in order
@@ -71,17 +78,21 @@ enum WorkItem<'a> {
     /// passed handle is signaled - which is detected by adding it to the list
     /// of handles the event loop calls [syscalls::wait_synchronization()] on
     /// when no other task needs to run.
-    WaitHandle(HandleRef<'static>, Waker),
+    WaitHandle(HandleRef<'static>, Waker, generational_arena::Index),
 }
 
-
 impl<'a> WorkQueue<'a> {
-    /// Registers the task represented by the given [Context] to be polled when one
-    /// of the given handles are signaled.
+    /// Registers the task represented by the given [Context] to be polled when
+    /// the given handle is signaled.
     // TODO: How to know which handle was signaled ?_?.
-    pub(crate) fn wait_for(&self, handles: &[HandleRef], ctx: &mut Context) {
-        for handle in handles {
-            self.0.lock().push_back(WorkItem::WaitHandle(handle.staticify(), ctx.waker().clone()))
+    pub(crate) fn wait_for(&self, handle: HandleRef<'_>, ctx: &mut Context) {
+        let id = CURRENT_TASK.get();
+
+        if let Some(id) = id {
+            self.0.lock().push_back(WorkItem::WaitHandle(handle.staticify(), ctx.waker().clone(), id))
+        } else {
+            panic!("Tried to use wait_async outside of a spawned future.
+            Please only use wait_async from futures spawned on a WaitableManager.");
         }
     }
 
@@ -151,29 +162,47 @@ impl<'a> WaitableManager<'a> {
     /// Returns when all the futures spawned on the loop have returned a value.
     pub fn run(&mut self) {
         let mut waitables = Vec::new();
-        let mut waiting_on: Vec<Vec<Waker>> = Vec::new();
+        let mut handle_to_waker: Vec<Vec<(generational_arena::Index, Waker)>> = Vec::new();
         loop {
             loop {
                 let item = self.work_queue.0.lock().pop_front();
                 let item = if let Some(item) = item { item } else { break };
                 match item {
                     WorkItem::Poll(id) => {
-                        if let Some(Task { future, waker }) = self.registry.get_mut(id) {
+                        if let Some(Task { future, waker, .. }) = self.registry.get_mut(id) {
                             let future = Pin::new(future);
 
                             let waker = waker
                                 .as_ref()
                                 .expect("waker not set, task spawned incorrectly");
 
+                            CURRENT_TASK.set(Some(id));
+
                             if let Poll::Ready(_) = future.poll(&mut Context::from_waker(waker)) {
-                                self.registry.remove(id);
+                                // Ideally, this would not be necessary because
+                                // dropping a future should cause the futures
+                                // associated with those to get cancelled.
+                                let task = self.registry.remove(id).unwrap();
+                                for hnd in task.waiting_on {
+                                    if let Some(idx) = waitables.iter().position(|v: &HandleRef| v.inner.get() == hnd) {
+                                        handle_to_waker[idx].retain(|(idx, _)| *idx != id);
+                                        if handle_to_waker.is_empty() {
+                                            waitables.remove(idx);
+                                        }
+                                    } else {
+                                        // Shrug again
+                                    }
+                                }
                             }
+
+                            CURRENT_TASK.set(None);
                         }
                     },
                     WorkItem::Spawn(future) => {
                         let id = self.registry.insert(Task {
                             future: future.into(),
                             waker: None,
+                            waiting_on: Vec::new()
                         });
                         self.registry.get_mut(id).unwrap().waker = Some(Arc::new(QueueWaker {
                             queue: self.work_queue.clone(),
@@ -181,12 +210,17 @@ impl<'a> WaitableManager<'a> {
                         }).into_waker());
                         self.work_queue.0.lock().push_back(WorkItem::Poll(id));
                     },
-                    WorkItem::WaitHandle(hnd, waker) => {
-                        if let Some(idx) = waitables.iter().position(|v| *v == hnd) {
-                            waiting_on[idx].push(waker);
+                    WorkItem::WaitHandle(hnd, waker, id) => {
+                        if let Some(task) = self.registry.get_mut(id) {
+                            if let Some(idx) = waitables.iter().position(|v| *v == hnd) {
+                                handle_to_waker[idx].push((id, waker));
+                            } else {
+                                waitables.push(hnd);
+                                handle_to_waker.push(vec![(id, waker)]);
+                            }
+                            task.waiting_on.push(hnd.inner.get());
                         } else {
-                            waitables.push(hnd);
-                            waiting_on.push(vec![waker]);
+                            // ¯\_(ツ)_/¯
                         }
                     }
                 }
@@ -200,7 +234,7 @@ impl<'a> WaitableManager<'a> {
             debug!("Calling WaitSynchronization with {:?}", waitables);
             let idx = syscalls::wait_synchronization(&*waitables, None).unwrap();
             debug!("Handle idx {} got signaled", idx);
-            for item in waiting_on.remove(idx) {
+            for (_, item) in handle_to_waker.remove(idx) {
                 item.wake()
             }
 

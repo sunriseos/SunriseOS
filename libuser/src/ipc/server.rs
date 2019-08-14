@@ -305,7 +305,15 @@ where
 {
     crate::loop_future::loop_fn((work_queue, dispatch, port), |(work_queue, dispatch, port)| {
         port.wait_async(work_queue.clone())
-            .map(move |_| {
+            .map(move |res| {
+                if let Err(err) = res {
+                    // This instance of WaitAsync can return one of two errors:
+                    // - InvalidAddress: Someone did something silly with
+                    //   memory.
+                    // - InvalidHandle: Shouldn't happen since we hold the
+                    //   ServerPort. Someone might have manually closed it?
+                    unreachable!("WaitAsync errors cannot be reached from here. {:?}", err);
+                }
                 let handle = port.accept().unwrap();
                 let future = new_session_wrapper(work_queue.clone(), handle, T::default(), dispatch.clone());
                 work_queue.spawn(FutureObj::new(Box::new(future)));
@@ -410,7 +418,16 @@ where
     async move {
         loop {
             debug!("Waiting for a new session on handle {:?}", handle);
-            handle.wait_async(work_queue.clone()).await;
+            let res = handle.wait_async(work_queue.clone()).await;
+
+            if let Err(err) = res {
+                // This instance of WaitAsync can return one of two errors:
+                // - InvalidAddress: Someone did something silly with
+                //   memory.
+                // - InvalidHandle: Shouldn't happen since we hold the
+                //   ServerPort. Someone might have manually closed it?
+                unreachable!("WaitAsync errors cannot be reached from here. {:?}", err);
+            }
 
             // Push a C Buffer before receiving.
             let mut req = Message::<(), [_; 1], [_; 0], [_; 0]>::new_request(None, 0);

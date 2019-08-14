@@ -9,6 +9,7 @@ use core::num::NonZeroU32;
 use sunrise_libkern::MemoryPermissions;
 use crate::error::{Error, KernelError};
 use crate::ipc::{Message, MessageTy};
+use crate::futures::WorkQueue;
 use core::mem;
 
 /// A Handle is a sort of reference to a Kernel Object. Its underlying
@@ -90,28 +91,35 @@ impl<'a> HandleRef<'a> {
     }
 
     /// Returns a future that waits for the current handle to get signaled. This effectively
-    /// registers it to be polled on with [crate::syscalls::wait_synchronization()].
-    // TODO: Explain what [crate::ipc::WorkQueue] is
-    // TODO: Somehow make polling multiple handle possible.
-    fn wait_async<'b>(self, queue: crate::futures::WorkQueue<'b>)-> impl core::future::Future<Output = ()> + Unpin +'b {
+    /// registers the currently executing Task to be polled again by the future executor backing
+    /// the given [WorkQueue] when this handle gets signaled.
+    ///
+    /// # Panics
+    ///
+    /// Panics if used from outside the context of a Future spawned on a libuser
+    /// future executor. Please make sure you only call this function from a
+    /// future spawned on a WaitableManager.
+    fn wait_async<'b>(self, queue: WorkQueue<'b>)-> impl core::future::Future<Output = Result<(), Error>> + Unpin +'b {
         #[allow(missing_docs, clippy::missing_docs_in_private_items)]
         struct MyFuture<'a> {
-            is_done: bool, queue: crate::futures::WorkQueue<'a>, handle: HandleRef<'static>
+            queue: crate::futures::WorkQueue<'a>,
+            handle: HandleRef<'static>
         }
         impl<'a> core::future::Future for MyFuture<'a> {
-            type Output = ();
-            fn poll(mut self: core::pin::Pin<&mut Self>, cx: &mut core::task::Context) -> core::task::Poll<()> {
-                if self.is_done {
-                    core::task::Poll::Ready(())
-                } else {
-                    self.queue.wait_for(&[self.handle], cx);
-                    self.is_done = true;
-                    core::task::Poll::Pending
+            type Output = Result<(), Error>;
+            fn poll(self: core::pin::Pin<&mut Self>, cx: &mut core::task::Context) -> core::task::Poll<Result<(), Error>> {
+                match syscalls::wait_synchronization(&[self.handle], Some(0)) {
+                    Err(KernelError::Timeout) => {
+                        self.queue.wait_for(self.handle, cx);
+                        core::task::Poll::Pending
+                    },
+                    Err(err) => core::task::Poll::Ready(Err(err.into())),
+                    Ok(_) => core::task::Poll::Ready(Ok(()))
                 }
             }
         }
         MyFuture {
-            is_done: false, queue, handle: self.staticify()
+            queue, handle: self.staticify()
         }
     }
 }
@@ -136,7 +144,13 @@ impl ReadableEvent {
     }
 
     /// Waits for the event to get signaled.
-    pub fn wait_async<'a>(&self, queue: crate::futures::WorkQueue<'a>) -> impl core::future::Future<Output = ()> + Unpin + 'a {
+    ///
+    /// # Panics
+    ///
+    /// Panics if used from outside the context of a Future spawned on a libuser
+    /// future executor. Please make sure you only call this function from a
+    /// future spawned on a WaitableManager.
+    pub fn wait_async<'a>(&self, queue: crate::futures::WorkQueue<'a>) -> impl core::future::Future<Output = Result<(), Error>> + Unpin + 'a {
         self.0.as_ref().wait_async(queue)
     }
 }
@@ -260,7 +274,13 @@ impl ServerSession {
     ///
     /// Once this function returns, calling [ServerSession::receive()] is
     /// guaranteed not to block.
-    pub fn wait_async<'a>(&self, queue: crate::futures::WorkQueue<'a>) -> impl core::future::Future<Output = ()> + Unpin + 'a {
+    ///
+    /// # Panics
+    ///
+    /// Panics if used from outside the context of a Future spawned on a libuser
+    /// future executor. Please make sure you only call this function from a
+    /// future spawned on a WaitableManager.
+    pub fn wait_async<'a>(&self, queue: crate::futures::WorkQueue<'a>) -> impl core::future::Future<Output = Result<(), Error>> + Unpin + 'a {
         self.0.as_ref().wait_async(queue)
     }
 }
@@ -304,9 +324,21 @@ impl ServerPort {
 
     /// Waits for the server to receive a connection.
     ///
-    /// Once this function returns, [ServerPort::accept()] is guaranteed not to
-    /// block.
-    pub fn wait_async<'a>(&self, queue: crate::futures::WorkQueue<'a>) -> impl core::future::Future<Output = ()> + Unpin + 'a {
+    /// Once this function returns, the next call to [ServerPort::accept()] is
+    /// guaranteed not to block. Attention: Because accept does not have any
+    /// non-blocking mode, it is dangerous to share a ServerPort across multiple
+    /// futures or threads (since multiple threads or futures will get woken up
+    /// and attempt accepting, but only one accept will not block).
+    ///
+    /// If you wish to wait on a server port from multiple threads, please
+    /// ensure that calls to the accept functions are wrapped in a mutex.
+    ///
+    /// # Panics
+    ///
+    /// Panics if used from outside the context of a Future spawned on a libuser
+    /// future executor. Please make sure you only call this function from a
+    /// future spawned on a WaitableManager.
+    pub fn wait_async<'a>(&self, queue: crate::futures::WorkQueue<'a>) -> impl core::future::Future<Output = Result<(), Error>> + Unpin + 'a {
         self.0.as_ref().wait_async(queue)
     }
 }
