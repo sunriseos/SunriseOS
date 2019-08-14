@@ -103,13 +103,15 @@ impl<'a> HandleRef<'a> {
         #[allow(missing_docs, clippy::missing_docs_in_private_items)]
         struct MyFuture<'a> {
             queue: crate::futures::WorkQueue<'a>,
-            handle: HandleRef<'static>
+            handle: HandleRef<'static>,
+            registered_on: Option<core::task::Waker>
         }
         impl<'a> core::future::Future for MyFuture<'a> {
             type Output = Result<(), Error>;
-            fn poll(self: core::pin::Pin<&mut Self>, cx: &mut core::task::Context) -> core::task::Poll<Result<(), Error>> {
+            fn poll(mut self: core::pin::Pin<&mut Self>, cx: &mut core::task::Context) -> core::task::Poll<Result<(), Error>> {
                 match syscalls::wait_synchronization(&[self.handle], Some(0)) {
                     Err(KernelError::Timeout) => {
+                        self.registered_on = Some(cx.waker().clone());
                         self.queue.wait_for(self.handle, cx);
                         core::task::Poll::Pending
                     },
@@ -118,8 +120,16 @@ impl<'a> HandleRef<'a> {
                 }
             }
         }
+        impl Drop for MyFuture<'_> {
+            fn drop(&mut self) {
+                if let Some(waker) = &self.registered_on {
+                    self.queue.unwait_for(self.handle, waker.clone());
+                }
+            }
+        }
+
         MyFuture {
-            queue, handle: self.staticify()
+            queue, handle: self.staticify(), registered_on: None
         }
     }
 }

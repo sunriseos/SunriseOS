@@ -40,7 +40,7 @@ struct Task<'a> {
     future: LocalFutureObj<'a, ()>,
     /// The waker used to wake this task up from sleep, rescheduling it to be polled.
     // Invariant: waker should always be Some after the task has been spawned.
-    waker: Option<Waker>,
+    waker: Option<Arc<QueueWaker<'a>>>,
     /// List of handles that this task is currently waiting on.
     waiting_on: Vec<u32>,
 }
@@ -79,12 +79,14 @@ enum WorkItem<'a> {
     /// of handles the event loop calls [syscalls::wait_synchronization()] on
     /// when no other task needs to run.
     WaitHandle(HandleRef<'static>, Waker, generational_arena::Index),
+    /// Stop the task identified by the Waker from waiting on this handle. We
+    /// use the waker's `will_wake` function to identify the proper task.
+    UnregisterHandle(HandleRef<'static>, Waker),
 }
 
 impl<'a> WorkQueue<'a> {
     /// Registers the task represented by the given [Context] to be polled when
     /// the given handle is signaled.
-    // TODO: How to know which handle was signaled ?_?.
     pub(crate) fn wait_for(&self, handle: HandleRef<'_>, ctx: &mut Context) {
         let id = CURRENT_TASK.get();
 
@@ -94,6 +96,12 @@ impl<'a> WorkQueue<'a> {
             panic!("Tried to use wait_async outside of a spawned future.
             Please only use wait_async from futures spawned on a WaitableManager.");
         }
+    }
+
+    /// Unregisters the task represented by the given [Waker] from being polled
+    /// when the given handle is signaled.
+    pub(crate) fn unwait_for(&self, handle: HandleRef<'_>, waker: Waker) {
+        self.0.lock().push_back(WorkItem::UnregisterHandle(handle.staticify(), waker))
     }
 
     /// Spawn a top-level future on the event loop. The future will be polled once
@@ -178,20 +186,14 @@ impl<'a> WaitableManager<'a> {
 
                             CURRENT_TASK.set(Some(id));
 
-                            if let Poll::Ready(_) = future.poll(&mut Context::from_waker(waker)) {
-                                // Ideally, this would not be necessary because
-                                // dropping a future should cause the futures
-                                // associated with those to get cancelled.
+                            if let Poll::Ready(_) = future.poll(&mut Context::from_waker(&waker.clone().into_waker())) {
                                 let task = self.registry.remove(id).unwrap();
-                                for hnd in task.waiting_on {
-                                    if let Some(idx) = waitables.iter().position(|v: &HandleRef| v.inner.get() == hnd) {
-                                        handle_to_waker[idx].retain(|(idx, _)| *idx != id);
-                                        if handle_to_waker.is_empty() {
-                                            waitables.remove(idx);
-                                        }
-                                    } else {
-                                        // Shrug again
-                                    }
+
+                                let Task { future, waker: _, waiting_on } = task;
+
+                                drop(future);
+                                if !waiting_on.is_empty() {
+                                    warn!("A wait_async future got leaked!");
                                 }
                             }
 
@@ -207,7 +209,7 @@ impl<'a> WaitableManager<'a> {
                         self.registry.get_mut(id).unwrap().waker = Some(Arc::new(QueueWaker {
                             queue: self.work_queue.clone(),
                             id,
-                        }).into_waker());
+                        }));
                         self.work_queue.0.lock().push_back(WorkItem::Poll(id));
                     },
                     WorkItem::WaitHandle(hnd, waker, id) => {
@@ -221,6 +223,21 @@ impl<'a> WaitableManager<'a> {
                             task.waiting_on.push(hnd.inner.get());
                         } else {
                             // ¯\_(ツ)_/¯
+                        }
+                    },
+                    WorkItem::UnregisterHandle(hnd, waker) => {
+                        // Find task that wants to unregister.
+                        let task = self.registry.iter().find(|(_, v)| v.waker.clone().map(|v| waker.will_wake(&v.into_waker())).unwrap_or(false));
+
+                        if let Some((task_idx, _)) = task {
+                            // Find idx of the hnd in waitables.
+                            if let Some(waitable_idx) = waitables.iter().position(|v| *v == hnd) {
+                                // Unregister task from waiting on hnd.
+                                handle_to_waker[waitable_idx].retain(|(idx, _)| *idx != task_idx);
+                                if handle_to_waker.is_empty() {
+                                    waitables.remove(waitable_idx);
+                                }
+                            }
                         }
                     }
                 }
