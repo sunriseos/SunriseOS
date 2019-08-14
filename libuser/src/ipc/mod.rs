@@ -322,7 +322,8 @@ pub enum MessageTy {
 /// e.g.
 ///
 /// ```
-/// let msg = Message::<_, _, [_; 1], _>::new_request(None, 1);
+/// use sunrise_libuser::ipc::Message;
+/// let msg = Message::<(), [_; 0], [_; 1], [_; 0]>::new_request(None, 1);
 /// ```
 ///
 /// The ugly syntax, while unfortunate, is a necessary evil until const generics

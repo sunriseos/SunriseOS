@@ -5,6 +5,7 @@
 //! You declare a thread-local using the [#\[thread_local\] attribute] :
 //!
 //! ```
+//! #![feature(thread_local)]
 //! #[thread_local]
 //! static MY_THREAD_LOCAL: core::cell::Cell<u8> = core::cell::Cell::new(42);
 //! ```

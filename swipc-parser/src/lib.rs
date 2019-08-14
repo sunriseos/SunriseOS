@@ -17,9 +17,10 @@
 //! #     # Gets the screen resolution.
 //! #     [1] get_resolution() -> (u32 width, u32 height);
 //! # }";
+//! use swipc_parser::parse;
 //! let ctx = parse(vi);
-//! let vi = ctx.interfaces["libuser::vi::ViInterface"];
-//! for func in vi.funcs {
+//! let vi = &ctx.interfaces["libuser::vi::ViInterface"];
+//! for func in &vi.funcs {
 //!     println!("[{}] {}: {}", func.num, func.name, func.doc);
 //! }
 //! ```

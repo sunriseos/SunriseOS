@@ -13,9 +13,10 @@
 //! code nicer. For instance, writing a function returning an Error:
 //!
 //! ```
+//! use sunrise_libuser::error::{KernelError, SmError, Error};
 //! fn ret_err() -> Result<(), Error> {
 //!    // Will automatically be converted to Error, the backtrace filled
-//!    let _ = Err(KernelError::InvalidPort)?;
+//!    let _ = Err(KernelError::PortRemoteDead)?;
 //!    let _ = Err(SmError::PermissionDenied)?;
 //!    Ok(())
 //! }
@@ -24,10 +25,11 @@
 //! Matching on an error is similarly convenient:
 //!
 //! ```
+//! use sunrise_libuser::error::{KernelError, Error};
 //! # let err: Result<(), Error> = Ok(());
 //! match err {
 //!    Ok(_) => (),
-//!    Err(Error::Kernel(KernelError::InvalidPort, _)) => (),
+//!    Err(Error::Kernel(KernelError::PortRemoteDead, _)) => (),
 //!    _ => ()
 //! }
 //! ```
