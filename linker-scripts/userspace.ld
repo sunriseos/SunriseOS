@@ -130,22 +130,21 @@ SECTIONS
   } :data
 
   /* Thread Local sections */
-
-  /* Since we don't want our user to have to read its own program headers to find out the size and alignment,
-   * we force the aligment here and expose symbols so they can be deduced at runtime */
-  __tls_align__ = 16;
-
-  . = ALIGN(__tls_align__); /* we want no padding between __tls_start__ and .tdata */
-
-  __tls_start__ = .;
-
-  .tdata : ALIGN(__tls_align__) {
+  .tdata : {
     *(.tdata .tdata.*)
+  } :tls :data
+
+  .tbss : {
     *(.tbss .tbss.*)
     *(.tcommon)
   } :tls :data
 
-  __tls_end__ = .;
+  /* Since we don't want our user to have to read its own program headers to find out the size and alignment,
+   * we expose symbols so they can be known at runtime */
+  __tls_align__ = MAX(ALIGNOF(.tdata), ALIGNOF(.tbss));
+  __tls_init_image_addr__ = ADDR(.tdata);
+  __tls_file_size__ = SIZEOF(.tdata);
+  __tls_mem_size__  = ALIGN(ADDR(.tbss) + SIZEOF(.tbss) - ADDR(.tdata), __tls_align__);
 
   /* BSS section */
   . = ALIGN(0x1000);

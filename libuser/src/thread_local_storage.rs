@@ -44,9 +44,10 @@
 //! Since we don't have access to our program headers, we instead use the linker to expose the following
 //! symbols:
 //!
-//! * [`__tls_start__`], The start address of our TLS initialisation image.
-//! * [`__tls_end__`], The end address of our TLS initialisation image.
-//! * [`__tls_align__`], The linker forced TLS alignment to this value.
+//! * [`__tls_init_image_addr__`], `p_vaddr`: the address of our TLS initialisation image.
+//! * [`__tls_file_size__`], `p_filesz`: the size of our TLS initialisation image.
+//! * [`__tls_mem_size__`], `p_memsz`: the total size of our TLS segment.
+//! * [`__tls_align__`], `p_align`: the alignment of our TLS segment.
 //!
 //! Those symbols are the addresses of the initialization in our `.tdata`, so it can directly be copied.
 //!
@@ -66,8 +67,9 @@
 //! [Ulrich Drepper's paper on TLS]: https://web.archive.org/web/20190710135250/https://akkadia.org/drepper/tls.pdf
 //! [`set_thread_area`]: crate::syscalls::set_thread_area
 //! [#\[thread_local\] attribute]: https://github.com/rust-lang/rust/issues/10310
-//! [`__tls_start__`]: self::thread_local_storage::__tls_start__
-//! [`__tls_end__`]: self::thread_local_storage::__tls_end__
+//! [`__tls_init_image_addr__`]: self::thread_local_storage::__tls_init_image_addr__
+//! [`__tls_file_size__`]: self::thread_local_storage::__tls_file_size__
+//! [`__tls_mem_size__`]: self::thread_local_storage::__tls_mem_size__
 //! [`__tls_align__`]: self::thread_local_storage::__tls_align__
 
 use crate::syscalls;
@@ -85,22 +87,34 @@ extern "C" {
     /// This is an **absolute symbol**, which means its "address" is actually its value,
     /// i.e. to get a pointer do:
     ///
+    /// ```ignore
+    /// let tls_init_image_addr: *const u8 = unsafe { &__tls_init_image_addr__ as *const u8 };
     /// ```
-    /// let tls_start: *const u8 = unsafe { &__tls_start__ as *const u8 };
-    /// ```
-    static __tls_start__: u8;
-    /// The address of the end of the TLS initialisation image in our `.tdata`.
+    static __tls_init_image_addr__: u8;
+    /// The size of the TLS initialisation image in our `.tdata`.
     ///
     /// Because we don't want to read our own `P_TLS` program header,
-    /// the linker provides a symbol for the end of the init image.
+    /// the linker provides a symbol for the size of the init image.
     ///
     /// This is an **absolute symbol**, which means its "address" is actually its value,
-    /// i.e. to get a pointer do:
+    /// i.e. to get its value do:
     ///
+    /// ```ignore
+    /// let tls_init_image_size: usize = unsafe { &__tls_file_size__ as *const _ as usize };
     /// ```
-    /// let tls_end: *const u8 = unsafe { &__tls_end__ as *const u8 };
+    static __tls_file_size__: usize;
+    /// The total memsize of the TLS segment: .tdata + .tbss
+    ///
+    /// Because we don't want to read our own `P_TLS` program header,
+    /// the linker provides a symbol for the memsize of the TLS segment.
+    ///
+    /// This is an **absolute symbol**, which means its "address" is actually its value,
+    /// i.e. to get its value do:
+    ///
+    /// ```ignore
+    /// let tls_block_size = unsafe { &__tls_mem_size__ as *const _ as usize };
     /// ```
-    static __tls_end__: u8;
+    static __tls_mem_size__: usize;
     /// The alignment of the TLS segment.
     ///
     /// Because we don't want to read our own `P_TLS` program header,
@@ -109,7 +123,7 @@ extern "C" {
     /// This is an **absolute symbol**, which means its "address" is actually its value,
     /// i.e. to get its value do:
     ///
-    /// ```
+    /// ```ignore
     /// let tls_align = unsafe { &__tls_align__ as *const _ as usize };
     /// ```
     static __tls_align__: usize;
@@ -132,29 +146,34 @@ impl TlsElf {
     /// Finds out the location of the initialization image from linker defined symbols.
     pub fn allocate() -> Self {
         // copy tls static area
-        let static_block_start = unsafe {
+        let init_image_addr = unsafe {
             // safe: set by linker
-            (&__tls_start__ as *const u8)
+            &__tls_init_image_addr__ as *const u8
         };
-        let static_block_len = unsafe {
+        let file_size = unsafe {
             // safe: set by the linker
-            (&__tls_end__ as *const u8 as usize) - (&__tls_start__ as *const u8 as usize)
+            &__tls_file_size__ as *const _ as usize
         };
-        let static_block = unsafe {
+        let init_image = unsafe {
             // safe: - the initialization image will never be accessed mutably,
             //       - it lives in our .data so its lifetime is &'static,
             //       - u8 is POD and always aligned,
             //       => creating a const slice is ok.
-            core::slice::from_raw_parts(static_block_start, static_block_len)
+            core::slice::from_raw_parts(init_image_addr, file_size)
         };
-        let static_block_align = unsafe {
+        let mem_size = unsafe {
+            // safe: set by the linker
+            &__tls_mem_size__ as *const _ as usize
+        };
+        let align = unsafe {
             // safe: set by the linker
             &__tls_align__ as *const _ as usize
         };
+
         let tls_static_region = ThreadLocalStaticRegion::allocate(
-            static_block,
-            static_block_len,
-            static_block_align);
+            init_image,
+            mem_size,
+            align);
 
         TlsElf {
             static_region: tls_static_region
