@@ -95,6 +95,8 @@ fn get_service_length(servicename: u64) -> usize{
 /// # Panics
 ///
 /// Panics if the bytes of the u64 don't match valid UTF-8.
+// Clippy is stupid and doesn't realize I'm returning a ref to servicename.
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn get_service_str(servicename: &u64) -> Result<&str, core::str::Utf8Error> {
     // TODO: Maybe I should use &[u8] instead?
     let len = get_service_length(*servicename);

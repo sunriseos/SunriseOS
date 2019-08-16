@@ -180,12 +180,16 @@ static RTC_INSTANCE: Once<Rtc> = Once::new();
 #[derive(Default, Debug)]
 struct RTCManager;
 
-async fn update_rtc<'a>(work_queue: WorkQueue<'a>) {
+/// Task responsible for updating the RTC_INSTANCE's current time every second.
+// https://github.com/rust-lang/rust-clippy/issues/3988
+// Should remove on next toolchain upgrade.
+#[allow(clippy::needless_lifetimes)]
+async fn update_rtc(work_queue: WorkQueue<'_>) {
     let rtc = RTC_INSTANCE.r#try().expect("RTC_INSTANCE to be initialized.");
 
     loop {
         if let Some(irq_event) = &rtc.irq_event {
-            irq_event.wait_async(work_queue.clone()).await;
+            let _ = irq_event.wait_async(work_queue.clone()).await;
         } else {
             panic!("RTC irq event cannot be uninialized");
         }
