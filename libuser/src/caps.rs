@@ -23,7 +23,7 @@
 //!
 //! ```
 //! extern crate sunrise_libuser;
-//! use sunrise_libuser::{syscalls, caps};
+//! use sunrise_libuser::{syscalls, caps, capabilities};
 //! capabilities!(CAPABILITIES = Capabilities {
 //!     svcs: [
 //!         syscalls::nr::SetHeapSize,
@@ -44,7 +44,7 @@
 //!         syscalls::nr::SleepThread
 //!     ],
 //!     raw_caps: [caps::ioport(0x60), caps::ioport(0x64), caps::irq_pair(1, 0x3FF)],
-//! },
+//! });
 //! ```
 
 /// Define the capabilities array in the .kernel_caps section. Has the following
@@ -52,7 +52,7 @@
 ///
 /// ```no_run
 /// extern crate sunrise_libuser;
-/// use sunrise_libuser::{syscalls, caps};
+/// use sunrise_libuser::{syscalls, caps, capabilities};
 /// capabilities!(CAPABILITIES = Capabilities {
 ///     svcs: [
 ///         // Array of syscall numbers.

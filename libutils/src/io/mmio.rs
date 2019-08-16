@@ -15,29 +15,37 @@ use super::Io;
 /// Generally used behind a pointer, as such:
 ///
 /// ```
-///     /// Layout of Mmio registers of a random device.
-///     ///
-///     /// This struct is repr packed so its field are not re-ordered,
-///     /// and no undesired padding is added.
-///     ///
-///     /// Be careful though, in rust reading an unaligned field is undefined behaviour,
-///     /// so you must make sure it is correctly aligned.
-///     #[repr(packed)]
-///     struct DeviceFooRegisters {
-///         register_control: Mmio<u16>,
-///         register_command: Mmio<u16>,
-///     }
+/// use sunrise_libutils::io::{Io, Mmio};
 ///
-///     let device_address = 0xabcdef00 as *mut DeviceFooRegisters;
+/// /// Layout of Mmio registers of a random device.
+/// ///
+/// /// This struct is repr packed so its field are not re-ordered,
+/// /// and no undesired padding is added.
+/// ///
+/// /// Be careful though, in rust reading an unaligned field is undefined behaviour,
+/// /// so you must make sure it is correctly aligned.
+/// #[repr(packed)]
+/// struct DeviceFooRegisters {
+///     register_control: Mmio<u16>,
+///     register_command: Mmio<u16>,
+/// }
 ///
-///     let device: &mut DeviceFooRegisters = unsafe {
-///         // safety: make sure that mmio_address is valid and we're not violating
-///         // rust's aliasing rules.
-///         mmio_address.as_mut().unwrap()
-///     };
+/// # let mut device_foo_registers: DeviceFooRegisters = DeviceFooRegisters {
+/// #     register_control: Mmio::new(),
+/// #     register_command: Mmio::new(),
+/// # };
 ///
-///     let status = device.register_control.read();
-///     device.register_command.write(0xFOOD);
+/// let device_address = 0xabcdef00 as *mut DeviceFooRegisters;
+/// # let device_address = &mut device_foo_registers as *mut DeviceFooRegisters;
+///
+/// let device: &mut DeviceFooRegisters = unsafe {
+///     // safety: make sure that device_address is valid and we're not violating
+///     // rust's aliasing rules.
+///     device_address.as_mut().unwrap()
+/// };
+///
+/// let status = device.register_control.read();
+/// device.register_command.write(0xF00D);
 /// ```
 // todo: Mmio<T> UnsafeCell
 // body: Figure out if Mmio<T> should implement UnsafeCell.

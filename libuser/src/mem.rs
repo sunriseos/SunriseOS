@@ -43,18 +43,23 @@ pub fn find_free_address(size: usize, align: usize) -> Result<usize, Error> {
 ///
 /// # Example
 ///
-/// ```
-///     /// Found at physical address 0xabc00030
-///     #[repr(packed)]
-///     struct DeviceFoo {
-///         header: Mmio<u32>,
-///         version: Mmio<u32>,
-///         field_a: Mmio<u16>
-///         field_b: Mmio<u16>
-///     }
+// no_run because map_mmio will return an error on linux
+/// ```no_run
+/// use sunrise_libutils::io::{Io, Mmio};
+/// use sunrise_libuser::mem::map_mmio;
+/// /// Found at physical address 0xabc00030
+/// #[repr(packed)]
+/// struct DeviceFoo {
+///     header: Mmio<u32>,
+///     version: Mmio<u32>,
+///     field_a: Mmio<u16>,
+///     field_b: Mmio<u16>,
+/// }
 ///
-///     let mapped_data: *mut DeviceFoo = map_mmio::<DeviceFoo>(0xabc00030); // = virtual address 0x7030
-///     assert_eq!(mapped_data.version.read(), 0x010200);
+/// let mapped_data: *mut DeviceFoo = map_mmio::<DeviceFoo>(0xabc00030).unwrap(); // = virtual address 0x7030
+/// unsafe {
+///     assert_eq!((*mapped_data).version.read(), 0x010200);
+/// }
 /// ```
 pub fn map_mmio<T>(physical_address: usize) -> Result<*mut T, KernelError> {
     let aligned_phys_addr = align_down(physical_address, PAGE_SIZE);

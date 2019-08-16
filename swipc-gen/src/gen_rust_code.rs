@@ -160,13 +160,13 @@ fn format_ret_ty(ret: &[(Alias, Option<String>)], server: bool) -> Result<String
 /// should be returned.
 fn get_handle_type(ty: &Option<HandleType>) -> Option<&'static str> {
     match ty {
-        Some(HandleType::ClientSession) => Some("sunrise_libuser::types::ClientSession"),
-        Some(HandleType::ServerSession) => Some("sunrise_libuser::types::ServerSession"),
-        Some(HandleType::ClientPort)    => Some("sunrise_libuser::types::ClientPort"),
-        Some(HandleType::ServerPort)    => Some("sunrise_libuser::types::ServerPort"),
-        Some(HandleType::SharedMemory)  => Some("sunrise_libuser::types::SharedMemory"),
-        Some(HandleType::Process)       => Some("sunrise_libuser::types::Process"),
-        Some(HandleType::Thread)        => Some("sunrise_libuser::types::Thread"),
+        Some(HandleType::ClientSession) => Some("self::sunrise_libuser::types::ClientSession"),
+        Some(HandleType::ServerSession) => Some("self::sunrise_libuser::types::ServerSession"),
+        Some(HandleType::ClientPort)    => Some("self::sunrise_libuser::types::ClientPort"),
+        Some(HandleType::ServerPort)    => Some("self::sunrise_libuser::types::ServerPort"),
+        Some(HandleType::SharedMemory)  => Some("self::sunrise_libuser::types::SharedMemory"),
+        Some(HandleType::Process)       => Some("self::sunrise_libuser::types::Process"),
+        Some(HandleType::Thread)        => Some("self::sunrise_libuser::types::Thread"),
         _                               => None
     }
 }
@@ -227,11 +227,11 @@ fn get_type(output: bool, ty: &Alias, is_server: bool) -> Result<String, Error> 
         Alias::Handle(is_copy, ty) => if let Some(s) = get_handle_type(ty) {
             Ok(format!("{}{}", if *is_copy && !is_server && !output { "&" } else { "" }, s))
         } else if *is_copy && is_server && output {
-            Ok("sunrise_libuser::types::HandleRef<'static>".to_string())
+            Ok("self::sunrise_libuser::types::HandleRef<'static>".to_string())
         } else {
-            Ok(format!("sunrise_libuser::types::{}", if *is_copy && !is_server && !output { "HandleRef" } else { "Handle" }))
+            Ok(format!("self::sunrise_libuser::types::{}", if *is_copy && !is_server && !output { "HandleRef" } else { "Handle" }))
         },
-        Alias::Pid => Ok("sunrise_libuser::types::Pid".to_string()),
+        Alias::Pid => Ok("self::sunrise_libuser::types::Pid".to_string()),
         Alias::Other(ty) if ty == "unknown" => Err(Error::UnsupportedStruct),
         Alias::Other(ty) => Ok(ty.clone()),
     }
@@ -282,7 +282,7 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
         writeln!(s, "    /// {}", line).unwrap();
     }
     writeln!(s, "    pub fn {}(&mut self, {}) -> Result<{}, Error> {{", &cmd.name, format_args(&cmd.args, &cmd.ret, false)?, format_ret_ty(&cmd.ret, false)?).unwrap();
-    writeln!(s, "        use sunrise_libuser::ipc::Message;").unwrap();
+    writeln!(s, "        use self::sunrise_libuser::ipc::Message;").unwrap();
     writeln!(s, "        let mut buf__ = [0; 0x100];").unwrap();
     writeln!(s).unwrap();
     let in_raw = gen_in_raw(&mut s, cmd)?;
@@ -478,8 +478,8 @@ fn generate_mod(m: Mod, depth: usize, mod_name: &str, crate_name: &str, is_root_
     writeln!(s).unwrap();
 
     if !m.ifaces.is_empty() {
-        writeln!(s, "{}    use sunrise_libuser::types::ClientSession;", depthstr).unwrap();
-        writeln!(s, "{}    use sunrise_libuser::error::Error;", depthstr).unwrap();
+        writeln!(s, "{}    use self::sunrise_libuser::types::ClientSession;", depthstr).unwrap();
+        writeln!(s, "{}    use self::sunrise_libuser::error::Error;", depthstr).unwrap();
     }
 
     for (mod_name, modinfo) in m.mods {
@@ -531,7 +531,7 @@ fn gen_call(cmd: &Func) -> Result<String, Error> {
 
     let mut args = String::new();
     for (item, name) in named_iterator(&cmd.args, false)
-        .chain(named_iterator(&cmd.ret, false).filter(|(ty, _)| 
+        .chain(named_iterator(&cmd.ret, false).filter(|(ty, _)|
             match ty { Alias::Array(..) | Alias::Buffer(..) => true, _ => false }))
     {
         match item {
@@ -557,7 +557,7 @@ fn gen_call(cmd: &Func) -> Result<String, Error> {
                 }
             },
             Alias::Object(ty) => {
-                args += &format!("{}Proxy(sunrise_libuser::types::ClientSession(msg__.pop_handle_move().unwrap())), ", ty);
+                args += &format!("{}Proxy(self::sunrise_libuser::types::ClientSession(msg__.pop_handle_move().unwrap())), ", ty);
             },
             Alias::Handle(is_copy, ty) => {
                 let handle = if *is_copy {
@@ -670,15 +670,15 @@ pub fn generate_trait(ifacename: &str, interface: &Interface) -> String {
                 for line in cmd.doc.lines() {
                     writeln!(s, "/// {}", line).unwrap();
                 }
-                writeln!(s, "    fn {}(&mut self, manager: &sunrise_libuser::ipc::server::WaitableManager, {}) -> Result<{}, Error>;", &cmd.name, args, ret).unwrap();
+                writeln!(s, "    fn {}(&mut self, manager: &self::sunrise_libuser::ipc::server::WaitableManager, {}) -> Result<{}, Error>;", &cmd.name, args, ret).unwrap();
             },
             Err(_) => writeln!(s, "    // fn {}(&mut self) -> Result<(), Error>;", &cmd.name).unwrap()
         }
     }
 
     writeln!(s, "    /// Handle an incoming IPC request.").unwrap();
-    writeln!(s, "    fn dispatch(&mut self, manager: &sunrise_libuser::ipc::server::WaitableManager, cmdid: u32, buf: &mut [u8]) -> Result<(), Error> {{").unwrap();
-    writeln!(s, "        use sunrise_libuser::ipc::Message;").unwrap();
+    writeln!(s, "    fn dispatch(&mut self, manager: &self::sunrise_libuser::ipc::server::WaitableManager, cmdid: u32, buf: &mut [u8]) -> Result<(), Error> {{").unwrap();
+    writeln!(s, "        use self::sunrise_libuser::ipc::Message;").unwrap();
     writeln!(s, "        match cmdid {{").unwrap();
     for func in &interface.funcs {
         if let Ok(val) = gen_call(&func) {
@@ -740,8 +740,8 @@ pub fn generate_proxy(ifacename: &str, interface: &Interface) -> String {
 
             writeln!(s, "    /// Creates a new [{}] by connecting to the `{}` service.", struct_name, service).unwrap();
             writeln!(s, "    pub fn raw_new{}() -> Result<{}, Error> {{", name, struct_name).unwrap();
-            writeln!(s, "        use sunrise_libuser::syscalls;").unwrap();
-            writeln!(s, "        use sunrise_libuser::error::KernelError;").unwrap();
+            writeln!(s, "        use self::sunrise_libuser::syscalls;").unwrap();
+            writeln!(s, "        use self::sunrise_libuser::error::KernelError;").unwrap();
 
             if decorators.iter().any(|v| matches!(let Decorator::ManagedPort = v)) {
                 // This service is a kernel-managed port.
@@ -756,7 +756,7 @@ pub fn generate_proxy(ifacename: &str, interface: &Interface) -> String {
                 writeln!(s, "        }}").unwrap();
             } else {
                 // This service is a sm-managed port.
-                writeln!(s, "         use sunrise_libuser::error::SmError;").unwrap();
+                writeln!(s, "         use self::sunrise_libuser::error::SmError;").unwrap();
                 writeln!(s, "         ").unwrap();
                 writeln!(s, "         loop {{").unwrap();
                 writeln!(s, "              let svcname = unsafe {{").unwrap();
@@ -764,7 +764,7 @@ pub fn generate_proxy(ifacename: &str, interface: &Interface) -> String {
                 service_name += &"\\0".repeat(8 - service_name.len());
                 writeln!(s, r#"                  core::mem::transmute(*b"{}")"#, service_name).unwrap();
                 writeln!(s, "              }};").unwrap();
-                writeln!(s, "              let _ = match sunrise_libuser::sm::IUserInterfaceProxy::raw_new()?.get_service(svcname) {{").unwrap();
+                writeln!(s, "              let _ = match self::sunrise_libuser::sm::IUserInterfaceProxy::raw_new()?.get_service(svcname) {{").unwrap();
                 writeln!(s, "                  Ok(s) => return Ok({}(s)),", struct_name).unwrap();
                 writeln!(s, "                  Err(Error::Sm(SmError::ServiceNotRegistered, ..)) => syscalls::sleep_thread(0),").unwrap();
                 writeln!(s, "                  Err(err) => return Err(err)").unwrap();

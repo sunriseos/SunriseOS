@@ -9,7 +9,7 @@ use crate::error::KernelError;
 // Assembly blob can't get documented, but clippy requires it.
 #[allow(clippy::missing_docs_in_private_items)]
 mod syscall_inner {
-    #[cfg(all(target_arch = "x86", not(test)))]
+    #[cfg(all(target_arch = "x86", target_os = "none", not(test)))]
     global_asm!("
 .intel_syntax noprefix
 .global syscall_inner
@@ -53,6 +53,13 @@ syscall_inner:
     pop ebp
     ret
 ");
+
+    // Should only be used for rustdocs!!!
+    #[cfg(not(target_os = "none"))]
+    #[no_mangle]
+    extern fn syscall_inner(regs: &mut super::Registers) {
+        regs.eax = crate::error::KernelError::NotImplemented.make_ret() as usize;
+    }
 }
 
 /// Register backup structure. The syscall_inner will pop the registers from this

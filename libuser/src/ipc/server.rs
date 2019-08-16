@@ -14,7 +14,7 @@
 //!
 //! Here's a very simple example server:
 //!
-//! ```
+//! ```ignore
 //! #[derive(Debug, Default)]
 //! struct IExample;
 //!

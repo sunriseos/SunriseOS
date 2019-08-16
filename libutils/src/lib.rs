@@ -285,15 +285,16 @@ mod test {
 /// A macro to initialize a struct directly in global.
 ///
 /// # Note
-/// 
+///
 /// - This construct the struct on the stack. For the same behaviours on the heap, please refer to ZeroBox.
 /// - The type should not contain anything that is not allowed to be initialized to Zero (references, certain enums, and complex types).
-/// 
+///
 /// # Usage
 ///
 /// ```rust
+/// use sunrise_libutils::initialize_to_zero;
 /// let zero_initialized = unsafe { initialize_to_zero!(u32) };
-/// ``
+/// ```
 macro_rules! initialize_to_zero {
     ($ty:ty) => {{
         #[doc(hidden)]
