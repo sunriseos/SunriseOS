@@ -348,6 +348,11 @@ impl ServerPort {
     /// Panics if used from outside the context of a Future spawned on a libuser
     /// future executor. Please make sure you only call this function from a
     /// future spawned on a WaitableManager.
+    // TODO: Footgun: Sharing ServerPorts can result in blocking the event loop
+    // BODY: If the user shares ServerPorts across threads/futures and does
+    // BODY: something like calling accept straight after wait_async, they might
+    // BODY: end up blocking the event loop. This is because two threads might
+    // BODY: race for the call to accept after the wait_async.
     pub fn wait_async<'a>(&self, queue: crate::futures::WorkQueue<'a>) -> impl core::future::Future<Output = Result<(), Error>> + Unpin + 'a {
         self.0.as_ref().wait_async(queue)
     }
