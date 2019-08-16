@@ -136,6 +136,8 @@ enum_with_val! {
         InvalidIpcBufferCount = 5,
         /// Invalid IPCBuffer
         InvalidIpcBuffer = 6,
+        /// Invalid IPC request
+        InvalidIpcRequest = 7,
     }
 }
 

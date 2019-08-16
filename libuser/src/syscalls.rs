@@ -188,6 +188,32 @@ pub fn sleep_thread(nanos: usize) -> Result<(), KernelError> {
     }
 }
 
+/// Sets the "signaled" state of an event. Calling this on an unsignalled event
+/// will cause any thread waiting on this event through [wait_synchronization()]
+/// to wake up. Any future calls to [wait_synchronization()] with this handle
+/// will immediately return - the user has to clear the "signaled" state through
+/// [clear_event()].
+///
+/// Takes either a [ReadableEvent] or a [WritableEvent].
+pub fn signal_event(event: &WritableEvent) -> Result<(), KernelError> {
+    unsafe {
+        syscall(nr::SignalEvent, (event.0).0.get() as _, 0, 0, 0, 0, 0)?;
+        Ok(())
+    }
+}
+
+/// Clear the "signaled" state of an event. After calling this on a signaled
+/// event, [wait_synchronization()] on this handle will wait until
+/// [signal_event()] is called once again.
+///
+/// Takes either a [ReadableEvent] or a [WritableEvent].
+pub(crate) fn clear_event(event: HandleRef) -> Result<(), KernelError> {
+    unsafe {
+        syscall(nr::ClearEvent, event.inner.get() as _, 0, 0, 0, 0, 0)?;
+        Ok(())
+    }
+}
+
 /// Creates a shared memory handle.
 ///
 /// Allocates the given size bytes of physical memory to back the SharedMemory.
@@ -250,10 +276,12 @@ pub(crate) fn close_handle(handle: u32) -> Result<(), KernelError> {
 /// When zero handles are passed, this will wait forever until either timeout or
 /// cancellation occurs.
 ///
+/// If a timeout of 0 is passed, this function is guaranteed not to reschedule.
+///
 /// Does not accept 0xFFFF8001 or 0xFFFF8000 meta-handles.
 ///
 /// # Object types
-/// 
+///
 /// - KDebug: signals when there is a new DebugEvent (retrievable via
 ///   GetDebugEvent).
 /// - KClientPort: signals when the number of sessions is less than the maximum
@@ -269,11 +297,12 @@ pub(crate) fn close_handle(handle: u32) -> Result<(), KernelError> {
 /// - KThread: signals when the thread has exited.
 ///
 /// # Result codes
-/// 
+///
 /// - 0x0000: Success. One of the objects was signaled before the timeout
 ///   expired, or one of the objects is a Session with a closed remote. Handle
 ///   index is updated to indicate which object signaled.
-/// - 0x7601: Thread termination requested. Handle index is not updated.
+/// - 0x7601: Thread termination requested. Handle index is not updated. Cannot
+///   happen when timeout is 0.
 /// - 0xe401: Invalid handle. Returned when one of the handles passed is invalid.
 ///   Handle index is not updated.
 /// - 0xe601: Invalid address. Returned when the handles pointer is not a
@@ -282,7 +311,7 @@ pub(crate) fn close_handle(handle: u32) -> Result<(), KernelError> {
 ///   timeout. Handle index is not updated.
 /// - 0xec01: Interrupted. Returned when another thread uses
 ///   svcCancelSynchronization to cancel this thread. Handle index is not
-///   updated.
+///   updated. Cannot happen when timeout is 0.
 /// - 0xee01: Too many handles. Returned when the number of handles passed is
 ///   >0x40. Note: Sunrise kernel currently does not return this error. It is perfectly able
 ///   to wait on more than 0x40 handles.
@@ -366,6 +395,14 @@ pub fn reply_and_receive_with_user_buffer(buf: &mut [u8], handles: &[HandleRef<'
     }
 }
 
+/// Create a [ReadableEvent]/[WritableEvent] pair.
+pub fn create_event() -> Result<(WritableEvent, ReadableEvent), KernelError> {
+    unsafe {
+        let (wevent, revent, ..) = syscall(nr::CreateEvent, 0, 0, 0, 0, 0, 0)?;
+        Ok((WritableEvent(Handle::new(wevent as _)), ReadableEvent(Handle::new(revent as _))))
+    }
+}
+
 /// Create a waitable object for the given IRQ number.
 ///
 /// Note that the process needs to be authorized to listen for the given IRQ.
@@ -401,7 +438,7 @@ pub fn query_physical_address(virtual_address: usize) -> Result<(usize, usize, u
 }
 
 /// Creates an anonymous port.
-pub fn create_port(max_sessions: u32, is_light: bool, name_ptr: &str) -> Result<(ClientPort, ServerPort), KernelError> {
+pub fn create_port(max_sessions: u32, is_light: bool, name_ptr: &[u8]) -> Result<(ClientPort, ServerPort), KernelError> {
     unsafe {
         let (out_client_handle, out_server_handle, ..) = syscall(nr::CreatePort, max_sessions as _, is_light as _, name_ptr.as_ptr() as _, 0, 0, 0)?;
         Ok((ClientPort(Handle::new(out_client_handle as _)), ServerPort(Handle::new(out_server_handle as _))))

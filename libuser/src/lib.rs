@@ -3,7 +3,7 @@
 //! Provides an allocator, various lang items.
 
 #![no_std]
-#![feature(global_asm, asm, start, lang_items, core_intrinsics, const_fn, box_syntax, untagged_unions, naked_functions, proc_macro_hygiene, doc_cfg)]
+#![feature(global_asm, asm, start, lang_items, core_intrinsics, const_fn, box_syntax, untagged_unions, naked_functions, proc_macro_hygiene, doc_cfg, async_await, unboxed_closures, fn_traits, thread_local)]
 
 #![warn(unused)]
 #![warn(missing_debug_implementations)]
@@ -45,6 +45,7 @@ pub mod types;
 pub mod ipc;
 pub mod threads;
 pub mod thread_local_storage;
+pub mod futures;
 
 #[gen_ipc(path = "../../ipcdefs/sm.id", prefix = "sunrise_libuser")]
 pub mod sm {}
@@ -54,6 +55,8 @@ pub mod vi {}
 pub mod ahci {}
 #[gen_ipc(path = "../../ipcdefs/time.id", prefix = "sunrise_libuser")]
 pub mod time {}
+#[gen_ipc(path = "../../ipcdefs/example.id", prefix = "sunrise_libuser")]
+pub mod example {}
 
 pub mod error;
 pub mod allocator;
@@ -62,6 +65,7 @@ pub mod window;
 pub mod zero_box;
 mod crt0;
 mod log_impl;
+pub use sunrise_libutils::loop_future;
 
 pub use sunrise_libutils::io;
 

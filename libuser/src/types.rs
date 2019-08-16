@@ -9,6 +9,7 @@ use core::num::NonZeroU32;
 use sunrise_libkern::MemoryPermissions;
 use crate::error::{Error, KernelError};
 use crate::ipc::{Message, MessageTy};
+use crate::futures::WorkQueue;
 use core::mem;
 
 /// A Handle is a sort of reference to a Kernel Object. Its underlying
@@ -20,7 +21,7 @@ use core::mem;
 ///
 /// [close_handle]: crate::syscalls::close_handle.
 #[repr(transparent)]
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Handle(pub(crate) NonZeroU32);
 
 impl Handle {
@@ -70,7 +71,7 @@ impl Drop for Handle {
 /// the handle, and without an expensive conversion from an array of pointers to
 /// an array of handles.
 #[repr(transparent)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HandleRef<'a> {
     /// The underlying handle number.
     pub(crate) inner: NonZeroU32,
@@ -78,10 +79,110 @@ pub struct HandleRef<'a> {
     lifetime: PhantomData<&'a Handle>
 }
 
-/// An awaitable event handle, such as an IRQ event.
+
+impl<'a> HandleRef<'a> {
+    /// Remove the lifetime on the current HandleRef. See [Handle::as_ref_static()] for
+    /// more information on the safety of this operation.
+    pub fn staticify(self) -> HandleRef<'static> {
+        HandleRef {
+            inner: self.inner,
+            lifetime: PhantomData
+        }
+    }
+
+    /// Returns a future that waits for the current handle to get signaled. This effectively
+    /// registers the currently executing Task to be polled again by the future executor backing
+    /// the given [WorkQueue] when this handle gets signaled.
+    ///
+    /// # Panics
+    ///
+    /// Panics if used from outside the context of a Future spawned on a libuser
+    /// future executor. Please make sure you only call this function from a
+    /// future spawned on a WaitableManager.
+    fn wait_async<'b>(self, queue: WorkQueue<'b>)-> impl core::future::Future<Output = Result<(), Error>> + Unpin +'b {
+        #[allow(missing_docs, clippy::missing_docs_in_private_items)]
+        struct MyFuture<'a> {
+            queue: crate::futures::WorkQueue<'a>,
+            handle: HandleRef<'static>,
+            registered_on: Option<core::task::Waker>
+        }
+        impl<'a> core::future::Future for MyFuture<'a> {
+            type Output = Result<(), Error>;
+            fn poll(mut self: core::pin::Pin<&mut Self>, cx: &mut core::task::Context) -> core::task::Poll<Result<(), Error>> {
+                match syscalls::wait_synchronization(&[self.handle], Some(0)) {
+                    Err(KernelError::Timeout) => {
+                        self.registered_on = Some(cx.waker().clone());
+                        self.queue.wait_for(self.handle, cx);
+                        core::task::Poll::Pending
+                    },
+                    Err(err) => core::task::Poll::Ready(Err(err.into())),
+                    Ok(_) => core::task::Poll::Ready(Ok(()))
+                }
+            }
+        }
+        impl Drop for MyFuture<'_> {
+            fn drop(&mut self) {
+                if let Some(waker) = &self.registered_on {
+                    self.queue.unwait_for(self.handle, waker.clone());
+                }
+            }
+        }
+
+        MyFuture {
+            queue, handle: self.staticify(), registered_on: None
+        }
+    }
+}
+
+/// A handle on an IRQ event.
+#[repr(transparent)]
+#[derive(Debug)]
+pub struct IRQEvent(pub Handle);
+
+/// The readable part of an event. The user shall use this end to verify if the
+/// event is signaled, and wait for the signaling through wait_synchronization.
+/// The user can also use this handle to clear the signaled state through
+/// [ReadableEvent::clear()].
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct ReadableEvent(pub Handle);
+
+impl ReadableEvent {
+    /// Clears the signaled state.
+    pub fn clear(&self) -> Result<(), KernelError> {
+        syscalls::clear_event(self.0.as_ref())
+    }
+
+    /// Waits for the event to get signaled.
+    ///
+    /// # Panics
+    ///
+    /// Panics if used from outside the context of a Future spawned on a libuser
+    /// future executor. Please make sure you only call this function from a
+    /// future spawned on a WaitableManager.
+    pub fn wait_async<'a>(&self, queue: crate::futures::WorkQueue<'a>) -> impl core::future::Future<Output = Result<(), Error>> + Unpin + 'a {
+        self.0.as_ref().wait_async(queue)
+    }
+}
+
+
+/// The writable part of an event. The user shall use this end to signal (and
+/// wake up threads waiting on the event).
+#[derive(Debug)]
+pub struct WritableEvent(pub Handle);
+
+impl WritableEvent {
+    /// Clears the signaled state.
+    pub fn clear(&self) -> Result<(), KernelError> {
+        syscalls::clear_event(self.0.as_ref())
+    }
+
+    /// Signals the event, setting its state to signaled and waking up any
+    /// thread waiting on its value.
+    pub fn signal(&self) -> Result<(), KernelError> {
+        syscalls::signal_event(self)
+    }
+}
 
 /// The client side of an IPC session.
 ///
@@ -133,7 +234,7 @@ impl Drop for ClientSession {
 
 /// The server side of an IPC session.
 ///
-/// Usually obtained by calling [accept], but may also be obtained by calling 
+/// Usually obtained by calling [accept], but may also be obtained by calling
 /// the [create_session] syscall, providing a server/client session pair.
 ///
 /// [accept]: ServerPort::accept
@@ -162,7 +263,7 @@ impl ServerSession {
 
     /// Replies to an IPC request on the given session. If the given session did
     /// not have a pending request, this function will error out.
-    /// 
+    ///
     /// This is a low-level primitives that is usually wrapped by a higher-level
     /// library. Look at the [ipc module] for more information on the IPC
     /// message format.
@@ -177,6 +278,20 @@ impl ServerSession {
                 Err(v)
             })
             .map_err(|v| v.into())
+    }
+
+    /// Waits for the server to receive a request.
+    ///
+    /// Once this function returns, calling [ServerSession::receive()] is
+    /// guaranteed not to block.
+    ///
+    /// # Panics
+    ///
+    /// Panics if used from outside the context of a Future spawned on a libuser
+    /// future executor. Please make sure you only call this function from a
+    /// future spawned on a WaitableManager.
+    pub fn wait_async<'a>(&self, queue: crate::futures::WorkQueue<'a>) -> impl core::future::Future<Output = Result<(), Error>> + Unpin + 'a {
+        self.0.as_ref().wait_async(queue)
     }
 }
 
@@ -216,6 +331,31 @@ impl ServerPort {
         syscalls::accept_session(self)
             .map_err(|v| v.into())
     }
+
+    /// Waits for the server to receive a connection.
+    ///
+    /// Once this function returns, the next call to [ServerPort::accept()] is
+    /// guaranteed not to block. Attention: Because accept does not have any
+    /// non-blocking mode, it is dangerous to share a ServerPort across multiple
+    /// futures or threads (since multiple threads or futures will get woken up
+    /// and attempt accepting, but only one accept will not block).
+    ///
+    /// If you wish to wait on a server port from multiple threads, please
+    /// ensure that calls to the accept functions are wrapped in a mutex.
+    ///
+    /// # Panics
+    ///
+    /// Panics if used from outside the context of a Future spawned on a libuser
+    /// future executor. Please make sure you only call this function from a
+    /// future spawned on a WaitableManager.
+    // TODO: Footgun: Sharing ServerPorts can result in blocking the event loop
+    // BODY: If the user shares ServerPorts across threads/futures and does
+    // BODY: something like calling accept straight after wait_async, they might
+    // BODY: end up blocking the event loop. This is because two threads might
+    // BODY: race for the call to accept after the wait_async.
+    pub fn wait_async<'a>(&self, queue: crate::futures::WorkQueue<'a>) -> impl core::future::Future<Output = Result<(), Error>> + Unpin + 'a {
+        self.0.as_ref().wait_async(queue)
+    }
 }
 
 /// A Thread. Created with the [create_thread syscall].
@@ -254,7 +394,7 @@ impl Process {
 ///
 /// Special care should be used to ensure multiple processes do not write to the
 /// memory at the same time, or only does so through the use of atomic
-/// operations. Otherwise, UB will occur! 
+/// operations. Otherwise, UB will occur!
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct SharedMemory(pub Handle);
