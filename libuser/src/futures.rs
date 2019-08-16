@@ -190,7 +190,7 @@ impl<'a> WaitableManager<'a> {
                             if let Poll::Ready(_) = future.poll(&mut Context::from_waker(&waker.clone().into_waker())) {
                                 let task = self.registry.remove(id).unwrap();
 
-                                let Task { future, waker: _, waiting_on } = task;
+                                let Task { future, waiting_on, .. } = task;
 
                                 drop(future);
                                 if !waiting_on.is_empty() {
