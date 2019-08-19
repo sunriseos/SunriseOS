@@ -88,12 +88,12 @@ pub fn div_ceil<T: Num + Copy>(a: T, b: T) -> T {
 /// to avoid this, we define our enum as a struct with associated variants.
 #[macro_export]
 macro_rules! enum_with_val {
-    ($(#[$meta:meta])* $vis:vis struct $ident:ident($ty:ty) {
+    ($(#[$meta:meta])* $vis:vis struct $ident:ident($innervis:vis $ty:ty) {
         $($(#[$varmeta:meta])* $variant:ident = $num:expr),* $(,)*
     }) => {
         $(#[$meta])*
         #[repr(transparent)]
-        $vis struct $ident($ty);
+        $vis struct $ident($innervis $ty);
         impl $ident {
             $($(#[$varmeta])* $vis const $variant: $ident = $ident($num);)*
         }

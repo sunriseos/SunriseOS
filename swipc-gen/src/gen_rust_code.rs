@@ -464,7 +464,7 @@ fn format_type(struct_name: &str, ty: &TypeDef) -> Result<String, Error> {
                 writeln!(s, "    /// {}", line).unwrap();
             }
             writeln!(s, "    #[derive(PartialEq, Eq, Clone, Copy)]").unwrap();
-            writeln!(s, "    pub struct {}({}) {{", struct_name, enu.tyname).unwrap();
+            writeln!(s, "    pub struct {}(pub {}) {{", struct_name, enu.tyname).unwrap();
             for (doc, name, num) in &enu.fields {
                 for line in doc.lines() {
                     writeln!(s, "        /// {}", line).unwrap();
