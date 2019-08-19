@@ -87,7 +87,7 @@ impl Drop for ServerSession {
         let count = self.0.servercount.fetch_sub(1, Ordering::SeqCst);
         assert!(count != 0, "Overflow when decrementing servercount");
         if count == 1 {
-            info!("Last ServerSession dropped");
+            debug!("Last ServerSession dropped");
             // We're dead jim.
             let mut internal = self.0.internal.lock();
 

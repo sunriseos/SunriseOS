@@ -111,7 +111,7 @@ impl Drop for ServerPort {
         let count = self.0.servercount.fetch_sub(1, Ordering::SeqCst);
         assert!(count != 0, "Overflow when decrementing servercount");
         if count == 1 {
-            info!("Last ServerPort dropped");
+            debug!("Last ServerPort dropped");
             // We're dead jim.
             let mut internal = self.0.incoming_connections.lock();
 
@@ -152,7 +152,7 @@ impl ServerPort {
 
                 // Wake up the creator.
                 // **VERY IMPORTANT**: This should be done with the LOCK HELD!!!
-                info!("Resuming {}", incoming.creator.process.name);
+                debug!("Resuming {}", incoming.creator.process.name);
                 scheduler::add_to_schedule_queue(incoming.creator.clone());
 
                 // We're done!
