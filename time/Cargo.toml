@@ -13,6 +13,8 @@ log = "0.4.6"
 sunrise-libuser = { path = "../libuser" }
 sunrise-libutils = { path = "../libutils" }
 sunrise-libtimezone = { path = "../libtimezone" }
+futures-preview = { version = "0.3.0-alpha.16", default-features = false, features = ["nightly", "alloc"] }
+core = { package = "core-futures-tls", version = "0.1" }
 
 [build-dependencies]
 cargo-5730 = { git = "https://github.com/Thog/cargo-5730.git", branch = "feature/windows-support" }

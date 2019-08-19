@@ -1,148 +1,262 @@
-//! IPC Server primitives
+//! # IPC Server primitives
 //!
-//! The creation of an IPC server requires a WaitableManager and a PortHandler.
-//! The WaitableManager will manage the event loop: it will wait for a request
-//! to arrive on one of the waiters (or for any other event to happen), and call
-//! that waiter's `handle_signal` function.
+//! The IPC System on horizon is made of Ports pair and Session pairs. Each pair
+//! has a client and a server side:
 //!
-//! A PortHandler is a type of Waiter which listens for incoming connections on
-//! a port, creates a new Object from it, wrap it in a SessionWrapper (a kind of
-//! waiter), and adds it to the WaitableManager's wait list.
+//! - For Ports, the client is used to connect, returning a client Session,
+//!   while the server is used to accept connections, returning a server Session
+//! - For Sessions, the client is used to send IPC requests, while the server
+//!   is used to receive and reply to those requests.
 //!
-//! When a request comes to the Session, the SessionWrapper's handle_signaled
-//! will call the dispatch function of its underlying object.
+//! An IPC Server is made of a [future executor](crate::futures) on which we
+//! spawn futures to handle Port and Session. Those futures, created through
+//! [fn port_handler] and [fn new_session_wrapper], will take care of accepting
+//! new sessions from a ServerPort, and answering IPC requests sent on the
+//! ServerSession.
 //!
-//! Here's a very simple example server:
+//! ## Port Handling
 //!
-//! ```
+//! Most interfaces start with a Port, which is basically an object to which
+//! clients can connect to, creating a Session pair. Ports can come from two
+//! places: It can either be kernel-managed, or it can be sm-managed. Almost
+//! all ports are sm-managed, the only exceptions being `sm:` itself.
+//!
+//! Kernel-managed ports are created through the [fn managed_port_handler]
+//! function. This will internally call [crate::syscalls::manage_named_port()]
+//! to acquire a [crate::types::ServerPort]. Sm-managed ports are created
+//! through [fn port_handler], which call
+//! [crate::sm::IUserInterfaceProxy::register_service()] to acquire their
+//! ServerPort.
+//!
+//! Once the ServerPort is acquired, the port handling functions will run on a
+//! loop, accepting new connections, creating a backing Object for the sessions,
+//! and spawning a new future on the event loop with [fn new_session_wrapper].
+//!
+// no_run because port_handler will fail on linux.
+//! ```no_run
+//! # extern crate alloc;
+//! use futures::future::FutureObj;
+//! use alloc::boxed::Box;
+//! use sunrise_libuser::futures::WaitableManager;
+//! use sunrise_libuser::ipc::server::port_handler;
+//! use sunrise_libuser::example::IExample1;
+//!
+//! /// Every time the port accepts a connection and a session is created, it
+//! /// will spawn a HelloInterface.
 //! #[derive(Debug, Default)]
-//! struct IExample;
+//! struct HelloInterface;
 //!
-//! impl sunrise_libuser::example::IExample for IExample {
-//!     fn hello(&mut self, _manager: &WaitableManager) -> Result<([u8; 5]), Error> {
-//!          Ok(b"hello")
+//! impl IExample1 for HelloInterface {}
+//!
+//! fn main() {
+//!     let mut man = WaitableManager::new();
+//!
+//!     let handler = port_handler(man.work_queue(), "hello", HelloInterface::dispatch).unwrap();
+//!     man.work_queue().spawn(FutureObj::new(Box::new(handler)));
+//!
+//! #   let man = FakeMan;
+//!     man.run();
+//! }
+//! # // We can't run the WaitableManager, since that'll attempt to run syscalls
+//! # // that aren't implemented.
+//! # struct FakeMan;
+//! # impl FakeMan { fn run(&self) {} }
+//! ```
+//!
+//! ## Session Handling
+//!
+//! A Session server is represented by an Object implementing an Interface,
+//! receiving and replying to Remote Process Call (RPC) requests on a
+//! [crate::types::ServerSession]. A session server is created either through a
+//! port handler accepting a session, or through the [fn new_session_wrapper]
+//! function, which will receive requests, call the Object's dispatcher
+//! function, and reply with the answer.
+//!
+//! ### Interfaces
+//!
+//! IPC Servers expose an API to a given service to other processes using an RPC
+//! interface. The interface is defined using a SwIPC id file which can be found
+//! in the `ipcdefs` folder at the root of the repository. This SwIPC file will
+//! then get compiled by swipc-gen into a rust file containing a Client struct
+//! and two Server traits (one being synchronous, the other asynchronous). Those
+//! will generally be exposed from the `sunrise_libuser` crate.
+//!
+//! Those traits contain two elements:
+//!
+//! 1. A function for every function in the SwIPC interface, having roughly the
+//!    same signature (but with SwIPC types translated to rust). The user is
+//!    expected to implement all those functions to have a complete interface
+//!    implementation.
+//!
+//! 2. A function called `dispatch`. This function will be called by the Session
+//!    Wrapper, and is in charge of parsing the IPC message data to extract all
+//!    the arguments and call the correct function from the trait
+//!    implementation.
+//!
+// no_run because port_handler will fail on linux...
+//! ```no_run
+//! extern crate alloc;
+//!
+//! use futures::future::FutureObj;
+//! use alloc::boxed::Box;
+//! use sunrise_libuser::futures::{WorkQueue, WaitableManager};
+//! use sunrise_libuser::ipc::server::port_handler;
+//! use sunrise_libuser::example::IExample2;
+//! use sunrise_libuser::error::Error;
+//! use log::*;
+//!
+//! #[derive(Debug, Default)]
+//! struct HelloInterface;
+//!
+//! impl IExample2 for HelloInterface {
+//!     fn function(&mut self, _manager: WorkQueue<'static>) -> Result<(), Error> {
+//!         info!("hello");
+//!         Ok(())
+//!     }
+//!     fn function2(&mut self, _manager: WorkQueue<'static>, val1: u32, val2: u32) -> Result<(bool, bool), Error> {
+//!         info!("hello");
+//!         Ok((false, true))
 //!     }
 //! }
 //!
 //! fn main() {
-//!      let man = WaitableManager::new();
-//!      let handler = Box::new(PortHandler::new("hello\0", IExample::dispatch).unwrap());
-//!      man.add_waitable(handler as Box<dyn IWaitable>);
-//!      man.run()
+//!     let mut man = WaitableManager::new();
+//!
+//!     let handler = port_handler(man.work_queue(), "hello", HelloInterface::dispatch).unwrap();
+//!     man.work_queue().spawn(FutureObj::new(Box::new(handler)));
+//!
+//! #   let man = FakeMan;
+//!
+//!     man.run();
 //! }
+//! # // We can't run the WaitableManager, since that'll attempt to run syscalls
+//! # // that aren't implemented.
+//! # struct FakeMan;
+//! # impl FakeMan { fn run(&self) {} }
+//! ```
+//!
+//! ### Objects
+//!
+//! An Object backs every Session. This object is the structure which implements
+//! the Interface trait. It contains the state of that specific session, and may
+//! be mutated by any IPC request. A common pattern is to have an IPC request
+//! contain an initialization method containing various parameters to configure
+//! the rest of the operations available on that session.
+//!
+//! Note that a single interface may be implemented by multiple different
+//! Object. This can be used to implement different access control based on the
+//! interface used to access the service, for instance. Nintendo uses this
+//! pattern: `bsd:u` and `bsd:s` use the same interface, but have different
+//! access rights.
+//!
+//! ### Subsessions
+//!
+//! While the "root" session is generally created from a Port Handler, the user
+//! is free to create and return new subsessions. This can be done by creating
+//! a session pair with [crate::syscalls::create_session()], spawning a new
+//! Session Handler with [fn new_session_wrapper], and returning the client-side
+//! session handle. Here's an example:
+//!
+// no_run because port_handler will fail on linux...
+//! ```no_run
+//! extern crate alloc;
+//! use futures::future::FutureObj;
+//! use alloc::boxed::Box;
+//! use sunrise_libuser::futures::WorkQueue;
+//! use sunrise_libuser::example::{IExample3, IExample3Subsession, IExample3SubsessionProxy};
+//! use sunrise_libuser::syscalls;
+//! use sunrise_libuser::error::Error;
+//! use sunrise_libuser::ipc::server::new_session_wrapper;
+//!
+//! #[derive(Debug, Default)]
+//! struct HelloInterface;
+//!
+//! impl IExample3 for HelloInterface {
+//!     fn function(&mut self, work_queue: WorkQueue<'static>) -> Result<IExample3SubsessionProxy, Error> {
+//!         let (server, client) = syscalls::create_session(false, 0)?;
+//!         let wrapper = new_session_wrapper(work_queue.clone(), server, Subsession, Subsession::dispatch);
+//!         work_queue.spawn(FutureObj::new(Box::new(wrapper)));
+//!         Ok(IExample3SubsessionProxy::from(client))
+//!     }
+//! }
+//!
+//! struct Subsession;
+//!
+//! impl IExample3Subsession for Subsession {}
+//!
+//! # fn main() {
+//! #     use sunrise_libuser::futures::WaitableManager;
+//! #     use sunrise_libuser::ipc::server::port_handler;
+//! #     let mut man = WaitableManager::new();
+//!
+//! #     let handler = port_handler(man.work_queue(), "hello", HelloInterface::dispatch).unwrap();
+//! #     man.work_queue().spawn(FutureObj::new(Box::new(handler)));
+//! # }
+//! ```
+//!
+//! ### Asynchronous Traits
+//!
+//! A server might want to wait for asynchronous events to occur before
+//! answering: for instance, the `read()` function of a filesystem might want
+//! to wait for an [crate::types::IRQEvent] to get signaled before getting the
+//! data from the disk and returning it to the client.
+//!
+//! This is doable by using the Asynchronous traits. Those return a Future
+//! instead of directly returning the Result. This has one huge downside: the
+//! futures need to be Boxed, incuring a needless heap allocation. This should
+//! get fixed when `impl Trait` in traits or `async fn` in traits is
+//! implemented.
+//!
+//! Here's an example usage:
+//!
+// no_run because port_handler will fail on linux.
+//! ```no_run
+//! #![feature(async_await)]
+//! extern crate alloc;
+//!
+//! use core::future::Future;
+//! use futures::future::FutureObj;
+//! use alloc::boxed::Box;
+//! use sunrise_libuser::futures::WorkQueue;
+//! use sunrise_libuser::example::IExample4Async;
+//! use sunrise_libuser::types::SharedMemory;
+//! use sunrise_libuser::error::{Error, KernelError};
+//!
+//! #[derive(Debug, Default)]
+//! struct HelloInterface;
+//!
+//! fn do_async_stuff() -> impl Future<Output=()> + Send {
+//!     futures::future::ready(())
+//! }
+//!
+//! impl IExample4Async for HelloInterface {
+//!     fn function<'a>(&'a mut self, manager: WorkQueue<'static>, val: &u8) -> FutureObj<'a, Result<SharedMemory, Error>> {
+//!         FutureObj::new(Box::new(async move {
+//!             do_async_stuff().await;
+//!             Err(KernelError::PortRemoteDead.into())
+//!         }))
+//!     }
+//! }
+//!
+//! # fn main() {
+//! #     use sunrise_libuser::futures::WaitableManager;
+//! #     use sunrise_libuser::ipc::server::port_handler;
+//! #     let mut man = WaitableManager::new();
+//!
+//! #     let handler = port_handler(man.work_queue(), "hello", HelloInterface::dispatch).unwrap();
+//! #     man.work_queue().spawn(FutureObj::new(Box::new(handler)));
+//! # }
 //! ```
 
 use crate::syscalls;
-use crate::types::{HandleRef, ServerPort, ServerSession};
-use core::marker::PhantomData;
-use alloc::vec::Vec;
+use crate::types::{ServerPort, ServerSession};
 use alloc::boxed::Box;
-use spin::Mutex;
 use core::ops::{Deref, DerefMut, Index};
-use core::fmt::{self, Debug};
-use crate::error::Error;
+use crate::error::{KernelError, Error};
 use crate::ipc::Message;
-
-/// A handle to a waitable object.
-pub trait IWaitable: Debug {
-    /// Gets the handleref for use in the `wait_synchronization` call.
-    fn get_handle(&self) -> HandleRef<'_>;
-    /// Function the manager calls when this object gets signaled.
-    ///
-    /// Takes the manager as a parameter, allowing the handler to add new handles
-    /// to the wait queue.
-    ///
-    /// If the function returns false, remove it from the WaitableManager. If it
-    /// returns an error, log the error somewhere, and remove the handle from the
-    /// waitable manager.
-    fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<bool, Error>;
-}
-
-/// The event loop manager. Waits on the waitable objects added to it.
-#[derive(Debug, Default)]
-pub struct WaitableManager<'a> {
-    /// Vector of items to add to the waitable list on the next loop.
-    to_add_waitables: Mutex<Vec<Box<dyn IWaitable>>>,
-
-    /// Vector of static ref to items to add to the waitable list on the next loop.
-    to_add_waitables_ref: Mutex<Vec<&'a mut dyn IWaitable>>
-}
-
-impl<'a> WaitableManager<'a> {
-    /// Creates an empty waitable manager.
-    pub fn new() -> WaitableManager<'a> {
-        WaitableManager {
-            to_add_waitables: Mutex::new(Vec::new()),
-            to_add_waitables_ref: Mutex::new(Vec::new())
-        }
-    }
-
-    /// Add a new handle for the waitable manager to wait on.
-    pub fn add_waitable(&self, waitable: Box<dyn IWaitable>) {
-        self.to_add_waitables.lock().push(waitable);
-    }
-
-    /// Add a new handle for the waitable manager to wait on.
-    pub fn add_waitable_ref(&self, waitable: &'a mut dyn IWaitable) {
-        self.to_add_waitables_ref.lock().push(waitable);
-    }
-
-    /// Run the event loop. This will call wait_synchronization on all the
-    /// pending handles, and call handle_signaled on the handle that gets
-    /// signaled.
-    pub fn run(&self) -> ! {
-        let mut waitables_box = Vec::new();
-        let mut waitables_ref = Vec::new();
-        loop {
-            {
-                let mut guard = self.to_add_waitables.lock();
-                for waitable in guard.drain(..) {
-                    waitables_box.push(waitable);
-                }
-            }
-
-            {
-                let mut guard = self.to_add_waitables_ref.lock();
-                for waitable in guard.drain(..) {
-                    waitables_ref.push(waitable);
-                }
-            }
-
-            let idx = {
-                let mut handles = waitables_box.iter().map(|v| v.get_handle()).collect::<Vec<HandleRef<'_>>>();
-                let mut handles_waitable_ref = waitables_ref.iter().map(|v| v.get_handle()).collect::<Vec<HandleRef<'_>>>();
-                handles.append(&mut handles_waitable_ref);
-                // TODO: new_waitable_event
-                syscalls::wait_synchronization(&*handles, None).unwrap()
-            };
-
-            let result = if idx < waitables_box.len() {
-                waitables_box[idx].handle_signaled(self)
-            } else {
-                waitables_ref[idx - waitables_box.len()].handle_signaled(self)
-            };
-
-            match result {
-                Ok(false) => (),
-                Ok(true) => {
-                    if idx < waitables_box.len() {
-                        waitables_box.remove(idx);
-                    } else {
-                        waitables_ref.remove(idx - waitables_box.len());
-                    }
-                },
-                Err(err) => {
-                    error!("Error: {}", err);
-                    if idx < waitables_box.len() {
-                        waitables_box.remove(idx);
-                    } else {
-                        waitables_ref.remove(idx - waitables_box.len());
-                    }
-                }
-            }
-        }
-    }
-}
+use futures::future::{FutureObj, FutureExt};
+use core::future::Future;
+use crate::futures::WorkQueue;
 
 /// Wrapper struct that forces the alignment to 0x10. Somewhat necessary for the
 /// IPC command buffer.
@@ -179,155 +293,170 @@ fn encode_bytes(s: &str) -> u64 {
         | (u64::from(*s.get(6).unwrap_or(&0))) << 48 | (u64::from(*s.get(7).unwrap_or(&0))) << 56
 }
 
-/// A wrapper around a Server Port that implements the IWaitable trait. Waits
-/// for connection requests, and creates a new SessionWrapper around the
-/// incoming connections, which gets registered on the WaitableManager.
-///
-/// The DISPATCH function is passed to [SessionWrapper]s created from this
-/// port. The DISPATCH function is responsible for parsing and answering an
-/// IPC request. It will usually be found on the interface trait. See, for
-/// instance, [crate::sm::IUserInterface::dispatch()].
-pub struct PortHandler<T, DISPATCH> {
-    /// The kernel object backing this Port Handler. 
-    handle: ServerPort,
-    /// Function called when sessions created from this port receive a request.
-    dispatch: DISPATCH,
-    /// Type of the Object this port creates.
-    phantom: PhantomData<T>,
-}
-
-impl<T, DISPATCH> Debug for PortHandler<T, DISPATCH> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("PortHandler")
-            .field("handle", &self.handle)
-            .finish()
-    }
-}
-
-impl<T, DISPATCH> PortHandler<T, DISPATCH> {
-    /// Registers a new PortHandler of the given name to the `sm:` service.
-    pub fn new(server_name: &str, dispatch: DISPATCH) -> Result<PortHandler<T, DISPATCH>, Error> {
-        use crate::sm::IUserInterfaceProxy;
-        let port = IUserInterfaceProxy::raw_new()?.register_service(encode_bytes(server_name), false, 0)?;
-        Ok(PortHandler {
-            handle: port,
-            dispatch,
-            phantom: PhantomData,
-        })
-    }
-
-    /// Registers a new PortHandler of the given name to the kernel. Note that
-    /// this interface should not be used by most services. Only the service
-    /// manager should register itself through this interface, as kernel managed
-    /// services do not implement any access controls.
-    pub fn new_managed(server_name: &str, dispatch: DISPATCH) -> Result<PortHandler<T, DISPATCH>, Error> {
-        let port = syscalls::manage_named_port(server_name, 0)?;
-        Ok(PortHandler {
-            handle: port,
-            dispatch,
-            phantom: PhantomData,
-        })
-    }
-}
-
-impl<T: Default + Debug + 'static, DISPATCH: Clone + 'static> IWaitable for PortHandler<T, DISPATCH>
+/// Infinite loop future that waits for `port` to get signaled, then accepts a
+/// new session on the port, creates a new object backing the session using
+/// `T::default()`, and finally spawns a new session wrapper future using
+/// [new_session_wrapper()].
+fn common_port_handler<T, DISPATCH>(work_queue: WorkQueue<'static>, port: ServerPort, dispatch: DISPATCH) -> impl Future<Output=()>
 where
-    DISPATCH: FnMut(&mut T, &WaitableManager, u32, &mut [u8]) -> Result<(), Error>
+    DISPATCH: for<'b> hrtb_hack::FutureCallback<(&'b mut T, WorkQueue<'static>, u32, &'b mut [u8]), Result<(), Error>>,
+    DISPATCH: Clone + Unpin + Send + 'static,
+    T: Default + Unpin + Send + 'static,
 {
-    fn get_handle(&self) -> HandleRef<'_> {
-        self.handle.0.as_ref()
-    }
-
-    fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<bool, Error> {
-        let session = Box::new(SessionWrapper {
-            object: T::default(),
-            handle: self.handle.accept()?,
-            buf: Align16([0; 0x100]),
-            pointer_buf: [0; 0x300],
-            dispatch: self.dispatch.clone(),
-        });
-        manager.add_waitable(session);
-        Ok(false)
-    }
+    crate::loop_future::loop_fn((work_queue, dispatch, port), |(work_queue, dispatch, port)| {
+        port.wait_async(work_queue.clone())
+            .map(move |res| {
+                if let Err(err) = res {
+                    // This instance of WaitAsync can return one of two errors:
+                    // - InvalidAddress: Someone did something silly with
+                    //   memory.
+                    // - InvalidHandle: Shouldn't happen since we hold the
+                    //   ServerPort. Someone might have manually closed it?
+                    unreachable!("WaitAsync errors cannot be reached from here. {:?}", err);
+                }
+                let handle = port.accept().unwrap();
+                let future = new_session_wrapper(work_queue.clone(), handle, T::default(), dispatch.clone());
+                work_queue.spawn(FutureObj::new(Box::new(future)));
+                crate::loop_future::Loop::Continue((work_queue, dispatch, port))
+            })
+    })
 }
 
-/// A wrapper around an Object backed by an IPC Session that implements the
-/// IWaitable trait.
-///
-/// The DISPATCH function is responsible for parsing and answering an IPC
-/// request. It will usually be found on the interface trait. See, for instance,
-/// [crate::sm::IUserInterface::dispatch()].
-pub struct SessionWrapper<T, DISPATCH> {
-    /// Kernel Handle backing this object.
-    handle: ServerSession,
-    /// Object instance.
-    object: T,
-
-    /// Function called to handle an IPC request.
-    dispatch: DISPATCH,
-
-    /// Command buffer for this session.
-    /// Ensure 16 bytes of alignment so the raw data is properly aligned.
-    buf: Align16<[u8; 0x100]>,
-
-    /// Buffer used for receiving type-X buffers and answering to type-C buffers.
-    // TODO: Pointer Buf should take its size as a generic parameter.
-    // BODY: The Pointer Buffer size should be configurable by the sysmodule.
-    // BODY: We'll wait for const generics to do it however, as otherwise we'd
-    // BODY: have to bend over backwards with typenum.
-    pointer_buf: [u8; 0x300]
+/// Creates a port through [crate::sm::IUserInterfaceProxy::register_service()]
+/// with the given name, and returns a future which will handle the port - that
+/// is, it will continuously accept new sessions on the port, and create backing
+/// objects through `T::default()`, and spawn a top-level future handling that
+/// sesion with [new_session_wrapper()].
+pub fn port_handler<T, DISPATCH>(work_queue: WorkQueue<'static>, server_name: &str, dispatch: DISPATCH) -> Result<impl Future<Output=()>, Error>
+where
+    DISPATCH: for<'b> hrtb_hack::FutureCallback<(&'b mut T, WorkQueue<'static>, u32, &'b mut [u8]), Result<(), Error>>,
+    DISPATCH: Clone + Unpin + Send + 'static,
+    T: Default + Unpin + Send + 'static,
+{
+    use crate::sm::IUserInterfaceProxy;
+    // We use `new()` and not `raw_new()` in order to avoid deadlocking when closing the
+    // IUserInterfaceProxy handle. See implementation note in sm/src/main.rs
+    let port = IUserInterfaceProxy::new()?.register_service(encode_bytes(server_name), false, 0)?;
+    Ok(common_port_handler(work_queue, port, dispatch))
 }
 
-impl<T, DISPATCH> SessionWrapper<T, DISPATCH> {
-    /// Create a new SessionWrapper from an open ServerSession and a backing
-    /// Object.
-    pub fn new(handle: ServerSession, object: T, dispatch: DISPATCH) -> SessionWrapper<T, DISPATCH> {
-        SessionWrapper {
-            handle,
-            object,
-            dispatch,
-            buf: Align16([0; 0x100]),
-            pointer_buf: [0; 0x300],
+/// Creates a port through [syscalls::manage_named_port()] with the given name,
+/// and returns a future which will handle the port - that is, it
+/// will continuously accept new sessions on the port, and create backing
+/// objects through `T::default()`, and spawn a top-level future handling that
+/// sesion with [new_session_wrapper()].
+pub fn managed_port_handler<T, DISPATCH>(work_queue: WorkQueue<'static>, server_name: &str, dispatch: DISPATCH) -> Result<impl Future<Output=()>, Error>
+where
+    DISPATCH: for<'b> hrtb_hack::FutureCallback<(&'b mut T, WorkQueue<'static>, u32, &'b mut [u8]), Result<(), Error>>,
+    DISPATCH: Clone + Unpin + Send + 'static,
+    T: Default + Unpin + Send + 'static,
+{
+    let port = syscalls::manage_named_port(server_name, 0)?;
+    Ok(common_port_handler(work_queue, port, dispatch))
+}
+
+pub mod hrtb_hack {
+    //! Ideally, that's what we would want to write
+    //! async fn new_session_wrapper<F>(mut dispatch: F) -> ()
+    //! where
+    //!     F: for<'a> FnMut<(&'a mut [u8],)>,
+    //!     for<'a> <F as FnOnce<(&'a mut [u8],)>>::Output: Future<Output = Result<(), ()>>,
+    //! {
+    //!     // Session wrapper code
+    //! }
+    //
+    //! But the compiler seems to have trouble reasoning about associated types
+    //! in an HRTB context (maybe that's just not possible ? Not sure).
+    //!
+    //! To work around this, we'll make a supertrait over `FnMut<T>` and make
+    //! use of lifetime ellision rules to get this done.
+
+    //! So instead, we'll make a wrapper for `FnMut` that has the right trait bound
+    //! on its associated output type directly, Implement it for all FnMut with
+    //! Ret = Output, and use that as a bound instead.
+
+    use core::future::Future;
+
+    /// A similar trait to FnMut() but moving the Ret associated trait to a
+    /// generic position, simplifying stuff. See module docs.
+    pub trait FutureCallback<T, O>: FnMut<T> {
+        /// See [type FnMut::Output]
+        type Ret: Future<Output = O> + Send;
+
+        /// See [FnMut::call_mut()].
+        fn call(&mut self, x: T) -> Self::Ret;
+    }
+
+    impl<T, O, F: FnMut<T>> FutureCallback<T, O> for F
+    where
+        F::Output: Future<Output = O> + Send,
+    {
+        type Ret = F::Output;
+
+        fn call(&mut self, x: T) -> Self::Ret {
+            self.call_mut(x)
         }
     }
 }
 
-impl<T: Debug, DISPATCH> Debug for SessionWrapper<T, DISPATCH> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("SessionWrapper")
-            .field("handle", &self.handle)
-            .field("object", &self.object)
-            .field("buf", &&self.buf[..])
-            .field("pointer_buf", &&self.pointer_buf[..])
-            .finish()
-    }
-}
-
-impl<T: Debug, DISPATCH> IWaitable for SessionWrapper<T, DISPATCH>
+/// Creates a new top-level future that handles session.
+///
+/// The returned future will continuously accept new incoming requests on the
+/// handle, call the dispatch function with the given object, and the request'
+/// cmdid and buffer, and finally reply to the request.
+///
+/// It may be used to open subsessions.
+pub fn new_session_wrapper<T, DISPATCH>(work_queue: WorkQueue<'static>, handle: ServerSession, mut object: T, mut dispatch: DISPATCH) -> impl Future<Output = ()> + Send
 where
-    DISPATCH: FnMut(&mut T, &WaitableManager, u32, &mut [u8]) -> Result<(), Error>
+    DISPATCH: for<'b> hrtb_hack::FutureCallback<(&'b mut T, WorkQueue<'static>, u32, &'b mut [u8]), Result<(), Error>>,
+    DISPATCH: Unpin + Send + 'static,
+    T: Unpin + Send + 'static,
 {
-    fn get_handle(&self) -> HandleRef<'_> {
-        self.handle.0.as_ref()
-    }
+    let mut buf = Align16([0; 0x100]);
+    let mut pointer_buf = [0; 0x300];
 
-    fn handle_signaled(&mut self, manager: &WaitableManager) -> Result<bool, Error> {
-        // Push a C Buffer before receiving.
-        let mut req = Message::<(), [_; 1], [_; 0], [_; 0]>::new_request(None, 0);
-        req.push_in_pointer(&mut self.pointer_buf, false);
-        req.pack(&mut self.buf[..]);
+    async move {
+        loop {
+            debug!("Waiting for a new session on handle {:?}", handle);
+            let res = handle.wait_async(work_queue.clone()).await;
 
-        self.handle.receive(&mut self.buf[..], Some(0))?;
+            if let Err(err) = res {
+                // This instance of WaitAsync can return one of two errors:
+                // - InvalidAddress: Someone did something silly with
+                //   memory.
+                // - InvalidHandle: Shouldn't happen since we hold the
+                //   ServerPort. Someone might have manually closed it?
+                unreachable!("WaitAsync errors cannot be reached from here. {:?}", err);
+            }
 
-        match super::find_ty_cmdid(&self.buf[..]) {
-            // TODO: Handle other types.
-            Some((4, cmdid)) | Some((6, cmdid)) => {
-                (self.dispatch)(&mut self.object, manager, cmdid, &mut self.buf[..])?;
-                self.handle.reply(&mut self.buf[..])?;
-                Ok(false)
-            },
-            Some((2, _)) => Ok(true),
-            _ => Ok(true)
+            // Push a C Buffer before receiving.
+            let mut req = Message::<(), [_; 1], [_; 0], [_; 0]>::new_request(None, 0);
+            req.push_in_pointer(&mut pointer_buf, false);
+            req.pack(&mut buf[..]);
+
+            // Use a timeout of 0 to avoid blocking.
+            match handle.receive(&mut buf[..], Some(0)) {
+                Err(Error::Kernel(KernelError::Timeout, _)) => continue,
+                res => res.unwrap(),
+            }
+
+            let tycmdid = super::find_ty_cmdid(&buf[..]);
+            debug!("Got request for: {:?}", tycmdid);
+
+            let close = match tycmdid {
+                // TODO: Handle other types.
+                Some((4, cmdid)) | Some((6, cmdid)) => dispatch.call((&mut object, work_queue.clone(), cmdid, &mut buf[..])).await
+                    .map(|_| false)
+                    .unwrap_or_else(|err| { error!("Dispatch method errored out: {:?}", err); true }),
+                Some((2, _)) => true,
+                _ => true
+            };
+
+            if close {
+                break;
+            }
+
+            handle.reply(&mut buf[..]).unwrap();
         }
     }
 }

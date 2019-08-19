@@ -254,10 +254,21 @@ description = "Upload this project's documentation on github pages. Should only 
 command = "cargo"
 args = ["doc-upload", "--clobber-index"]
 
-[tasks.test]
+[tasks.testdoc]
+# We don't set the target because of https://github.com/rust-lang/cargo/issues/6460
+# See #226
+description = "Run the doctests - doesn't set the target"
+command = "cargo"
+args = ["test", "--doc"]
+
+[tasks.testinner]
 description = "Run the tests in 32bit mode"
 command = "cargo"
 args = ["test", "--target=i686-unknown-linux-gnu"]
+
+[tasks.test]
+description = "Run all the tests."
+dependencies = ["testdoc", "testinner"]
 
 [tasks.refresh-crates]
 description = "Make cargo-clippy work..."

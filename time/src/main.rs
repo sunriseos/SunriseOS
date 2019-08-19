@@ -2,7 +2,7 @@
 //!
 //! This service takes care of anything related with time.
 
-#![feature(alloc_prelude, untagged_unions)]
+#![feature(alloc_prelude, untagged_unions, async_await)]
 #![no_std]
 
 // rustc warnings
@@ -28,7 +28,9 @@ mod timezone;
 use alloc::prelude::v1::*;
 
 use sunrise_libuser::syscalls;
-use sunrise_libuser::ipc::server::{WaitableManager, PortHandler, IWaitable, SessionWrapper};
+use sunrise_libuser::futures::{WaitableManager, WorkQueue};
+use sunrise_libuser::ipc::server::{new_session_wrapper, port_handler};
+use futures::future::FutureObj;
 use sunrise_libuser::time::{TimeZoneServiceProxy, StaticService as _, TimeZoneService as _, RTCManager as _};
 use sunrise_libuser::types::*;
 use sunrise_libuser::io::{self, Io};
@@ -69,11 +71,11 @@ capabilities!(CAPABILITIES = Capabilities {
 struct StaticService;
 
 impl sunrise_libuser::time::StaticService for StaticService {
-    fn get_timezone_service(&mut self, manager: &WaitableManager) -> Result<TimeZoneServiceProxy, Error> {
+    fn get_timezone_service(&mut self, manager: WorkQueue<'static>) -> Result<TimeZoneServiceProxy, Error> {
         let timezone_instance = timezone::TimeZoneService::default();
         let (server, client) = syscalls::create_session(false, 0)?;
-        let wrapper = SessionWrapper::new(server, timezone_instance, timezone::TimeZoneService::dispatch);
-        manager.add_waitable(Box::new(wrapper) as Box<dyn IWaitable>);
+        let wrapper = new_session_wrapper(manager.clone(), server, timezone_instance, timezone::TimeZoneService::dispatch);
+        manager.spawn(FutureObj::new(Box::new(wrapper)));
         Ok(TimeZoneServiceProxy::from(client))
     }
 }
@@ -91,7 +93,7 @@ impl sunrise_libuser::time::StaticService for StaticService {
 struct Rtc {
     /// Command and Data Register.
     registers: Mutex<(io::Pio<u8>, io::Pio<u8>)>,
-    
+
     /// Last RTC time value.
     timestamp: Mutex<i64>,
 
@@ -178,27 +180,32 @@ static RTC_INSTANCE: Once<Rtc> = Once::new();
 #[derive(Default, Debug)]
 struct RTCManager;
 
-impl IWaitable for &Rtc {
-    fn get_handle(&self) -> HandleRef<'_> {
-        if let Some(irq_event) = &self.irq_event {
-            return irq_event.0.as_ref_static()
-        }
-        panic!("RTC irq event cannot be uninialized");
-    }
+/// Task responsible for updating the RTC_INSTANCE's current time every second.
+// https://github.com/rust-lang/rust-clippy/issues/3988
+// Should remove on next toolchain upgrade.
+#[allow(clippy::needless_lifetimes)]
+async fn update_rtc(work_queue: WorkQueue<'_>) {
+    let rtc = RTC_INSTANCE.r#try().expect("RTC_INSTANCE to be initialized.");
 
-    fn handle_signaled(&mut self, _manager: &WaitableManager) -> Result<bool, Error> {
-        let intkind = self.read_interrupt_kind();
+    loop {
+        if let Some(irq_event) = &rtc.irq_event {
+            let _ = irq_event.wait_async(work_queue.clone()).await;
+        } else {
+            panic!("RTC irq event cannot be uninialized");
+        }
+
+        let intkind = rtc.read_interrupt_kind();
         if intkind & (1 << 4) != 0 {
             // Time changed. Let's update.
-            let mut seconds = i64::from(self.read_reg(0));
-            let mut minutes = i64::from(self.read_reg(2));
-            let mut hours = i64::from(self.read_reg(4));
-            let mut day = i64::from(self.read_reg(7));
-            let mut month = i64::from(self.read_reg(8));
-            let mut year = i64::from(self.read_reg(9));
+            let mut seconds = i64::from(rtc.read_reg(0));
+            let mut minutes = i64::from(rtc.read_reg(2));
+            let mut hours = i64::from(rtc.read_reg(4));
+            let mut day = i64::from(rtc.read_reg(7));
+            let mut month = i64::from(rtc.read_reg(8));
+            let mut year = i64::from(rtc.read_reg(9));
 
             // IBM sometimes uses BCD. Why? God knows.
-            if !self.is_12hr_clock() {
+            if !rtc.is_12hr_clock() {
                 seconds = (seconds & 0x0F) + ((seconds / 16) * 10);
                 minutes = (minutes & 0x0F) + ((minutes / 16) * 10);
                 hours = ( (hours & 0x0F) + (((hours & 0x70) / 16) * 10) ) | (hours & 0x80);
@@ -228,19 +235,19 @@ impl IWaitable for &Rtc {
             julian_day_number += minutes * 60;
             julian_day_number += seconds;
 
-            let mut value = self.timestamp.lock();
+            let mut value = rtc.timestamp.lock();
             *value = julian_day_number;
         }
-        Ok(false)
     }
 }
 
+
 impl sunrise_libuser::time::RTCManager for RTCManager {
-    fn get_rtc_time(&mut self, _manager: &WaitableManager) -> Result<i64, Error> {
+    fn get_rtc_time(&mut self, _manager: WorkQueue) -> Result<i64, Error> {
         Ok(RTC_INSTANCE.r#try().expect("RTC instance not initialized").get_time())
     }
 
-    fn get_rtc_event(&mut self, _manager: &WaitableManager) -> Result<HandleRef<'static>, Error> {
+    fn get_rtc_event(&mut self, _manager: WorkQueue) -> Result<HandleRef<'static>, Error> {
         Ok(RTC_INSTANCE.r#try().expect("RTC instance not initialized").get_irq_event_handle())
     }
 }
@@ -250,20 +257,22 @@ fn main() {
     let device_location_name = b"Europe/Paris\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
     timezone::TZ_MANAGER.lock().set_device_location_name(*device_location_name).unwrap();
 
-    let mut rtc = RTC_INSTANCE.call_once(|| Rtc::default());
+    RTC_INSTANCE.call_once(|| Rtc::default());
 
-    let man = WaitableManager::new();
-    let user_handler = Box::new(PortHandler::new("time:u\0", StaticService::dispatch).unwrap());
-    let applet_handler = Box::new(PortHandler::new("time:a\0", StaticService::dispatch).unwrap());
-    let system_handler = Box::new(PortHandler::new("time:s\0", StaticService::dispatch).unwrap());
-    let rtc_handler = Box::new(PortHandler::new("rtc\0", RTCManager::dispatch).unwrap());
+    let mut man = WaitableManager::new();
+    let user_handler = port_handler(man.work_queue(), "time:u\0", StaticService::dispatch).unwrap();
+    let applet_handler = port_handler(man.work_queue(), "time:a\0", StaticService::dispatch).unwrap();
+    let system_handler = port_handler(man.work_queue(), "time:s\0", StaticService::dispatch).unwrap();
+    let rtc_handler = port_handler(man.work_queue(), "rtc\0", RTCManager::dispatch).unwrap();
 
-    man.add_waitable(user_handler as Box<dyn IWaitable>);
-    man.add_waitable(applet_handler as Box<dyn IWaitable>);
-    man.add_waitable(system_handler as Box<dyn IWaitable>);
-    man.add_waitable(rtc_handler as Box<dyn IWaitable>);
+    man.work_queue().spawn(FutureObj::new(Box::new(user_handler)));
+    man.work_queue().spawn(FutureObj::new(Box::new(applet_handler)));
+    man.work_queue().spawn(FutureObj::new(Box::new(system_handler)));
+    man.work_queue().spawn(FutureObj::new(Box::new(rtc_handler)));
 
-    man.add_waitable_ref(&mut rtc);
+    let rtc_future = update_rtc(man.work_queue());
+
+    man.work_queue().spawn(FutureObj::new(Box::new(rtc_future)));
 
     man.run();
 }

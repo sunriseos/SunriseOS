@@ -31,7 +31,7 @@ use bstr::BStr;
 use bstr::ByteSlice;
 
 /// Turns a day of week number from RTC into an english string.
-/// /// 
+/// ///
 /// # Panics
 ///
 /// * `dow` isn't valid.
@@ -49,7 +49,7 @@ fn get_day_of_week(dow: u8) -> &'static str {
 }
 
 /// Turns a month number from RTC into an english string.
-/// 
+///
 /// # Panics
 ///
 /// * `month` isn't valid.
@@ -104,9 +104,9 @@ fn write_calendar(logger: &mut Terminal, location: &BStr, input: (CalendarTime, 
 
 fn main() {
     let mut logger = Terminal::new(WindowSize::FontLines(1, true)).unwrap();
-    let mut time = StaticServiceProxy::raw_new_time_u().unwrap();
-    let mut rtc = RTCManagerProxy::raw_new().unwrap();
-    let mut timezone_service = time.get_timezone_service().unwrap();
+    let time = StaticServiceProxy::raw_new_time_u().unwrap();
+    let rtc = RTCManagerProxy::raw_new().unwrap();
+    let timezone_service = time.get_timezone_service().unwrap();
 
     // Get default timezone name
     let device_location = timezone_service.get_device_location_name().unwrap();

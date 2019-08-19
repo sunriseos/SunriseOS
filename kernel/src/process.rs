@@ -3,12 +3,11 @@
 use crate::stack::KernelStack;
 use crate::i386::process_switch::*;
 use crate::paging::process_memory::ProcessMemory;
-use alloc::boxed::Box;
 use alloc::sync::{Arc, Weak};
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
-use crate::event::Waitable;
+use crate::event::{IRQEvent, ReadableEvent, WritableEvent, Waitable};
 use crate::sync::{SpinLockIRQ, SpinLock, Mutex};
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use core::fmt::{self, Debug};
@@ -149,9 +148,13 @@ pub struct ThreadStruct {
 /// will have relevant behavior for all the different kind of handles.
 #[derive(Debug)]
 pub enum Handle {
-    /// An event on which we can wait. Could be an IRQ, or a user-generated
-    /// event.
-    ReadableEvent(Box<dyn Waitable>),
+    /// A special ReadableEvent that is triggered automatically when an IRQ is
+    /// triggered.
+    InterruptEvent(IRQEvent),
+    /// An event on which we can wait, triggered by a WritableEvent.
+    ReadableEvent(ReadableEvent),
+    /// Trigger for an associated ReadableEvent.
+    WritableEvent(WritableEvent),
     /// The server side of an IPC port. See [crate::ipc::port] for more information.
     ServerPort(ServerPort),
     /// The client side of an IPC port. See [crate::ipc::port] for more information.
@@ -176,7 +179,8 @@ impl Handle {
     /// Gets the handle as a [Waitable], or return a `UserspaceError` if the handle cannot be waited on.
     pub fn as_waitable(&self) -> Result<&dyn Waitable, UserspaceError> {
         match *self {
-            Handle::ReadableEvent(ref waitable) => Ok(&**waitable),
+            Handle::ReadableEvent(ref waitable) => Ok(waitable),
+            Handle::InterruptEvent(ref waitable) => Ok(waitable),
             Handle::ServerPort(ref serverport) => Ok(serverport),
             Handle::ServerSession(ref serversession) => Ok(serversession),
             _ => Err(UserspaceError::InvalidHandle),
@@ -225,6 +229,23 @@ impl Handle {
             Ok((*s).clone())
         } else {
             Err(UserspaceError::InvalidHandle)
+        }
+    }
+
+    /// Casts the handle as an Arc<[WritableEvent]> if the handle is a
+    /// [WritableEvent], or returns a `UserspaceError`.
+    pub fn as_writable_event(&self) -> Result<WritableEvent, UserspaceError> {
+        match self {
+            Handle::WritableEvent(event) => Ok(event.clone()),
+            _ => Err(UserspaceError::InvalidHandle)
+        }
+    }
+
+    /// Casts the handle as an Arc<[ReadableEvent]>, or returns a `UserspaceError`.
+    pub fn as_readable_event(&self) -> Result<ReadableEvent, UserspaceError> {
+        match self {
+            Handle::ReadableEvent(event) => Ok(event.clone()),
+            _ => Err(UserspaceError::InvalidHandle)
         }
     }
 

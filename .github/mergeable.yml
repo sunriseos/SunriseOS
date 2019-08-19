@@ -1,7 +1,14 @@
+version: 2
 mergeable:
-  pull_requests:
-    # Minimum of 5 approvals is needed.
-    approvals:
-      min: 2
-      except:
-        label: '^dependencies$'
+- when: pull_request.*, pull_request_review.*
+  validate:
+  - do: or
+    validate:
+    - do: approvals
+      min:
+        count: 2
+        message: "non-trivial PRs need to be reviewed by everyone before it can be merged."
+    - do: label
+      must_include:
+        regex: '^dependencies$'
+        message: "If your PR is trivial and doesn't require review, simply add the trivial tag."
