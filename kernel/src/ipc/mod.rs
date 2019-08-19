@@ -77,7 +77,7 @@
 //! let clientsess = ipc::connect_to_named_port(b"test\0\0\0\0\0\0\0\0\0\0\0\0")?;
 //! ```
 
-use crate::sync::RwLock;
+use crate::sync::SpinRwLock;
 use alloc::string::String;
 use crate::error::UserspaceError;
 use hashbrown::HashMap;
@@ -90,7 +90,7 @@ pub use self::port::{ClientPort, ServerPort};
 
 lazy_static! {
     // TODO: StringWrapper<[u8; 12]>
-    static ref NAMED_PORTS: RwLock<HashMap<String, ClientPort>> = RwLock::new(HashMap::new());
+    static ref NAMED_PORTS: SpinRwLock<HashMap<String, ClientPort>> = SpinRwLock::new(HashMap::new());
 }
 
 /// Creates a named port.

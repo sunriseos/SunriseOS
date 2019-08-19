@@ -87,7 +87,7 @@ use crate::i386::instructions::segmentation::*;
 
 use crate::paging::PAGE_SIZE;
 use sunrise_libkern::TLS;
-use spin::Mutex;
+use crate::sync::SpinLock;
 use bitfield::fmt::Debug;
 
 /// The global GDT. Needs to be initialized with [init_gdt].
@@ -493,7 +493,7 @@ impl MainTask {
 // BODY: to the current cr3, and update it when we switch page table hierarchies. However the current
 // BODY: way we do kernel paging is not viable for SMP, and we might finally implement such a hierarchy
 // BODY: for SMP, we could then make DOUBLE_FAULT TSS(s) point to it.
-pub static MAIN_TASK: Mutex<MainTask> = Mutex::new(MainTask::empty());
+pub static MAIN_TASK: SpinLock<MainTask> = SpinLock::new(MainTask::empty());
 
 /// Double fault TSS
 ///
@@ -512,7 +512,7 @@ pub static MAIN_TASK: Mutex<MainTask> = Mutex::new(MainTask::empty());
 /// ##### IOPB
 ///
 /// Unlike the [MAIN_TASK], this TSS does not have an associated IOPB.
-pub static DOUBLE_FAULT_TASK: Mutex<TssStruct> = Mutex::new(TssStruct::empty());
+pub static DOUBLE_FAULT_TASK: SpinLock<TssStruct> = SpinLock::new(TssStruct::empty());
 
 /// The stack used while handling a double fault.
 ///

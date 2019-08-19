@@ -18,7 +18,7 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use crate::ipc;
 use crate::error::{UserspaceError, KernelError};
-use crate::sync::RwLock;
+use crate::sync::SpinRwLock;
 use crate::timer;
 use failure::Backtrace;
 use sunrise_libkern::{MemoryInfo, MemoryAttributes, MemoryPermissions, MemoryType};
@@ -490,7 +490,7 @@ pub fn create_port(max_sessions: u32, _is_light: bool, _name_ptr: UserSpacePtr<[
 /// care.
 pub fn create_shared_memory(size: u32, _myperm: u32, _otherperm: u32) -> Result<usize, UserspaceError> {
     let frames = FrameAllocator::allocate_frames_fragmented(size as usize)?;
-    let handle = Arc::new(Handle::SharedMemory(Arc::new(RwLock::new(frames))));
+    let handle = Arc::new(Handle::SharedMemory(Arc::new(SpinRwLock::new(frames))));
     let curproc = get_current_process();
     let hnd = curproc.phandles.lock().add_handle(handle);
     Ok(hnd as _)

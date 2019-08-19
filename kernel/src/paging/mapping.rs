@@ -8,7 +8,7 @@ use alloc::{vec::Vec, sync::Arc};
 use crate::utils::check_nonzero_length;
 use failure::Backtrace;
 use sunrise_libkern::{MemoryType, MemoryState};
-use crate::sync::{RwLock, RwLockReadGuard};
+use crate::sync::{SpinRwLock, SpinRwLockReadGuard};
 use core::ops::Range;
 use core::iter::StepBy;
 use crate::mem::PhysicalAddress;
@@ -45,7 +45,7 @@ pub struct Mapping {
 #[derive(Debug)]
 pub enum MappingFrames {
     /// The frames are Shared between multiple mappings.
-    Shared(Arc<RwLock<Vec<PhysicalMemRegion>>>),
+    Shared(Arc<SpinRwLock<Vec<PhysicalMemRegion>>>),
     /// The frames are Owned by this mapping.
     Owned(Vec<PhysicalMemRegion>),
     /// This Mapping has no frames.
@@ -127,7 +127,7 @@ impl Mapping {
         enum MappingFramesIt<'a> {
             None,
             Owned(&'a [PhysicalMemRegion], usize, StepBy<Range<usize>>),
-            Shared(&'a Arc<RwLock<Vec<PhysicalMemRegion>>>, RwLockReadGuard<'a, Vec<PhysicalMemRegion>>, usize, StepBy<Range<usize>>),
+            Shared(&'a Arc<SpinRwLock<Vec<PhysicalMemRegion>>>, SpinRwLockReadGuard<'a, Vec<PhysicalMemRegion>>, usize, StepBy<Range<usize>>),
         }
         impl<'a> Iterator for MappingFramesIt<'a> {
             type Item = PhysicalAddress;
@@ -204,7 +204,7 @@ mod test {
     use std::vec::Vec;
     use crate::utils::Splittable;
     use crate::error::KernelError;
-    use crate::sync::RwLock;
+    use crate::sync::SpinRwLock;
 
     /// Applies the same tests to Unmapped, Reserved and KernelStack.
     macro_rules! test_empty_mapping {
@@ -269,7 +269,7 @@ mod test {
     #[test]
     fn mapping_shared_ok() {
         let _f = crate::frame_allocator::init();
-        let frames = Arc::new(RwLock::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap()));
+        let frames = Arc::new(SpinRwLock::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap()));
         let flags = MappingAccessRights::u_rw();
         let _mapping = Mapping::new(VirtualAddress(0x40000000), MappingFrames::Shared(frames), 0, 2 * PAGE_SIZE, MemoryType::Stack, flags).unwrap();
     }
@@ -285,7 +285,7 @@ mod test {
     #[test]
     fn mapping_shared_empty_vec() {
         let _f = crate::frame_allocator::init();
-        let frames = Arc::new(RwLock::new(Vec::new()));
+        let frames = Arc::new(SpinRwLock::new(Vec::new()));
         let flags = MappingAccessRights::u_rw();
         let _mapping = Mapping::new(VirtualAddress(0x40000000), MappingFrames::Shared(frames), 0, 2 * PAGE_SIZE, MemoryType::Stack, flags).unwrap_err();
     }
@@ -320,7 +320,7 @@ mod test {
     #[test]
     fn mapping_shared_unaligned_addr() {
         let _f = crate::frame_allocator::init();
-        let frames = Arc::new(RwLock::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap()));
+        let frames = Arc::new(SpinRwLock::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap()));
         let flags = MappingAccessRights::u_rw();
         let _mapping_err = Mapping::new(VirtualAddress(0x40000007), MappingFrames::Shared(frames), 0, 2 * PAGE_SIZE, MemoryType::Stack, flags).unwrap_err();
     }
@@ -339,7 +339,7 @@ mod test {
     #[should_panic]
     fn mapping_shared_unaligned_len() {
         let _f = crate::frame_allocator::init();
-        let frames = Arc::new(RwLock::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE + 7).unwrap()));
+        let frames = Arc::new(SpinRwLock::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE + 7).unwrap()));
         let flags = MappingAccessRights::u_rw();
         let _mapping = Mapping::new(VirtualAddress(0x40000000), MappingFrames::Shared(frames), 0, 2 * PAGE_SIZE + 7, MemoryType::Stack, flags).unwrap();
     }
@@ -355,7 +355,7 @@ mod test {
     #[test]
     fn mapping_shared_threshold() {
         let _f = crate::frame_allocator::init();
-        let frames = Arc::new(RwLock::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap()));
+        let frames = Arc::new(SpinRwLock::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap()));
         let flags = MappingAccessRights::u_rw();
         let _mapping = Mapping::new(VirtualAddress(usize::max_value() - 2 * PAGE_SIZE + 1), MappingFrames::Shared(frames), 0, 2 * PAGE_SIZE, MemoryType::Stack, flags).unwrap();
     }
@@ -371,7 +371,7 @@ mod test {
     #[test]
     fn mapping_shared_overflow() {
         let _f = crate::frame_allocator::init();
-        let frames = Arc::new(RwLock::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap()));
+        let frames = Arc::new(SpinRwLock::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap()));
         let flags = MappingAccessRights::u_rw();
         let _mapping_err = Mapping::new(VirtualAddress(usize::max_value() - 2 * PAGE_SIZE), MappingFrames::Shared(frames), 0, 2 * PAGE_SIZE, MemoryType::Stack, flags).unwrap_err();
     }
@@ -384,7 +384,7 @@ mod test {
         // Get the address that will get mapped
         let test_addr = frames.iter().flatten().last().unwrap();
 
-        let frames = Arc::new(RwLock::new(frames));
+        let frames = Arc::new(SpinRwLock::new(frames));
         let flags = MappingAccessRights::u_rw();
         let mapping = Mapping::new(VirtualAddress(0), MappingFrames::Shared(frames), 1 * PAGE_SIZE, 1 * PAGE_SIZE, MemoryType::Stack, flags).unwrap();
         assert!(mapping.frames_it().count() == 1, "Frames_it has the wrong size.");
@@ -394,7 +394,7 @@ mod test {
     #[test]
     fn mapping_shared_offset_overflow() {
         let _f = crate::frame_allocator::init();
-        let frames = Arc::new(RwLock::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap()));
+        let frames = Arc::new(SpinRwLock::new(FrameAllocator::allocate_frames_fragmented(2 * PAGE_SIZE).unwrap()));
         let flags = MappingAccessRights::u_rw();
         let _mapping_err = Mapping::new(VirtualAddress(0), MappingFrames::Shared(frames), 1 * PAGE_SIZE, 2 * PAGE_SIZE, MemoryType::Stack, flags).unwrap_err();
     }
