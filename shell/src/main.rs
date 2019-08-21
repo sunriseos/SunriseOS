@@ -32,17 +32,20 @@ extern crate sunrise_libuser as libuser;
 mod ps2;
 use crate::libuser::io;
 use crate::libuser::sm;
-use crate::libuser::fs::{IFileSystemServiceProxy, IFileProxy};
+use crate::libuser::fs::{IFileSystemServiceProxy, IFileSystemProxy, IFileProxy};
 use crate::libuser::fs::FileSystemPath;
 use crate::libuser::window::{Window, Color};
 use crate::libuser::terminal::{Terminal, WindowSize};
 use crate::libuser::threads::Thread;
+use crate::libuser::error::Error;
 
 use core::fmt::Write;
 use alloc::vec::Vec;
 use alloc::sync::Arc;
 use spin::Mutex;
 use bitflags::bitflags;
+use bstr::ByteSlice;
+
 
 bitflags! {
     /// Flags indicating the way a file should be open.
@@ -64,27 +67,36 @@ fn main() {
     let fs_proxy = IFileSystemServiceProxy::raw_new().unwrap();
     let filesystem = fs_proxy.open_disk_partition(0, 0).unwrap();
 
-    let mut raw_path: FileSystemPath = [0; 0x301];
-    (&mut raw_path[0..9]).copy_from_slice(b"/etc/motd");
-
-    let file: IFileProxy = filesystem.open_file(FileModeFlags::READABLE.bits(), &raw_path).unwrap();
-
-    let mut buffer = [0; 0x200];
-
-    file.read(0, 0, 0x200, &mut buffer).unwrap();
-
-    let raw_motd = core::str::from_utf8(&buffer).unwrap();
-    let motd = raw_motd.trim_matches(char::from(0));
-
-    let _ = writeln!(&mut terminal, "{}", motd);
+    cat(&mut terminal, &filesystem, "/etc/motd").unwrap();
 
     loop {
-        match &*ps2::get_next_line(&mut terminal) {
+        let line = ps2::get_next_line(&mut terminal);
+        let mut arguments = line.split_whitespace();
+        let command_opt = arguments.next();
+
+        if command_opt.is_none() {
+            continue;
+        }
+
+        match command_opt.unwrap() {
             "meme1" => show_gif(&LOUIS1[..]),
             "meme2" => show_gif(&LOUIS2[..]),
             "meme3" => show_gif(&LOUIS3[..]),
             "meme4" => show_gif(&LOUIS4[..]),
             "meme5" => show_gif(&LOUIS5[..]),
+            "cat" => {
+                match arguments.nth(0) {
+                    None => {
+                        let _ = writeln!(&mut terminal, "Got Path {:?}", arguments);
+                    }
+                    Some(path) => {
+                        if let Err(error) = cat(&mut terminal, &filesystem, path) {
+                            let _ = writeln!(&mut terminal, "cat: {}", error);
+                        }
+                    }
+                }
+
+            }
             "test_threads" => terminal = test_threads(terminal),
             "test_divide_by_zero" => test_divide_by_zero(),
             "test_page_fault" => test_page_fault(),
@@ -97,6 +109,7 @@ fn main() {
             "help" => {
                 let _ = writeln!(&mut terminal, "COMMANDS:");
                 let _ = writeln!(&mut terminal, "exit: Exit this process");
+                let _ = writeln!(&mut terminal, "cat <path>: Print a file on the terminal");
                 let _ = writeln!(&mut terminal, "meme1: Display the KFS-1 meme");
                 let _ = writeln!(&mut terminal, "meme2: Display the KFS-2 meme");
                 let _ = writeln!(&mut terminal, "meme3: Display the KFS-3 meme");
@@ -109,6 +122,29 @@ fn main() {
             _ => { let _ = writeln!(&mut terminal, "Unknown command"); }
         }
     }
+}
+
+/// Print a file on the standard output.
+fn cat<W: Write>(f: &mut W, filesystem: &IFileSystemProxy, path: &str) -> Result<(), Error> {
+    let mut raw_path: FileSystemPath = [0; 0x301];
+    (&mut raw_path[..path.len()]).copy_from_slice(path.as_bytes());
+    let mut buffer = [0; 0x200];
+    let buffer_len = buffer.len() as u64;
+    let mut offset = 0;
+
+    let file: IFileProxy = filesystem.open_file(FileModeFlags::READABLE.bits(), &raw_path)?;
+    loop {
+        let read_size = file.read(0, offset, buffer_len, &mut buffer)?;
+        let string_part = (&buffer[..read_size as usize]).as_bstr().trim_with(|c| c == '\0').as_bstr();
+        let _ = write!(f, "{}", string_part);
+
+        offset += read_size;
+
+        if read_size != buffer_len {
+            break;
+        }
+    }
+    Ok(())
 }
 
 /// Shows a GIF in a new window, blocking the caller. When a key is pressed, the
