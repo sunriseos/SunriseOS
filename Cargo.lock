@@ -391,7 +391,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "libfat"
 version = "0.1.0"
-source = "git+https://github.com/Thog/libfat.git?branch=initial#ab80bfa6d6e6073855ef4ab055ff29f170bdee5e"
+source = "git+https://github.com/Thog/libfat.git?branch=initial#a4c49e11af3180fdf435756efc35483ad3f3fe03"
 dependencies = [
  "arrayvec 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "num-traits 0.2.8 (registry+https://github.com/rust-lang/crates.io-index)",

@@ -29,7 +29,7 @@ impl FileSystemDriver for FATDriver {
     }
 
     fn is_valid(&self, storage: &mut PartitionStorage) -> bool {
-        libfat::get_fat_type(storage).is_ok()
+        libfat::get_fat_type(storage, 0).is_ok()
     }
 
     fn is_supported(&self, filesytem_type: FileSystemType) -> bool {
