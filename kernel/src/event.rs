@@ -231,7 +231,7 @@ impl Waitable for IRQEvent {
     fn register(&self) {
         let curproc = scheduler::get_current_thread();
         let mut veclock = self.state.waiting_processes.lock();
-        info!("Registering {:010x} for irq {}", &*curproc as *const _ as usize, self.state.irqnum);
+        debug!("Registering {:010x} for irq {}", &*curproc as *const _ as usize, self.state.irqnum);
         if veclock.iter().find(|v| Arc::ptr_eq(&curproc, v)).is_none() {
             veclock.push(scheduler::get_current_thread());
         }
