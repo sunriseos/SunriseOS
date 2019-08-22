@@ -1,5 +1,5 @@
 //! Driver interfaces
-//! Allows to dectect and select filesystem drivers accordingly.
+//! Allows to detect and select *filesystem drivers* (e.g. FAT32, ext2, nfs, ...) accordingly.
 
 use alloc::boxed::Box;
 
@@ -10,7 +10,7 @@ use super::filesystem::IFileSystem;
 
 /// Driver instance.
 pub trait FileSystemDriver: Send {
-    /// Construct a new filesystem instance if the driver identify the storage as a valid one.
+    /// Construct a new filesystem instance if the driver identifies the storage as a valid one.
     fn construct(&self, storage: PartitionStorage) -> LibUserResult<Box<dyn IFileSystem>>;
 
     /// Check if the given storage hold a filesystem supported by this driver.

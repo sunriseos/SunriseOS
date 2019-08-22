@@ -191,7 +191,7 @@ cp target/i386-unknown-none-user/debug/sunrise-wall-clock     isofiles/boot/
 cp target/i386-unknown-none-user/debug/sunrise-sm             isofiles/boot/
 cp target/i386-unknown-none-user/debug/sunrise-vi             isofiles/boot/
 cp target/i386-unknown-none-user/debug/sunrise-ahci           isofiles/boot/
-cp target/i386-unknown-none-user/debug/sunrise-fs        isofiles/boot/
+cp target/i386-unknown-none-user/debug/sunrise-fs             isofiles/boot/
 mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
 '''
 ]
@@ -211,7 +211,7 @@ cp target/i386-unknown-none-user/release/sunrise-wall-clock     isofiles/boot/
 cp target/i386-unknown-none-user/release/sunrise-sm             isofiles/boot/
 cp target/i386-unknown-none-user/release/sunrise-vi             isofiles/boot/
 cp target/i386-unknown-none-user/release/sunrise-ahci           isofiles/boot/
-cp target/i386-unknown-none-user/release/sunrise-fs        isofiles/boot/
+cp target/i386-unknown-none-user/release/sunrise-fs             isofiles/boot/
 mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
 '''
 ]

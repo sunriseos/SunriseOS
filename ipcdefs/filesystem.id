@@ -101,6 +101,11 @@ interface sunrise_libuser::fs::IFileSystem {
     [7] get_entry_type(buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x301> path) -> sunrise_libuser::fs::DirectoryEntryType;
 
     # Open a file at the specified ``path`` with the given ``mode`` flags.
+    #
+    # ``mode`` controls how the file is opened, based on which bits are set:
+    # When bit 0 is set, the file is Readable: you can use the Read operation.
+    # When bit 1 is set, the file is Writable: you can use the Write operation.
+    # When bit 2 is set, the file is Appendable: unless this bit is set, you will not be able to write beyond the end of a file (such writes will result in an error 0x307202)
     [8] open_file(u32 mode, buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x301> path) -> object<sunrise_libuser::fs::IFile> file;
 
     # Open a directory at the specified ``path`` with the given ``filter_flags`` flags.
@@ -148,13 +153,14 @@ interface sunrise_libuser::fs::IDirectory {
 
 # Represent a file in a filesystem.
 interface sunrise_libuser::fs::IFile {
-    # Read the content of a file at a given ``offset`` in ``out_buf``.
-    [0] read(u32, u64 offset, u64 size) -> (u64 out_size, array<u8, 0x46> out_buf);
+    # Read the content of a file at a given ``offset`` in ``out_buf``. ``option`` should be set to 0.
+    [0] read(u32 option, u64 offset, u64 size) -> (u64 out_size, array<u8, 0x46> out_buf);
 
     # Write the content given ``in_buf`` at the given ``offset`` in the file.
     # If the file is too small to hold the data and the appendable flag is set, it will resize the file and append the data.
     # If the file is too small to hold the data and the appendable flag isn't set, this will return a FileSystemError::NoSpaceLeft.
-    [1] write(u32, u64 offset, u64 size, array<u8, 0x45> in_buf);
+    # ``option`` should be set to 0.
+    [1] write(u32 option, u64 offset, u64 size, array<u8, 0x45> in_buf);
 
     # Flush any data not written on the filesystem.
     [2] flush();
