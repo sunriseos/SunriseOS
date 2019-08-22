@@ -33,32 +33,21 @@ mod ps2;
 use crate::libuser::io;
 use crate::libuser::sm;
 use crate::libuser::fs::{IFileSystemServiceProxy, IFileSystemProxy, IFileProxy};
-use crate::libuser::fs::FileSystemPath;
 use crate::libuser::window::{Window, Color};
 use crate::libuser::terminal::{Terminal, WindowSize};
 use crate::libuser::threads::Thread;
-use crate::libuser::error::Error;
+use crate::libuser::error::{Error, FileSystemError};
 
 use core::fmt::Write;
 use alloc::vec::Vec;
+use alloc::string::String;
 use alloc::sync::Arc;
 use spin::Mutex;
-use bitflags::bitflags;
 use bstr::ByteSlice;
 
-
-bitflags! {
-    /// Flags indicating the way a file should be open.
-    pub struct FileModeFlags: u32 {
-        /// The file should be readable.
-        const READABLE = 0b0000_0001;
-
-        /// The file should be writable.
-        const WRITABLE = 0b0000_0010;
-
-        /// The file should be appendable.
-        const APPENDABLE = 0b0000_0100;
-    }
+lazy_static! {
+    /// Represent the current work directory.
+    static ref CURRENT_WORK_DIRECTORY: Mutex<String> = Mutex::new(String::from("/"));
 }
 
 fn main() {
@@ -87,7 +76,7 @@ fn main() {
             "cat" => {
                 match arguments.nth(0) {
                     None => {
-                        let _ = writeln!(&mut terminal, "Got Path {:?}", arguments);
+                        let _ = writeln!(&mut terminal, "usage: cat <file>");
                     }
                     Some(path) => {
                         if let Err(error) = cat(&mut terminal, &filesystem, path) {
@@ -96,6 +85,21 @@ fn main() {
                     }
                 }
 
+            }
+            "pwd" => {
+                let _ = writeln!(&mut terminal, "{}", CURRENT_WORK_DIRECTORY.lock().as_str());
+            },
+            "cd" => {
+                match arguments.nth(0) {
+                    None => {
+                        let _ = writeln!(&mut terminal, "usage: cd <directory>");
+                    }
+                    Some(path) => {
+                        if let Err(error) = cd(&filesystem, path) {
+                            let _ = writeln!(&mut terminal, "cd: {}", error);
+                        }
+                    }
+                }
             }
             "test_threads" => terminal = test_threads(terminal),
             "test_divide_by_zero" => test_divide_by_zero(),
@@ -109,7 +113,9 @@ fn main() {
             "help" => {
                 let _ = writeln!(&mut terminal, "COMMANDS:");
                 let _ = writeln!(&mut terminal, "exit: Exit this process");
-                let _ = writeln!(&mut terminal, "cat <path>: Print a file on the terminal");
+                let _ = writeln!(&mut terminal, "cat <file>: Print a file on the terminal");
+                let _ = writeln!(&mut terminal, "cd <directory>: change the working directory");
+                let _ = writeln!(&mut terminal, "pwd: Print name of the current/working directory");
                 let _ = writeln!(&mut terminal, "meme1: Display the KFS-1 meme");
                 let _ = writeln!(&mut terminal, "meme2: Display the KFS-2 meme");
                 let _ = writeln!(&mut terminal, "meme3: Display the KFS-3 meme");
@@ -124,15 +130,116 @@ fn main() {
     }
 }
 
+/// Splits a path at the first `/` it encounters.
+///
+/// Returns a tuple of the parts before and after the cut.
+///
+/// # Notes:
+/// - The rest part can contain duplicates '/' in the middle of the path. This should be fine as you should call split_path to parse the rest part.
+pub fn split_path(path: &str) -> (&str, Option<&str>) {
+    let mut path_split = path.trim_matches('/').splitn(2, '/');
+
+    // unwrap will never fail here
+    let comp = path_split.next().unwrap();
+    let rest_opt = path_split.next().and_then(|x| Some(x.trim_matches('/')));
+
+    (comp, rest_opt)
+}
+
+/// Get an absolute path from an user path
+fn get_absolute_path(path: &str) -> String {
+    let mut path = path;
+    let mut path_parts = Vec::new();
+
+    loop {
+        let (comp, rest_opt) = split_path(path);
+
+        match comp {
+            "." => {},
+            ".." => {
+                path_parts.pop();
+            }
+            _ => {
+                let mut component = String::new();
+                component.push('/');
+                component.push_str(comp);
+
+                path_parts.push(component);
+            }
+        }
+
+        if rest_opt.is_none() {
+            break;
+        }
+
+        path = rest_opt.unwrap();
+    }
+
+    let mut res = String::new();
+
+    if path_parts.is_empty() {
+        res.push('/');
+    }
+
+    for part in path_parts {
+        res.push_str(part.as_str())
+    }
+
+    res
+}
+
+/// Get a path relative to the current directory
+fn get_path_relative_to_current_directory(resource: &str) -> String {
+    let current_directory = CURRENT_WORK_DIRECTORY.lock();
+
+    let mut absolute_current_directory = get_absolute_path(current_directory.as_str());
+
+    // We check that the initial input start with a '/'
+    if !resource.starts_with('/') {
+        absolute_current_directory.push('/');
+        absolute_current_directory.push_str(resource);
+        absolute_current_directory = get_absolute_path(absolute_current_directory.as_str());
+    } else {
+        absolute_current_directory = get_absolute_path(resource);
+    }
+
+    absolute_current_directory
+}
+
+/// Change the current working directory
+fn cd(filesystem: &IFileSystemProxy, directory: &str) -> Result<(), Error> {
+    let absolute_current_directory = get_path_relative_to_current_directory(directory);
+    if absolute_current_directory.len() > 0x301 {
+        return Err(FileSystemError::InvalidInput.into())
+    }
+
+    let mut ipc_path = [0x0; 0x301];
+    ipc_path[..absolute_current_directory.as_bytes().len()].copy_from_slice(absolute_current_directory.as_bytes());
+
+
+    filesystem.open_directory(3, &ipc_path)?;
+
+    let mut current_directory = CURRENT_WORK_DIRECTORY.lock();
+    *current_directory = absolute_current_directory;
+    Ok(())
+}
+
 /// Print a file on the standard output.
-fn cat<W: Write>(f: &mut W, filesystem: &IFileSystemProxy, path: &str) -> Result<(), Error> {
-    let mut raw_path: FileSystemPath = [0; 0x301];
-    (&mut raw_path[..path.len()]).copy_from_slice(path.as_bytes());
+fn cat<W: Write>(f: &mut W, filesystem: &IFileSystemProxy, file: &str) -> Result<(), Error> {
+    let absolute_file_directory = get_path_relative_to_current_directory(file);
+
+    if absolute_file_directory.len() > 0x301 {
+        return Err(FileSystemError::InvalidInput.into())
+    }
+
+    let mut ipc_path = [0x0; 0x301];
+    ipc_path[..absolute_file_directory.as_bytes().len()].copy_from_slice(absolute_file_directory.as_bytes());
+
     let mut buffer = [0; 0x200];
     let buffer_len = buffer.len() as u64;
     let mut offset = 0;
 
-    let file: IFileProxy = filesystem.open_file(FileModeFlags::READABLE.bits(), &raw_path)?;
+    let file: IFileProxy = filesystem.open_file(1, &ipc_path)?;
     loop {
         let read_size = file.read(0, offset, buffer_len, &mut buffer)?;
         let string_part = (&buffer[..read_size as usize]).as_bstr().trim_with(|c| c == '\0').as_bstr();

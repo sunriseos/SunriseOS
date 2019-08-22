@@ -10,7 +10,6 @@ gif = { git = "https://github.com/SunriseOS/image-gif" }
 log = "0.4.6"
 sunrise-libuser = { path = "../libuser" }
 spin = "0.5"
-bitflags = "1.1"
 bstr = { version = "0.2", default-features = false }
 
 
