@@ -42,6 +42,7 @@ pub struct StorageCachedBlockDevice<B> where B: BlockDevice + Sync + Send {
 impl<B> Debug for StorageCachedBlockDevice<B> where B: BlockDevice + Sync + Send {
     fn fmt(&self, fmt: &mut core::fmt::Formatter) -> Result<(), core::fmt::Error> {
         fmt.debug_struct("StorageCachedBlockDevice")
+           .field("block_device", &self.block_device)
            .finish()
     }
 }
