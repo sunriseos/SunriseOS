@@ -20,10 +20,6 @@ pub struct DirectoryFilterPredicate;
 impl DirectoryFilterPredicate {
     /// Accept all entries except "." & "..".
     pub fn all(entry: &FatFileSystemResult<FatDirectoryEntry>) -> bool {
-        if entry.is_err() {
-            return false;
-        }
-
         if let Ok(entry) = entry {
             let name = entry.file_name.as_str();
             name != "." && name != ".."
@@ -34,10 +30,6 @@ impl DirectoryFilterPredicate {
 
     /// Only accept directory entries.
     pub fn dirs(entry: &FatFileSystemResult<FatDirectoryEntry>) -> bool {
-        if entry.is_err() {
-            return false;
-        }
-
         if let Ok(entry_val) = entry {
             entry_val.attribute.is_directory() && Self::all(entry)
         } else {
@@ -47,10 +39,6 @@ impl DirectoryFilterPredicate {
 
     /// Only accept file entries.
     pub fn files(entry: &FatFileSystemResult<FatDirectoryEntry>) -> bool {
-        if entry.is_err() {
-            return false;
-        }
-
         if let Ok(entry_val) = entry {
             !entry_val.attribute.is_directory() && Self::all(entry)
         } else {
