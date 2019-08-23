@@ -6,7 +6,9 @@ use uuid::Uuid;
 
 use byteorder::{LE, ByteOrder};
 use super::utils::calculate_crc32;
-
+use storage_device::Block;
+use crate::interface::storage::IStorage;
+use crate::LibUserResult;
 use core::fmt;
 
 /// A raw uuid representation.
@@ -265,6 +267,15 @@ impl Default for GPTHeader {
 impl GPTHeader {
     /// The magic of a GPT header ("EFI PART")
     pub const MAGIC: u64 = 0x5452415020494645;
+
+    /// Read the GPT header from the disk
+    pub fn from_storage_device(storage_device: &mut dyn IStorage, lba_index: u64) -> LibUserResult<Self> {
+        let mut data = [0x0; 0x5C];
+
+        storage_device.read(lba_index * Block::LEN_U64, &mut data)?;
+
+        Ok(Self::from_bytes(data))
+    }
 
     /// Create a GPTHeader from a raw array.
     pub fn from_bytes(bytes: [u8; 0x5C]) -> Self {

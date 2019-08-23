@@ -39,19 +39,10 @@ impl<'a> PartitionManager<'a> {
         PartitionManager { inner }
     }
 
-    /// Read the GPT header from the disk
-    fn read_gpt_header(&mut self, lba_index: u64) -> LibUserResult<GPTHeader> {
-        let mut data = [0x0; 0x5C];
-
-        self.inner.read(lba_index * Block::LEN_U64, &mut data)?;
-
-        Ok(GPTHeader::from_bytes(data))
-    }
-
     /// Check if the partition table is valid.
     #[allow(clippy::wrong_self_convention)]
     pub fn is_valid(&mut self) -> bool {
-        let res = self.read_gpt_header(1);
+        let res = GPTHeader::from_storage_device(self.inner, 1);
 
         if let Ok(res) = res {
             return res.is_valid()
@@ -115,7 +106,7 @@ impl<'a> PartitionManager<'a> {
         let mut primary_gpt_header = GPTHeader::default();
 
         // one disk id for the sake of completness
-        primary_gpt_header.set_disk_guid(Uuid::parse_str("BA3E4ADE-EB06-11E7-8AD3-9570BEC474F8").unwrap());
+        primary_gpt_header.set_disk_guid(Uuid::parse_str("CAFECAFE-CAFE-CAFE-CAFE-CAFECAFECAFE").unwrap());
         primary_gpt_header.current_lba = 1;
         primary_gpt_header.backup_lba = sector_count - 1;
         primary_gpt_header.first_usable = 34;
@@ -217,7 +208,7 @@ impl<'a> PartitionIterator<'a> {
             block_at_free_entry
         };
 
-        let partition_header = res.read_gpt_header(1)?;
+        let partition_header = GPTHeader::from_storage_device(res.inner, 1)?;
 
         if !partition_header.is_valid() {
             return Err(FileSystemError::PartitionNotFound.into());
@@ -227,15 +218,6 @@ impl<'a> PartitionIterator<'a> {
         res.partition_entry_count = u64::from(partition_header.partition_entry_count);
         res.partition_entry_size = u64::from(partition_header.partition_entry_size);
         Ok(res)
-    }
-
-    /// Read the GPT header from the disk
-    fn read_gpt_header(&mut self, lba_index: u64) -> LibUserResult<GPTHeader> {
-        let mut data = [0x0; 0x5C];
-
-        self.inner.read(lba_index * Block::LEN_U64, &mut data)?;
-
-        Ok(GPTHeader::from_bytes(data))
     }
 }
 

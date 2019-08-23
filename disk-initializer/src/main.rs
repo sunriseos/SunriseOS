@@ -1,16 +1,17 @@
 //! Disk initializer application
 //! 
 //! This app is in charge of generating a valid disk image from a file name, a size and a template directory (containing files that should be on the disk image)
+//! 
+//! The disk image contains a standard GPT partition layout and a FAT filesystem.
+//! From the disk size, it chooses a FAT filesystem that may be appropriate to fit in it.
+//! 
+//! Usage: <disk_name> <disk_size> <template_path>
 use std::env;
-use std::fs::File;
 use std::fs::OpenOptions;
 use std::io;
 use std::io::prelude::*;
 use std::fs;
 use std::path::{Path, PathBuf};
-
-use std::cell::RefCell;
-use std::io::SeekFrom;
 
 use storage_device::*;
 
@@ -23,68 +24,6 @@ use libfat::directory::File as FatFile;
 mod gpt;
 
 use gpt::{PartitionIterator, PartitionManager};
-
-/// A structure used to manipulate std::File as BlockDevice
-#[derive(Debug)]
-struct StdBlockDevice {
-    /// The file backing the BlockDevice
-    file: RefCell<File>,
-}
-
-impl StdBlockDevice {
-    /// Create a new StdBlockDevice from a system path
-    fn new<P>(device_name: P) -> StdBlockDevice
-    where
-        P: AsRef<Path>,
-    {
-        StdBlockDevice {
-            file: RefCell::new(
-                OpenOptions::new()
-                    .read(true)
-                    .write(true)
-                    .open(device_name)
-                    .unwrap(),
-            ),
-        }
-    }
-}
-
-impl BlockDevice for StdBlockDevice {
-    fn read(&mut self, blocks: &mut [Block], index: BlockIndex) -> BlockResult<()> {
-        /*trace!(
-            "Reading block index 0x{:x} (0x{:x})",
-            index.0,
-            index.into_offset()
-        );*/
-        self.file
-            .borrow_mut()
-            .seek(SeekFrom::Start(index.into_offset()))
-            .unwrap();
-        for block in blocks.iter_mut() {
-            self.file
-                .borrow_mut()
-                .read_exact(&mut block.contents)
-                .unwrap();
-        }
-        Ok(())
-    }
-
-    fn write(&mut self, blocks: &[Block], index: BlockIndex) -> BlockResult<()> {
-        self.file
-            .borrow_mut()
-            .seek(SeekFrom::Start(index.into_offset()))
-            .unwrap();
-        for block in blocks.iter() {
-            self.file.borrow_mut().write_all(&block.contents).unwrap();
-        }
-        Ok(())
-    }
-
-    fn count(&mut self) -> BlockResult<BlockCount> {
-        let num_blocks = self.file.borrow().metadata().unwrap().len() / (Block::LEN_U64);
-        Ok(BlockCount(num_blocks))
-    }
-}
 
 /// Write a std file to FAT filesystem.
 fn write_file_to_filesystem<S>(
@@ -130,16 +69,21 @@ fn write_tempate_to_filesystem<S>(filesystem: &FatFileSystem<S>, dir: &Path, fil
 }
 
 fn main() {
+    if env::args().len() < 4 {
+        println!("usage: <disk_name> <disk_size> <template_path>");
+        std::process::exit(1);
+    }
+
     let file_name = env::args().nth(1).expect("File name is expected");
     let file_size = env::args().nth(2).expect("Disk size is expected");
     let template_path = env::args().nth(3).expect("Template path is expected");
 
     let file_size = u64::from_str_radix(file_size.as_str(), 10).expect("Cannot parse file size");
-    let file = File::create(file_name.clone()).expect("Cannot create file");
+    let file =  OpenOptions::new().create(true).read(true).write(true).open(file_name.clone()).expect("Cannot create file");
     // Set the file size
     file.set_len(file_size).expect("Cannot set file size");
 
-    let mut system_device = StorageBlockDevice::new(StdBlockDevice::new(file_name.clone()));
+    let mut system_device = StorageBlockDevice::new(file);
 
     let mut part_manager = PartitionManager::new(&mut system_device);
 
@@ -167,8 +111,9 @@ fn main() {
 
     // Now that the device have been dropped the filesystem has been written to disk
     // We reopen the file to feed it with the template we have.
-    
-    let system_device = StorageBlockDevice::new(StdBlockDevice::new(file_name));
+
+    let file = OpenOptions::new().read(true).write(true).open(file_name).expect("Cannot open output disk image");
+    let system_device = StorageBlockDevice::new(file);
     let filesystem = libfat::get_raw_partition_with_start(system_device, partition_start, partition_len).expect("Open issue in libfat");
     let mut filesystem_path = PathBuf::new();
     filesystem_path.push("/");

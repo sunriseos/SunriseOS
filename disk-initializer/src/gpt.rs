@@ -259,6 +259,15 @@ impl GPTHeader {
     /// The magic of a GPT header ("EFI PART")
     pub const MAGIC: u64 = 0x5452415020494645;
 
+    /// Read the GPT header from the disk
+    pub fn from_storage_device(storage_device: &mut dyn StorageDevice, lba_index: u64) -> StorageDeviceResult<Self> {
+        let mut data = [0x0; 0x5C];
+
+        storage_device.read(lba_index * Block::LEN_U64, &mut data)?;
+
+        Ok(Self::from_bytes(data))
+    }
+
     /// Create a GPTHeader from a raw array.
     pub fn from_bytes(bytes: [u8; 0x5C]) -> Self {
         let mut res = GPTHeader::default();
@@ -430,7 +439,7 @@ impl<'a> PartitionManager<'a> {
 
         // one disk id for the sake of completness
         primary_gpt_header
-            .set_disk_guid(Uuid::parse_str("BA3E4ADE-EB06-11E7-8AD3-9570BEC474F8").unwrap());
+            .set_disk_guid(Uuid::parse_str("CAFECAFE-CAFE-CAFE-CAFE-CAFECAFECAFE").unwrap());
         primary_gpt_header.current_lba = 1;
         primary_gpt_header.backup_lba = sector_count - 1;
         primary_gpt_header.first_usable = 34;
@@ -538,21 +547,12 @@ impl<'a> PartitionIterator<'a> {
             position: 0,
         };
 
-        let partition_header = res.read_gpt_header(1)?;
+        let partition_header = GPTHeader::from_storage_device(res.inner, 1)?;
 
         res.partition_table_start = partition_header.partition_table_start;
         res.partition_entry_count = u64::from(partition_header.partition_entry_count);
         res.partition_entry_size = u64::from(partition_header.partition_entry_size);
         Ok(res)
-    }
-
-    /// Read the GPT header from the disk
-    fn read_gpt_header(&mut self, lba_index: u64) -> StorageDeviceResult<GPTHeader> {
-        let mut data = [0x0; 0x5C];
-
-        self.inner.read(lba_index * Block::LEN_U64, &mut data)?;
-
-        Ok(GPTHeader::from_bytes(data))
     }
 }
 
