@@ -1,4 +1,6 @@
 //! GPT definition module.
+//! 
+//! Specs: https://web.archive.org/web/20190822022034/https://uefi.org/sites/default/files/resources/UEFI_Spec_2_8_final.pdf
 
 use uuid::Uuid;
 

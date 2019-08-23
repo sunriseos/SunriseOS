@@ -1,4 +1,6 @@
 //! GPT definition module.
+//! 
+//! Specs: https://web.archive.org/web/20190822022034/https://uefi.org/sites/default/files/resources/UEFI_Spec_2_8_final.pdf
 
 use uuid::Uuid;
 
@@ -11,11 +13,11 @@ use core::fmt;
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(C)]
 pub struct RawUUID {
-    /// Time low part.
+    /// Low part.
     pub d1: u32,
-    /// Time mid part.
+    /// Mid part.
     pub d2: u16,
-    /// Time high part and version.
+    /// High part and version.
     pub d3: u16,
     /// Node.
     pub d4: [u8; 0x8]

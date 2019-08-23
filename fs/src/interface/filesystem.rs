@@ -11,7 +11,9 @@ pub const PATH_LEN: usize = 0x301;
 
 /// Import a UTF8 raw path to a slice of str
 fn convert_path(raw_path: &[u8]) -> LibUserResult<&str> {
-    core::str::from_utf8(raw_path).or_else(|_| Err(FileSystemError::InvalidInput.into())).and_then(|res| Ok(res.trim_matches(char::from(0))))
+    core::str::from_utf8(raw_path).ok()
+        .and_then(|str_path: &str| str_path.split('\0').next())
+        .ok_or_else(|| FileSystemError::InvalidInput.into())
 }
 
 bitflags! {

@@ -13,8 +13,8 @@ pub trait FileSystemDriver: Send {
     /// Construct a new filesystem instance if the driver identifies the storage as a valid one.
     fn construct(&self, storage: PartitionStorage) -> LibUserResult<Box<dyn IFileSystem>>;
 
-    /// Check if the given storage hold a filesystem supported by this driver.
-    fn is_valid(&self, storage: &mut PartitionStorage) -> bool;
+    /// Proble the detected filesystem on the given partition.
+    fn probe(&self, storage: &mut PartitionStorage) -> Option<FileSystemType>;
 
     /// Check if this driver support the given filesystem type.
     fn is_supported(&self, filesytem_type: FileSystemType) -> bool;

@@ -116,7 +116,6 @@ impl FileSystemOperations for FatFileSystem {
         path: &str,
         mode: FileModeFlags,
     ) -> LibUserResult<Box<dyn FileOperations>> {
-        info!("{}", path);
         let file_entry = self
             .inner
             .lock()

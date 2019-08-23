@@ -783,7 +783,7 @@ impl Px {
     #[allow(clippy::too_many_arguments)] // heh
     #[allow(clippy::missing_docs_in_private_items)]
     pub unsafe fn read_dma(
-        buffer: *mut u8,
+        buffer: *const u8,
         buffer_len: usize,
         lba: u64,
         sector_count: u64,

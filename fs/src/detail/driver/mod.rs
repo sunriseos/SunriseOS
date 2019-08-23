@@ -101,7 +101,7 @@ impl DriverManager {
 
         // No instance found, create a new one and cache it.
         for driver in &self.registry {
-            if driver.is_valid(&mut storage) {
+            if driver.probe(&mut storage).is_some() {
                 let res = Arc::new(Mutex::new(driver.construct(storage)?));
 
                 disk_hashmap.insert(partition_id, Arc::downgrade(&res));
