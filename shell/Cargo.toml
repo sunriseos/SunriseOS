@@ -11,6 +11,8 @@ log = "0.4.6"
 sunrise-libuser = { path = "../libuser" }
 spin = "0.5"
 bstr = { version = "0.2", default-features = false }
+sha1 = { version = "0.6.0", default-features = false }
+hex = { git = "https://github.com/KokaKiwi/rust-hex", default-features = false }
 
 [dependencies.lazy_static]
 features = ["spin_no_std"]
