@@ -62,7 +62,7 @@ impl<B> StorageCachedBlockDevice<B> where B: BlockDevice + Sync + Send {
     /// # Panics
     /// 
     /// - buf.len() < Block::LEN
-    fn read_from_temp_storge(&mut self, offset: u64, buf: &mut [u8]) -> StorageDeviceResult<()> {
+    fn read_from_temp_storage(&mut self, offset: u64, buf: &mut [u8]) -> StorageDeviceResult<()> {
         assert!(buf.len() < Block::LEN);
 
         // Extract the block index containing the data.
@@ -91,7 +91,7 @@ impl<B> StorageDevice for StorageCachedBlockDevice<B> where B: BlockDevice + Syn
 
         // First of all, if buf address is unaligned, we need to do a read for one byte and align it.
         if buf_addr % block_alignment != 0 {
-            self.read_from_temp_storge(current_offset, &mut buf[..block_alignment - 1])?;
+            self.read_from_temp_storage(current_offset, &mut buf[..block_alignment - 1])?;
 
             // Align buf to Block.
             buf = &mut buf[block_alignment - 1..];
@@ -116,7 +116,7 @@ impl<B> StorageDevice for StorageCachedBlockDevice<B> where B: BlockDevice + Syn
             };
 
             // do the read safely.
-            self.read_from_temp_storge(current_offset, &mut buf[..buf_limit])?;
+            self.read_from_temp_storage(current_offset, &mut buf[..buf_limit])?;
 
             // Now that unaligned data are read, we align everything for the "middle" read.
 
@@ -142,7 +142,7 @@ impl<B> StorageDevice for StorageCachedBlockDevice<B> where B: BlockDevice + Syn
 
         // We have unaliged data to read at the end.
         if !buf.is_empty() {
-            self.read_from_temp_storge(current_offset, buf)?;
+            self.read_from_temp_storage(current_offset, buf)?;
         }
 
         Ok(())
