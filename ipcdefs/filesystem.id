@@ -34,6 +34,7 @@ type sunrise_libuser::fs::DirectoryEntry = struct {
     bytes<0x301> path;
 
     # The attribute of the resource.
+    # 1 = Archive bit is set (treat the directory as a file)
     u8 attribute;
 
     # The type of the resource.

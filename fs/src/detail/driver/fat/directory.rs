@@ -131,6 +131,7 @@ impl<'a> DirectoryInterface {
 
         DirectoryEntry {
             path,
+            // We don't support the archive bit so we always return 0.
             attribute: 0,
             directory_entry_type,
             file_size: u64::from(file_size),
