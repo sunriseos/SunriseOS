@@ -8,7 +8,7 @@ use spin::Mutex;
 
 use crate::LibUserResult;
 use crate::interface::driver::FileSystemDriver;
-use crate::interface::filesystem::IFileSystem;
+use crate::interface::filesystem::FileSystemOperations;
 
 use storage_device::{Block, BlockCount, BlockDevice, BlockError, BlockResult, BlockIndex};
 use sunrise_libuser::fs::{DiskId, FileSystemType, PartitionId};
@@ -34,7 +34,7 @@ pub struct DriverManager {
     drives: HashMap<DiskId, Arc<Mutex<Box<dyn IStorage>>>>,
 
     /// The partitions opened in drives.
-    partitions: PartitionHashMap<Box<dyn IFileSystem>>,
+    partitions: PartitionHashMap<Box<dyn FileSystemOperations>>,
 
     /// AHCI IPC interface.
     ahci_interface: AhciInterfaceProxy
@@ -85,7 +85,7 @@ impl DriverManager {
     }
 
     /// Open an instance of a filesystem.
-    pub fn construct_filesystem_from_disk_partition(&mut self, disk_id: DiskId, partition_id: PartitionId, mut storage: PartitionStorage) -> LibUserResult<Arc<Mutex<Box<dyn IFileSystem>>>> {
+    pub fn construct_filesystem_from_disk_partition(&mut self, disk_id: DiskId, partition_id: PartitionId, mut storage: PartitionStorage) -> LibUserResult<Arc<Mutex<Box<dyn FileSystemOperations>>>> {
         let disk_hashmap_opt  = self.partitions.get_mut(&disk_id);
         if disk_hashmap_opt.is_none() {
             return Err(FileSystemError::DiskNotFound.into())

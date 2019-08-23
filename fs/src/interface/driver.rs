@@ -6,12 +6,12 @@ use alloc::boxed::Box;
 use sunrise_libuser::fs::FileSystemType;
 use crate::LibUserResult;
 use super::storage::PartitionStorage;
-use super::filesystem::IFileSystem;
+use super::filesystem::FileSystemOperations;
 
 /// Driver instance.
 pub trait FileSystemDriver: Send {
     /// Construct a new filesystem instance if the driver identifies the storage as a valid one.
-    fn construct(&self, storage: PartitionStorage) -> LibUserResult<Box<dyn IFileSystem>>;
+    fn construct(&self, storage: PartitionStorage) -> LibUserResult<Box<dyn FileSystemOperations>>;
 
     /// Proble the detected filesystem on the given partition.
     fn probe(&self, storage: &mut PartitionStorage) -> Option<FileSystemType>;

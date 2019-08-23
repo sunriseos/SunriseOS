@@ -104,7 +104,7 @@ fn main() {
     //fs_proxy.initialize_disk(0).unwrap();
     //fs_proxy.format_disk_partition(0, 0, FileSystemType::FAT32).unwrap();
     let filesystem = fs_proxy.open_disk_partition(0, 0).unwrap();
-    print_dir(filesystem.lock().as_operations(), "/", 0, true).unwrap();
+    print_dir(&**filesystem.lock(), "/", 0, true).unwrap();
 
     let mut man = WaitableManager::new();
     let handler = port_handler(man.work_queue(), "fsp-srv\0", ipc::FileSystemService::dispatch).unwrap();;

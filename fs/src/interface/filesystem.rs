@@ -44,85 +44,6 @@ bitflags! {
     }
 }
 
-/// Represent a filesystem.
-pub trait IFileSystem : FileSystemOperations {
-    /// Create a file with a given ``size`` at the specified ``path``.
-    fn create_file(&self, path: &[u8], size: u64) -> LibUserResult<()> {
-        FileSystemOperations::create_file(self, convert_path(path)?, size)
-    }
-
-    /// Create a directory at the specified ``path``.
-    fn create_directory(&self, path: &[u8]) -> LibUserResult<()> {
-        FileSystemOperations::create_directory(self, convert_path(path)?)
-    }
-
-    /// Rename a file at ``old_path`` into ``new_path``.
-    fn rename_file(&self, old_path: &[u8], new_path: &[u8]) -> LibUserResult<()> {
-        FileSystemOperations::rename_file(self, convert_path(old_path)?, convert_path(new_path)?)
-    }
-
-    /// Rename a directory at ``old_path`` into ``new_path``
-    fn rename_directory(&self, old_path: &[u8], new_path: &[u8]) -> LibUserResult<()> {
-        FileSystemOperations::rename_directory(self, convert_path(old_path)?, convert_path(new_path)?)
-    }
-
-    /// Delete a file at the specified ``path``.
-    fn delete_file(&self, path: &[u8]) -> LibUserResult<()> {
-        FileSystemOperations::delete_file(self, convert_path(path)?)
-    }
-
-    /// Delete a directory at the specified ``path``.
-    fn delete_directory(&self, path: &[u8]) -> LibUserResult<()> {
-        FileSystemOperations::delete_directory(self, convert_path(path)?)
-    }
-
-    /// Get the informations about an entry on the filesystem.
-    fn get_entry_type(&self, path: &[u8]) -> LibUserResult<DirectoryEntryType> {
-        FileSystemOperations::get_entry_type(self, convert_path(path)?)
-    }
-
-    /// Open a file at the specified ``path`` with the given ``mode`` flags.
-    fn open_file(
-        &self,
-        path: &[u8],
-        mode: u32,
-    ) -> LibUserResult<Box<dyn FileOperations>> {
-        let flags_res: LibUserResult<_> = FileModeFlags::from_bits(mode).ok_or_else(|| FileSystemError::InvalidInput.into());
-        FileSystemOperations::open_file(self, convert_path(path)?, flags_res?)
-    }
-
-    /// Open a directory at the specified ``path`` with the given ``mode`` flags.
-    fn open_directory(
-        &self,
-        path: &[u8],
-        filter: u32,
-    ) -> LibUserResult<Box<dyn DirectoryOperations>> {
-        let flags_ret: LibUserResult<_> = DirFilterFlags::from_bits(filter).ok_or_else(|| FileSystemError::InvalidInput.into());
-        FileSystemOperations::open_directory(self, convert_path(path)?, flags_ret?)
-    }
-
-    /// Get the total availaible space on the given filesystem.
-    fn get_free_space_size(&self, path: &[u8]) -> LibUserResult<u64> {
-        FileSystemOperations::get_free_space_size(self, convert_path(path)?)
-    }
-
-    /// Get the total size of the filesystem.
-    fn get_total_space_size(&self, path: &[u8]) -> LibUserResult<u64> {
-        FileSystemOperations::get_total_space_size(self, convert_path(path)?)
-    }
-
-    /// Return the attached timestamps on a resource at the given ``path``.
-    fn get_file_timestamp_raw(&self, path: &[u8]) -> LibUserResult<FileTimeStampRaw> {
-        FileSystemOperations::get_file_timestamp_raw(self, convert_path(path)?)
-    }
-
-    /// Get the inner filesystem operations reference.
-    fn as_operations(&self) -> &dyn FileSystemOperations;
-
-    /// Get the inner filesystem operations mutable reference.
-    fn as_operations_mut(&mut self) -> &mut dyn FileSystemOperations;
-}
-
 /// Represent the operation on a file.
 pub trait FileOperations : core::fmt::Debug + Sync + Send {
     /// Read the content of a file at a given ``offset`` in ``buf``.
@@ -201,14 +122,4 @@ pub trait FileSystemOperations : core::fmt::Debug + Sync + Send {
 
     /// Get the type of the filesystem
     fn get_filesystem_type(&self) -> FileSystemType;
-}
-
-impl<T: FileSystemOperations + Sized> IFileSystem for T {
-    fn as_operations(&self) -> &dyn FileSystemOperations {
-        self
-    }
-
-    fn as_operations_mut(&mut self) -> &mut dyn FileSystemOperations {
-        self
-    }
 }

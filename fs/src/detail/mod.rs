@@ -7,7 +7,7 @@ use alloc::boxed::Box;
 use alloc::sync::Arc;
 use crate::LibUserResult;
 use crate::interface::storage::{PartitionStorage, IStorage};
-use crate::interface::filesystem::IFileSystem;
+use crate::interface::filesystem::FileSystemOperations;
 use storage_device::Block;
 use sunrise_libuser::error::{FileSystemError};
 
@@ -257,7 +257,7 @@ pub struct FileSystemProxy {
 impl FileSystemProxy {
     /// Open a disk partition filesystem.
     /// This may fail if no compatible driver i
-    pub fn open_disk_partition(&mut self, disk_id: DiskId, partition_id: PartitionId) -> LibUserResult<Arc<Mutex<Box<dyn IFileSystem>>>> {
+    pub fn open_disk_partition(&mut self, disk_id: DiskId, partition_id: PartitionId) -> LibUserResult<Arc<Mutex<Box<dyn FileSystemOperations>>>> {
         let storage = self.open_disk_storage(disk_id)?;
         let partition_option = PartitionIterator::new(storage.lock().as_mut(), true)?.nth(partition_id as usize);
 

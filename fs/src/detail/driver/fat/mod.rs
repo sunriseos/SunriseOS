@@ -4,7 +4,7 @@ use alloc::boxed::Box;
 use crate::LibUserResult;
 use crate::interface::driver::FileSystemDriver;
 use crate::interface::storage::{PartitionStorage};
-use crate::interface::filesystem::IFileSystem;
+use crate::interface::filesystem::FileSystemOperations;
 
 use libfat;
 use libfat::FatFsType;
@@ -24,9 +24,9 @@ use error::from_driver;
 pub struct FATDriver;
 
 impl FileSystemDriver for FATDriver {
-    fn construct(&self, storage: PartitionStorage) -> LibUserResult<Box<dyn IFileSystem>> {
+    fn construct(&self, storage: PartitionStorage) -> LibUserResult<Box<dyn FileSystemOperations>> {
         let filesystem_instance = FatFileSystem::from_storage(storage)?;
-        Ok(Box::new(filesystem_instance) as Box<dyn IFileSystem>)
+        Ok(Box::new(filesystem_instance) as Box<dyn FileSystemOperations>)
     }
 
     fn probe(&self, storage: &mut PartitionStorage) -> Option<FileSystemType> {

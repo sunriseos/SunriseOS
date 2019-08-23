@@ -13,11 +13,10 @@ use futures::future::FutureObj;
 
 use sunrise_libuser::ipc::server::new_session_wrapper;
 
+use crate::LibUserResult;
 use crate::detail;
 use crate::interface;
-
-use crate::interface::filesystem::IFileSystem as FileSystemInterface;
-use crate::interface::filesystem::{DirectoryOperations, FileOperations};
+use crate::interface::filesystem::{DirectoryOperations, FileOperations, FileSystemOperations, FileModeFlags, DirFilterFlags};
 
 use alloc::sync::Arc;
 use spin::Mutex;
@@ -206,43 +205,51 @@ impl sunrise_libuser::fs::IDirectory for Directory {
 #[derive(Debug)]
 pub struct FileSystem {
     /// The detail implementation of this ipc interface.
-    inner: Arc<Mutex<Box<dyn FileSystemInterface>>>
+    inner: Arc<Mutex<Box<dyn FileSystemOperations>>>
 }
 
 impl FileSystem {
     /// Create a new FileSystem instance from it's detail.
-    pub fn new(inner: Arc<Mutex<Box<dyn FileSystemInterface>>>) -> Self {
+    pub fn new(inner: Arc<Mutex<Box<dyn FileSystemOperations>>>) -> Self {
         FileSystem { inner }
     }
 }
 
+/// Import a UTF8 raw path to a slice of str
+fn convert_path(raw_path: &[u8]) -> LibUserResult<&str> {
+    core::str::from_utf8(raw_path).ok()
+        .and_then(|str_path: &str| str_path.split('\0').next())
+        .ok_or_else(|| FileSystemError::InvalidInput.into())
+}
+
 impl IFileSystem for FileSystem {
     fn create_file(&mut self, _manager: WorkQueue<'static>, _mode: u32, size: u64, path: &FileSystemPath) -> Result<(), Error> {
-        FileSystemInterface::create_file(&**self.inner.lock(), path, size)
+        FileSystemOperations::create_file(&**self.inner.lock(), convert_path(path)?, size)
     }
 
     fn delete_file(&mut self, _manager: WorkQueue<'static>, path: &FileSystemPath) -> Result<(), Error> {
-        FileSystemInterface::delete_file(&**self.inner.lock(), path)
+        FileSystemOperations::delete_file(&**self.inner.lock(), convert_path(path)?)
     }
 
     fn create_directory(&mut self, _manager: WorkQueue<'static>, path: &FileSystemPath) -> Result<(), Error> {
-        FileSystemInterface::create_directory(&**self.inner.lock(), path)
+        FileSystemOperations::create_directory(&**self.inner.lock(), convert_path(path)?)
     }
 
     fn delete_directory(&mut self, _manager: WorkQueue<'static>, path: &FileSystemPath) -> Result<(), Error> {
-        FileSystemInterface::delete_directory(&**self.inner.lock(), path)
+        FileSystemOperations::delete_directory(&**self.inner.lock(), convert_path(path)?)
     }
 
     fn rename_file(&mut self, _manager: WorkQueue<'static>, old_path: &FileSystemPath, new_path: &FileSystemPath) -> Result<(), Error> {
-        FileSystemInterface::rename_file(&**self.inner.lock(), old_path, new_path)
+        FileSystemOperations::rename_file(&**self.inner.lock(), convert_path(old_path)?, convert_path(new_path)?)
     }
 
     fn rename_directory(&mut self, _manager: WorkQueue<'static>, old_path: &FileSystemPath, new_path: &FileSystemPath) -> Result<(), Error> {
-        FileSystemInterface::rename_directory(&**self.inner.lock(), old_path, new_path)
+        FileSystemOperations::rename_directory(&**self.inner.lock(), convert_path(old_path)?, convert_path(new_path)?)
     }
 
     fn open_file(&mut self, manager: WorkQueue<'static>, mode: u32, path: &sunrise_libuser::fs::FileSystemPath) -> Result<sunrise_libuser::fs::IFileProxy, Error> {
-        FileSystemInterface::open_file(&**self.inner.lock(), path, mode).and_then(|instance| {
+        let flags_res: LibUserResult<_> = FileModeFlags::from_bits(mode).ok_or_else(|| FileSystemError::InvalidInput.into());
+        FileSystemOperations::open_file(&**self.inner.lock(), convert_path(path)?, flags_res?).and_then(|instance| {
             let (server, client) = syscalls::create_session(false, 0)?;
             let wrapper = new_session_wrapper(manager.clone(), server, File::new(instance), IFile::dispatch);
             manager.spawn(FutureObj::new(Box::new(wrapper)));
@@ -251,7 +258,8 @@ impl IFileSystem for FileSystem {
     }
 
     fn open_directory(&mut self, manager: WorkQueue<'static>, filter_flags: u32, path: &sunrise_libuser::fs::FileSystemPath) -> Result<sunrise_libuser::fs::IDirectoryProxy, Error> {
-        FileSystemInterface::open_directory(&**self.inner.lock(), path, filter_flags).and_then(|instance| {
+        let flags_ret: LibUserResult<_> = DirFilterFlags::from_bits(filter_flags).ok_or_else(|| FileSystemError::InvalidInput.into());
+        FileSystemOperations::open_directory(&**self.inner.lock(), convert_path(path)?, flags_ret?).and_then(|instance| {
             let (server, client) = syscalls::create_session(false, 0)?;
             let wrapper = new_session_wrapper(manager.clone(), server, Directory::new(instance), IDirectory::dispatch);
             manager.spawn(FutureObj::new(Box::new(wrapper)));
@@ -261,22 +269,22 @@ impl IFileSystem for FileSystem {
     }
 
     fn get_free_space_size(&mut self, _manager: WorkQueue<'static>, path: &sunrise_libuser::fs::FileSystemPath) -> Result<u64, Error> {
-        FileSystemInterface::get_free_space_size(&**self.inner.lock(), path)
+        FileSystemOperations::get_free_space_size(&**self.inner.lock(), convert_path(path)?)
     }
 
     fn get_total_space_size(&mut self, _manager: WorkQueue<'static>, path: &sunrise_libuser::fs::FileSystemPath) -> Result<u64, Error> {
-        FileSystemInterface::get_total_space_size(&**self.inner.lock(), path)
+        FileSystemOperations::get_total_space_size(&**self.inner.lock(), convert_path(path)?)
     }
 
     fn get_file_timestamp_raw(&mut self, _manager: WorkQueue<'static>, path: &sunrise_libuser::fs::FileSystemPath) -> Result<sunrise_libuser::fs::FileTimeStampRaw, Error> {
-        FileSystemInterface::get_file_timestamp_raw(&**self.inner.lock(), path)
+        FileSystemOperations::get_file_timestamp_raw(&**self.inner.lock(), convert_path(path)?)
     }
 
     fn get_entry_type(&mut self, _manager: WorkQueue<'static>, path: &FileSystemPath) -> Result<DirectoryEntryType, Error> {
-        FileSystemInterface::get_entry_type(&**self.inner.lock(), path)
+        FileSystemOperations::get_entry_type(&**self.inner.lock(), convert_path(path)?)
     }
 
     fn get_filesystem_type(&mut self, _manager: WorkQueue<'static>) -> Result<FileSystemType, Error> {
-        Ok(FileSystemInterface::get_filesystem_type(&**self.inner.lock()))
+        Ok(FileSystemOperations::get_filesystem_type(&**self.inner.lock()))
     }
 }
