@@ -4,7 +4,6 @@ use sunrise_libuser::error::FileSystemError;
 use crate::interface::storage::PartitionStorage;
 use crate::interface::filesystem::*;
 
-use libfat::FatFileSystemResult;
 use libfat::directory::dir_entry::DirectoryEntry as FatDirectoryEntry;
 use libfat::directory::dir_entry_iterator::DirectoryEntryIterator as FatDirectoryEntryIterator;
 use super::error::from_driver;
@@ -22,31 +21,19 @@ pub struct DirectoryFilterPredicate;
 
 impl DirectoryFilterPredicate {
     /// Accept all entries except "." & "..".
-    pub fn all(entry: &FatFileSystemResult<FatDirectoryEntry>) -> bool {
-        if let Ok(entry) = entry {
-            let name = entry.file_name.as_str();
-            name != "." && name != ".."
-        } else {
-            false
-        }
+    pub fn all(entry: &FatDirectoryEntry) -> bool {
+        let name = entry.file_name.as_str();
+        name != "." && name != ".."
     }
 
     /// Only accept directory entries.
-    pub fn dirs(entry: &FatFileSystemResult<FatDirectoryEntry>) -> bool {
-        if let Ok(entry_val) = entry {
-            entry_val.attribute.is_directory() && Self::all(entry)
-        } else {
-            false
-        }
+    pub fn dirs(entry: &FatDirectoryEntry) -> bool {
+        entry.attribute.is_directory() && Self::all(entry)
     }
 
     /// Only accept file entries.
-    pub fn files(entry: &FatFileSystemResult<FatDirectoryEntry>) -> bool {
-        if let Ok(entry_val) = entry {
-            !entry_val.attribute.is_directory() && Self::all(entry)
-        } else {
-            false
-        }
+    pub fn files(entry: &FatDirectoryEntry) -> bool {
+        !entry.attribute.is_directory() && Self::all(entry)
     }
 }
 
@@ -62,7 +49,7 @@ pub struct DirectoryInterface {
     internal_iter: FatDirectoryEntryIterator,
 
     /// The filter required by the user.
-    filter_fn: fn(&FatFileSystemResult<FatDirectoryEntry>) -> bool,
+    filter_fn: fn(&FatDirectoryEntry) -> bool,
 
     /// The number of entries in the directory after ``filter_fn``.
     entry_count: u64,
@@ -79,7 +66,7 @@ impl fmt::Debug for DirectoryInterface {
 
 impl<'a> DirectoryInterface {
     /// Create a new DirectoryInterface.
-    pub fn new(base_path: ArrayString<[u8; PATH_LEN]>, inner_fs: Arc<Mutex<libfat::filesystem::FatFileSystem<PartitionStorage>>>, internal_iter: FatDirectoryEntryIterator, filter_fn: fn(&FatFileSystemResult<FatDirectoryEntry>) -> bool, entry_count: u64) -> Self {
+    pub fn new(base_path: ArrayString<[u8; PATH_LEN]>, inner_fs: Arc<Mutex<libfat::filesystem::FatFileSystem<PartitionStorage>>>, internal_iter: FatDirectoryEntryIterator, filter_fn: fn(&FatDirectoryEntry) -> bool, entry_count: u64) -> Self {
         DirectoryInterface { base_path, inner_fs, internal_iter, filter_fn, entry_count }
     }
 
@@ -130,7 +117,7 @@ impl DirectoryOperations for DirectoryInterface {
                     return Ok(index as u64);
                 }
 
-                raw_dir_entry = entry_opt.unwrap();
+                raw_dir_entry = entry_opt.unwrap().map_err(from_driver)?;
                 let filter_fn = self.filter_fn;
 
                 if filter_fn(&raw_dir_entry) {
@@ -139,7 +126,7 @@ impl DirectoryOperations for DirectoryInterface {
             }
 
             *entry = Self::convert_entry(
-                raw_dir_entry.map_err(from_driver)?,
+                raw_dir_entry,
                 &self.base_path,
             )?;
         }

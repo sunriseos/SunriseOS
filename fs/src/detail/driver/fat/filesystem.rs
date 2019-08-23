@@ -135,7 +135,7 @@ impl FileSystemOperations for FatFileSystem {
         path: &str,
         filter: DirFilterFlags,
     ) -> LibUserResult<Box<dyn DirectoryOperations>> {
-        let filter_fn =
+        let filter_fn: fn(&_) -> bool =
             if (filter & DirFilterFlags::ALL) == DirFilterFlags::ALL {
                 DirectoryFilterPredicate::all as _
             } else if (filter & DirFilterFlags::DIRECTORY) == DirFilterFlags::DIRECTORY {
@@ -148,7 +148,17 @@ impl FileSystemOperations for FatFileSystem {
 
         let target_dir = filesystem.open_directory(path).map_err(from_driver)?;
 
-        let entry_count = target_dir.iter().to_iterator(&filesystem).filter(filter_fn).count() as u64;
+        let mut entry_count = 0u64;
+
+        for entry in target_dir.iter().to_iterator(&filesystem) {
+            let entry = entry.map_err(from_driver)?;
+
+            if !filter_fn(&entry) {
+                continue;
+            }
+
+            entry_count += 1;
+        }
 
         let mut data: ArrayString<[u8; PATH_LEN]> = ArrayString::new();
 
