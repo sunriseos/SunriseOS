@@ -16,7 +16,7 @@ use sunrise_libuser::ipc::server::new_session_wrapper;
 use crate::LibUserResult;
 use crate::detail;
 use crate::interface;
-use crate::interface::filesystem::{DirectoryOperations, FileOperations, FileSystemOperations, FileModeFlags, DirFilterFlags};
+use crate::interface::filesystem::{convert_path, DirectoryOperations, FileOperations, FileSystemOperations, FileModeFlags, DirFilterFlags};
 
 use alloc::sync::Arc;
 use spin::Mutex;
@@ -213,13 +213,6 @@ impl FileSystem {
     pub fn new(inner: Arc<Mutex<Box<dyn FileSystemOperations>>>) -> Self {
         FileSystem { inner }
     }
-}
-
-/// Import a UTF8 raw path to a slice of str
-fn convert_path(raw_path: &[u8]) -> LibUserResult<&str> {
-    core::str::from_utf8(raw_path).ok()
-        .and_then(|str_path: &str| str_path.split('\0').next())
-        .ok_or_else(|| FileSystemError::InvalidInput.into())
 }
 
 impl IFileSystem for FileSystem {

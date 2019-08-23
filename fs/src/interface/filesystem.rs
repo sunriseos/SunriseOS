@@ -10,7 +10,7 @@ use crate::LibUserResult;
 pub const PATH_LEN: usize = 0x300;
 
 /// Import a UTF8 raw path to a slice of str
-fn convert_path(raw_path: &[u8]) -> LibUserResult<&str> {
+pub fn convert_path(raw_path: &[u8]) -> LibUserResult<&str> {
     core::str::from_utf8(raw_path).ok()
         .and_then(|str_path: &str| str_path.split('\0').next())
         .ok_or_else(|| FileSystemError::InvalidInput.into())
@@ -122,4 +122,17 @@ pub trait FileSystemOperations : core::fmt::Debug + Sync + Send {
 
     /// Get the type of the filesystem
     fn get_filesystem_type(&self) -> FileSystemType;
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::convert_path;
+    #[test]
+    pub fn test_convert_path() {
+        assert_eq!(convert_path(b"/etc/motd\0").ok(), Some("/etc/motd"));
+        assert_eq!(convert_path(b"/etc/motd\0garbage").ok(), Some("/etc/motd"));
+        assert_eq!(convert_path(b"/etc/motd\0/nope\0/help").ok(), Some("/etc/motd"));
+        assert_eq!(convert_path(b"\0/etc/motd").ok(), Some(""));
+    }
 }
