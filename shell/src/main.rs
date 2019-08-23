@@ -209,11 +209,11 @@ fn get_path_relative_to_current_directory(resource: &str) -> String {
 /// Change the current working directory
 fn cd(filesystem: &IFileSystemProxy, directory: &str) -> Result<(), Error> {
     let absolute_current_directory = get_path_relative_to_current_directory(directory);
-    if absolute_current_directory.len() > 0x301 {
+    if absolute_current_directory.len() > 0x300 {
         return Err(FileSystemError::InvalidInput.into())
     }
 
-    let mut ipc_path = [0x0; 0x301];
+    let mut ipc_path = [0x0; 0x300];
     ipc_path[..absolute_current_directory.as_bytes().len()].copy_from_slice(absolute_current_directory.as_bytes());
 
 
@@ -228,11 +228,11 @@ fn cd(filesystem: &IFileSystemProxy, directory: &str) -> Result<(), Error> {
 fn cat<W: Write>(f: &mut W, filesystem: &IFileSystemProxy, file: &str) -> Result<(), Error> {
     let absolute_file_directory = get_path_relative_to_current_directory(file);
 
-    if absolute_file_directory.len() > 0x301 {
+    if absolute_file_directory.len() > 0x300 {
         return Err(FileSystemError::InvalidInput.into())
     }
 
-    let mut ipc_path = [0x0; 0x301];
+    let mut ipc_path = [0x0; 0x300];
     ipc_path[..absolute_file_directory.as_bytes().len()].copy_from_slice(absolute_file_directory.as_bytes());
 
     let mut buffer = [0; 0x200];

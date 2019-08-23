@@ -7,7 +7,7 @@ use sunrise_libuser::error::FileSystemError;
 use crate::LibUserResult;
 
 /// Represent the max path size (in bytes) supported.
-pub const PATH_LEN: usize = 0x301;
+pub const PATH_LEN: usize = 0x300;
 
 /// Import a UTF8 raw path to a slice of str
 fn convert_path(raw_path: &[u8]) -> LibUserResult<&str> {

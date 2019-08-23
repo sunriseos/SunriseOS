@@ -15,7 +15,7 @@ storage_device = { git = "https://github.com/Sunriseos/storage_device.git", defa
 libfat = { git = "https://github.com/Thog/libfat.git", branch = "initial" }
 plain = "0.2"
 futures-preview = { version = "0.3.0-alpha.16", default-features = false, features = ["nightly", "alloc"] }
-core = { package = "core-futures-tls", version = "0.1" }
+arrayvec = {version = "0.4", default-features = false}
 
 [dependencies.lazy_static]
 features = ["spin_no_std"]

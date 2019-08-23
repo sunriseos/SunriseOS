@@ -1,5 +1,6 @@
 //! FAT filesystem implementation of DirectoryOperations
 use crate::LibUserResult;
+use sunrise_libuser::error::FileSystemError;
 use crate::interface::storage::PartitionStorage;
 use crate::interface::filesystem::*;
 
@@ -13,6 +14,8 @@ use alloc::sync::Arc;
 
 use sunrise_libuser::fs::{DirectoryEntry, DirectoryEntryType};
 use libfat::FileSystemIterator;
+
+use arrayvec::ArrayString;
 
 /// Predicate helper used to filter directory entries.
 pub struct DirectoryFilterPredicate;
@@ -50,7 +53,7 @@ impl DirectoryFilterPredicate {
 /// A libfat directory reader implementing ``DirectoryOperations``.
 pub struct DirectoryInterface {
     /// The opened directory path. Used to get the complete path of every entries.
-    base_path: [u8; PATH_LEN],
+    base_path: ArrayString<[u8; PATH_LEN]>,
 
     /// libfat filesystem interface.
     inner_fs: Arc<Mutex<libfat::filesystem::FatFileSystem<PartitionStorage>>>,
@@ -76,16 +79,16 @@ impl fmt::Debug for DirectoryInterface {
 
 impl<'a> DirectoryInterface {
     /// Create a new DirectoryInterface.
-    pub fn new(base_path: [u8; PATH_LEN], inner_fs: Arc<Mutex<libfat::filesystem::FatFileSystem<PartitionStorage>>>, internal_iter: FatDirectoryEntryIterator, filter_fn: fn(&FatFileSystemResult<FatDirectoryEntry>) -> bool, entry_count: u64) -> Self {
+    pub fn new(base_path: ArrayString<[u8; PATH_LEN]>, inner_fs: Arc<Mutex<libfat::filesystem::FatFileSystem<PartitionStorage>>>, internal_iter: FatDirectoryEntryIterator, filter_fn: fn(&FatFileSystemResult<FatDirectoryEntry>) -> bool, entry_count: u64) -> Self {
         DirectoryInterface { base_path, inner_fs, internal_iter, filter_fn, entry_count }
     }
 
     /// convert libfat's DirectoryEntry to libfs's DirectoryEntry.
     fn convert_entry(
         fat_dir_entry: FatDirectoryEntry,
-        base_path: &[u8; PATH_LEN],
-    ) -> DirectoryEntry {
-        let mut path: [u8; PATH_LEN] = [0x0; PATH_LEN];
+        base_path: &ArrayString<[u8; PATH_LEN]>,
+    ) -> LibUserResult<DirectoryEntry> {
+        let mut path_str: ArrayString<[u8; PATH_LEN]> = ArrayString::new();
 
         let file_size = fat_dir_entry.file_size;
 
@@ -95,35 +98,22 @@ impl<'a> DirectoryInterface {
             DirectoryEntryType::File
         };
 
-        let mut base_index = 0;
-
-        loop {
-            let c = base_path[base_index];
-            if c == 0x0 {
-                break;
-            }
-
-            path[base_index] = c;
-            base_index += 1;
+        if path_str.try_push_str(base_path.as_str()).is_err() || path_str.try_push_str(fat_dir_entry.file_name.as_str()).is_err() {
+            return Err(FileSystemError::InvalidInput.into())
         }
 
-        for (index, c) in fat_dir_entry
-            .file_name
-            .as_bytes()
-            .iter()
-            .enumerate()
-            .take(PATH_LEN - base_index)
-        {
-            path[base_index + index] = *c;
-        }
+        let mut path = [0x0; PATH_LEN];
 
-        DirectoryEntry {
+        let path_str_slice = path_str.as_bytes();
+        path[..path_str_slice.len()].copy_from_slice(path_str_slice);
+
+        Ok(DirectoryEntry {
             path,
             // We don't support the archive bit so we always return 0.
             attribute: 0,
             directory_entry_type,
             file_size: u64::from(file_size),
-        }
+        })
     }
 }
 
@@ -151,7 +141,7 @@ impl DirectoryOperations for DirectoryInterface {
             *entry = Self::convert_entry(
                 raw_dir_entry.map_err(from_driver)?,
                 &self.base_path,
-            );
+            )?;
         }
 
         // everything was read correctly

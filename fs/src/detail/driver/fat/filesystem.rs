@@ -1,6 +1,7 @@
 //! IFileSystem implementation using libfat.
 
 use crate::LibUserResult;
+use sunrise_libuser::error::FileSystemError;
 use super::error::from_driver;
 use crate::interface::storage::PartitionStorage;
 use crate::interface::filesystem::*;
@@ -23,6 +24,8 @@ use super::directory::DirectoryInterface;
 use super::directory::DirectoryFilterPredicate;
 
 use libfat::FileSystemIterator;
+
+use arrayvec::ArrayString;
 
 /// A wrapper arround libfat ``FatFileSystem`` implementing ``FileSystemOperations``.
 pub struct FatFileSystem {
@@ -147,21 +150,17 @@ impl FileSystemOperations for FatFileSystem {
 
         let entry_count = target_dir.iter().to_iterator(&filesystem).filter(filter_fn).count() as u64;
 
-        let mut data: [u8; PATH_LEN] = [0x0; PATH_LEN];
-        for (index, c) in path
-            .as_bytes()
-            .iter()
-            .enumerate()
-            .take(PATH_LEN)
-        {
-            data[index] = *c;
+        let mut data: ArrayString<[u8; PATH_LEN]> = ArrayString::new();
+
+        if data.try_push_str(path).is_err() {
+            return Err(FileSystemError::InvalidInput.into());
         }
 
         // Add '/' if missing at the end
         if let Some('/') = path.chars().last() {
             // Already valid
-        } else {
-            data[path.as_bytes().len()] = 0x2F;
+        } else if data.try_push('/').is_err() {
+            return Err(FileSystemError::InvalidInput.into());
         }
 
         let res = Box::new(DirectoryInterface::new(

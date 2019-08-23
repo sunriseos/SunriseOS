@@ -5,7 +5,7 @@ type sunrise_libuser::fs::PartitionId = u32;
 type sunrise_libuser::fs::DiskId = u32;
 
 # Represent a path in a filesystem.
-type sunrise_libuser::fs::FileSystemPath = bytes<0x301>;
+type sunrise_libuser::fs::FileSystemPath = bytes<0x300>;
 
 # Represent the type of a filesystem.
 type sunrise_libuser::fs::FileSystemType = enum<u32> {
@@ -31,7 +31,7 @@ type sunrise_libuser::fs::DirectoryEntryType = enum<u8> {
 # Represent an entry inside a directory.
 type sunrise_libuser::fs::DirectoryEntry = struct {
     # The path of the resource.
-    bytes<0x301> path;
+    bytes<0x300> path;
 
     # The attribute of the resource.
     # 1 = Archive bit is set (treat the directory as a file)
@@ -81,25 +81,25 @@ interface sunrise_libuser::fs::IFileSystemService is fsp-srv {
 # Represent a filesystem.
 interface sunrise_libuser::fs::IFileSystem {
     # Create a file with a given ``size`` at the specified ``path``.
-    [0] create_file(u32 mode, u64 size, buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x301> path);
+    [0] create_file(u32 mode, u64 size, buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x300> path);
 
     # Delete a file at the specified ``path``.
-    [1] delete_file(buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x301> path);
+    [1] delete_file(buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x300> path);
 
     # Create a directory at the specified ``path``.
-    [2] create_directory(buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x301> path);
+    [2] create_directory(buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x300> path);
 
     # Delete a directory at the specified ``path``.
-    [3] delete_directory(buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x301> path);
+    [3] delete_directory(buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x300> path);
 
     # Rename a file at ``old_path`` into ``new_path``.
-    [5] rename_file(buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x301> old_path, buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x301> new_path);
+    [5] rename_file(buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x300> old_path, buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x300> new_path);
 
     # Rename a directory at ``old_path`` into ``new_path``
-    [6] rename_directory(buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x301> old_path, buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x301> new_path);
+    [6] rename_directory(buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x300> old_path, buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x300> new_path);
 
     # Get the informations about an entry on the filesystem.
-    [7] get_entry_type(buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x301> path) -> sunrise_libuser::fs::DirectoryEntryType;
+    [7] get_entry_type(buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x300> path) -> sunrise_libuser::fs::DirectoryEntryType;
 
     # Open a file at the specified ``path`` with the given ``mode`` flags.
     #
@@ -107,19 +107,19 @@ interface sunrise_libuser::fs::IFileSystem {
     # When bit 0 is set, the file is Readable: you can use the Read operation.
     # When bit 1 is set, the file is Writable: you can use the Write operation.
     # When bit 2 is set, the file is Appendable: unless this bit is set, you will not be able to write beyond the end of a file (such writes will result in an error 0x307202)
-    [8] open_file(u32 mode, buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x301> path) -> object<sunrise_libuser::fs::IFile> file;
+    [8] open_file(u32 mode, buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x300> path) -> object<sunrise_libuser::fs::IFile> file;
 
     # Open a directory at the specified ``path`` with the given ``filter_flags`` flags.
-    [9] open_directory(u32 filter_flags, buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x301> path) -> object<sunrise_libuser::fs::IDirectory> directory;
+    [9] open_directory(u32 filter_flags, buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x300> path) -> object<sunrise_libuser::fs::IDirectory> directory;
 
     # Get the total availaible space on the given filesystem.
-    [11] get_free_space_size(buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x301> path) -> u64 total_free_space;
+    [11] get_free_space_size(buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x300> path) -> u64 total_free_space;
 
     # Get the total size of the filesystem.
-    [12] get_total_space_size(buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x301> path) -> u64 total_size;
+    [12] get_total_space_size(buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x300> path) -> u64 total_size;
 
     # Return the attached timestamps on a resource at the given ``path``.
-    [14] get_file_timestamp_raw(buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x301> path) -> sunrise_libuser::fs::FileTimeStampRaw timestamp;
+    [14] get_file_timestamp_raw(buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x300> path) -> sunrise_libuser::fs::FileTimeStampRaw timestamp;
 
     # Get the type of this filesystem.
     [4000] get_filesystem_type() -> sunrise_libuser::fs::FileSystemType;
