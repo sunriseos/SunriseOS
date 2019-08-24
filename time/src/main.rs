@@ -23,6 +23,9 @@ extern crate sunrise_libuser;
 #[macro_use]
 extern crate alloc;
 
+#[macro_use]
+extern crate log;
+
 mod timezone;
 
 use alloc::prelude::v1::*;
@@ -46,6 +49,7 @@ capabilities!(CAPABILITIES = Capabilities {
         sunrise_libuser::syscalls::nr::WaitSynchronization,
         sunrise_libuser::syscalls::nr::OutputDebugString,
         sunrise_libuser::syscalls::nr::SetThreadArea,
+        sunrise_libuser::syscalls::nr::ClearEvent,
 
         sunrise_libuser::syscalls::nr::ReplyAndReceiveWithUserBuffer,
         sunrise_libuser::syscalls::nr::AcceptSession,
@@ -189,55 +193,58 @@ async fn update_rtc(work_queue: WorkQueue<'_>) {
 
     loop {
         if let Some(irq_event) = &rtc.irq_event {
-            let _ = irq_event.wait_async(work_queue.clone()).await;
+            irq_event.wait_async_cb(work_queue.clone(), move || {
+                let intkind = rtc.read_interrupt_kind();
+                debug!("Checking intkind: {}", intkind);
+                intkind & (1 << 4) != 0
+            }).await;
         } else {
             panic!("RTC irq event cannot be uninialized");
         }
 
-        let intkind = rtc.read_interrupt_kind();
-        if intkind & (1 << 4) != 0 {
-            // Time changed. Let's update.
-            let mut seconds = i64::from(rtc.read_reg(0));
-            let mut minutes = i64::from(rtc.read_reg(2));
-            let mut hours = i64::from(rtc.read_reg(4));
-            let mut day = i64::from(rtc.read_reg(7));
-            let mut month = i64::from(rtc.read_reg(8));
-            let mut year = i64::from(rtc.read_reg(9));
+        // Time changed. Let's update.
+        let mut seconds = i64::from(rtc.read_reg(0));
+        let mut minutes = i64::from(rtc.read_reg(2));
+        let mut hours = i64::from(rtc.read_reg(4));
+        let mut day = i64::from(rtc.read_reg(7));
+        let mut month = i64::from(rtc.read_reg(8));
+        let mut year = i64::from(rtc.read_reg(9));
 
-            // IBM sometimes uses BCD. Why? God knows.
-            if !rtc.is_12hr_clock() {
-                seconds = (seconds & 0x0F) + ((seconds / 16) * 10);
-                minutes = (minutes & 0x0F) + ((minutes / 16) * 10);
-                hours = ( (hours & 0x0F) + (((hours & 0x70) / 16) * 10) ) | (hours & 0x80);
-                day = (day & 0x0F) + ((day / 16) * 10);
-                month = (month & 0x0F) + ((month / 16) * 10);
-                year = (year & 0x0F) + ((year / 16) * 10);
-            }
-
-            // Convert RTC to a more valid date
-            year += 2000;
-
-            // Taken from https://en.wikipedia.org/wiki/Julian_day
-            let a = (14 - month) / 12;
-            let y = year + 4800 - a;
-            let m = month + (12 * a) - 3;
-
-            let mut julian_day_number = day;
-            julian_day_number += (153 * m + 2) / 5;
-            julian_day_number += 365 * y;
-            julian_day_number += y / 4;
-            julian_day_number += -y / 100;
-            julian_day_number += y / 400;
-            julian_day_number -= 32045;
-            julian_day_number -= 2440588; // Unix epoch in julian date
-            julian_day_number *= 86400; // days to seconds
-            julian_day_number += hours * 3600; // hours to seconds
-            julian_day_number += minutes * 60;
-            julian_day_number += seconds;
-
-            let mut value = rtc.timestamp.lock();
-            *value = julian_day_number;
+        // IBM sometimes uses BCD. Why? God knows.
+        if !rtc.is_12hr_clock() {
+            seconds = (seconds & 0x0F) + ((seconds / 16) * 10);
+            minutes = (minutes & 0x0F) + ((minutes / 16) * 10);
+            hours = ( (hours & 0x0F) + (((hours & 0x70) / 16) * 10) ) | (hours & 0x80);
+            day = (day & 0x0F) + ((day / 16) * 10);
+            month = (month & 0x0F) + ((month / 16) * 10);
+            year = (year & 0x0F) + ((year / 16) * 10);
         }
+
+        // Convert RTC to a more valid date
+        year += 2000;
+
+        // Taken from https://en.wikipedia.org/wiki/Julian_day
+        let a = (14 - month) / 12;
+        let y = year + 4800 - a;
+        let m = month + (12 * a) - 3;
+
+        let mut julian_day_number = day;
+        julian_day_number += (153 * m + 2) / 5;
+        julian_day_number += 365 * y;
+        julian_day_number += y / 4;
+        julian_day_number += -y / 100;
+        julian_day_number += y / 400;
+        julian_day_number -= 32045;
+        julian_day_number -= 2440588; // Unix epoch in julian date
+        julian_day_number *= 86400; // days to seconds
+        julian_day_number += hours * 3600; // hours to seconds
+        julian_day_number += minutes * 60;
+        julian_day_number += seconds;
+
+        let mut value = rtc.timestamp.lock();
+
+        debug!("Updating julian day number to {}", julian_day_number);
+        *value = julian_day_number;
     }
 }
 

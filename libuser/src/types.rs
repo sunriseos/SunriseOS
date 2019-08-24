@@ -155,6 +155,10 @@ impl ReadableEvent {
 
     /// Waits for the event to get signaled.
     ///
+    /// Note: This function is a bit of a footgun. If you intend to have
+    /// multiple futures wait on the same event (to use it like a semaphore),
+    /// please look at [ReadableEvent::wait_async_cb()] instead.
+    ///
     /// # Panics
     ///
     /// Panics if used from outside the context of a Future spawned on a libuser
@@ -162,6 +166,54 @@ impl ReadableEvent {
     /// future spawned on a WaitableManager.
     pub fn wait_async<'a>(&self, queue: crate::futures::WorkQueue<'a>) -> impl core::future::Future<Output = Result<(), Error>> + Unpin + 'a {
         self.0.as_ref().wait_async(queue)
+    }
+
+    /// Turns this ReadableEvent into a semaphore-like structure.
+    ///
+    /// This function will repeatedly run `f` when the event is triggered, until
+    /// it returns true. When it returns false, the future will first clear the
+    /// event before waiting on it.
+    ///
+    /// # Panics
+    ///
+    /// Panics if used from outside the context of a Future spawned on a libuser
+    /// future executor. Please make sure you only call this function from a
+    /// future spawned on a WaitableManager.
+    pub fn wait_async_cb<'a, F>(&self, queue: crate::futures::WorkQueue<'a>, f: F) -> impl core::future::Future<Output = ()> + Unpin + 'a
+    where
+        F: Fn() -> bool + Unpin + 'a
+    {
+        #[allow(missing_docs, clippy::missing_docs_in_private_items)]
+        struct MyFuture<'a, F> {
+            queue: crate::futures::WorkQueue<'a>,
+            handle: HandleRef<'static>,
+            registered_on: Option<core::task::Waker>,
+            f: F
+        }
+        impl<'a, F> core::future::Future for MyFuture<'a, F> where F: Fn() -> bool + Unpin {
+            type Output = ();
+            fn poll(mut self: core::pin::Pin<&mut Self>, cx: &mut core::task::Context) -> core::task::Poll<()> {
+                if (self.f)() {
+                    core::task::Poll::Ready(())
+                } else {
+                    let _ = syscalls::clear_event(self.handle);
+                    self.registered_on = Some(cx.waker().clone());
+                    self.queue.wait_for(self.handle, cx);
+                    core::task::Poll::Pending
+                }
+            }
+        }
+        impl<F> Drop for MyFuture<'_, F> {
+            fn drop(&mut self) {
+                if let Some(waker) = &self.registered_on {
+                    self.queue.unwait_for(self.handle, waker.clone());
+                }
+            }
+        }
+
+        MyFuture {
+            queue, handle: self.0.as_ref_static(), registered_on: None, f
+        }
     }
 }
 

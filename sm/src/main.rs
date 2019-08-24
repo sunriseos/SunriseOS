@@ -167,9 +167,10 @@ impl IUserInterfaceAsync for UserInterface {
                 futures::future::ready(Loop::Break(client)).left_future()
             } else {
                 debug!("Service {} not currently registered. Sleeping.", servicename);
-                SERVICES_EVENT.1.wait_async(work_queue.clone())
+                SERVICES_EVENT.1.wait_async_cb(work_queue.clone(), move || {
+                    SERVICES.lock().contains_key(&servicename)
+                })
                     .map(|_| {
-                        SERVICES_EVENT.1.clear().unwrap();
                         Loop::Continue(work_queue)
                     }).right_future()
             }
