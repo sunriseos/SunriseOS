@@ -101,6 +101,9 @@ fn main() {
                     }
                 }
             }
+            "ls" => if let Err(error) = ls(&mut terminal, &filesystem, arguments.nth(0)) {
+                let _ = writeln!(&mut terminal, "ls: {}", error);
+            },
             "test_threads" => terminal = test_threads(terminal),
             "test_divide_by_zero" => test_divide_by_zero(),
             "test_page_fault" => test_page_fault(),
@@ -115,6 +118,7 @@ fn main() {
                 let _ = writeln!(&mut terminal, "exit: Exit this process");
                 let _ = writeln!(&mut terminal, "cat <file>: Print a file on the terminal");
                 let _ = writeln!(&mut terminal, "cd <directory>: change the working directory");
+                let _ = writeln!(&mut terminal, "ls [directory]: List directory contents. Defaults to the current directory.");
                 let _ = writeln!(&mut terminal, "pwd: Print name of the current/working directory");
                 let _ = writeln!(&mut terminal, "meme1: Display the KFS-1 meme");
                 let _ = writeln!(&mut terminal, "meme2: Display the KFS-2 meme");
@@ -251,6 +255,47 @@ fn cat<W: Write>(f: &mut W, filesystem: &IFileSystemProxy, file: &str) -> Result
             break;
         }
     }
+    Ok(())
+}
+
+/// List files and folders at the given path, or in the current path is none is
+/// given.
+fn ls(mut terminal: &mut Terminal, filesystem: &IFileSystemProxy, path: Option<&str>) -> Result<(), Error> {
+    use sunrise_libuser::fs::{DirectoryEntry, DirectoryEntryType};
+
+    let path = path.unwrap_or(".");
+    let path = get_path_relative_to_current_directory(path);
+    if path.len() > 0x300 {
+        return Err(FileSystemError::InvalidInput.into())
+    }
+
+    let mut ipc_path = [0x0; 0x300];
+    ipc_path[..path.as_bytes().len()].copy_from_slice(path.as_bytes());
+
+    let directory = filesystem.open_directory(3, &ipc_path)?;
+    let mut entries = [DirectoryEntry {
+        path: [0; 0x300], attribute: 0,
+        directory_entry_type: DirectoryEntryType::Directory, file_size: 0
+    }; 6];
+    loop {
+        let count = directory.read(&mut entries)?;
+        if count == 0 {
+            break;
+        }
+        let entries = &entries[..count as usize];
+        for entry in entries {
+            let split_at = entry.path.iter().position(|v| *v == 0).unwrap_or(0x300);
+            let prefix_len = if path == "/" {
+                // The prefix to remove is literally just the leading `/`
+                1
+            } else {
+                // The prefix to remove is the path + the trailing `/`.
+                path.len() + 1
+            };
+            let _ = writeln!(&mut terminal, "{}", String::from_utf8_lossy(&entry.path[prefix_len..split_at]));
+        }
+    }
+
     Ok(())
 }
 
