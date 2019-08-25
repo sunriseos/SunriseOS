@@ -40,7 +40,6 @@ mod detail;
 mod interface;
 mod ipc;
 
-use detail::FileSystemProxy;
 use detail::driver::DRIVER_MANAGER;
 use interface::driver::FileSystemDriver;
 use detail::driver::fat::FATDriver;
@@ -48,63 +47,16 @@ use detail::driver::fat::FATDriver;
 /// A libuser result.
 pub type LibUserResult<T> = Result<T, Error>;
 
-use crate::interface::filesystem::*;
-use sunrise_libuser::fs::{DirectoryEntry, DirectoryEntryType};
-
-/// Do a directory listing at a given path.
-fn print_dir(filesystem: &dyn FileSystemOperations, path: &str, level: u32, recursive: bool) -> LibUserResult<()>
-{
-    let mut root_dir = filesystem.open_directory(path, DirFilterFlags::ALL)?;
-
-    let mut entries: [DirectoryEntry; 1] = [DirectoryEntry {
-        path: [0x0; PATH_LEN],
-        attribute: 0,
-        directory_entry_type: DirectoryEntryType::Directory,
-        file_size: 0,
-    }; 1];
-
-    while root_dir.read(&mut entries).unwrap() != 0 {
-        for entry in &entries {
-            let path = core::str::from_utf8(&entry.path).unwrap();
-            let entry_name = path.trim_matches(char::from(0));
-
-            /*for _ in 0..level {
-                print!("    ");
-            }*/
-
-            info!(
-                "- \"{}\" (type: {:?}, file_size: {}, timestamp: {:?})",
-                entry_name,
-                entry.directory_entry_type,
-                entry.file_size,
-                filesystem.get_file_timestamp_raw(entry_name)
-            );
-
-            if entry.directory_entry_type == DirectoryEntryType::Directory && recursive {
-                print_dir(filesystem, entry_name, level + 1, recursive)?;
-            }
-        }
-    }
-
-    Ok(())
-}
-
 fn main() {
-    info!("Hello World");
-
     {
         let mut driver_manager = DRIVER_MANAGER.lock();
         driver_manager.register_driver(Box::new(FATDriver) as Box<dyn FileSystemDriver>);
         driver_manager.init_drives().unwrap();
     }
 
-    info!("Hello World");
-
-    let mut fs_proxy: FileSystemProxy = FileSystemProxy::default();
+    //let mut fs_proxy: FileSystemProxy = FileSystemProxy::default();
     //fs_proxy.initialize_disk(0).unwrap();
     //fs_proxy.format_disk_partition(0, 0, FileSystemType::FAT32).unwrap();
-    let filesystem = fs_proxy.open_disk_partition(0, 0).unwrap();
-    print_dir(&**filesystem.lock(), "/", 0, true).unwrap();
 
     let mut man = WaitableManager::new();
     let handler = port_handler(man.work_queue(), "fsp-srv\0", ipc::FileSystemService::dispatch).unwrap();;
