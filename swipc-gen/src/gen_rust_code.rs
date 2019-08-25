@@ -412,8 +412,22 @@ fn format_type(struct_name: &str, ty: &TypeDef) -> Result<String, Error> {
 
     match &ty.ty {
         Type::Struct(struc) => {
+            let mut can_derive_debug = true;
+            for (_, _, ty) in &struc.fields {
+                if let Type::Alias(Alias::Bytes(_)) = ty {
+                    can_derive_debug = false;
+                    break;
+                }
+            }
+
             writeln!(s, "#[repr(C)]").unwrap();
-            writeln!(s, "#[derive(Clone, Copy, Debug)]").unwrap();
+
+            if can_derive_debug {
+                writeln!(s, "#[derive(Clone, Copy, Debug)]").unwrap();
+            } else {
+                writeln!(s, "#[derive(Clone, Copy)]").unwrap();
+            }
+
             writeln!(s, "pub struct {} {{", struct_name).unwrap();
             for (doc, name, ty) in &struc.fields {
                 // TODO: Support nested type
@@ -427,6 +441,22 @@ fn format_type(struct_name: &str, ty: &TypeDef) -> Result<String, Error> {
                 writeln!(s, "    pub {}: {},", remap_keywords(name), tyname).unwrap();
             }
             writeln!(s, "}}").unwrap();
+
+            if !can_derive_debug {
+                writeln!(s, "impl core::fmt::Debug for {} {{", struct_name).unwrap();
+                writeln!(s, "    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {{").unwrap();
+                writeln!(s, "        f.debug_struct(\"{}\")", struct_name).unwrap();
+                for (_, name, ty) in &struc.fields {
+                    if let Type::Alias(Alias::Bytes(_)) = ty {
+                        writeln!(s, "           .field(\"{}\", &&self.{}[..])", name, name).unwrap();
+                    } else {
+                        writeln!(s, "           .field(\"{}\", &self.{})", name, name).unwrap();
+                    }
+                }
+                writeln!(s, "           .finish()").unwrap();
+                writeln!(s, "    }}").unwrap();
+                writeln!(s, "}}").unwrap();
+            }
         },
         Type::Enum(enu) => {
             writeln!(s, "enum_with_val! {{").unwrap();

@@ -55,6 +55,8 @@ pub mod vi {}
 pub mod ahci {}
 #[gen_ipc(path = "../../ipcdefs/time.id", prefix = "sunrise_libuser")]
 pub mod time {}
+#[gen_ipc(path = "../../ipcdefs/filesystem.id", prefix = "sunrise_libuser")]
+pub mod fs {}
 #[gen_ipc(path = "../../ipcdefs/example.id", prefix = "sunrise_libuser")]
 pub mod example {}
 
