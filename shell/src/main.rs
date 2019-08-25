@@ -210,6 +210,7 @@ fn main() {
             "help" => {
                 let _ = writeln!(&mut terminal, "COMMANDS:");
                 let _ = writeln!(&mut terminal, "exit: Exit this process");
+                let _ = writeln!(&mut terminal, "useradd <username>: Adds a new user");
                 let _ = writeln!(&mut terminal, "cat <file>: Print a file on the terminal");
                 let _ = writeln!(&mut terminal, "cd <directory>: change the working directory");
                 let _ = writeln!(&mut terminal, "pwd: Print name of the current/working directory");
