@@ -8,6 +8,7 @@ use crate::i386;
 use crate::mem::{VirtualAddress, PhysicalAddress};
 use crate::mem::{UserSpacePtr, UserSpacePtrMut};
 use crate::paging::{MappingAccessRights, PAGE_SIZE};
+use crate::paging::lands::{UserLand, VirtualSpaceLand};
 use crate::frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
 use crate::paging::mapping::MappingFrames;
 use crate::process::{Handle, ThreadStruct, ProcessStruct};
@@ -673,6 +674,109 @@ pub fn set_thread_area(segment_base_address: usize) -> Result<(), UserspaceError
     // store it in the thread struct.
     let thread = get_current_thread();
     *thread.tls_elf.lock() = segment_base_address;
+    Ok(())
+}
+
+/// Maps the given src memory range from a remote process into the current
+/// process as RW-. This is used by the Loader to load binaries into the memory
+/// region allocated by the kernel in [create_process()].
+///
+/// The src region should have the MAP_PROCESS state, which is only available on
+/// CodeStatic/CodeMutable and ModuleCodeStatic/ModuleCodeMutable.
+///
+/// # Errors
+///
+/// - `InvalidAddress`
+///    - src_addr or dst_addr is not aligned to 0x1000.
+/// - `InvalidSize`
+///    - size is 0
+///    - size is not aligned to 0x1000.
+/// - `InvalidMemState`
+///    - `src_addr + size` overflows
+///    - `dst_addr + size` overflows
+///    - The src region is outside of the UserLand address space.
+///    - The dst region is outside of the UserLand address space, or within the
+///      heap or map memory region.
+///    - The src memory pages does not have the MAP_PROCESS state.
+/// - `InvalidHandle`
+///    - The handle passed as an argument does not exist or is not a Process
+///      handle.
+pub fn map_process_memory(dst_addr: usize, proc_hnd: u32, src_addr: usize, size: usize) -> Result<(), UserspaceError> {
+    let dst_addr = VirtualAddress(dst_addr);
+    let src_addr = VirtualAddress(src_addr);
+
+    src_addr.check_aligned_to(PAGE_SIZE)?;
+    dst_addr.check_aligned_to(PAGE_SIZE)?;
+
+    if size == 0 || size & (PAGE_SIZE - 1) != 0 {
+        return Err(UserspaceError::InvalidSize);
+    }
+
+    if src_addr.checked_add(size).is_none() {
+        return Err(UserspaceError::InvalidMemState);
+    }
+    if dst_addr.checked_add(size).is_none() {
+        return Err(UserspaceError::InvalidMemState);
+    }
+
+    let curproc = scheduler::get_current_process();
+    let srcproc = curproc.phandles.lock().get_handle(proc_hnd)?.as_process()?;
+
+    // check srcproc address space
+    if !UserLand::contains_region(src_addr, size) {
+        return Err(UserspaceError::InvalidMemState);
+    }
+
+    // If dst_addr is within Heap region or Map region, error out.
+    if !UserLand::contains_region(dst_addr, size) {
+        return Err(UserspaceError::InvalidMemRange)
+    }
+
+    // TODO: Build an abstraction around querying a range of mappings.
+    // BODY: Right now, all the mapping stuff work in one of two ways:
+    // BODY:
+    // BODY: - They only accept mapping from a *single* source mapping
+    // BODY: - They accept mapping multiple mappings, but they do so manually
+    // BODY:
+    // BODY: This is obvously pretty bad. We should build a proper abstraction
+    // BODY: to support the second use-case, and we should make everything go
+    // BODY: through this abstraction. HOS/NX has a set of functions to support
+    // BODY: this:
+    // BODY:
+    // BODY: - `KMemoryManager::BuildIncrefPageListForRange`
+    // BODY:   - Iterates over the address space at the given range, building
+    // BODY:     a list/vector of pages that are mapped in that range. Those
+    // BODY:     pages are - obviously - incref'd from their refcount.
+    // BODY: - `KMemoryManager::MapPageListIntoCurrentProcess`
+    // BODY:    - Maps all the pages from the page list created above in the
+    // BODY:      current process.
+    let mut size = size;
+    let mut src_addr = src_addr;
+    let mut dst_addr = dst_addr;
+
+    let srcmem = srcproc.pmemory.lock();
+    let mut dstmem = curproc.pmemory.lock();
+    while size != 0 {
+        let meminfo = srcmem.query_memory(src_addr);
+
+        if !meminfo.mapping().state().map_process_allowed() {
+            // TODO: Remove already mapped frames
+            return Err(UserspaceError::InvalidMemState);
+        }
+
+        let offset_in_mapping = src_addr - meminfo.mapping().address();
+        let offset = offset_in_mapping + meminfo.mapping().phys_offset();
+        let curlen = core::cmp::min(size, meminfo.mapping().length() - offset_in_mapping);
+        if let MappingFrames::Shared(frames) = meminfo.mapping().frames() {
+            dstmem.map_partial_shared_mapping(frames.clone(), dst_addr, offset, curlen, MemoryType::ProcessMemory, MappingAccessRights::u_rw())?;
+        } else {
+            return Err(UserspaceError::InvalidMemState);
+        }
+        size -= curlen;
+        src_addr += curlen;
+        dst_addr += curlen;
+    }
+
     Ok(())
 }
 

@@ -528,6 +528,37 @@ pub unsafe fn set_thread_area(address: usize) -> Result<(), KernelError> {
     }
 }
 
+/// Maps the given src memory range from a remote process into the current
+/// process as RW-. This is used by the Loader to load binaries into the memory
+/// region allocated by the kernel in [create_process()].
+///
+/// The src region should have the MAP_PROCESS state, which is only available on
+/// CodeStatic/CodeMutable and ModuleCodeStatic/ModuleCodeMutable.
+///
+/// # Errors
+///
+/// - `InvalidAddress`
+///    - src_addr or dst_addr is not aligned to 0x1000.
+/// - `InvalidSize`
+///    - size is 0
+///    - size is not aligned to 0x1000.
+/// - `InvalidMemState`
+///    - `src_addr + size` overflows
+///    - `dst_addr + size` overflows
+///    - The src region is outside of the UserLand address space.
+///    - The dst region is outside of the UserLand address space, or within the
+///      heap or map memory region.
+///    - The src memory pages does not have the MAP_PROCESS state.
+/// - `InvalidHandle`
+///    - The handle passed as an argument does not exist or is not a Process
+///      handle.
+pub fn map_process_memory(dstaddr: usize, proc_handle: &Process, srcaddr: usize, size: usize) -> Result<(), KernelError> {
+    unsafe {
+        syscall(nr::MapProcessMemory, dstaddr, (proc_handle.0).0.get() as _, srcaddr, size, 0, 0)?;
+        Ok(())
+    }
+}
+
 /// Creates a new process with the given parameters.
 ///
 /// Note that you probably don't want to use this! Look instead for
