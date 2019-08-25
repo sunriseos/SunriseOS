@@ -101,6 +101,35 @@ fn login(mut terminal: &mut Terminal, filesystem: &IFileSystemProxy) -> Result<(
     }
 }
 
+/// Adds a new user to /etc/passwd with the specified username.
+///
+/// The function takes care of prompting for the password in no-echo mode. If
+/// an error is returned, then it should be assumed that the user was not added
+/// to /etc/passwd.
+fn user_add(mut terminal: &mut Terminal, filesystem: &IFileSystemProxy, username: &str) -> Result<(), Error> {
+    let _ = writeln!(&mut terminal, "Password: ");
+    let password = ps2::get_next_line(&mut terminal, false);
+    let password = password.trim_end_matches('\n');
+
+    let hash = sha1::Sha1::from(&password).digest().bytes();
+
+    let mut ipc_path = [0x0; 0x300];
+    ipc_path[..b"/etc/passwd".len()].copy_from_slice(b"/etc/passwd");
+
+    let _ = filesystem.create_file(0, 0, &ipc_path);
+    let file = filesystem.open_file(0b111, &ipc_path)?;
+    let size = file.get_size()?;
+
+    let mut newline = String::from(username);
+    newline.push(' ');
+    newline += &hex::encode(&hash);
+    newline.push('\n');
+
+    file.write(0, size, newline.len() as _, newline.as_bytes())?;
+
+    Ok(())
+}
+
 fn main() {
     let mut terminal = Terminal::new(WindowSize::FontLines(-1, false)).unwrap();
 
@@ -123,6 +152,19 @@ fn main() {
         }
 
         match command_opt.unwrap() {
+            "useradd" => {
+                match arguments.next() {
+                    None => {
+                        let _ = writeln!(&mut terminal, "usage: useradd <username>");
+                    }
+                    Some(username) => match user_add(&mut terminal, &filesystem, username) {
+                        Ok(_) => (),
+                        Err(err) => {
+                            let _ = writeln!(&mut terminal, "Failed to add user: {:?}", err);
+                        }
+                    },
+                }
+            }
             "meme1" => show_gif(&LOUIS1[..]),
             "meme2" => show_gif(&LOUIS2[..]),
             "meme3" => show_gif(&LOUIS3[..]),
