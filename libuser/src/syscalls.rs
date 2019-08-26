@@ -528,6 +528,31 @@ pub unsafe fn set_thread_area(address: usize) -> Result<(), KernelError> {
     }
 }
 
+/// Change permission of a page-aligned memory region. Acceptable permissions
+/// are ---, r-- and rw-. In other words, it is not allowed to set the
+/// executable bit, nor is it acceptable to use write-only permissions.
+///
+/// This can only be used on memory regions with the
+/// [process_permission_change_allowed] state.
+///
+/// # Errors
+///
+/// - `InvalidAddress`
+///   - Supplied address is not page-aligned.
+/// - `InvalidSize`
+///    - Supplied size is zero or not page-aligned.
+/// - `InvalidMemState`
+///    - Supplied memory range is not contained within the target process
+///      address space.
+///    - Supplied memory range does not have the [process_permission_change_allowed]
+///      state.
+pub fn set_process_memory_permission(proc_hnd: &Process, addr: usize, size: usize, perms: MemoryPermissions) -> Result<(), KernelError> {
+    unsafe {
+        syscall(nr::SetProcessMemoryPermission, (proc_hnd.0).0.get() as _, addr, size, perms.bits() as _, 0, 0)?;
+        Ok(())
+    }
+}
+
 /// Maps the given src memory range from a remote process into the current
 /// process as RW-. This is used by the Loader to load binaries into the memory
 /// region allocated by the kernel in [create_process()].

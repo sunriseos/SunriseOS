@@ -677,6 +677,106 @@ pub fn set_thread_area(segment_base_address: usize) -> Result<(), UserspaceError
     Ok(())
 }
 
+/// Change permission of a page-aligned memory region. Acceptable permissions
+/// are ---, r-- and rw-. In other words, it is not allowed to set the
+/// executable bit, nor is it acceptable to use write-only permissions.
+///
+/// This can only be used on memory regions with the
+/// [process_permission_change_allowed] state.
+///
+/// # Errors
+///
+/// - `InvalidAddress`
+///   - Supplied address is not page-aligned.
+/// - `InvalidSize`
+///    - Supplied size is zero or not page-aligned.
+/// - `InvalidMemState`
+///    - Supplied memory range is not contained within the target process
+///      address space.
+///    - Supplied memory range does not have the [process_permission_change_allowed]
+///      state.
+pub fn set_process_memory_permission(proc_hnd: u32, addr: usize, size: usize, perms: u32) -> Result<(), UserspaceError> {
+    let addr = VirtualAddress(addr);
+
+    addr.check_aligned_to(PAGE_SIZE)?;
+    if size == 0 || size & (PAGE_SIZE - 1) != 0 {
+        return Err(UserspaceError::InvalidSize);
+    }
+
+    if addr.checked_add(size).is_none() {
+        return Err(UserspaceError::InvalidMemState);
+    }
+
+    let perms = MemoryPermissions::from_bits(perms).ok_or(UserspaceError::InvalidMemPerms)?;
+    perms.check()?;
+
+    let dstproc = scheduler::get_current_process().phandles.lock().get_handle(proc_hnd)?.as_process()?;
+    // Use dstproc.addrSpace
+    if !UserLand::contains_region(addr, size) {
+        return Err(UserspaceError::InvalidMemState);
+    }
+
+    // # KMemoryManager::SetProcessMemoryPermission
+
+    // checkrange
+    let mut size = size;
+    let mut addr = addr;
+
+    // TODO: This **REALLY** needs a helper function.
+    let mut dstmem = dstproc.pmemory.lock();
+    while size != 0 {
+        let meminfo = dstmem.query_memory(addr);
+
+        if MemoryType::Unmapped == meminfo.mapping().state().ty() {
+            return Err(UserspaceError::InvalidMemState);
+        }
+
+        let mapping_addr = meminfo.mapping().address();
+        let mapping_length = meminfo.mapping().length();
+        core::mem::drop(meminfo);
+        let meminfo = dstmem.unmap(mapping_addr, mapping_length)?;
+
+        if !meminfo.state().process_permission_change_allowed() {
+            // TODO: Reset perms on previous frames.
+            return Err(UserspaceError::InvalidMemState);
+        }
+
+        let frames = if let MappingFrames::Shared(frames) = meminfo.frames() {
+            frames
+        } else {
+            // TODO: Reset perms on previous frames.
+            return Err(UserspaceError::InvalidMemState);
+        };
+
+        // Split mapping
+        if meminfo.address() < addr {
+            dstmem.map_partial_shared_mapping(frames.clone(), meminfo.address(), meminfo.phys_offset(), addr - meminfo.address(), meminfo.state().ty(), meminfo.flags()).expect("Can't fail");
+        }
+        if meminfo.address() + meminfo.length() > addr + size && meminfo.length() > PAGE_SIZE {
+            let phys_offset = meminfo.phys_offset() + addr + size - meminfo.address();
+            dstmem.map_partial_shared_mapping(frames.clone(), addr + size, phys_offset, (meminfo.address() + meminfo.length()) - (addr + size), meminfo.state().ty(), meminfo.flags()).expect("Can't fail");
+        }
+
+        // Handle middle mapping.
+        let offset_in_mapping = addr - meminfo.address();
+        let offset = offset_in_mapping + meminfo.phys_offset();
+        let curlen = core::cmp::min(size, meminfo.length() - offset_in_mapping);
+
+        let out_type = match meminfo.state().ty() {
+            MemoryType::CodeStatic => if perms.contains(MemoryPermissions::WRITABLE) { MemoryType::CodeMutable } else { MemoryType::CodeStatic },
+            MemoryType::ModuleCodeStatic => if perms.contains(MemoryPermissions::WRITABLE) { MemoryType::ModuleCodeMutable } else { MemoryType::ModuleCodeStatic },
+            _ => unreachable!("Checked previously.")
+        };
+
+        dstmem.map_partial_shared_mapping(frames.clone(), addr, offset, curlen, out_type, perms.into())?;
+
+        size -= curlen;
+        addr += curlen;
+    }
+
+    Ok(())
+}
+
 /// Maps the given src memory range from a remote process into the current
 /// process as RW-. This is used by the Loader to load binaries into the memory
 /// region allocated by the kernel in [create_process()].

@@ -284,6 +284,18 @@ bitflags! {
     }
 }
 
+impl MemoryPermissions {
+    /// Checks that the permissions as valid - that is, it should be one of
+    /// ---, R--, RW- or R-X.
+    pub fn check(self) -> Result<(), error::KernelError> {
+        if 1 << self.bits() & 0x2B != 0 { // Accept NONE, R, RW, RX
+            Ok(())
+        } else {
+            Err(error::KernelError::InvalidMemPerms)
+        }
+    }
+}
+
 /// The structure returned by the `query_memory` syscall.
 #[repr(C)]
 #[derive(Debug, Default)]
