@@ -260,10 +260,17 @@ fn cat<W: Write>(f: &mut W, filesystem: &IFileSystemProxy, file: &str) -> Result
 
 /// List files and folders at the given path, or in the current path is none is
 /// given.
-fn ls(mut terminal: &mut Terminal, filesystem: &IFileSystemProxy, path: Option<&str>) -> Result<(), Error> {
+fn ls(mut terminal: &mut Terminal, filesystem: &IFileSystemProxy, orig_path: Option<&str>) -> Result<(), Error> {
     use sunrise_libuser::fs::{DirectoryEntry, DirectoryEntryType};
 
-    let path = path.unwrap_or(".");
+    #[allow(clippy::missing_docs_in_private_items)]
+    const BG: Color = Color::rgb(0, 0, 0);
+    #[allow(clippy::missing_docs_in_private_items)]
+    const FILE_FG: Color = Color::rgb(0x56, 0xF7, 0x68);
+    #[allow(clippy::missing_docs_in_private_items)]
+    const DIR_FG: Color = Color::rgb(0x68, 0x70, 0xF1);
+
+    let path = orig_path.unwrap_or(".");
     let path = get_path_relative_to_current_directory(path);
     if path.len() > 0x300 {
         return Err(FileSystemError::InvalidInput.into())
@@ -272,7 +279,18 @@ fn ls(mut terminal: &mut Terminal, filesystem: &IFileSystemProxy, path: Option<&
     let mut ipc_path = [0x0; 0x300];
     ipc_path[..path.as_bytes().len()].copy_from_slice(path.as_bytes());
 
-    let directory = filesystem.open_directory(3, &ipc_path)?;
+    let directory = match filesystem.open_directory(3, &ipc_path) {
+        Ok(d) => d,
+        Err(Error::FileSystem(FileSystemError::NotADirectory, _)) => {
+            terminal.print_attr(
+                orig_path.unwrap_or(&CURRENT_WORK_DIRECTORY.lock()),
+                FILE_FG, BG);
+            let _ = writeln!(&mut terminal);
+            return Ok(())
+        },
+        Err(err) => return Err(err)
+    };
+
     let mut entries = [DirectoryEntry {
         path: [0; 0x300], attribute: 0,
         directory_entry_type: DirectoryEntryType::Directory, file_size: 0
@@ -292,7 +310,14 @@ fn ls(mut terminal: &mut Terminal, filesystem: &IFileSystemProxy, path: Option<&
                 // The prefix to remove is the path + the trailing `/`.
                 path.len() + 1
             };
-            let _ = writeln!(&mut terminal, "{}", String::from_utf8_lossy(&entry.path[prefix_len..split_at]));
+
+            let mut s = String::from_utf8_lossy(&entry.path[prefix_len..split_at]).into_owned();
+            s.push('\n');
+            if entry.directory_entry_type == DirectoryEntryType::File {
+                terminal.print_attr(&s, FILE_FG, BG);
+            } else {
+                terminal.print_attr(&s, DIR_FG, BG);
+            };
         }
     }
 
