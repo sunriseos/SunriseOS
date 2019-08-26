@@ -19,6 +19,7 @@
 #![deny(intra_doc_link_resolution_failure)]
 
 use gif;
+#[macro_use]
 extern crate alloc;
 #[macro_use]
 extern crate log;
@@ -37,6 +38,7 @@ use crate::libuser::window::{Window, Color};
 use crate::libuser::terminal::{Terminal, WindowSize};
 use crate::libuser::threads::Thread;
 use crate::libuser::error::{Error, FileSystemError};
+use crate::libuser::syscalls;
 
 use core::fmt::Write;
 use alloc::vec::Vec;
@@ -50,6 +52,84 @@ lazy_static! {
     static ref CURRENT_WORK_DIRECTORY: Mutex<String> = Mutex::new(String::from("/"));
 }
 
+/// Asks the user to login repeatedly. Returns with an error if the /etc/passwd
+/// file is invalid or doesn't exist.
+fn login(mut terminal: &mut Terminal, filesystem: &IFileSystemProxy) -> Result<(), Error> {
+    let mut ipc_path = [0x0; 0x300];
+    ipc_path[..b"/etc/passwd".len()].copy_from_slice(b"/etc/passwd");
+
+    let file: IFileProxy = filesystem.open_file(1, &ipc_path)?;
+    let size = file.get_size().expect("get_size to work");
+    let mut data = vec![0; size as usize];
+    let read_count = file.read(0, 0, size, &mut data).expect("Read to work");
+    data.resize(read_count as usize, 0);
+    let data = match String::from_utf8(data) {
+        Ok(data) => data,
+        Err(_err) => {
+            warn!("Invalid FSTAB: non-utf8 data found");
+            return Ok(())
+        }
+    };
+
+    // Login
+    loop {
+        let _ = write!(&mut terminal, "Login: ");
+        let _ = terminal.draw();
+        let username = ps2::get_next_line(&mut terminal, true);
+        let username = username.trim_end_matches('\n');
+
+        let _ = writeln!(&mut terminal, "Password: ");
+        let password = ps2::get_next_line(&mut terminal, false);
+        let password = password.trim_end_matches('\n');
+
+        let hash = sha1::Sha1::from(&password).digest().bytes();
+
+        for item in data.split('\n') {
+            let mut it = item.split(' ');
+            if let (Some(item_username), Some(item_hash)) = (it.next(), it.next()) {
+                if let Ok(item_hash) = hex::decode(item_hash) {
+                    if username == item_username && hash[..] == item_hash[..] {
+                        let _ = writeln!(&mut terminal, "Login Success!");
+                        return Ok(());
+                    }
+                }
+            }
+        }
+
+        let _ = writeln!(&mut terminal, "Invalid login or password");
+        let _ = syscalls::sleep_thread(1 * 1000 * 1000 * 1000);
+    }
+}
+
+/// Adds a new user to /etc/passwd with the specified username.
+///
+/// The function takes care of prompting for the password in no-echo mode. If
+/// an error is returned, then it should be assumed that the user was not added
+/// to /etc/passwd.
+fn user_add(mut terminal: &mut Terminal, filesystem: &IFileSystemProxy, username: &str) -> Result<(), Error> {
+    let _ = writeln!(&mut terminal, "Password: ");
+    let password = ps2::get_next_line(&mut terminal, false);
+    let password = password.trim_end_matches('\n');
+
+    let hash = sha1::Sha1::from(&password).digest().bytes();
+
+    let mut ipc_path = [0x0; 0x300];
+    ipc_path[..b"/etc/passwd".len()].copy_from_slice(b"/etc/passwd");
+
+    let _ = filesystem.create_file(0, 0, &ipc_path);
+    let file = filesystem.open_file(0b111, &ipc_path)?;
+    let size = file.get_size()?;
+
+    let mut newline = String::from(username);
+    newline.push(' ');
+    newline += &hex::encode(&hash);
+    newline.push('\n');
+
+    file.write(0, size, newline.len() as _, newline.as_bytes())?;
+
+    Ok(())
+}
+
 fn main() {
     let mut terminal = Terminal::new(WindowSize::FontLines(-1, false)).unwrap();
 
@@ -58,8 +138,12 @@ fn main() {
 
     cat(&mut terminal, &filesystem, "/etc/motd").unwrap();
 
+    if let Err(err) = login(&mut terminal, &filesystem) {
+        error!("Error while setting up login: {:?}", err);
+    }
+
     loop {
-        let line = ps2::get_next_line(&mut terminal);
+        let line = ps2::get_next_line(&mut terminal, true);
         let mut arguments = line.split_whitespace();
         let command_opt = arguments.next();
 
@@ -68,6 +152,19 @@ fn main() {
         }
 
         match command_opt.unwrap() {
+            "useradd" => {
+                match arguments.next() {
+                    None => {
+                        let _ = writeln!(&mut terminal, "usage: useradd <username>");
+                    }
+                    Some(username) => match user_add(&mut terminal, &filesystem, username) {
+                        Ok(_) => (),
+                        Err(err) => {
+                            let _ = writeln!(&mut terminal, "Failed to add user: {:?}", err);
+                        }
+                    },
+                }
+            }
             "meme1" => show_gif(&LOUIS1[..]),
             "meme2" => show_gif(&LOUIS2[..]),
             "meme3" => show_gif(&LOUIS3[..]),
@@ -116,6 +213,7 @@ fn main() {
             "help" => {
                 let _ = writeln!(&mut terminal, "COMMANDS:");
                 let _ = writeln!(&mut terminal, "exit: Exit this process");
+                let _ = writeln!(&mut terminal, "useradd <username>: Adds a new user");
                 let _ = writeln!(&mut terminal, "cat <file>: Print a file on the terminal");
                 let _ = writeln!(&mut terminal, "cd <directory>: change the working directory");
                 let _ = writeln!(&mut terminal, "ls [directory]: List directory contents. Defaults to the current directory.");

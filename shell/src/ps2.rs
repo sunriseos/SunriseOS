@@ -390,12 +390,14 @@ pub fn try_read_key() -> Option<char> {
 
 /// Read key presses until a \n is detected, and return the string
 /// (excluding \n).
-pub fn get_next_line(logger: &mut Terminal) -> String {
+pub fn get_next_line(logger: &mut Terminal, echo: bool) -> String {
     let mut ret = String::from("");
     loop {
         let key = read_key();
-        let _ = write!(logger, "{}", key);
-        logger.draw().unwrap();
+        if echo {
+            let _ = write!(logger, "{}", key);
+            logger.draw().unwrap();
+        }
         if key == '\n' {
             return ret;
         } else if key == '\x08' {
