@@ -171,6 +171,7 @@ fn main() {
             "meme4" => show_gif(&LOUIS4[..]),
             "meme5" => show_gif(&LOUIS5[..]),
             "meme6" => show_gif(&LOUIS6[..]),
+            "memset" => show_gif(&LOUIS7[..]),
             "cat" => {
                 match arguments.nth(0) {
                     None => {
@@ -225,6 +226,7 @@ fn main() {
                 let _ = writeln!(&mut terminal, "meme4: Display the KFS-4 meme");
                 let _ = writeln!(&mut terminal, "meme5: Display the KFS-5 meme");
                 let _ = writeln!(&mut terminal, "meme6: Display the KFS-6 meme");
+                let _ = writeln!(&mut terminal, "memset: Display the KFS-7 meme");
                 let _ = writeln!(&mut terminal, "test_threads: Run threads that concurrently print As and Bs");
                 let _ = writeln!(&mut terminal, "test_divide_by_zero: Check exception handling by throwing a divide by zero");
                 let _ = writeln!(&mut terminal, "test_page_fault: Check exception handling by throwing a page_fault");
@@ -545,6 +547,8 @@ static LOUIS4: &[u8] = include_bytes!("../img/meme4.gif");
 static LOUIS5: &[u8] = include_bytes!("../img/meme5.gif");
 /// Meme for KFS6
 static LOUIS6: &[u8] = include_bytes!("../img/meme6.gif");
+/// Meme for KFS7
+static LOUIS7: &[u8] = include_bytes!("../img/meme7.gif");
 
 capabilities!(CAPABILITIES = Capabilities {
     svcs: [
