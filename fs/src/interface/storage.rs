@@ -63,10 +63,10 @@ impl<B> StorageCachedBlockDevice<B> where B: BlockDevice + Sync + Send {
     /// # Panics
     /// 
     /// - buf.len() < Block::LEN
-    /// - offset / Block::LEN == (offset + buf.len()) / Block::LEN
+    /// - offset / Block::LEN == (offset + buf.len() - 1) / Block::LEN
     fn read_from_temp_storage(&mut self, offset: u64, buf: &mut [u8]) -> StorageDeviceResult<()> {
-        assert!(buf.len() < Block::LEN);
-        assert!(offset / Block::LEN_U64 == (offset + buf.len() as u64) / Block::LEN_U64);
+        assert_ne!(buf.len(), 0);
+        assert!(offset / Block::LEN_U64 == (offset + buf.len() as u64 - 1) / Block::LEN_U64, "{:016x} {:016x}", offset, buf.len());
 
         // Extract the block index containing the data.
         let current_block_index = BlockIndex(offset / Block::LEN_U64);
