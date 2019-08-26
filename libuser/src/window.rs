@@ -27,7 +27,7 @@ pub struct Color {
 /// Some colors for the vbe
 impl Color {
     /// Creates a color from the r/g/b components. Alpha will be set to 0xFF.
-    pub fn rgb(r: u8, g: u8, b: u8) -> Color {
+    pub const fn rgb(r: u8, g: u8, b: u8) -> Color {
         Color {r, g, b, a: 0xFF }
     }
 }

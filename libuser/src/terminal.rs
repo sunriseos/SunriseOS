@@ -13,7 +13,7 @@ use crate::vi::ViInterfaceProxy;
 
 // TODO: Missing fminf in compiler-builtins for soft-float
 // BODY: See https://github.com/rust-lang/rust/issues/62729.
-// BODY: 
+// BODY:
 // BODY: As a workaround, we include the functions in libuser for now.
 /// Workaround rust-lang/rust#62729
 #[no_mangle]
@@ -209,7 +209,7 @@ impl Terminal {
     }
 
     /// Prints a string to the screen with attributes
-    fn print_attr(&mut self, string: &str, fg: Color, bg: Color) {
+    pub fn print_attr(&mut self, string: &str, fg: Color, bg: Color) {
         for mychar in string.chars() {
             match mychar {
                 '\n'   => { self.line_feed(); }
