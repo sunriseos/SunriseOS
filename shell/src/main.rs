@@ -170,6 +170,7 @@ fn main() {
             "meme3" => show_gif(&LOUIS3[..]),
             "meme4" => show_gif(&LOUIS4[..]),
             "meme5" => show_gif(&LOUIS5[..]),
+            "meme6" => show_gif(&LOUIS6[..]),
             "cat" => {
                 match arguments.nth(0) {
                     None => {
@@ -223,6 +224,7 @@ fn main() {
                 let _ = writeln!(&mut terminal, "meme3: Display the KFS-3 meme");
                 let _ = writeln!(&mut terminal, "meme4: Display the KFS-4 meme");
                 let _ = writeln!(&mut terminal, "meme5: Display the KFS-5 meme");
+                let _ = writeln!(&mut terminal, "meme6: Display the KFS-6 meme");
                 let _ = writeln!(&mut terminal, "test_threads: Run threads that concurrently print As and Bs");
                 let _ = writeln!(&mut terminal, "test_divide_by_zero: Check exception handling by throwing a divide by zero");
                 let _ = writeln!(&mut terminal, "test_page_fault: Check exception handling by throwing a page_fault");
@@ -532,15 +534,17 @@ fn test_page_fault() {
 }
 
 /// Meme for KFS1
-static LOUIS1: &[u8; 89915] = include_bytes!("../img/meme1.gif");
+static LOUIS1: &[u8] = include_bytes!("../img/meme1.gif");
 /// Meme for KFS2
-static LOUIS2: &[u8; 93818] = include_bytes!("../img/meme2.gif");
+static LOUIS2: &[u8] = include_bytes!("../img/meme2.gif");
 /// Meme for KFS3
-static LOUIS3: &[u8; 1318100] = include_bytes!("../img/meme3.gif");
+static LOUIS3: &[u8] = include_bytes!("../img/meme3.gif");
 /// Meme for KFS4
-static LOUIS4: &[u8; 103803] = include_bytes!("../img/meme4.gif");
+static LOUIS4: &[u8] = include_bytes!("../img/meme4.gif");
 /// Meme for KFS5
-static LOUIS5: &[u8; 106140] = include_bytes!("../img/meme5.gif");
+static LOUIS5: &[u8] = include_bytes!("../img/meme5.gif");
+/// Meme for KFS6
+static LOUIS6: &[u8] = include_bytes!("../img/meme6.gif");
 
 capabilities!(CAPABILITIES = Capabilities {
     svcs: [
