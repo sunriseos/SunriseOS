@@ -89,11 +89,10 @@ impl<B> StorageDevice for StorageCachedBlockDevice<B> where B: BlockDevice + Syn
         let mut buf = buf;
         let mut current_offset = offset;
 
-        let buf_addr = buf.as_ptr() as usize;
         let block_alignment = core::mem::align_of::<Block>();
 
         // First of all, if buf address is unaligned, we need to do a read for one byte and align it.
-        if buf_addr % block_alignment != 0 {
+        if buf.as_ptr() as usize % block_alignment != 0 {
             self.read_from_temp_storage(current_offset, &mut buf[..block_alignment - 1])?;
 
             // Align buf to Block.
@@ -134,7 +133,7 @@ impl<B> StorageDevice for StorageCachedBlockDevice<B> where B: BlockDevice + Syn
         if !buf.is_empty() {
             let main_blocks = unsafe {
                 // Safety: Safe because we guarantee that buf_addr follow the layout and alignment of Block.
-                core::slice::from_raw_parts_mut(buf_addr as *mut Block, buf.len() / Block::LEN)
+                core::slice::from_raw_parts_mut(buf.as_ptr() as *mut Block, buf.len() / Block::LEN)
             };
 
             self.block_device.read(main_blocks, current_block_index)?;
