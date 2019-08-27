@@ -245,10 +245,6 @@ macro_rules! trap_gate_asm {
         mov eax, [esp + 0x2C] // cs is 11 registers away at that time * 4 bytes / reg
         push eax
 
-        // Load kernel tls segment
-        mov ax, 0x18
-        mov gs, ax
-
         jmp 2f
     1: // else if priv unchanged
         // cpu did not push an esp, we are still running on the same stack: compute it
@@ -261,6 +257,10 @@ macro_rules! trap_gate_asm {
         push esp
 
         // Great, registers are now fully backed up
+
+        // Load kernel tls segment
+        mov ax, 0x18
+        mov gs, ax
 
         // Call some rust code, passing it a pointer to the UserspaceHardwareContext
         call $0
