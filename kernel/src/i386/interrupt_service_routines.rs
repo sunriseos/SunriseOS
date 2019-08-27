@@ -948,6 +948,7 @@ fn syscall_interrupt_dispatcher(_exception_name: &'static str, hwcontext: &mut U
         (true, nr::SetProcessMemoryPermission) => hwcontext.apply0(set_process_memory_permission(x0 as _, x1 as _, x2 as _, x3 as _)),
         (true, nr::MapProcessMemory) => hwcontext.apply0(map_process_memory(x0 as _, x1 as _, x2 as _, x3 as _)),
         (true, nr::CreateProcess) => hwcontext.apply1(create_process(UserSpacePtr(x0 as _), UserSpacePtr::from_raw_parts(x1 as _, x2 * 4))),
+        (true, nr::StartProcess) => hwcontext.apply0(start_process(x0 as _, x1 as _, x2 as _, x3 as _)),
 
         // sunrise extensions
         (true, nr::MapFramebuffer) => hwcontext.apply4(map_framebuffer()),

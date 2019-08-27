@@ -955,3 +955,44 @@ pub fn create_process(procinfo: UserSpacePtr<ProcInfo>, caps: UserSpacePtr<[u8]>
     let hnd = curproc.phandles.lock().add_handle(Arc::new(Handle::Process(newproc)));
     Ok(hnd as _)
 }
+
+/// Start the given process on the provided CPU with the provided scheduler
+/// priority.
+///
+/// A stack of the given size will be allocated using the process' memory
+/// resource limit and memory pool.
+///
+/// The entrypoint is assumed to be the first address of the `code_addr` region
+/// provided in [create_process()]. It takes two parameters: the first is the
+/// usermode exception handling context, and should always be NULL. The second
+/// is a handle to the main thread.
+///
+/// # Errors
+///
+/// - `InvalidProcessorId`
+///   - Attempted to start the process on a processor that doesn't exist on the
+///     current machine, or a processor that the process is not allowed to use.
+/// - `InvalidThreadPriority`
+///   - Attempted to use a priority above 0x3F, or a priority that the created
+///     process is not allowed to use.
+/// - `MemoryFull`
+///   - Provided stack size is bigger than available vmem space.
+pub fn start_process(hnd: u32, main_thread_prio: u32, default_cpuid: u32, main_thread_stacksz: usize) -> Result<(), UserspaceError> {
+    let target_proc = scheduler::get_current_process().phandles.lock().get_handle(hnd)?.as_process()?;
+
+    // Check max CPU ID
+    // || !target_proc.capabilities.allowed_cpu_id_bitmask.get_bit(default_cpuid)
+    if default_cpuid > 1 {
+        return Err(UserspaceError::InvalidProcessorId)
+    }
+
+    // || !target_proc.capabilities.allowed_thread_prio_bit_mask.get_bit(main_thread_prio)
+    if main_thread_prio > 0x3F {
+        return Err(UserspaceError::InvalidThreadPriority)
+    }
+
+    // Set process default cpu core.
+
+    ProcessStruct::start(&target_proc, main_thread_prio, main_thread_stacksz)?;
+    Ok(())
+}

@@ -215,7 +215,7 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
 /// This function will definitely fuck up your stack, so make sure you're calling it on a
 /// never-scheduled thread's empty-stack.
 #[allow(clippy::fn_to_numeric_cast)]
-pub unsafe fn prepare_for_first_schedule(t: &ThreadStruct, entrypoint: usize, userspace_arg: usize, userspace_stack: usize) {
+pub unsafe fn prepare_for_first_schedule(t: &ThreadStruct, entrypoint: usize, userspace_args: (usize, usize), userspace_stack: usize) {
     #[repr(packed)]
     #[allow(clippy::missing_docs_in_private_items)]
     struct RegistersOnStack {
@@ -251,8 +251,8 @@ pub unsafe fn prepare_for_first_schedule(t: &ThreadStruct, entrypoint: usize, us
         ebp: stack_start,                         // -+
         esp: 0, // ignored by the popad anyway    //  |
         ebx: userspace_stack as u32,              //  |
-        edx: userspace_arg as u32,                //  |
-        ecx: 0,                                   //  |
+        ecx: userspace_args.0 as u32,             //  |
+        edx: userspace_args.1 as u32,             //  |
         eax: entrypoint as u32,                   //  |
         callback_eip: first_schedule as u32       //  |
         // --------------                             |
@@ -287,6 +287,7 @@ unsafe fn first_schedule() {
         asm!("
         push ebx
         push edx
+        push ecx
         push eax
         push edi
         call $0
@@ -294,7 +295,7 @@ unsafe fn first_schedule() {
     }
 
     /// Stack is set-up, now we can run rust code.
-    extern "C" fn first_schedule_inner(whoami: *const ThreadStruct, entrypoint: usize, userspace_arg: usize, userspace_stack: usize) -> ! {
+    extern "C" fn first_schedule_inner(whoami: *const ThreadStruct, entrypoint: usize, arg1: usize, arg2: usize, userspace_stack: usize) -> ! {
         // reconstruct an Arc to our ProcessStruct from the leaked pointer
         let current = unsafe { Arc::from_raw(whoami) };
 
@@ -317,7 +318,7 @@ unsafe fn first_schedule() {
         // call the scheduler to finish the high-level process switch mechanics
         unsafe {
             // safe: interrupts are off
-            crate::scheduler::scheduler_first_schedule(current, || jump_to_entrypoint(entrypoint, userspace_stack, userspace_arg));
+            crate::scheduler::scheduler_first_schedule(current, || jump_to_entrypoint(entrypoint, userspace_stack, arg1, arg2));
         }
 
         unreachable!()
@@ -336,7 +337,7 @@ unsafe fn first_schedule() {
 ///
 /// This way, just after the `iret`, cpu will be in ring 3, witl all of its registers cleared,
 /// `$eip` pointing to `ep`, and `$esp` pointing to `userspace_stack_ptr`.
-fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize, arg: usize) -> ! {
+fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize, arg1: usize, arg2: usize) -> ! {
     // gonna write constants in the code, cause not enough registers.
     // just check we aren't hard-coding the wrong values.
     const_assert_eq!((GdtIndex::UCode as u16) << 3 | 0b11, 0x2B);
@@ -363,15 +364,15 @@ fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize, arg: usize) -> ! {
 
         // Clean up all registers. Also setup arguments.
         mov ecx, $2
+        mov edx, $3
         mov eax, 0
         mov ebx, 0
-        mov edx, 0
         mov ebp, 0
         mov edi, 0
         mov esi, 0
 
         iretd
-        " :: "r"(ep), "r"(userspace_stack_ptr), "r"(arg) :
+        " :: "r"(ep), "r"(userspace_stack_ptr), "r"(arg1), "r"(arg2) :
              /* Prevent using eax as input, it's used early. */ "eax" : "intel", "volatile");
     }
 

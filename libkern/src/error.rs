@@ -32,8 +32,12 @@ enum_with_val! {
         InvalidMemPerms = 108,
         /// Memory range is not at an expected location.
         InvalidMemRange = 110,
-        // InvalidThreadPrio = 112,
-        // InvalidProcId = 113,
+        /// Invalid thread priority. Thread priority should be within the range
+        /// 0..=0x3F, and should be allowed in the kernel capabilities.
+        InvalidThreadPriority = 112,
+        /// Invalid processor id. Processor ID should exist on the current
+        /// machine and be allowed in the kernel capabilities.
+        InvalidProcessorId = 113,
         /// Passed handle is invalid.
         ///
         /// Either the handle passed is of the wrong type, or the handle number

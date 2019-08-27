@@ -594,3 +594,31 @@ pub fn create_process(procinfo: &ProcInfo, caps: &[u32]) -> Result<Process, Kern
         Ok(Process(Handle::new(hnd as _)))
     }
 }
+
+/// Start the given process on the provided CPU with the provided scheduler
+/// priority.
+///
+/// A stack of the given size will be allocated using the process' memory
+/// resource limit and memory pool.
+///
+/// The entrypoint is assumed to be the first address of the `code_addr` region
+/// provided in [create_process()]. It takes two parameters: the first is the
+/// usermode exception handling context, and should always be NULL. The second
+/// is a handle to the main thread.
+///
+/// # Errors
+///
+/// - `InvalidProcessorId`
+///   - Attempted to start the process on a processor that doesn't exist on the
+///     current machine, or a processor that the process is not allowed to use.
+/// - `InvalidThreadPriority`
+///   - Attempted to use a priority above 0x3F, or a priority that the created
+///     process is not allowed to use.
+/// - `MemoryFull`
+///   - Provided stack size is bigger than available vmem space.
+pub fn start_process(process_handle: &Process, main_thread_prio: u32, default_cpuid: u32, main_thread_stacksz: u32) -> Result<(), KernelError> {
+    unsafe {
+        syscall(nr::StartProcess, (process_handle.0).0.get() as usize, main_thread_prio as _, default_cpuid as _, main_thread_stacksz as _, 0, 0)?;
+        Ok(())
+    }
+}

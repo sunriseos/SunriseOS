@@ -22,10 +22,11 @@ use crate::sync::SpinRwLock;
 pub mod thread_local_storage;
 mod capabilities;
 pub use self::capabilities::ProcessCapabilities;
-use crate::paging::{InactiveHierarchy, InactiveHierarchyTrait};
+use crate::paging::{InactiveHierarchy, InactiveHierarchyTrait, PAGE_SIZE, MappingAccessRights};
 use self::thread_local_storage::TLSManager;
 use crate::i386::interrupt_service_routines::UserspaceHardwareContext;
 use sunrise_libkern::process::ProcInfo;
+use sunrise_libkern::MemoryType;
 
 /// The struct representing a process. There's one for every process.
 ///
@@ -54,7 +55,7 @@ pub struct ProcessStruct {
     pub killed:               AtomicBool,
 
     /// The entrypoint of the main thread.
-    pub entrypoint:           usize,
+    pub entrypoint:           VirtualAddress,
 
     /// Permissions of this process.
     pub capabilities:             ProcessCapabilities,
@@ -474,7 +475,7 @@ impl ProcessStruct {
             ProcessStruct {
                 pid,
                 name: String::from_utf8_lossy(&procinfo.name).into_owned(),
-                entrypoint: procinfo.code_addr as usize,
+                entrypoint: VirtualAddress(procinfo.code_addr as usize),
                 pmemory,
                 threads: SpinLockIRQ::new(Vec::new()),
                 phandles: SpinLockIRQ::new(HandleTable::default()),
@@ -486,6 +487,44 @@ impl ProcessStruct {
         );
 
         Ok(p)
+    }
+
+    /// Creates the initial thread, allocates the stack, and starts the process.
+    ///
+    /// # Errors
+    ///
+    /// - `ThreadAlreadyStarted`
+    ///   - Process is already started.
+    /// - `ProcessKilled` if the process struct was tagged `killed` before we
+    ///    had time to start it.
+    /// - `MemoryExhausted`
+    ///    - Failed to allocate stack or thread TLS.
+    pub fn start(this: &Arc<Self>, _main_thread_priority: u32, stack_size: usize) -> Result<(), UserspaceError> {
+        // ResourceLimit + 1 thread => 0x10801
+        // Check imageSize + mainThreadStackSize + stackSize > memoryUsageCapacity => 0xD001 MemoryExhaustion
+        // Check state > CreatedAttached => 0xFA01 ProcessAlreadyStarted
+
+        // ResourceLimit reserve align_up(stackSize, PAGE_SIZE) memory
+        // Allocate stack within new map region.
+        let stack_size = sunrise_libutils::align_up(stack_size, PAGE_SIZE);
+        let mut pmem = this.pmemory.lock();
+        let stack_addr = pmem.find_available_space(stack_size)?;
+        pmem.create_regular_mapping(stack_addr, stack_size, MemoryType::Stack, MappingAccessRights::u_rw())?;
+        core::mem::drop(pmem);
+
+        // Set self.mainThreadStackSize = stack_size.
+
+        // self.heapCapacity = self.memory_capacity - self.image_size - self.mainThreadStackSize;
+        // Initialize handle table - Done in new for us.
+        let first_thread = ThreadStruct::new(this, this.entrypoint, stack_addr + stack_size, None)?;
+        // InitForUser(), need to figure out what this does
+        this.phandles.lock().add_handle(Arc::new(Handle::Thread(first_thread.clone())));
+        // SetEntryArguments?
+        // Set process state
+        // Signal process
+        ThreadStruct::start(first_thread)?;
+        // Weird shit with state again??
+        Ok(())
     }
 
     /// Creates the very first process at boot.
@@ -521,7 +560,7 @@ impl ProcessStruct {
         ProcessStruct {
                 pid,
                 name: String::from("init"),
-                entrypoint: 0,
+                entrypoint: VirtualAddress(0),
                 pmemory: Mutex::new(pmemory),
                 threads: SpinLockIRQ::new(Vec::new()),
                 phandles: SpinLockIRQ::new(HandleTable::default()),
@@ -618,12 +657,14 @@ impl ThreadStruct {
 
         // if we're creating the main thread, push a handle to it in the process' handle table,
         // and give it to the thread as an argument.
-        let arg = match arg {
-            Some(arg) => arg,
+        let args = match arg {
+            Some(arg) => (arg, 0),
             None => {
                 debug_assert!(belonging_process.threads.lock().is_empty() &&
                               belonging_process.thread_maternity.lock().is_empty(), "Argument shouldn't be None");
-                belonging_process.phandles.lock().add_handle(Arc::new(Handle::Thread(Arc::downgrade(&t)))) as usize
+                let handle = belonging_process.phandles.lock().add_handle(Arc::new(Handle::Thread(Arc::downgrade(&t))));
+
+                (0, handle as usize)
             }
         };
 
@@ -631,7 +672,7 @@ impl ThreadStruct {
         unsafe {
             // Safety: We just created the ThreadStruct, and own the only reference
             // to it, so we *know* it never has been scheduled, and cannot be.
-            prepare_for_first_schedule(&t, ep.addr(), arg, stack.addr());
+            prepare_for_first_schedule(&t, ep.addr(), args, stack.addr());
         }
 
         // make a weak copy that we will return

@@ -23,7 +23,7 @@ pub unsafe extern fn start() {
 
         // Save our thread handle passed by the kernel
         // `esi` is callee-saved
-        mov esi, ecx
+        mov esi, edx
 
         // Save eip_pos address
         mov ecx, eax
