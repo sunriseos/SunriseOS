@@ -141,16 +141,14 @@ command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-time", "--release"]
 
 [tasks.fs]
-workspace = false
 description = "Compiles sunrise-fs"
-dependencies = ["install-rust-src"]
+dependencies = ["install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-fs"]
 
 [tasks.fs-release]
-workspace = false
 description = "Compiles sunrise-fs"
-dependencies = ["install-rust-src"]
+dependencies = ["install-cargo-xbuild"]
 command = "cargo"
 args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-fs", "--release"]
 
