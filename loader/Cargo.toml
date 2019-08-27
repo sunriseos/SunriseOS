@@ -1,0 +1,12 @@
+[package]
+name = "sunrise-loader"
+version = "0.1.0"
+authors = ["roblabla <unfiltered@roblab.la>"]
+edition = "2018"
+
+[dependencies]
+sunrise-libuser = { path = "../libuser" }
+sunrise-libkern = { path = "../libkern" }
+sunrise-libutils = { path = "../libutils" }
+log = "0.4"
+xmas-elf = "0.7.0"

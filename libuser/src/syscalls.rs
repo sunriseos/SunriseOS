@@ -588,9 +588,9 @@ pub fn map_process_memory(dstaddr: usize, proc_handle: &Process, srcaddr: usize,
 ///
 /// Note that you probably don't want to use this! Look instead for
 /// ProcessMana's `LaunchTitle` function.
-pub fn create_process(procinfo: &ProcInfo, caps: &[u32]) -> Result<Process, KernelError> {
+pub fn create_process(procinfo: &ProcInfo, caps: &[u8]) -> Result<Process, KernelError> {
     unsafe {
-        let (hnd, ..) = syscall(nr::CreateProcess, procinfo as *const _ as usize, caps.as_ptr() as usize, caps.len(), 0, 0, 0)?;
+        let (hnd, ..) = syscall(nr::CreateProcess, procinfo as *const _ as usize, caps.as_ptr() as usize, caps.len() / 4, 0, 0, 0)?;
         Ok(Process(Handle::new(hnd as _)))
     }
 }

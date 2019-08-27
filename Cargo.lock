@@ -798,6 +798,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sunrise-loader"
+version = "0.1.0"
+dependencies = [
+ "log 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sunrise-libkern 0.1.0",
+ "sunrise-libuser 0.1.0",
+ "sunrise-libutils 0.1.0",
+ "xmas-elf 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "sunrise-shell"
 version = "0.1.0"
 dependencies = [
