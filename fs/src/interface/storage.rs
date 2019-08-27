@@ -314,3 +314,182 @@ impl<B> IStorage for StorageCachedBlockDevice<B> where B: BlockDevice + Sync + S
         self.len().map_err(storage_error_to_libuser_error)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use storage_device::{BlockDevice, Block, BlockIndex, BlockCount, BlockError, CachedBlockDevice, StorageDevice};
+
+    /// Block device that when read from returns blocks filled with for every byte
+    /// their index in the block,
+    /// and when wrote to checks that for every byte it's its index in the block.
+    ///
+    /// Used to debug that our reading logic for unaligned buffers is correct.
+    #[derive(Debug)]
+    struct DbgBlockDevice;
+
+    impl BlockDevice for DbgBlockDevice {
+        fn read(&mut self, blocks: &mut [Block], _index: BlockIndex) -> Result<(), BlockError> {
+            assert_eq!(((&blocks[0]) as *const Block as usize) % core::mem::align_of::<Block>(), 0, "DbgBlockDevice got a misaligned block");
+            for block in blocks.iter_mut() {
+                for (index, byte) in block.contents.iter_mut().enumerate()  {
+                    *byte = index as u8 // overflows once per block
+                }
+            }
+            Ok(())
+        }
+
+        fn write(&mut self, blocks: &[Block], _index: BlockIndex) -> Result<(), BlockError> {
+            assert_eq!(((&blocks[0]) as *const Block as usize) % core::mem::align_of::<Block>(), 0, "DbgBlockDevice got a misaligned block");
+            for block in blocks.iter() {
+                for (index, byte) in block.contents.iter().enumerate() {
+                    if *byte != (index as u8) {
+                        return Err(storage_device::BlockError::WriteError)
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        fn count(&mut self) -> Result<BlockCount, BlockError> {
+            Ok(BlockCount(8))
+        }
+    }
+
+    use super::StorageCachedBlockDevice;
+    use super::IStorage;
+
+    /// An aligned buffer.
+    ///
+    /// To get a misaligned buffer from this, just do `align_buf.buf[1..]`.
+    #[repr(C, align(8))]
+    struct AlignedBuf {
+        buf: [u8; 4096]
+    }
+
+    #[test]
+    fn check_dbg_block_device_aligned() {
+        let mut storage_dev = StorageCachedBlockDevice::new(DbgBlockDevice, 16);
+        let mut aligned = AlignedBuf { buf: [0x55; 4096] };
+        let aligned_buf = &mut aligned.buf[0..];
+        assert_eq!((&aligned_buf[0] as *const u8 as usize) % 2, 0, "buf is not actually aligned");
+
+        storage_device::StorageDevice::read(&mut storage_dev, 0, aligned_buf)
+            .expect("reading failed");
+
+        for (index, byte) in aligned_buf.iter().enumerate() {
+            assert_eq!(*byte, index as u8, "failed checking block content. Index: {:02x}, Your buffer:\n{:02x?}", index, &aligned_buf);
+        }
+
+        // writing back should also work
+        storage_device::StorageDevice::write(&mut storage_dev, 0, aligned_buf)
+            .expect("writing failed");
+        storage_dev.flush()
+            .expect("flushing failed");
+    }
+
+
+    #[test]
+    fn check_dbg_block_device_misaligned() {
+        let mut storage_dev = StorageCachedBlockDevice::new(DbgBlockDevice, 16);
+        let mut aligned_buf = AlignedBuf { buf: [0x55; 4096] };
+        let misaligned_buf = &mut aligned_buf.buf[1..];
+        assert_eq!((&misaligned_buf[0] as *const u8 as usize) % 2, 1, "buf is not actually misaligned");
+
+        storage_device::StorageDevice::read(&mut storage_dev, 0, misaligned_buf)
+            .expect("reading failed");
+
+        for (index, byte) in misaligned_buf.iter().enumerate() {
+            assert_eq!(*byte, index as u8, "failed checking block content. Index: {:02x}, Your buffer:\n{:02x?}", index, &misaligned_buf);
+        }
+
+        // writing back should also work
+        storage_device::StorageDevice::write(&mut storage_dev, 0, misaligned_buf)
+            .expect("writing failed");
+        storage_dev.flush()
+            .expect("flushing failed");
+    }
+
+    #[test]
+    fn check_dbg_block_device_aligned_offset_8() {
+        let mut storage_dev = StorageCachedBlockDevice::new(DbgBlockDevice, 16);
+        let mut aligned = AlignedBuf { buf: [0x55; 4096] };
+        let aligned_buf = &mut aligned.buf[0..];
+        assert_eq!((&aligned_buf[0] as *const u8 as usize) % 2, 0, "buf is not actually saligned");
+
+        storage_device::StorageDevice::read(&mut storage_dev, 8, aligned_buf)
+            .expect("reading failed");
+
+        for (index, byte) in aligned_buf.iter().enumerate() {
+            assert_eq!(*byte, (index + 8) as u8, "failed checking block content. Index: {:02x}, Your buffer:\n{:02x?}", index, &aligned_buf);
+        }
+
+        // writing back should also work
+        storage_device::StorageDevice::write(&mut storage_dev, 8, aligned_buf)
+            .expect("writing failed");
+        storage_dev.flush()
+            .expect("flushing failed");
+    }
+
+    #[test]
+    fn check_dbg_block_device_misaligned_offset_8() {
+        let mut storage_dev = StorageCachedBlockDevice::new(DbgBlockDevice, 16);
+        let mut aligned_buf = AlignedBuf { buf: [0x55; 4096] };
+        let misaligned_buf = &mut aligned_buf.buf[1..];
+        assert_eq!((&misaligned_buf[0] as *const u8 as usize) % 2, 1, "buf is not actually misaligned");
+
+        storage_device::StorageDevice::read(&mut storage_dev, 8, misaligned_buf)
+            .expect("reading failed");
+
+        for (index, byte) in misaligned_buf.iter().enumerate() {
+            assert_eq!(*byte, (index + 8) as u8, "failed checking block content. Index: {:02x}, Your buffer:\n{:02x?}", index, &misaligned_buf);
+        }
+
+        // writing back should also work
+        storage_device::StorageDevice::write(&mut storage_dev, 8, misaligned_buf)
+            .expect("writing failed");
+        storage_dev.flush()
+            .expect("flushing failed");
+    }
+
+    #[test]
+    fn check_dbg_block_device_aligned_offset_7() {
+        let mut storage_dev = StorageCachedBlockDevice::new(DbgBlockDevice, 16);
+        let mut aligned = AlignedBuf { buf: [0x55; 4096] };
+        let aligned_buf = &mut aligned.buf[0..];
+        assert_eq!((&aligned_buf[0] as *const u8 as usize) % 2, 0, "buf is not actually saligned");
+
+        storage_device::StorageDevice::read(&mut storage_dev, 7, aligned_buf)
+            .expect("reading failed");
+
+        for (index, byte) in aligned_buf.iter().enumerate() {
+            assert_eq!(*byte, (index + 7) as u8, "failed checking block content. Index: {:02x}, Your buffer:\n{:02x?}", index, &aligned_buf);
+        }
+
+        // writing back should also work
+        storage_device::StorageDevice::write(&mut storage_dev, 7, aligned_buf)
+            .expect("writing failed");
+        storage_dev.flush()
+            .expect("flushing failed");
+    }
+
+    #[test]
+    fn check_dbg_block_device_misaligned_offset_7() {
+        let mut storage_dev = StorageCachedBlockDevice::new(DbgBlockDevice, 16);
+        let mut aligned_buf = AlignedBuf { buf: [0x55; 4096] };
+        let misaligned_buf = &mut aligned_buf.buf[1..];
+        assert_eq!((&misaligned_buf[0] as *const u8 as usize) % 2, 1, "buf is not actually misaligned");
+
+        storage_device::StorageDevice::read(&mut storage_dev, 7, misaligned_buf)
+            .expect("reading failed");
+
+        for (index, byte) in misaligned_buf.iter().enumerate() {
+            assert_eq!(*byte, (index + 7) as u8, "failed checking block content. Index: {:02x}, Your buffer:\n{:02x?}", index, &misaligned_buf);
+        }
+
+        // writing back should also work
+        storage_device::StorageDevice::write(&mut storage_dev, 7, misaligned_buf)
+            .expect("writing failed");
+        storage_dev.flush()
+            .expect("flushing failed");
+    }
+}
