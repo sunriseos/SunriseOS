@@ -142,8 +142,8 @@ fn main() {
         let mapped_module = elf_loader::map_grub_module(module)
             .unwrap_or_else(|_| panic!("Unable to find available memory for module {}", module.name()));
 
-        let mut name = [0; 12];
-        name[..module.name().len()].copy_from_slice(module.name().as_bytes());
+        let kip_header = elf_loader::get_kip_header(&mapped_module)
+            .unwrap_or_else(|| panic!("Unable to find KIP header for module {}", module.name()));
 
         let mut flags = ProcInfoFlags(0);
         flags.set_address_space_type(ProcInfoAddrSpace::AS32Bit);
@@ -155,10 +155,9 @@ fn main() {
         let aslr_base = 0x400000;
 
         let procinfo = ProcInfo {
-            name: name,
-            process_category: ProcessCategory::KernelBuiltin,
-            // TODO: Put TitleId somewhere in the ELF or args or something?
-            title_id: 0,
+            name: kip_header.name,
+            process_category: kip_header.process_category,
+            title_id: kip_header.title_id,
             code_addr: aslr_base as _,
             // We don't need this, the kernel loader allocates multiple code
             // pages.
@@ -167,6 +166,7 @@ fn main() {
             resource_limit_handle: None,
             system_resource_num_pages: 0
         };
+
         let proc = ProcessStruct::new(&procinfo, elf_loader::get_kacs(&mapped_module)).unwrap();
         let (ep, sp) = {
                 let mut pmemlock = proc.pmemory.lock();

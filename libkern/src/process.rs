@@ -111,7 +111,7 @@ impl ProcInfoFlags {
 
 enum_with_val! {
     /// Category of the process.
-    #[derive(PartialEq, Eq)]
+    #[derive(PartialEq, Eq, Clone, Copy)]
     pub struct ProcessCategory(u32) {
         /// Regular process created through the userspace loader.
         RegularTitle = 0,
@@ -147,4 +147,36 @@ pub struct ProcInfo {
     /// Maximum amount of kernel memory used to create the process. If 0, then
     /// there is no limit.
     pub system_resource_num_pages: u32,
+}
+
+/// Header for Kernel Builtins. Can be found in the `.kip_header` section of
+/// our ELFs. Nintendo KIPs start with a (slightly different, but functionally
+/// equivalent) header.
+#[derive(Clone, Copy, Debug)]
+pub struct KipHeader {
+    /// Should be *b"KIP1".
+    pub magic: [u8; 4],
+    /// Name of the program. Pad with \0 if it's less than 12 bytes.
+    pub name: [u8; 12],
+    /// Titleid of the program. Should start with 0x02 to avoid conflict with
+    /// nintendo.
+    pub title_id: u64,
+    /// Category of the process. Should always be KernelBuiltin.
+    pub process_category: ProcessCategory,
+    /// Priority of the starting thread.
+    pub main_thread_priority: u8,
+    /// CPU core the starting thread runs on.
+    pub default_cpu_core: u8,
+    /// Reserved, leave to 0.
+    pub reserved: u8,
+    /// Bitflags controlling the behavior of the process:
+    ///
+    /// - Bit 0-2: unused
+    /// - Bit 3: Is64Bit
+    /// - Bit 4: IsAddrSpace36Bit
+    /// - Bit 5: UseSystemPoolPartition (1: System, 0: Application)
+    /// - Bit 6-7: unused
+    pub flags: u8,
+    /// Number of pages for the starting thread's stack.
+    pub stack_page_count: u32,
 }

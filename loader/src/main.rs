@@ -30,7 +30,7 @@ extern crate alloc;
 
 use core::str;
 use sunrise_libuser::fs::{DirectoryEntry, DirectoryEntryType, FileSystemPath, IFileSystemProxy, IFileSystemServiceProxy};
-use sunrise_libuser::capabilities;
+use sunrise_libuser::{kip_header, capabilities};
 use sunrise_libkern::process::*;
 use sunrise_libuser::mem::PAGE_SIZE;
 use sunrise_libutils::div_ceil;
@@ -154,6 +154,18 @@ fn main() {
         warn!("No /bin folder on filesystem!");
     }
 }
+
+kip_header!(HEADER = sunrise_libuser::caps::KipHeader {
+    magic: *b"KIP1",
+    name: *b"loader\0\0\0\0\0\0",
+    title_id: 0x0200000000000001,
+    process_category: sunrise_libuser::caps::ProcessCategory::KernelBuiltin,
+    main_thread_priority: 0,
+    default_cpu_core: 0,
+    flags: 0,
+    reserved: 0,
+    stack_page_count: 16,
+});
 
 capabilities!(CAPABILITIES = Capabilities {
     svcs: [

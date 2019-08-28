@@ -23,6 +23,7 @@ use sunrise_libkern::MemoryType;
 use crate::frame_allocator::PhysicalMemRegion;
 use crate::utils::{self, align_up};
 use crate::error::KernelError;
+use sunrise_libkern::process::KipHeader;
 
 /// Represents a grub module once mapped in kernel memory
 #[derive(Debug)]
@@ -93,6 +94,29 @@ pub fn get_kacs<'a>(module: &'a MappedGrubModule<'_>) -> Option<&'a [u8]> {
 
     elf.find_section_by_name(".kernel_caps")
         .map(|section| section.raw_data(&elf))
+}
+
+/// Gets the KIP Header of the provided module, found in the .kip_header
+/// section of the ELF.
+#[allow(clippy::cast_ptr_alignment)]
+pub fn get_kip_header(module: &MappedGrubModule<'_>) -> Option<KipHeader> {
+    let elf = module.elf.as_ref().expect("Failed parsing multiboot module as elf");
+
+    let section = elf.find_section_by_name(".kip_header")?;
+
+    let data = section.raw_data(&elf);
+
+    if data.len() < core::mem::size_of::<KipHeader>() {
+        return None;
+    }
+
+    unsafe {
+        // Safety: We already guaranteed that data is big enough to contain at
+        // least one KipHeader. KipHeader is a POD, so it should be fine to
+        // read one from arbitrary data.
+        // TODO: Fucking plain.
+        Some(core::ptr::read_unaligned(data.as_ptr() as *const KipHeader))
+    }
 }
 
 /// Loads the given kernel built-in into the given page table.

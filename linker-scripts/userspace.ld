@@ -165,8 +165,8 @@ SECTIONS
     KEEP(*(.kernel_caps .kernel_caps.*))
   } :NONE
 
-  .kernel_ioports : {
-    KEEP(*(.kernel_ioports .kernel_ioports.*))
+  .kip_header : {
+    KEEP(*(.kip_header .kip_header.*))
   } :NONE
 
   /* Stabs debugging sections.  */
