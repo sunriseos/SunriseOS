@@ -3,6 +3,7 @@
 use core::num::NonZeroU32;
 use bitfield::bitfield;
 use crate::error::KernelError;
+use plain::Plain;
 
 /// Kernel memory pool.
 #[repr(u32)]
@@ -111,7 +112,7 @@ impl ProcInfoFlags {
 
 enum_with_val! {
     /// Category of the process.
-    #[derive(PartialEq, Eq, Clone, Copy)]
+    #[derive(PartialEq, Eq, Clone, Copy, Default)]
     pub struct ProcessCategory(u32) {
         /// Regular process created through the userspace loader.
         RegularTitle = 0,
@@ -152,8 +153,8 @@ pub struct ProcInfo {
 /// Header for Kernel Builtins. Can be found in the `.kip_header` section of
 /// our ELFs. Nintendo KIPs start with a (slightly different, but functionally
 /// equivalent) header.
-#[derive(Clone, Copy, Debug)]
 #[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct KipHeader {
     /// Should be *b"KIP1".
     pub magic: [u8; 4],
@@ -181,3 +182,7 @@ pub struct KipHeader {
     /// Number of pages for the starting thread's stack.
     pub stack_page_count: u32,
 }
+
+// Safety: KipHeader is a repr(C) struct with no padding, and all bit patterns
+// are valid.
+unsafe impl Plain for KipHeader {}

@@ -24,6 +24,7 @@ use crate::frame_allocator::PhysicalMemRegion;
 use crate::utils::{self, align_up};
 use crate::error::KernelError;
 use sunrise_libkern::process::KipHeader;
+use plain::Plain;
 
 /// Represents a grub module once mapped in kernel memory
 #[derive(Debug)]
@@ -110,13 +111,9 @@ pub fn get_kip_header(module: &MappedGrubModule<'_>) -> Option<KipHeader> {
         return None;
     }
 
-    unsafe {
-        // Safety: We already guaranteed that data is big enough to contain at
-        // least one KipHeader. KipHeader is a POD, so it should be fine to
-        // read one from arbitrary data.
-        // TODO: Fucking plain.
-        Some(core::ptr::read_unaligned(data.as_ptr() as *const KipHeader))
-    }
+    let mut header = KipHeader::default();
+    header.copy_from_bytes(data).unwrap();
+    Some(header)
 }
 
 /// Loads the given kernel built-in into the given page table.
