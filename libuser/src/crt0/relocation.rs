@@ -127,7 +127,7 @@ struct ElfRela {
 const R_386_RELATIVE: usize = 8;
 
 /// Handle basic relocation. Return a non zero value if failed.
-#[cfg(target_os = "none")]
+#[cfg(target_os = "sunrise")]
 #[no_mangle]
 #[allow(clippy::cast_ptr_alignment)]
 pub unsafe extern fn relocate_self(aslr_base: *mut u8, module_headr: *const ModuleHeader) -> u32 {
