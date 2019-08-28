@@ -153,6 +153,7 @@ pub struct ProcInfo {
 /// our ELFs. Nintendo KIPs start with a (slightly different, but functionally
 /// equivalent) header.
 #[derive(Clone, Copy, Debug)]
+#[repr(C)]
 pub struct KipHeader {
     /// Should be *b"KIP1".
     pub magic: [u8; 4],
