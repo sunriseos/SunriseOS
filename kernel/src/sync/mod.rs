@@ -62,13 +62,26 @@
 //!
 //! # Mutex
 //!
-//! TODO: document preemptive mutex
+//! [Mutex] is a lock that preempts when it cannot be obtained. Those are the locks you are expected
+//! to use when you have to do some long exclusive tasks.
 //!
+//! However since it uses the scheduler, it cannot be used in early boot.
+//!
+//! ### Deadlock avoidance
+//!
+//! Those locks are illegal for interrupt context.
+//!
+//! However, for every other use case they a lot less constrained compared to SpinLocks.
+//! But since they aren't recursive, you still can't lock one while holding it.
+//!
+//! You *can* preempt while holding such a lock, as long as the scheduler's code doesn't also use it
+//! for itself, but this would seem like a bad idea.
 //!
 //! [SpinLock]: crate::sync::SpinLock
 //! [SpinRwLock]: crate::sync::SpinRwLock
 //! [Once]: crate::sync::Once
 //! [SpinLockIRQ]: crate::sync::SpinLockIRQ
+//! [Mutex]: crate::sync::mutex::Mutex
 
 // export spin::Mutex as less ambiguous "SpinLock".
 pub use spin::{Mutex as SpinLock, MutexGuard as SpinLockGuard,
