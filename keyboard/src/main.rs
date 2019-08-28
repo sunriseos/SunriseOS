@@ -33,11 +33,8 @@ use sunrise_libuser::keyboard::StaticService as _;
 use sunrise_libuser::types::*;
 use sunrise_libuser::error::{Error, HidError};
 use log::info;
-use sunrise_libuser::types::{SharedMemory, MappedSharedMemory, ReadableEvent, WritableEvent};
-use sunrise_libuser::syscalls::MemoryPermissions;
-use sunrise_libuser::mem::{find_free_address, PAGE_SIZE};
+use sunrise_libuser::types::{ReadableEvent, WritableEvent};
 use sunrise_libuser::syscalls;
-use sunrise_libutils::align_up;
 use spin::{Once, Mutex};
 use sunrise_libuser::keyboard::HidKeyboardState;
 
@@ -73,10 +70,6 @@ capabilities!(CAPABILITIES = Capabilities {
         sunrise_libuser::syscalls::nr::CreateInterruptEvent,
         sunrise_libuser::syscalls::nr::SendSyncRequestWithUserBuffer,
 
-        sunrise_libuser::syscalls::nr::CreateSharedMemory,
-        sunrise_libuser::syscalls::nr::MapSharedMemory,
-        sunrise_libuser::syscalls::nr::UnmapSharedMemory,
-
         sunrise_libuser::syscalls::nr::CreateEvent,
         sunrise_libuser::syscalls::nr::SignalEvent,
 
@@ -93,9 +86,6 @@ capabilities!(CAPABILITIES = Capabilities {
 
 /// Keyboard handling structure.
 struct Keyboard {
-    /// The shared memory used by the keyboard to store state changes.
-    shared_memory: MappedSharedMemory,
-
     /// The event used to signal changes in the shared memory.
     writable_event: Option<WritableEvent>,
 
@@ -107,30 +97,15 @@ struct Keyboard {
 }
 
 impl Keyboard {
-    /// The size of the Keyboard state contained in the shared memory.
-    pub const KEYBOARD_STATE_SIZE: usize = 0x20;
-
     /// Create a new instance of Keyboard.
     pub fn new() -> Result<Self, Error> {
-        let size = Self::KEYBOARD_STATE_SIZE;
-
-        let shared_memory = SharedMemory::new(align_up(size, PAGE_SIZE as _) as _, MemoryPermissions::READABLE | MemoryPermissions::WRITABLE, MemoryPermissions::READABLE)?;
-        let addr = find_free_address(size as _, PAGE_SIZE)?;
-        let shared_memory = shared_memory.map(addr, align_up(size as _, PAGE_SIZE), MemoryPermissions::READABLE | MemoryPermissions::WRITABLE)?;
-
         let (writable_event, readable_event) = syscalls::create_event()?;
 
         Ok(Keyboard {
-            shared_memory,
             writable_event: Some(writable_event),
             readable_event,
             keys_queue: VecDeque::new()
         })
-    }
-
-    /// Get the shared memory of the Keyboard.
-    pub fn get_shared_memory(&self) -> HandleRef<'static> {
-        self.shared_memory.as_shared_mem().0.as_ref_static()
     }
 
     /// Get the readable update event of the Keyboard.
@@ -187,10 +162,6 @@ static KEYBOARD_INSTANCE: Once<Mutex<Keyboard>> = Once::new();
 struct StaticService;
 
 impl sunrise_libuser::keyboard::StaticService for StaticService {
-    fn get_shared_memory(&mut self, _manager: WorkQueue) -> Result<HandleRef<'static>, Error> {
-        Ok(KEYBOARD_INSTANCE.r#try().and_then(|x| Some(x.lock())).expect("Keyboard instance not initialized").get_shared_memory())
-    }
-
     fn get_keyboard_event(&mut self, _manager: WorkQueue) -> Result<HandleRef<'static>, Error> {
         Ok(KEYBOARD_INSTANCE.r#try().and_then(|x| Some(x.lock())).expect("Keyboard instance not initialized").get_readable_event())
     }

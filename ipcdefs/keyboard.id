@@ -364,9 +364,6 @@ type sunrise_libuser::keyboard::HidKeyboardState = struct<0x4> {
 
 # Keyboard interface
 interface sunrise_libuser::keyboard::StaticService is kbrd:u {
-    # Get an handle on a shared memory containing the keyboard state.
-    [0] get_shared_memory() -> handle<copy>;
-
     # Get an handle to an event triggered on keyboard update.
     [1] get_keyboard_event() -> handle<copy>;
 
