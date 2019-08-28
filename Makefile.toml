@@ -42,7 +42,7 @@ install_crate = { crate_name = "mkisofs-rs", binary = "mkisofs-rs", test_arg = "
 
 [tasks.install-xargo]
 dependencies = ["install-rust-src"]
-install_crate = { crate_name = "xargo", binary = "xargo", test_arg = "--help" }
+install_crate = { crate_name = "xargo", binary = "xargo", test_arg = "--version", min_version = "0.3.16" }
 
 [tasks.bootstrap]
 description = "Compiles the i386 bootstrap for debug"
@@ -142,15 +142,15 @@ args = ["build", "--target=i386-unknown-none-user", "--package=sunrise-time", "-
 
 [tasks.fs]
 description = "Compiles sunrise-fs"
-dependencies = ["install-cargo-xbuild"]
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-fs"]
+dependencies = ["install-xargo"]
+command = "xargo"
+args = ["build", "--target=i386-unknown-none-user", "--package=sunrise-fs"]
 
 [tasks.fs-release]
 description = "Compiles sunrise-fs"
-dependencies = ["install-cargo-xbuild"]
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-fs", "--release"]
+dependencies = ["install-xargo"]
+command = "xargo"
+args = ["build", "--target=i386-unknown-none-user", "--package=sunrise-fs", "--release"]
 
 [tasks.userspace]
 description = "Compiles userspace apps"
