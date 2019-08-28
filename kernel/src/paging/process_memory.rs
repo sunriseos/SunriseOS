@@ -22,7 +22,7 @@ use super::arch::{PAGE_SIZE, InactiveHierarchy, ActiveHierarchy};
 use super::lands::{UserLand, VirtualSpaceLand};
 use super::bookkeeping::UserspaceBookkeeping;
 use super::mapping::{Mapping, MappingFrames};
-use sunrise_libkern::MemoryType;
+use sunrise_libkern::{MemoryType, MemoryState, MemoryAttributes, MemoryPermissions};
 use super::cross_process::CrossProcessMapping;
 use super::MappingAccessRights;
 use crate::mem::{VirtualAddress, PhysicalAddress};
@@ -225,7 +225,7 @@ impl ProcessMemory {
         // ok, everything seems good, from now on treat errors as unexpected
 
         self.get_hierarchy().map_to_from_iterator(frames.iter().flatten(), address, flags);
-        let frames = if ty.get_memory_state().is_reference_counted() {
+        let frames = if ty.get_memory_state().contains(MemoryState::IS_REFERENCE_COUNTED) {
             MappingFrames::Shared(Arc::new(SpinRwLock::new(frames)))
         } else {
             MappingFrames::Owned(frames)
@@ -517,6 +517,74 @@ impl ProcessMemory {
     /// Switches to this process memory
     pub fn switch_to(&mut self) {
         self.table_hierarchy.switch_to();
+    }
+
+    /// Checks that the given memory range is homogenous (that is, all blocks
+    /// within the range have the same permissions and state), and that it has
+    /// an expected set of state, permissions and attributes.
+    ///
+    /// # Errors
+    ///
+    /// - `InvalidMemState`
+    ///   - The state of a subsection of the memory region is not in the
+    ///     expected state.
+    ///   - The perms of a subsection of the memory region is not in the
+    ///     expected state.
+    ///   - The attrs of a subsection of the memory region is not in the
+    ///     expected state.
+    ///   - The range does not have homogenous state or perms. All mappings in
+    ///     a region should have the same perms and state.
+    #[allow(clippy::too_many_arguments)]
+    pub fn check_range(&self, addr: VirtualAddress, size: usize,
+        state_mask: MemoryState, state_expected: MemoryState,
+        perms_mask: MemoryPermissions, perms_expected: MemoryPermissions,
+        _attrs_mask: MemoryAttributes, _attrs_expected: MemoryAttributes,
+        _attrs_ignore_mask: MemoryAttributes) -> Result<(MemoryState, MemoryPermissions, MemoryAttributes), KernelError>
+    {
+        let addr_end = addr + size;
+        let mut cur_addr = addr;
+        let mut first_block_state = None;
+        let mut first_block_perms: Option<MemoryPermissions> = None;
+        loop {
+            let mem = self.query_memory(cur_addr);
+            let mapping_perms = mem.mapping().flags().into();
+
+            // First check for coherence: Blocks after the first must have the
+            // same state and permissions.
+            if *first_block_state.get_or_insert(mem.mapping().state()) != mem.mapping().state() {
+                return Err(KernelError::InvalidMemState {
+                    address: cur_addr,
+                    ty: mem.mapping().state().ty(),
+                    backtrace: Backtrace::new()
+                })
+            }
+            if *first_block_perms.get_or_insert(mapping_perms) != mapping_perms {
+                return Err(KernelError::InvalidMemState {
+                    address: cur_addr,
+                    ty: mem.mapping().state().ty(),
+                    backtrace: Backtrace::new()
+                })
+            }
+
+            // If the blocks are coherent, (or if this is the first block) we
+            // should check that the state, permissions and attributes are all
+            // in the expected state.
+            if mem.mapping().state() & state_mask != state_expected ||
+                // mem.mapping().attributes() & attrs_mask != attrs_expected ||
+                mapping_perms & perms_mask != perms_expected
+            {
+                return Err(KernelError::InvalidMemState {
+                    address: cur_addr,
+                    ty: mem.mapping().state().ty(),
+                    backtrace: Backtrace::new()
+                });
+            }
+
+            cur_addr = mem.mapping().address() + mem.mapping().length();
+            if cur_addr >= addr_end {
+                return Ok((mem.mapping().state(), mem.mapping().flags().into(), MemoryAttributes::empty()))
+            }
+        }
     }
 }
 

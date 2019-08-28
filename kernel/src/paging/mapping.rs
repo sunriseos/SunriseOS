@@ -92,7 +92,7 @@ impl Mapping {
             .ok_or_else(|| KernelError::InvalidAddress { address: address.addr(), backtrace: Backtrace::new()})?;
 
         let state = ty.get_memory_state();
-        match (&frames, state.is_reference_counted(), ty) {
+        match (&frames, state.contains(MemoryState::IS_REFERENCE_COUNTED), ty) {
             (MappingFrames::None, _, MemoryType::Unmapped) => (),
             (MappingFrames::None, _, MemoryType::Reserved) => (),
             (MappingFrames::None, _, MemoryType::KernelStack) => (),

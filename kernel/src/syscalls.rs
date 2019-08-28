@@ -22,7 +22,7 @@ use crate::error::{UserspaceError, KernelError};
 use crate::sync::SpinRwLock;
 use crate::timer;
 use failure::Backtrace;
-use sunrise_libkern::{MemoryInfo, MemoryAttributes, MemoryPermissions, MemoryType};
+use sunrise_libkern::{MemoryInfo, MemoryAttributes, MemoryPermissions, MemoryType, MemoryState};
 use sunrise_libkern::process::*;
 use bit_field::BitArray;
 use crate::i386::gdt::{GDT, GdtIndex};
@@ -718,34 +718,29 @@ pub fn set_process_memory_permission(proc_hnd: u32, addr: usize, size: usize, pe
 
     // # KMemoryManager::SetProcessMemoryPermission
 
-    // checkrange
     let mut size = size;
     let mut addr = addr;
 
-    // TODO: This **REALLY** needs a helper function.
     let mut dstmem = dstproc.pmemory.lock();
+
+    dstmem.check_range(addr, size,
+        MemoryState::PROCESS_PERMISSION_CHANGE_ALLOWED, MemoryState::PROCESS_PERMISSION_CHANGE_ALLOWED,
+        MemoryPermissions::empty(), MemoryPermissions::empty(),
+        MemoryAttributes::all(), MemoryAttributes::empty(),
+        MemoryAttributes::IPC_MAPPED | MemoryAttributes::DEVICE_MAPPED)?;
+
     while size != 0 {
         let meminfo = dstmem.query_memory(addr);
-
-        if MemoryType::Unmapped == meminfo.mapping().state().ty() {
-            return Err(UserspaceError::InvalidMemState);
-        }
 
         let mapping_addr = meminfo.mapping().address();
         let mapping_length = meminfo.mapping().length();
         core::mem::drop(meminfo);
-        let meminfo = dstmem.unmap(mapping_addr, mapping_length)?;
-
-        if !meminfo.state().process_permission_change_allowed() {
-            // TODO: Reset perms on previous frames.
-            return Err(UserspaceError::InvalidMemState);
-        }
+        let meminfo = dstmem.unmap(mapping_addr, mapping_length).expect("Unmap can't fail.");
 
         let frames = if let MappingFrames::Shared(frames) = meminfo.frames() {
             frames
         } else {
-            // TODO: Reset perms on previous frames.
-            return Err(UserspaceError::InvalidMemState);
+            panic!("Non-shared frames in mapping {:?}", meminfo);
         };
 
         // Split mapping
@@ -765,7 +760,7 @@ pub fn set_process_memory_permission(proc_hnd: u32, addr: usize, size: usize, pe
         let out_type = match meminfo.state().ty() {
             MemoryType::CodeStatic => if perms.contains(MemoryPermissions::WRITABLE) { MemoryType::CodeMutable } else { MemoryType::CodeStatic },
             MemoryType::ModuleCodeStatic => if perms.contains(MemoryPermissions::WRITABLE) { MemoryType::ModuleCodeMutable } else { MemoryType::ModuleCodeStatic },
-            _ => unreachable!("Checked previously.")
+            _ => unreachable!("Got a state PROCESS_PERMISSION_CHANGE_ALLOWED that wasn't CodeStatic or ModuleCodeStatic, but a {:?}", meminfo.state().ty())
         };
 
         dstmem.map_partial_shared_mapping(frames.clone(), addr, offset, curlen, out_type, perms.into())?;
@@ -832,45 +827,39 @@ pub fn map_process_memory(dst_addr: usize, proc_hnd: u32, src_addr: usize, size:
         return Err(UserspaceError::InvalidMemRange)
     }
 
-    // TODO: Build an abstraction around querying a range of mappings.
-    // BODY: Right now, all the mapping stuff work in one of two ways:
-    // BODY:
-    // BODY: - They only accept mapping from a *single* source mapping
-    // BODY: - They accept mapping multiple mappings, but they do so manually
-    // BODY:
-    // BODY: This is obvously pretty bad. We should build a proper abstraction
-    // BODY: to support the second use-case, and we should make everything go
-    // BODY: through this abstraction. HOS/NX has a set of functions to support
-    // BODY: this:
-    // BODY:
-    // BODY: - `KMemoryManager::BuildIncrefPageListForRange`
-    // BODY:   - Iterates over the address space at the given range, building
-    // BODY:     a list/vector of pages that are mapped in that range. Those
-    // BODY:     pages are - obviously - incref'd from their refcount.
-    // BODY: - `KMemoryManager::MapPageListIntoCurrentProcess`
-    // BODY:    - Maps all the pages from the page list created above in the
-    // BODY:      current process.
     let mut size = size;
     let mut src_addr = src_addr;
     let mut dst_addr = dst_addr;
 
     let srcmem = srcproc.pmemory.lock();
     let mut dstmem = curproc.pmemory.lock();
+
+    // Check we're allowed to MAP_PROCESS in the source.
+    srcmem.check_range(src_addr, size,
+        MemoryState::MAP_PROCESS_ALLOWED, MemoryState::MAP_PROCESS_ALLOWED,
+        MemoryPermissions::empty(), MemoryPermissions::empty(),
+        MemoryAttributes::all(), MemoryAttributes::empty(),
+        MemoryAttributes::IPC_MAPPED | MemoryAttributes::DEVICE_MAPPED)?;
+
+    // Check the destination is fully unmapped.
+    dstmem.check_range(dst_addr, size,
+        MemoryState::all(), MemoryType::Unmapped.get_memory_state(),
+        MemoryPermissions::empty(), MemoryPermissions::empty(),
+        MemoryAttributes::empty(), MemoryAttributes::empty(),
+        MemoryAttributes::empty())?;
+
     while size != 0 {
         let meminfo = srcmem.query_memory(src_addr);
-
-        if !meminfo.mapping().state().map_process_allowed() {
-            // TODO: Remove already mapped frames
-            return Err(UserspaceError::InvalidMemState);
-        }
 
         let offset_in_mapping = src_addr - meminfo.mapping().address();
         let offset = offset_in_mapping + meminfo.mapping().phys_offset();
         let curlen = core::cmp::min(size, meminfo.mapping().length() - offset_in_mapping);
         if let MappingFrames::Shared(frames) = meminfo.mapping().frames() {
-            dstmem.map_partial_shared_mapping(frames.clone(), dst_addr, offset, curlen, MemoryType::ProcessMemory, MappingAccessRights::u_rw())?;
+            dstmem.map_partial_shared_mapping(frames.clone(), dst_addr, offset, curlen,
+                MemoryType::ProcessMemory, MappingAccessRights::u_rw())
+                .unwrap_or_else(|err| panic!("Failed to map in dst mem: {:?}", err));
         } else {
-            return Err(UserspaceError::InvalidMemState);
+            panic!("Got a broken meminfo with non-arc'd frames: {:?}", meminfo);
         }
         size -= curlen;
         src_addr += curlen;

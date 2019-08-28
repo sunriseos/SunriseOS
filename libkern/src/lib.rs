@@ -33,89 +33,76 @@ use core::mem::size_of;
 
 pub mod process;
 
-bitfield! {
+bitflags! {
     /// Represents the current state of a memory region: why is it allocated, and
     /// what operations are allowed.
-    #[derive(Clone, Copy, Default, PartialEq, Eq)]
-    pub struct MemoryState(u32);
-    /// [MemoryType] this state represents.
-    ty_inner, _: 7, 0;
-    /// Allows the use of `svcSetMemoryPermissions` on this memory region.
-    pub permission_change_allowed, _: 8;
-    /// Allow writing to read-only segments with debug syscalls.
-    // TODO: Investigate usage of force_read_writable_by_debug_syscalls
-    // BODY: I suspect it's used in debug syscalls to allow writing to read-only
-    // BODY: segments, but I'd need to double check.
-    pub force_read_writable_by_debug_syscalls, _: 9;
-    /// Allows sending this region over IPC.
-    pub ipc_send_allowed, _: 10;
-    /// Allows sending this region over IPC with buffer flag set to 1.
-    pub non_device_ipc_send_allowed, _: 11;
-    /// Allows sending this region over IPC with buffer flag set to 3.
-    pub non_secure_ipc_send_allowed, _: 12;
-    /// Allows the use of `svcSetProcessMemoryPermission` on this memory region.
-    pub process_permission_change_allowed, _: 14;
-    /// Allows remapping this memory region with `svcMapMemory`.
-    pub map_allowed, _: 15;
-    /// Allows unmapping this memory region through `svcUnmapProcessCodeMemory`.
-    pub unmap_process_code_memory_allowed, _: 16;
-    /// Allows creating Transfer Memory from this memory region with
-    /// `svcCreateTransferMemory`.
-    pub transfer_memory_allowed, _: 17;
-    /// Allows using [query_physical_memory] on this memory region.
-    ///
-    /// [query_physical_memory]: crate::interrupts::syscalls::query_physical_address
-    pub query_physical_address_allowed, _: 18;
-    /// Allows mapping this memory region to a DeviceAddressSpace through either
-    /// `svcMapDeviceAddressSpace` or `svcMapDeviceAddressSpaceByForce`.
-    pub map_device_allowed, _: 19;
-    /// Allows mapping this memory region to a DeviceAddressSpace through
-    /// `svcMapDeviceAddressSpaceAligned`.
-    pub map_device_aligned_allowed, _: 20;
-    /// Allows using this memory region as an IPC Command Buffer.
-    pub ipc_buffer_allowed, _: 21;
-    /// If true, this memory region is reference counted/pool-allocated.
-    pub is_reference_counted, _: 22;
-    /// Allows mapping this region accross process boundary through
-    /// `svcMapProcessMemory`
-    pub map_process_allowed, _: 23;
-    /// Allows using the `svcSetMemoryAttribute` syscall on this memory region.
-    pub attribute_change_allowed, _: 24;
-    /// Allows creating a CodeMemory backed by this memory region.
-    pub code_memory_allowed, _: 25;
-}
+    #[derive(Default)]
+    pub struct MemoryState: u32 {
+        /// The low 8 bits are used to keep the type.
+        // Note that normally, bitflags will refuse to be created with bits it
+        // does not recognize. However we can work around this behavior by
+        // specifying "compount" bits like the following. Even if we never match
+        // it, so long as the bits fall in the range, the bitflag will be
+        // considered valid.
+        const TY = 0xFF;
+        /// Allows the use of `svcSetMemoryPermissions` on this memory region.
+        const PERMISSION_CHANGE_ALLOWED = 1 << 8;
+        /// Allow writing to read-only segments with `svcWriteDebugProcessMemory`.
+        const FORCE_READ_WRITABLE_BY_DEBUG_SYSCALLS = 1 << 9;
+        /// Allows sending this region over IPC.
+        const IPC_SEND_ALLOWED = 1 << 10;
+        /// Allows sending this region over IPC with buffer flag set to 1.
+        const NON_DEVICE_IPC_SEND_ALLOWED = 1 << 11;
+        /// Allows sending this region over IPC with buffer flag set to 3.
+        const NON_SECURE_IPC_SEND_ALLOWED = 1 << 12;
+        // Empty
+        /// Allows the use of `svcSetProcessMemoryPermission` on this memory region.
+        const PROCESS_PERMISSION_CHANGE_ALLOWED = 1 << 14;
+        /// Allows remapping this memory region with `svcMapMemory`.
+        const MAP_ALLOWED = 1 << 15;
+        /// Allows unmapping this memory region through `svcUnmapProcessCodeMemory`.
+        const UNMAP_PROCESS_CODE_MEMORY_ALLOWED = 1 << 16;
+        /// Allows creating Transfer Memory from this memory region with
+        /// `svcCreateTransferMemory`.
+        const TRANSFER_MEMORY_ALLOWED = 1 << 17;
+        /// Allows using [query_physical_memory] on this memory region.
+        ///
+        /// [query_physical_memory]: crate::interrupts::syscalls::query_physical_address
+        const QUERY_PHYSICAL_ADDRESS_ALLOWED = 1 << 18;
+        /// Allows mapping this memory region to a DeviceAddressSpace through either
+        /// `svcMapDeviceAddressSpace` or `svcMapDeviceAddressSpaceByForce`.
+        const MAP_DEVICE_ALLOWED = 1 << 19;
+        /// Allows mapping this memory region to a DeviceAddressSpace through
+        /// `svcMapDeviceAddressSpaceAligned`.
+        const MAP_DEVICE_ALIGNED_ALLOWED = 1 << 20;
+        /// Allows using this memory region as an IPC Command Buffer.
+        const IPC_BUFFER_ALLOWED = 1 << 21;
+        /// If true, this memory region is reference counted/pool-allocated.
+        const IS_REFERENCE_COUNTED = 1 << 22;
+        /// Allows mapping this region accross process boundary through
+        /// `svcMapProcessMemory`
+        const MAP_PROCESS_ALLOWED = 1 << 23;
+        /// Allows using the `svcSetMemoryAttribute` syscall on this memory region.
+        const ATTRIBUTE_CHANGE_ALLOWED = 1 << 24;
+        /// Allows creating a CodeMemory backed by this memory region.
+        const CODE_MEMORY_ALLOWED = 1 << 25;
 
-// Implement debug ourselves so we can show ty instead of ty_inner.
-impl fmt::Debug for MemoryState {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("MemoryState")
-            .field("0", &self.0)
-            .field("ty", &self.ty())
-            .field("permission_change_allowed", &self.permission_change_allowed())
-            .field("force_read_writable_by_debug_syscalls", &self.force_read_writable_by_debug_syscalls())
-            .field("ipc_send_allowed", &self.ipc_send_allowed())
-            .field("non_device_ipc_send_allowed", &self.non_device_ipc_send_allowed())
-            .field("non_secure_ipc_send_allowed", &self.non_secure_ipc_send_allowed())
-            .field("process_permission_change_allowed", &self.process_permission_change_allowed())
-            .field("map_allowed", &self.map_allowed())
-            .field("unmap_process_code_memory_allowed", &self.unmap_process_code_memory_allowed())
-            .field("transfer_memory_allowed", &self.transfer_memory_allowed())
-            .field("query_physical_address_allowed", &self.query_physical_address_allowed())
-            .field("map_device_allowed", &self.map_device_allowed())
-            .field("map_device_aligned_allowed", &self.map_device_aligned_allowed())
-            .field("ipc_buffer_allowed", &self.ipc_buffer_allowed())
-            .field("is_reference_counted", &self.is_reference_counted())
-            .field("map_process_allowed", &self.map_process_allowed())
-            .field("attribute_change_allowed", &self.attribute_change_allowed())
-            .field("code_memory_allowed", &self.code_memory_allowed())
-            .finish()
+        /// All IPC Buffer Send permissions are allowed by this type.
+        const ALL_IPC_SEND_ALLOWED = Self::IPC_SEND_ALLOWED.bits |
+            Self::NON_DEVICE_IPC_SEND_ALLOWED.bits |
+            Self::NON_SECURE_IPC_SEND_ALLOWED.bits;
+        /// This type can use all IOMMU-related permissions (MapDevice allowed,
+        /// MapDeviceAligned allowed, and QueryPhysicalAddress allowed).
+        const CAN_IOMMU = Self::QUERY_PHYSICAL_ADDRESS_ALLOWED.bits |
+            Self::MAP_DEVICE_ALLOWED.bits |
+            Self::MAP_DEVICE_ALIGNED_ALLOWED.bits;
     }
 }
 
 impl MemoryState {
     /// [MemoryType] this state represents.
     pub fn ty(self) -> MemoryType {
-        match self.ty_inner() {
+        match self.bits & Self::TY.bits {
             0x00 => MemoryType::Unmapped,
             0x01 => MemoryType::Io,
             0x02 => MemoryType::Normal,
@@ -209,49 +196,49 @@ impl MemoryType {
     pub fn get_memory_state(self) -> MemoryState {
         match self {
             //
-            MemoryType::Unmapped               => MemoryState(0x00000000),
+            MemoryType::Unmapped               => MemoryState::from_bits_truncate(0x00000000),
             //
-            MemoryType::Io                     => MemoryState(0x00002001),
+            MemoryType::Io                     => MemoryState::from_bits_truncate(0x00002001),
             // QUERY_PHYSICAL
-            MemoryType::Normal                 => MemoryState(0x00042002),
+            MemoryType::Normal                 => MemoryState::from_bits_truncate(0x00042002),
             // DEBUG | IPC_SEND0 | IPC_SEND1 | IPC_SEND3 | PROCESS_PERM_CHANGE | QUERY_PHYSICAL | MAP_DEVICE | MAP_DEVICE_ALIGNED | REFCNT | MAP_PROCESS
-            MemoryType::CodeStatic             => MemoryState(0x00DC7E03),
+            MemoryType::CodeStatic             => MemoryState::from_bits_truncate(0x00DC7E03),
             // PERM_CHANGE | IPC_SEND0 | IPC_SEND1 | IPC_SEND3 | MAP | TRANSFER | QUERY_PHYSICAL | MAP_DEVICE | MAP_DEVICE_ALIGNED | IPC_CMD | REFCNT | MAP_PROCESS | ATTR_CHANGE | CODE_MEM
-            MemoryType::CodeMutable            => MemoryState(0x03FEBD04),
+            MemoryType::CodeMutable            => MemoryState::from_bits_truncate(0x03FEBD04),
             // PERM_CHANGE | IPC_SEND0 | IPC_SEND1 | IPC_SEND3 | MAP | TRANSFER | QUERY_PHYSICAL | MAP_DEVICE | MAP_DEVICE_ALIGNED | IPC_CMD | REFCNT | ATTR_CHANGE | CODE_MEM
-            MemoryType::Heap                   => MemoryState(0x037EBD05),
+            MemoryType::Heap                   => MemoryState::from_bits_truncate(0x037EBD05),
             // REFCNT
-            MemoryType::SharedMemory           => MemoryState(0x00402006),
+            MemoryType::SharedMemory           => MemoryState::from_bits_truncate(0x00402006),
             // PERM_CHANGE | IPC_SEND1 | MAP_DEVICE | REFCNT
-            MemoryType::Alias                  => MemoryState(0x00482907),
+            MemoryType::Alias                  => MemoryState::from_bits_truncate(0x00482907),
             // DEBUG | IPC_SEND0 | IPC_SEND1 | IPC_SEND3 | PROCESS_PERM_CHANGE | UNMAP_PROCESS | QUERY_PHYSICAL | MAP_DEVICE | MAP_DEVICE_ALIGNED | REFCNT | MAP_PROCESS
-            MemoryType::ModuleCodeStatic       => MemoryState(0x00DD7E08),
+            MemoryType::ModuleCodeStatic       => MemoryState::from_bits_truncate(0x00DD7E08),
             // PERM_CHANGE | IPC_SEND0 | IPC_SEND1 | IPC_SEND3 | MAP | UNMAP_PROCESS | TRANSFER | QUERY_PHYSICAL | MAP_DEVICE | MAP_DEVICE_ALIGNED | IPC_CMD | REFCNT | MAP_PROCESS | ATTR_CHANGE | CODE_MEM
-            MemoryType::ModuleCodeMutable      => MemoryState(0x03FFBD09),
+            MemoryType::ModuleCodeMutable      => MemoryState::from_bits_truncate(0x03FFBD09),
             // IPC_SEND0 | IPC_SEND1 | IPC_SEND3 | QUERY_PHYSICAL | MAP_DEVICE | MAP_DEVICE_ALIGNED | REFCNT
-            MemoryType::Ipc                    => MemoryState(0x005C3C0A),
+            MemoryType::Ipc                    => MemoryState::from_bits_truncate(0x005C3C0A),
             // IPC_SEND0 | IPC_SEND1 | IPC_SEND3 | QUERY_PHYSICAL | MAP_DEVICE | MAP_DEVICE_ALIGNED | REFCNT
-            MemoryType::Stack                  => MemoryState(0x005C3C0B),
+            MemoryType::Stack                  => MemoryState::from_bits_truncate(0x005C3C0B),
             // REFCNT
-            MemoryType::ThreadLocal            => MemoryState(0x0040200C),
+            MemoryType::ThreadLocal            => MemoryState::from_bits_truncate(0x0040200C),
             // IPC_SEND0 | IPC_SEND1 | IPC_SEND3 | QUERY_PHYSICAL | MAP_DEVICE | MAP_DEVICE_ALIGNED | REFCNT | ATTR_CHANGE
-            MemoryType::TransferMemoryIsolated => MemoryState(0x015C3C0D),
+            MemoryType::TransferMemoryIsolated => MemoryState::from_bits_truncate(0x015C3C0D),
             // IPC_SEND1 | IPC_SEND3 | QUERY_PHYSICAL | MAP_DEVICE | MAP_DEVICE_ALIGNED | REFCNT
-            MemoryType::TransferMemory         => MemoryState(0x005C380E),
+            MemoryType::TransferMemory         => MemoryState::from_bits_truncate(0x005C380E),
             // IPC_SEND1 | IPC_SEND3 | REFCNT
-            MemoryType::ProcessMemory          => MemoryState(0x0040380F),
+            MemoryType::ProcessMemory          => MemoryState::from_bits_truncate(0x0040380F),
             //
-            MemoryType::Reserved               => MemoryState(0x00000010),
+            MemoryType::Reserved               => MemoryState::from_bits_truncate(0x00000010),
             // IPC_SEND1 | IPC_SEND3 | QUERY_PHYSICAL | MAP_DEVICE | MAP_DEVICE_ALIGNED | REFCNT
-            MemoryType::NonSecureIpc           => MemoryState(0x005C3811),
+            MemoryType::NonSecureIpc           => MemoryState::from_bits_truncate(0x005C3811),
             // IPC_SEND1 | QUERY_PHYSICAL | MAP_DEVICE | REFCNT
-            MemoryType::NonDeviceIpc           => MemoryState(0x004C2812),
+            MemoryType::NonDeviceIpc           => MemoryState::from_bits_truncate(0x004C2812),
             //
-            MemoryType::KernelStack            => MemoryState(0x00002013),
+            MemoryType::KernelStack            => MemoryState::from_bits_truncate(0x00002013),
             // DEBUG | REFCNT
-            MemoryType::CodeReadOnly           => MemoryState(0x00402214),
+            MemoryType::CodeReadOnly           => MemoryState::from_bits_truncate(0x00402214),
             // REFCNT
-            MemoryType::CodeWritable           => MemoryState(0x00402015),
+            MemoryType::CodeWritable           => MemoryState::from_bits_truncate(0x00402015),
         }
     }
 }
