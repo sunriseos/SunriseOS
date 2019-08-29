@@ -288,15 +288,30 @@ args = ["-c", "kernel/src/main.rs", "bootstrap/src/main.rs",
 	"swipc-parser/src/lib.rs", "time/src/main.rs", "libtimezone/src/lib.rs"
 ]
 
-[tasks.clippy-sunrise-target]
-description = "Run clippy on sunrise components"
+[tasks.clippy-sunrise-kernel-target]
+description = "Run clippy on sunrise kernel and bootstrap"
 dependencies = ["install-xargo", "refresh-crates"]
 install_crate = { rustup_component_name = "clippy" }
 command = "xargo"
 args = ["clippy", "--target=i386-unknown-none",
+    "-p", "sunrise-kernel",
+    "-p", "sunrise-bootstrap",
+	"--",
+	"@@split(CLIPPY_RULES, )",
+	"${@}",
+	]
+
+[tasks.clippy-sunrise-userspace-target]
+description = "Run clippy on sunrise userspace"
+dependencies = ["install-xargo", "refresh-crates"]
+install_crate = { rustup_component_name = "clippy" }
+command = "xargo"
+args = ["clippy", "--target=i386-unknown-sunrise-user",
 	"--all", "--exclude", "swipc-gen", "--exclude", "swipc-parser",
 	"--exclude", "disk-initializer",
 	"--exclude", "docs",
+	"--exclude", "sunrise-kernel",
+	"--exclude", "sunrise-bootstrap",
 	"--",
 	"@@split(CLIPPY_RULES, )",
 	"${@}",
@@ -315,7 +330,7 @@ args = ["clippy",
 	]
 
 [tasks.clippy]
-dependencies = ["clippy-host-target", "clippy-sunrise-target"]
+dependencies = ["clippy-host-target", "clippy-sunrise-kernel-target", "clippy-sunrise-userspace-target"]
 
 [tasks.swipc-gen]
 description = "Get the output of running gen_ipc on an ipcdef file"
