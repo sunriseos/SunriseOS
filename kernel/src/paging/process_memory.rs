@@ -150,12 +150,11 @@ impl Default for ProcessMemory {
         // we don't have ASRL yet :(
         let heap_base_address = VirtualAddress(0x80000000);
 
-        let ret = ProcessMemory {
+        ProcessMemory {
             userspace_bookkeping: UserspaceBookkeeping::new(),
             table_hierarchy: InactiveHierarchy::new(),
             heap_base_address,
-        };
-        ret
+        }
     }
 }
 
