@@ -574,12 +574,47 @@ pub fn set_process_memory_permission(proc_hnd: &Process, addr: usize, size: usiz
 ///    - The dst region is outside of the UserLand address space, or within the
 ///      heap or map memory region.
 ///    - The src memory pages does not have the MAP_PROCESS state.
+///    - The dst memory pages is not of the Unmapped type.
 /// - `InvalidHandle`
 ///    - The handle passed as an argument does not exist or is not a Process
 ///      handle.
 pub fn map_process_memory(dstaddr: usize, proc_handle: &Process, srcaddr: usize, size: usize) -> Result<(), KernelError> {
     unsafe {
         syscall(nr::MapProcessMemory, dstaddr, (proc_handle.0).0.get() as _, srcaddr, size, 0, 0)?;
+        Ok(())
+    }
+}
+
+/// Unmaps a memory range mapped with [map_process_memory()]. `dst_addr` is an
+/// address in the current address space, while `src_addr` is the address in the
+/// remote address space that was previously mapped.
+///
+/// It is possible to partially unmap a ProcessMemory.
+///
+/// # Errors
+///
+/// - `InvalidAddress`
+///    - src_addr or dst_addr is not aligned to 0x1000.
+/// - `InvalidSize`
+///    - size is 0
+///    - size is not aligned to 0x1000.
+/// - `InvalidMemState`
+///    - `src_addr + size` overflows
+///    - `dst_addr + size` overflows
+///    - The src region is outside of the UserLand address space.
+///    - The dst region is outside of the UserLand address space, or within the
+///      heap or map memory region.
+///    - The src memory pages does not have the MAP_PROCESS state.
+///    - The src memory pages is not of the ProcessMemory type.
+/// - `InvalidMemRange`
+///    - The given source range does not map the same pages as the given dst
+///      range.
+/// - `InvalidHandle`
+///    - The handle passed as an argument does not exist or is not a Process
+///      handle.
+pub fn unmap_process_memory(dstaddr: usize, proc_handle: &Process, srcaddr: usize, size: usize) -> Result<(), KernelError> {
+    unsafe {
+        syscall(nr::UnmapProcessMemory, dstaddr, (proc_handle.0).0.get() as _, srcaddr, size, 0, 0)?;
         Ok(())
     }
 }

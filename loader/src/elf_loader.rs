@@ -116,9 +116,8 @@ fn load_segment(process: &Process, segment: ProgramHeader<'_>, elf_file: &ElfFil
         x => { panic ! ("Unexpected Segment data {:?}", x) }
     }
 
-    // TODO: Unmap process memory.
-    // BODY: Just need to implement the syscall and call it here. Will do before
-    // BODY: merge.
+    syscalls::unmap_process_memory(addr, process, virtual_addr, mem_size_total)
+        .expect("Cannot unload segment");
 
     syscalls::set_process_memory_permission(process, virtual_addr, mem_size_total, flags)
         .expect("Set memory permissions to go smoothly");

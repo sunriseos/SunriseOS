@@ -793,6 +793,7 @@ pub fn set_process_memory_permission(proc_hnd: u32, addr: usize, size: usize, pe
 ///    - The dst region is outside of the UserLand address space, or within the
 ///      heap or map memory region.
 ///    - The src memory pages does not have the MAP_PROCESS state.
+///    - The dst memory pages is not of the Unmapped type.
 /// - `InvalidHandle`
 ///    - The handle passed as an argument does not exist or is not a Process
 ///      handle.
@@ -860,6 +861,138 @@ pub fn map_process_memory(dst_addr: usize, proc_hnd: u32, src_addr: usize, size:
                 .unwrap_or_else(|err| panic!("Failed to map in dst mem: {:?}", err));
         } else {
             panic!("Got a broken meminfo with non-arc'd frames: {:?}", meminfo);
+        }
+        size -= curlen;
+        src_addr += curlen;
+        dst_addr += curlen;
+    }
+
+    Ok(())
+}
+
+/// Unmaps a memory range mapped with [map_process_memory()]. `dst_addr` is an
+/// address in the current address space, while `src_addr` is the address in the
+/// remote address space that was previously mapped.
+///
+/// It is possible to partially unmap a ProcessMemory.
+///
+/// # Errors
+///
+/// - `InvalidAddress`
+///    - src_addr or dst_addr is not aligned to 0x1000.
+/// - `InvalidSize`
+///    - size is 0
+///    - size is not aligned to 0x1000.
+/// - `InvalidMemState`
+///    - `src_addr + size` overflows
+///    - `dst_addr + size` overflows
+///    - The src region is outside of the UserLand address space.
+///    - The dst region is outside of the UserLand address space, or within the
+///      heap or map memory region.
+///    - The src memory pages does not have the MAP_PROCESS state.
+///    - The src memory pages is not of the ProcessMemory type.
+/// - `InvalidMemRange`
+///    - The given source range does not map the same pages as the given dst
+///      range.
+/// - `InvalidHandle`
+///    - The handle passed as an argument does not exist or is not a Process
+///      handle.
+pub fn unmap_process_memory(dst_addr: usize, proc_hnd: u32, src_addr: usize, size: usize) -> Result<(), UserspaceError> {
+    let src_addr = VirtualAddress(src_addr);
+    let dst_addr = VirtualAddress(dst_addr);
+
+    src_addr.check_aligned_to(PAGE_SIZE)?;
+    dst_addr.check_aligned_to(PAGE_SIZE)?;
+
+    if size == 0 || size & (PAGE_SIZE - 1) != 0 {
+        return Err(UserspaceError::InvalidSize);
+    }
+
+    if src_addr.checked_add(size).is_none() {
+        return Err(UserspaceError::InvalidMemState);
+    }
+    if dst_addr.checked_add(size).is_none() {
+        return Err(UserspaceError::InvalidMemState);
+    }
+
+    let curproc = scheduler::get_current_process();
+    let srcproc = curproc.phandles.lock().get_handle(proc_hnd)?.as_process()?;
+
+    // check srcproc address space
+    if !UserLand::contains_region(src_addr, size) {
+        return Err(UserspaceError::InvalidMemState);
+    }
+
+    // If dst_addr is within Heap region or Map region, error out.
+    if !UserLand::contains_region(dst_addr, size) {
+        return Err(UserspaceError::InvalidMemRange)
+    }
+
+    let mut size = size;
+    let mut src_addr = src_addr;
+    let mut dst_addr = dst_addr;
+
+    let srcmem = srcproc.pmemory.lock();
+    let mut dstmem = curproc.pmemory.lock();
+
+    // Check we're allowed to MAP_PROCESS in the source.
+    srcmem.check_range(src_addr, size,
+        MemoryState::MAP_PROCESS_ALLOWED, MemoryState::MAP_PROCESS_ALLOWED,
+        MemoryPermissions::empty(), MemoryPermissions::empty(),
+        MemoryAttributes::all(), MemoryAttributes::empty(),
+        MemoryAttributes::IPC_MAPPED | MemoryAttributes::DEVICE_MAPPED)?;
+
+    // Check the destination is all ProcessMemory.
+    dstmem.check_range(dst_addr, size,
+        MemoryState::all(), MemoryType::ProcessMemory.get_memory_state(),
+        MemoryPermissions::empty(), MemoryPermissions::empty(),
+        MemoryAttributes::all(), MemoryAttributes::empty(),
+        MemoryAttributes::empty())?;
+
+    // TODO: UnmapProcessMemory: Verify that the src page list == dst page list.
+    // BODY: In UnmapProcessMemory, we don't ensure that src_address is correct,
+    // BODY: that is, we don't check that the frames in the dst match the frame
+    // BODY: in the src. HOS/NX does this by building a PageList (essentially
+    // BODY: a vector of frames) and comparing them.
+    // BODY:
+    // BODY: We could do something similar by iterating over the Mappings and
+    // BODY: checking if their Frames + PhysOffset are equals.
+
+    // Unmap.
+    while size != 0 {
+        let mapping_address;
+        let mapping_length;
+
+        {
+            let meminfo = dstmem.query_memory(dst_addr);
+            mapping_address = meminfo.mapping().address();
+            mapping_length = meminfo.mapping().length();
+        }
+
+        let mapping = dstmem.unmap(mapping_address, mapping_length).unwrap();
+        let offset_in_mapping = dst_addr - mapping.address();
+        let curlen = core::cmp::min(size, mapping.length() - offset_in_mapping);
+
+        if let MappingFrames::Shared(frames) = mapping.frames() {
+
+            // Remap left bit
+            if offset_in_mapping != 0 {
+                dstmem.map_partial_shared_mapping(frames.clone(), mapping.address(),
+                    mapping.phys_offset(), offset_in_mapping, mapping.state().ty(),
+                    mapping.flags()).unwrap();
+            }
+
+            // Remap right bit
+            if curlen != mapping.length() - offset_in_mapping {
+                dstmem.map_partial_shared_mapping(frames.clone(),
+                    mapping.address() + offset_in_mapping + size,
+                    mapping.phys_offset() + offset_in_mapping + size,
+                    mapping.length() - (offset_in_mapping + size),
+                    mapping.state().ty(),
+                    mapping.flags()).unwrap();
+            }
+        } else {
+            panic!("Got a broken meminfo with non-arc'd frames: {:?}", mapping);
         }
         size -= curlen;
         src_addr += curlen;
