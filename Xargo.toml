@@ -2,7 +2,7 @@
 stage = 0
 
 [dependencies.compiler_builtins]
-version = "*"
+version = "=0.1.6"
 stage = 0
 features = ["core", "mem"]
 
