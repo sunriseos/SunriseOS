@@ -13,7 +13,7 @@ spin = "0.5"
 sunrise-libutils = { path = "../libutils" }
 sunrise-libkern = { path = "../libkern" }
 swipc-gen = { path = "../swipc-gen" }
-failure = { version = "0.1", default-features = false, features = ["derive"] }
+failure = { version = "0.1", default-features = false }
 font-rs = { git = "https://github.com/SunriseOS/font-rs" }
 log = "0.4"
 lazy_static = "1.3"

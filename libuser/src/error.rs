@@ -42,7 +42,7 @@ use core::fmt;
 
 /// The global error type. Every error defined here can be downcasted to this
 /// type. A Backtrace will be created when casting an error to this type.
-#[derive(Debug, Fail)]
+#[derive(Debug)]
 pub enum Error {
     /// A Kernel Error. Usually returned by syscalls.
     Kernel(KernelError, Backtrace),
