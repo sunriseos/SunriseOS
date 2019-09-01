@@ -28,15 +28,13 @@ extern crate bitfield;
 
 #[macro_use]
 extern crate sunrise_libutils;
-#[macro_use]
-extern crate failure;
 
 // Marked public for use in the object macro.
 #[macro_use]
 #[doc(hidden)]
 pub extern crate log as __log;
 
-use swipc_gen::gen_ipc;
+//use swipc_gen::gen_ipc;
 
 pub mod argv;
 pub mod caps;
@@ -48,22 +46,24 @@ pub mod threads;
 pub mod thread_local_storage;
 pub mod futures;
 
-#[gen_ipc(path = "../../ipcdefs/sm.id", prefix = "sunrise_libuser")]
-pub mod sm {}
-#[gen_ipc(path = "../../ipcdefs/vi.id", prefix = "sunrise_libuser")]
-pub mod vi {}
-#[gen_ipc(path = "../../ipcdefs/ahci.id", prefix = "sunrise_libuser")]
-pub mod ahci {}
-#[gen_ipc(path = "../../ipcdefs/time.id", prefix = "sunrise_libuser")]
-pub mod time {}
-#[gen_ipc(path = "../../ipcdefs/filesystem.id", prefix = "sunrise_libuser")]
-pub mod fs {}
-#[gen_ipc(path = "../../ipcdefs/keyboard.id", prefix = "sunrise_libuser")]
-pub mod keyboard {}
-#[gen_ipc(path = "../../ipcdefs/loader.id", prefix = "sunrise_libuser")]
-pub mod ldr {}
-#[gen_ipc(path = "../../ipcdefs/example.id", prefix = "sunrise_libuser")]
-pub mod example {}
+//#[gen_ipc(path = "../../ipcdefs/sm.id", prefix = "sunrise_libuser")]
+//pub mod sm {}
+//#[gen_ipc(path = "../../ipcdefs/vi.id", prefix = "sunrise_libuser")]
+//pub mod vi {}
+//#[gen_ipc(path = "../../ipcdefs/ahci.id", prefix = "sunrise_libuser")]
+//pub mod ahci {}
+//#[gen_ipc(path = "../../ipcdefs/time.id", prefix = "sunrise_libuser")]
+//pub mod time {}
+//#[gen_ipc(path = "../../ipcdefs/filesystem.id", prefix = "sunrise_libuser")]
+//pub mod fs {}
+//#[gen_ipc(path = "../../ipcdefs/keyboard.id", prefix = "sunrise_libuser")]
+//pub mod keyboard {}
+//#[gen_ipc(path = "../../ipcdefs/loader.id", prefix = "sunrise_libuser")]
+//pub mod ldr {}
+//#[gen_ipc(path = "../../ipcdefs/example.id", prefix = "sunrise_libuser")]
+//pub mod example {}
+include!(concat!(env!("OUT_DIR"), "/ipc_code.rs"));
+
 
 pub mod error;
 pub mod allocator;

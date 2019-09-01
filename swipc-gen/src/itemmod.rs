@@ -8,11 +8,10 @@
 //!
 //! Note that this still needs the "derive" feature.
 
-use syn::{self, token, Token, Attribute, Visibility, Ident, braced, AttrStyle};
+use syn::{self, token, Token, Attribute, Visibility, Ident, braced};
 use syn::token::Brace;
 use syn::parse::{Parse, ParseStream};
 use proc_macro2::TokenStream;
-use quote::{ToTokens, TokenStreamExt};
 
 /// A module or module declaration: `mod m` or `mod m { ... }`.
 ///
@@ -68,27 +67,6 @@ impl Parse for ItemMod {
             })
         } else {
             Err(lookahead.error())
-        }
-    }
-}
-
-impl ToTokens for ItemMod {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        tokens.append_all(self.attrs.iter().filter(|attr| attr.style == AttrStyle::Outer));
-        self.vis.to_tokens(tokens);
-        self.mod_token.to_tokens(tokens);
-        self.ident.to_tokens(tokens);
-        if let Some((ref brace, ref items)) = self.content {
-            brace.surround(tokens, |tokens| {
-                tokens.append_all(self.attrs.iter().filter(|attr|
-                    if let AttrStyle::Inner(_) = attr.style { true } else { false }));
-                tokens.append_all(items.clone().into_iter());
-            });
-        } else {
-            match self.semi {
-                Some(ref t) => t.to_tokens(tokens),
-                None => <Token![;]>::default().to_tokens(tokens)
-            }
         }
     }
 }
