@@ -18,6 +18,7 @@ use crate::vi::ViInterfaceProxy;
 /// Workaround rust-lang/rust#62729
 #[no_mangle]
 #[doc(hidden)]
+#[cfg(all(target_os = "sunrise", not(feature = "build-for-std-app")))]
 pub extern "C" fn fminf(x: f32, y: f32) -> f32 {
     libm::fminf(x, y)
 }
@@ -25,6 +26,7 @@ pub extern "C" fn fminf(x: f32, y: f32) -> f32 {
 /// Workaround rust-lang/rust#62729
 #[no_mangle]
 #[doc(hidden)]
+#[cfg(all(target_os = "sunrise", not(feature = "build-for-std-app")))]
 pub extern "C" fn fmaxf(x: f32, y: f32) -> f32 {
     libm::fmaxf(x, y)
 }

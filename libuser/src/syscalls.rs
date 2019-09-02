@@ -9,8 +9,9 @@ use crate::error::KernelError;
 
 // Assembly blob can't get documented, but clippy requires it.
 #[allow(clippy::missing_docs_in_private_items)]
+
 mod syscall_inner {
-    #[cfg(all(target_arch = "x86", target_os = "sunrise", not(test)))]
+    #[cfg(all(target_arch = "x86", target_os = "sunrise", not(test), not(feature = "build-for-std-app")))]
     global_asm!("
 .intel_syntax noprefix
 .global syscall_inner

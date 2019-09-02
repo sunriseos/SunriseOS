@@ -373,6 +373,7 @@ impl Drop for Thread {
 /// * save a pointer to it in its [TLS].
 /// * perform copy of `.tdata` and `.tbss` for the main thread.
 #[no_mangle] // called from asm
+#[cfg(all(target_os = "sunrise", not(feature = "build-for-std-app")))]
 pub extern fn init_main_thread(handle: u32) {
     let handle = ThreadHandle(Handle::new(handle));
 

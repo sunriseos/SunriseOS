@@ -42,5 +42,7 @@ swipc-gen = { path = "../swipc-gen" }
 
 [features]
 default = ["hashbrown/nightly", "futures-preview/nightly", "futures-preview/alloc_feature"]
-rustc-dep-of-std = ["core/rustc-dep-of-std", "compiler_builtins", "alloc", "hashbrown/rustc-dep-of-std", "linked_list_allocator/rustc-dep-of-std", "font-rs/rustc-dep-of-std", "futures-preview/rustc-dep-of-std", "generational-arena/rustc-dep-of-std"]
+disable-lang-items = []
+build-for-std-app = ["disable-lang-items"]
+rustc-dep-of-std = ["core/rustc-dep-of-std", "compiler_builtins", "alloc", "hashbrown/rustc-dep-of-std", "linked_list_allocator/rustc-dep-of-std", "font-rs/rustc-dep-of-std", "futures-preview/rustc-dep-of-std", "generational-arena/rustc-dep-of-std", "disable-lang-items"]
 raw = []
