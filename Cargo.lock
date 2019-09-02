@@ -238,10 +238,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "font-rs"
 version = "0.1.3"
-source = "git+https://github.com/SunriseOS/font-rs#fc6d2d0a4ba224dafe8426a8bf00c6f1ab5aba17"
+source = "git+https://github.com/SunriseOS/font-rs#aa1c9ed1382b9b77c22f094585c921c7122dc78e"
 dependencies = [
  "gcc 0.3.55 (registry+https://github.com/rust-lang/crates.io-index)",
- "hashbrown 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hashbrown 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "math 0.0.1 (git+https://github.com/roblabla/math.rs.git)",
 ]
 
