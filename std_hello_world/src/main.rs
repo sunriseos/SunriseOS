@@ -2,9 +2,26 @@
 extern crate sunrise_libuser as libuser;
 
 use std::time::SystemTime;
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
 
 fn main() {
-    println!("Hello, world!");
+    println!("Hello from main");
+
+    let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .append(true)
+            .create(true)
+            .open("system:/test.txt").unwrap();
+    file.write_all(b"Hello world!\n").unwrap();
+    file.seek(SeekFrom::Start(0)).unwrap();
+    let mut buffer = String::new();
+
+    file.read_to_string(&mut buffer).unwrap();
 
     match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
         Ok(n) => println!("1970-01-01 00:00:00 UTC was {} seconds ago!", n.as_secs()),
