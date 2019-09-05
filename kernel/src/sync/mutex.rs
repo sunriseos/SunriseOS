@@ -45,6 +45,7 @@ use alloc::vec::Vec;
 use core::cell::UnsafeCell;
 use core::fmt;
 use core::ops::{Deref, DerefMut};
+use core::marker::PhantomData;
 
 /// A type alias for the result of a nonblocking locking method.
 pub type TryLockResult<Guard> = Result<Guard, ()>;
@@ -114,9 +115,10 @@ struct MutexInnerInner {
 pub struct MutexGuard<'a, T: 'a> {
     /// Reference to the Mutex we'll unlock when dropped.
     __lock: &'a Mutex<T>,
+    /// Raw pointer just to make MutexGuard !Send.
+    __phantom: PhantomData<*mut ()>
 }
 
-impl<T> !Send for MutexGuard<'_, T> { }
 unsafe impl<T: Sync> Sync for MutexGuard<'_, T> { }
 
 /* ****************************************** MUTEX ********************************************* */
@@ -280,6 +282,7 @@ impl<'mutex, T> MutexGuard<'mutex, T> {
     unsafe fn new(lock: &'mutex Mutex<T>) -> MutexGuard<'mutex, T> {
         MutexGuard {
             __lock: lock,
+            __phantom: PhantomData,
         }
     }
 }
