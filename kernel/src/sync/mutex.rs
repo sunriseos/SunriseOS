@@ -199,6 +199,8 @@ impl<T> Mutex<T> {
     ///
     /// This makes it suitable for the kernel panic handler for example, where we want to acquire
     /// locks to resources possibly already held by the current thread, without panicking once more.
+    ///
+    /// [`lock`]: Mutex::lock
     pub fn try_lock(&self) -> TryLockResult<MutexGuard<'_, T>> {
         unsafe {
             if self.inner.try_lock() {
