@@ -64,7 +64,7 @@ pub fn kernel_panic(panic_origin: &PanicOrigin) -> ! {
     // todo: permanently_disable_interrupts shouldn't be unsafe.
     // body: disabling interrupts doesn't break any safety guidelines, and is perfectly safe as far as rustc is concerned.
     // Disable interrupts forever!
-    unsafe { sync::permanently_disable_interrupts(); }
+    unsafe { sync::spin_lock_irq::permanently_disable_interrupts(); }
     // Don't deadlock in the logger
     unsafe {
         // safe: All CPUs are halted at this point, and interrupts are stopped.

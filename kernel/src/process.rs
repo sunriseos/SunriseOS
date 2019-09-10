@@ -17,7 +17,7 @@ use crate::ipc::{ServerPort, ClientPort, ServerSession, ClientSession};
 use crate::mem::VirtualAddress;
 use failure::Backtrace;
 use crate::frame_allocator::PhysicalMemRegion;
-use crate::sync::RwLock;
+use crate::sync::SpinRwLock;
 
 pub mod thread_local_storage;
 mod capabilities;
@@ -123,7 +123,7 @@ pub struct ThreadStruct {
     ///
     /// * x86_32: loaded in the `gs` segment selectors.
     /// * x86_64: loaded in the `fs` segment selectors.
-    pub tls_elf: Mutex<VirtualAddress>,
+    pub tls_elf: SpinLock<VirtualAddress>,
 
     /// Userspace hardware context of this thread.
     ///
@@ -172,7 +172,7 @@ pub enum Handle {
     /// A shared memory region. The handle holds on to the underlying physical
     /// memory, which means the memory will only get freed once all handles to
     /// it are dropped.
-    SharedMemory(Arc<RwLock<Vec<PhysicalMemRegion>>>),
+    SharedMemory(Arc<SpinRwLock<Vec<PhysicalMemRegion>>>),
 }
 
 impl Handle {
@@ -249,9 +249,9 @@ impl Handle {
         }
     }
 
-    /// Casts the handle as an Arc<RwLock<Vec<[PhysicalMemRegion]>>>, or returns a
+    /// Casts the handle as an Arc<SpinRwLock<Vec<[PhysicalMemRegion]>>>, or returns a
     /// `UserspaceError`.
-    pub fn as_shared_memory(&self) -> Result<Arc<RwLock<Vec<PhysicalMemRegion>>>, UserspaceError> {
+    pub fn as_shared_memory(&self) -> Result<Arc<SpinRwLock<Vec<PhysicalMemRegion>>>, UserspaceError> {
         if let Handle::SharedMemory(ref s) = *self {
             Ok((*s).clone())
         } else {
@@ -496,7 +496,7 @@ impl ProcessStruct {
     /// # Panics
     ///
     /// Panics if max PID has been reached, which it shouldn't have since we're the first process.
-    unsafe fn create_first_process() -> Arc<ProcessStruct> {
+    unsafe fn create_first_process() -> ProcessStruct {
 
         // get the bootstrap hierarchy so we can free it
         let bootstrap_pages = InactiveHierarchy::from_currently_active();
@@ -513,8 +513,7 @@ impl ProcessStruct {
             panic!("Max PID reached!");
         }
 
-        Arc::new(
-            ProcessStruct {
+        ProcessStruct {
                 pid,
                 name: String::from("init"),
                 pmemory: Mutex::new(pmemory),
@@ -524,8 +523,7 @@ impl ProcessStruct {
                 thread_maternity: SpinLock::new(Vec::new()),
                 tls_manager: Mutex::new(TLSManager::default()),
                 capabilities: ProcessCapabilities::default(),
-            }
-        )
+        }
     }
 
     /// Kills a process by killing all of its threads.
@@ -607,7 +605,7 @@ impl ThreadStruct {
                 hwcontext : empty_hwcontext,
                 process: Arc::clone(belonging_process),
                 tls_region: tls,
-                tls_elf: Mutex::new(VirtualAddress(0x00000000)),
+                tls_elf: SpinLock::new(VirtualAddress(0x00000000)),
                 userspace_hwcontext: SpinLock::new(UserspaceHardwareContext::default()),
             }
         );
@@ -674,7 +672,7 @@ impl ThreadStruct {
     pub unsafe fn create_first_thread() -> Arc<ThreadStruct> {
 
         // first create the process we will belong to
-        let process = ProcessStruct::create_first_process();
+        let mut process = ProcessStruct::create_first_process();
 
         // the state of the process, currently running
         let state = ThreadStateAtomic::new(ThreadState::Running);
@@ -687,10 +685,12 @@ impl ThreadStruct {
 
         // create our thread local storage region
         let tls = {
-            let mut pmemory = process.pmemory.lock();
-            let mut tls_manager = process.tls_manager.lock();
-            tls_manager.allocate_tls(&mut pmemory).expect("Failed to allocate TLS for first thread")
+            let pmemory = process.pmemory.get_mut();
+            process.tls_manager.get_mut().allocate_tls(pmemory).expect("Failed to allocate TLS for first thread")
         };
+
+        // we're done mutating the ProcessStruct, Arc it
+        let process = Arc::new(process);
 
         let t = Arc::new(
             ThreadStruct {
@@ -699,7 +699,7 @@ impl ThreadStruct {
                 hwcontext,
                 process: Arc::clone(&process),
                 tls_region: tls,
-                tls_elf: Mutex::new(VirtualAddress(0x00000000)),
+                tls_elf: SpinLock::new(VirtualAddress(0x00000000)),
                 userspace_hwcontext: SpinLock::new(UserspaceHardwareContext::default()),
             }
         );

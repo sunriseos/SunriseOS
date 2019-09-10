@@ -134,7 +134,7 @@ pub fn is_in_schedule_queue(queue: &SpinLockIRQGuard<'_, Vec<Arc<ThreadStruct>>>
 
 /// Removes the current thread from the schedule queue, and schedule.
 ///
-/// The passed lock will be locked until the thread is safely removed from the schedule queue.
+/// The passed lock will remain locked until the thread is safely removed from the schedule queue.
 /// In other words, event handling code should wait for that lock to be dropped before attempting
 /// to call `add_to_schedule_queue`.
 ///

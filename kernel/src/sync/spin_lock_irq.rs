@@ -1,20 +1,15 @@
-//! Synchronization primitives used by the Sunrise kernel
+//! Lock disabling IRQs while held
+//!
+//! See the [sync] module documentation.
+//!
+//! [sync]: crate::sync
 
-use spin;
-
-pub use self::spin::{Once, RwLock, RwLockReadGuard, RwLockWriteGuard};
-
+use crate::i386::instructions::interrupts;
+use super::{SpinLock, SpinLockGuard};
 use core::fmt;
 use core::mem::ManuallyDrop;
 use core::ops::{Deref, DerefMut};
-pub use self::spin::{Mutex as SpinLock, MutexGuard as SpinLockGuard};
-use crate::i386::instructions::interrupts;
 use core::sync::atomic::{AtomicBool, Ordering};
-
-/// Placeholder for future Mutex implementation.
-pub type Mutex<T> = SpinLock<T>;
-/// Placeholder for future Mutex implementation.
-pub type MutexGuard<'a, T> = SpinLockGuard<'a, T>;
 
 /// Boolean to [permanently_disable_interrupts].
 ///
@@ -148,7 +143,6 @@ impl<T: fmt::Debug> fmt::Debug for SpinLockIRQ<T> {
     }
 }
 
-
 /// The SpinLockIrq lock guard.
 #[derive(Debug)]
 pub struct SpinLockIRQGuard<'a, T: ?Sized>(ManuallyDrop<SpinLockGuard<'a, T>>, bool);
@@ -179,42 +173,5 @@ impl<'a, T: ?Sized + 'a> Deref for SpinLockIRQGuard<'a, T> {
 impl<'a, T: ?Sized + 'a> DerefMut for SpinLockIRQGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut T {
         &mut *self.0
-    }
-}
-
-/// Abstraction around various kind of locks.
-///
-/// Some functions need to take a Lock and/or a LockGuard as argument, but don't
-/// really care about the kind of lock (schedule comes to mind). This trait is
-/// a simple abstraction around this concept.
-pub trait Lock<'a, GUARD: 'a> {
-    /// Locks the lock until the returned guard is dropped. The actual semantics
-    /// is up to the underlying lock. This trait does not make **any** guarantee
-    /// about anything like memory ordering or whatnot. Please read the
-    /// documentation of the underlying lock type.
-    fn lock(&'a self) -> GUARD;
-}
-
-impl<'a, T> Lock<'a, SpinLockGuard<'a, T>> for SpinLock<T> {
-    fn lock(&self) -> SpinLockGuard<'_, T> {
-        self.lock()
-    }
-}
-
-impl<'a, T> Lock<'a, SpinLockIRQGuard<'a, T>> for SpinLockIRQ<T> {
-    fn lock(&self) -> SpinLockIRQGuard<'_, T> {
-        self.lock()
-    }
-}
-
-impl<'a, T> Lock<'a, RwLockReadGuard<'a, T>> for RwLock<T> {
-    fn lock(&self) -> RwLockReadGuard<'_, T> {
-        self.read()
-    }
-}
-
-impl<'a, T> Lock<'a, RwLockWriteGuard<'a, T>> for RwLock<T> {
-    fn lock(&self) -> RwLockWriteGuard<'_, T> {
-        self.write()
     }
 }

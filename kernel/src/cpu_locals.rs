@@ -98,7 +98,7 @@ use core::mem::align_of;
 use core::alloc::Layout;
 use core::mem::size_of;
 use alloc::vec::Vec;
-use spin::Once;
+use crate::sync::Once;
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::fmt::Debug;
 

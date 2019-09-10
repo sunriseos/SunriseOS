@@ -30,7 +30,7 @@ use crate::frame_allocator::{FrameAllocator, FrameAllocatorTrait, PhysicalMemReg
 use crate::paging::arch::Entry;
 use crate::error::KernelError;
 use crate::utils::{check_size_aligned, check_nonzero_length};
-use crate::sync::RwLock;
+use crate::sync::SpinRwLock;
 use alloc::{vec::Vec, sync::Arc};
 use failure::Backtrace;
 
@@ -229,7 +229,7 @@ impl ProcessMemory {
 
         self.get_hierarchy().map_to_from_iterator(frames.iter().flatten(), address, flags);
         let frames = if ty.get_memory_state().is_reference_counted() {
-            MappingFrames::Shared(Arc::new(RwLock::new(frames)))
+            MappingFrames::Shared(Arc::new(SpinRwLock::new(frames)))
         } else {
             MappingFrames::Owned(frames)
         };
@@ -253,7 +253,7 @@ impl ProcessMemory {
     ///     * `length` is not page aligned.
     ///     * `length` is 0.
     pub fn map_partial_shared_mapping(&mut self,
-                                      shared_mapping: Arc<RwLock<Vec<PhysicalMemRegion>>>,
+                                      shared_mapping: Arc<SpinRwLock<Vec<PhysicalMemRegion>>>,
                                       address: VirtualAddress,
                                       phys_offset: usize,
                                       length: usize,
