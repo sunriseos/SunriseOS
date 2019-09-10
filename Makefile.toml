@@ -230,7 +230,7 @@ args = ["-c", "kernel/src/main.rs", "bootstrap/src/main.rs",
 	"sm/src/main.rs", "vi/src/main.rs", "ahci/src/main.rs",
 	"libutils/src/lib.rs", "libkern/src/lib.rs", "swipc-gen/src/lib.rs",
 	"swipc-parser/src/lib.rs", "time/src/main.rs", "libtimezone/src/lib.rs",
-	"loader/src/main.rs"
+	"loader/src/main.rs", "keyboard/src/main.rs"
 ]
 
 [tasks.clippy-sunrise-kernel-target]
