@@ -189,8 +189,6 @@ async fn update_keyboard(work_queue: WorkQueue<'_>) {
 }
 
 fn main() {
-    info!("Hello World");
-
     KEYBOARD_INSTANCE.call_once(|| Mutex::new(Keyboard::new().expect("Cannot initialize Keyboard!")));
 
     let mut man = WaitableManager::new();

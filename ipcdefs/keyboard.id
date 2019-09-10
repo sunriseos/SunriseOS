@@ -367,6 +367,7 @@ interface sunrise_libuser::keyboard::StaticService is kbrd:u {
     # Get an handle to an event triggered on keyboard update.
     [1] get_keyboard_event() -> handle<copy>;
 
-    # Get the last pressed keys.
+    # Read the x last pressed keys into the given buffer.
+    # A size is returned to indicate the number of states written in the buffer.
     [2] read_keyboard_states() -> (u64, array<sunrise_libuser::keyboard::HidKeyboardState, 0x6>);
 }

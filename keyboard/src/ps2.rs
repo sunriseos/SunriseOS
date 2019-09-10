@@ -23,7 +23,7 @@ use sunrise_libuser::keyboard::HidKeyboardState;
 use sunrise_libuser::keyboard::HidKeyboardStateType;
 use sunrise_libuser::keyboard::HidKeyboardScancode;
 use lazy_static::lazy_static;
-use log::debug;
+use log::{debug, warn};
 
 /// PS2 keyboard state.
 struct PS2 {
@@ -73,7 +73,7 @@ enum Key {
     Letter(LetterKey),
     Control(ControlKey),
     Scancode(HidKeyboardScancode),
-    Empty // not a scancode
+    Unknown // not a scancode
 }
 
 impl Key {
@@ -116,7 +116,7 @@ struct KeyEvent {
 impl KeyEvent {
 
     /// Reads one or more bytes from the port until it matches a known scancode sequence
-    #[allow(clippy::cognitive_complexity)] // sorry clippy, but you don't how terrible ps2 scancodes are.
+    #[allow(clippy::cognitive_complexity)] // sorry clippy, but you don't know how terrible ps2 scancodes are.
     fn read_key_event(port: Pio<u8>) -> KeyEvent {
         let scancode = port.read();
         let mut state = Pressed;
@@ -130,9 +130,9 @@ impl KeyEvent {
                     0x2A => { match port.read() {
                            0xe0 => { match port.read() {
                                    0x37 => { state = Pressed; Key::scancode(HidKeyboardScancode::SysRQ) },
-                                   unknown => { debug!("Unknown sequence 0xe0, 0x2a, 0xe0, {:#04x}", unknown); Key::Empty }
+                                   unknown => { warn!("Unknown sequence 0xe0, 0x2a, 0xe0, {:#04x}", unknown); Key::Unknown }
                            }},
-                           unknown => { debug!("Unknown sequence 0xe0, 0x2a, {:#04x}", unknown); Key::Empty }
+                           unknown => { warn!("Unknown sequence 0xe0, 0x2a, {:#04x}", unknown); Key::Unknown }
                     }},
 
                     // The print screen released sequence, 0xe0 0xb7 0xe0 0xaa
@@ -140,9 +140,9 @@ impl KeyEvent {
                     0x37 => { match port.read() {
                             0xe0 => { match port.read() {
                                    0xaa => { state = Released; Key::scancode(HidKeyboardScancode::SysRQ) },
-                                   unknown => { debug!("Unknown sequence 0xe0, 0x37, 0xe0, {:#04x}", unknown); Key::Empty }
+                                   unknown => { warn!("Unknown sequence 0xe0, 0x37, 0xe0, {:#04x}", unknown); Key::Unknown }
                            }},
-                           unknown => { debug!("Unknown sequence 0xe0, 0x37, {:#04x}", unknown); Key::Empty }
+                           unknown => { warn!("Unknown sequence 0xe0, 0x37, {:#04x}", unknown); Key::Unknown }
                     }},
 
                     // regular multibytes scancodes
@@ -193,7 +193,7 @@ impl KeyEvent {
                             0x6C => Key::ctrl("Email"),
                             0x6D => Key::ctrl("Media"),
 
-                            unknown => { debug!("Unknown sequence 0xe0, {:#04x}", unknown); Key::Empty }
+                            unknown => { warn!("Unknown sequence 0xe0, {:#04x}", unknown); Key::Unknown }
                         }
                     } // end match _
                 } // end match second_byte
@@ -207,15 +207,15 @@ impl KeyEvent {
                         0xe1 => { match port.read() {
                             0x9d => { match port.read() {
                                 0xc5 => { state = Pressed; Key::ctrl("Pause") },
-                                unknown => { debug!("Unknown sequence 0xe1, 0x1d, 0x45, 0xe1, 0x9d {:#04x}", unknown); Key::Empty }
+                                unknown => { warn!("Unknown sequence 0xe1, 0x1d, 0x45, 0xe1, 0x9d {:#04x}", unknown); Key::Unknown }
                             }},
-                            unknown => { debug!("Unknown sequence 0xe1, 0x1d, 0x45, 0xe1 {:#04x}", unknown); Key::Empty }
+                            unknown => { warn!("Unknown sequence 0xe1, 0x1d, 0x45, 0xe1 {:#04x}", unknown); Key::Unknown }
                         }},
-                        unknown => { debug!("Unknown sequence 0xe1, 0x1d, 0x45, {:#04x}", unknown); Key::Empty }
+                        unknown => { warn!("Unknown sequence 0xe1, 0x1d, 0x45, {:#04x}", unknown); Key::Unknown }
                     }},
-                    unknown => { debug!("Unknown sequence 0xe1, 0x1d, {:#04x}", unknown); Key::Empty }
+                    unknown => { warn!("Unknown sequence 0xe1, 0x1d, {:#04x}", unknown); Key::Unknown }
                 }},
-                unknown => { debug!("Unknown sequence 0xe1, {:#04x}", unknown); Key::Empty }
+                unknown => { warn!("Unknown sequence 0xe1, {:#04x}", unknown); Key::Unknown }
             }}, // end match 0xe1
 
 
@@ -289,7 +289,7 @@ impl KeyEvent {
 
                     0x5c => Key::ctrl("Command Right"),
 
-                    unknown => { debug!("Unknown scancode {:#04x}", unknown); Key::Empty }
+                    unknown => { warn!("Unknown scancode {:#04x}", unknown); Key::Unknown }
                 }
             } // end single-byte scancodes
         };
@@ -403,7 +403,7 @@ impl PS2 {
                         modifiers: self.encode_modifiers(s)
                     })
                 },
-                KeyEvent {key: Key::Empty, state: s} => {
+                KeyEvent {key: Key::Unknown, state: s} => {
                     Some(HidKeyboardState {
                         data: 0,
                         additional_data: 0,
@@ -430,7 +430,7 @@ impl PS2 {
                     KeyEvent {key: Key::Letter(l),  state: State::Pressed  } => { return self.key_to_letter(l) },
                     KeyEvent {key: Key::Letter(_),  state: State::Released } => { /* ignore released letters */ },
                     KeyEvent {key: Key::Control(_), ..                     } => { /* ignore legacy keys */ },
-                    KeyEvent {key: Key::Empty,      ..                     } => { /* ignore unknown keys */ },
+                    KeyEvent {key: Key::Unknown,      ..                     } => { /* ignore unknown keys */ },
                     KeyEvent {key: Key::Scancode(k), state: s              } => { self.handle_control_key(k, s); },
                 }
             } else {
