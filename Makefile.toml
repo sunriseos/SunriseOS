@@ -24,7 +24,38 @@ CLIPPY_RULES = """
 -W clippy::used_underscore_binding \
 -W clippy::wildcard_dependencies \
 -W clippy::wrong_pub_self_convention"""
+QEMU_COMMON_FLAGS = """
+    -boot d \
+    -cdrom os.iso \
+    -serial stdio \
+    -vnc ${VNC_PORT} \
+    -no-reboot \
+    -drive id=diskA,file=DISK.img,format=raw,if=none -device ahci,id=ahci \
+    -device ide-drive,drive=diskA,bus=ahci.0 \
+    -machine q35"""
 
+#### Profile-specific flags
+# Which subfolder of target will rustc put its files into. Target is
+# automatically prepended if necessary.
+PROFILE_NAME = "debug"
+# Flags to pass to cargo when building any project.
+COMPILER_FLAGS = ""
+# Extra flags to pass when building the kernel. Appended to COMPILER_FLAGS.
+KERNEL_FLAGS = ""
+# Extra flags to pass to qemu.
+QEMU_PROFILE_FLAGS = ""
+
+[env.development]
+PROFILE_NAME = "debug"
+COMPILER_FLAGS = ""
+KERNEL_FLAGS = "-Z package-features --features=panic-on-exception"
+QEMU_EXTRA_FLAGS = "-gdb tcp::${GDB_PORT} -S -d cpu_reset"
+
+[env.production]
+PROFILE_NAME = "release"
+COMPILER_FLAGS = "--release"
+KERNEL_FLAGS = ""
+QEMU_EXTRA_FLAGS = ""
 
 [tasks.bootstrap-linker]
 script_runner = "@shell"
@@ -45,120 +76,62 @@ dependencies = ["install-rust-src"]
 install_crate = { crate_name = "xargo", binary = "xargo", test_arg = "--version", min_version = "0.3.16" }
 
 [tasks.bootstrap]
-description = "Compiles the i386 bootstrap for debug"
+description = "Compiles the i386 bootstrap"
 dependencies = ["bootstrap-linker", "install-xargo"]
 command = "xargo"
-args = ["build", "--target=i386-unknown-none", "--package=sunrise-bootstrap" ]
-
-[tasks.bootstrap-release]
-description = "Compiles the i386 bootstrap for release"
-dependencies = ["bootstrap-linker", "install-xargo"]
-command = "xargo"
-args = ["build", "--target=i386-unknown-none", "--package=sunrise-bootstrap", "--release" ]
+args = ["build", "--target=i386-unknown-none", "--package=sunrise-bootstrap", "@@split(COMPILER_FLAGS, )" ]
 
 [tasks.kernel]
-description = "Compiles the kernel for debug"
+description = "Compiles the kernel"
 dependencies = ["kernel-linker", "install-xargo"]
 command = "xargo"
-args = ["build", "--target=i386-unknown-none", "--package=sunrise-kernel", "-Z", "package-features", "--features=panic-on-exception"]
-
-[tasks.kernel-release]
-description = "Compiles the kernel for release"
-dependencies = ["kernel-linker", "install-xargo"]
-command = "xargo"
-args = ["build", "--target=i386-unknown-none", "--package=sunrise-kernel", "--release" ]
+args = ["build", "--target=i386-unknown-none", "--package=sunrise-kernel", "@@split(COMPILER_FLAGS, )", "@@split(KERNEL_FLAGS, )"]
 
 [tasks.vi]
 description = "Compiles sunrise-vi"
 dependencies = ["install-xargo"]
 command = "xargo"
-args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-vi"]
-
-[tasks.vi-release]
-description = "Compiles sunrise-vi"
-dependencies = ["install-xargo"]
-command = "xargo"
-args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-vi", "--release"]
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-vi", "@@split(COMPILER_FLAGS, )"]
 
 [tasks.sm]
 description = "Compiles sunrise-sm"
 dependencies = ["install-xargo"]
 command = "xargo"
-args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-sm"]
-
-[tasks.sm-release]
-description = "Compiles sunrise-sm"
-dependencies = ["install-xargo"]
-command = "xargo"
-args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-sm", "--release"]
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-sm", "@@split(COMPILER_FLAGS, )"]
 
 [tasks.shell]
 description = "Compiles sunrise-shell"
 dependencies = ["install-xargo"]
 command = "xargo"
-args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-shell"]
-
-[tasks.shell-release]
-description = "Compiles sunrise-shell"
-dependencies = ["install-xargo"]
-command = "xargo"
-args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-shell", "--release"]
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-shell", "@@split(COMPILER_FLAGS, )"]
 
 [tasks.wall-clock]
 description = "Compiles sunrise-wall-clock"
 dependencies = ["install-xargo"]
 command = "xargo"
-args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-wall-clock"]
-
-[tasks.wall-clock-release]
-description = "Compiles sunrise-wall-clock"
-dependencies = ["install-xargo"]
-command = "xargo"
-args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-wall-clock", "--release"]
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-wall-clock", "@@split(COMPILER_FLAGS, )"]
 
 [tasks.ahci]
 description = "Compiles sunrise-ahci"
 dependencies = ["install-xargo"]
 command = "xargo"
-args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-ahci"]
-
-[tasks.ahci-release]
-description = "Compiles sunrise-ahci"
-dependencies = ["install-xargo"]
-command = "xargo"
-args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-ahci", "--release"]
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-ahci", "@@split(COMPILER_FLAGS, )"]
 
 [tasks.time]
 description = "Compiles sunrise-time"
 dependencies = ["install-xargo"]
 command = "xargo"
-args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-time"]
-
-[tasks.time-release]
-description = "Compiles sunrise-time"
-dependencies = ["install-xargo"]
-command = "xargo"
-args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-time", "--release"]
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-time", "@@split(COMPILER_FLAGS, )"]
 
 [tasks.fs]
 description = "Compiles sunrise-fs"
 dependencies = ["install-xargo"]
 command = "xargo"
-args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-fs"]
-
-[tasks.fs-release]
-description = "Compiles sunrise-fs"
-dependencies = ["install-xargo"]
-command = "xargo"
-args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-fs", "--release"]
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-fs", "@@split(COMPILER_FLAGS, )"]
 
 [tasks.userspace]
 description = "Compiles userspace apps"
 dependencies = ["shell", "wall-clock", "sm", "vi", "ahci", "time", "fs"]
-
-[tasks.userspace-release]
-description = "Compiles userspace apps"
-dependencies = ["shell-release", "wall-clock-release", "sm-release", "vi-release", "ahci-release", "time-release", "fs-release"]
 
 [tasks.iso]
 description = "Creates a bootable ISO containing the kernel and grub."
@@ -166,34 +139,15 @@ dependencies = ["bootstrap", "kernel", "userspace", "install-mkisofs-rs"]
 script_runner = "@shell"
 script = [
 '''
-cp target/i386-unknown-none/debug/sunrise-bootstrap           isofiles/boot/
-cp target/i386-unknown-none/debug/sunrise-kernel              isofiles/boot/
-cp target/i386-unknown-sunrise-user/debug/sunrise-shell          isofiles/boot/
-cp target/i386-unknown-sunrise-user/debug/sunrise-time           isofiles/boot/
-cp target/i386-unknown-sunrise-user/debug/sunrise-wall-clock     isofiles/boot/
-cp target/i386-unknown-sunrise-user/debug/sunrise-sm             isofiles/boot/
-cp target/i386-unknown-sunrise-user/debug/sunrise-vi             isofiles/boot/
-cp target/i386-unknown-sunrise-user/debug/sunrise-ahci           isofiles/boot/
-cp target/i386-unknown-sunrise-user/debug/sunrise-fs             isofiles/boot/
-mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
-'''
-]
-
-[tasks.iso-release]
-description = "Creates a bootable ISO containing the kernel and grub."
-dependencies = ["bootstrap-release", "kernel-release", "userspace-release", "install-mkisofs-rs"]
-script_runner = "@shell"
-script = [
-'''
-cp target/i386-unknown-none/release/sunrise-bootstrap           isofiles/boot/
-cp target/i386-unknown-none/release/sunrise-kernel              isofiles/boot/
-cp target/i386-unknown-sunrise-user/release/sunrise-shell          isofiles/boot/
-cp target/i386-unknown-sunrise-user/release/sunrise-time           isofiles/boot/
-cp target/i386-unknown-sunrise-user/release/sunrise-wall-clock     isofiles/boot/
-cp target/i386-unknown-sunrise-user/release/sunrise-sm             isofiles/boot/
-cp target/i386-unknown-sunrise-user/release/sunrise-vi             isofiles/boot/
-cp target/i386-unknown-sunrise-user/release/sunrise-ahci           isofiles/boot/
-cp target/i386-unknown-sunrise-user/release/sunrise-fs             isofiles/boot/
+cp target/i386-unknown-none/$PROFILE_NAME/sunrise-bootstrap           isofiles/boot/
+cp target/i386-unknown-none/$PROFILE_NAME/sunrise-kernel              isofiles/boot/
+cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-shell          isofiles/boot/
+cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-time           isofiles/boot/
+cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-wall-clock     isofiles/boot/
+cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-sm             isofiles/boot/
+cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-vi             isofiles/boot/
+cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-ahci           isofiles/boot/
+cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-fs             isofiles/boot/
 mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
 '''
 ]
@@ -214,33 +168,10 @@ condition_script = [ "if exists DISK.img exit 1" ]
 
 [tasks.qemu]
 description = "Runs the bootable ISO in qemu."
-dependencies = ["iso-release", "create-disk-if-not-exist"]
-command = "qemu-system-i386"
-args = [
-    "-boot", "d",
-    "-cdrom", "os.iso",
-    "-serial", "stdio",
-    "-vnc", "${VNC_PORT}",
-    "-no-reboot",
-    "-enable-kvm",
-    "-drive", "id=diskA,file=DISK.img,format=raw,if=none", "-device", "ahci,id=ahci", "-device", "ide-drive,drive=diskA,bus=ahci.0",
-    "-machine", "q35",
-]
-
-[tasks.qemu-debug]
-description = "Runs the bootable ISO in qemu with gdb support"
 dependencies = ["iso", "create-disk-if-not-exist"]
 command = "qemu-system-i386"
 args = [
-    "-boot", "d",
-    "-cdrom", "os.iso",
-    "-serial", "stdio",
-    "-vnc", "${VNC_PORT}",
-    "-no-reboot",
-    "-gdb", "tcp::${GDB_PORT}", "-S",
-    "-d", "cpu_reset",
-    "-drive", "id=diskA,file=DISK.img,format=raw,if=none", "-device", "ahci,id=ahci", "-device", "ide-drive,drive=diskA,bus=ahci.0",
-    "-machine", "q35",
+    "@@split(QEMU_COMMON_FLAGS, )", "@@split(QEMU_EXTRA_FLAGS, )"
 ]
 
 [tasks.doc]
