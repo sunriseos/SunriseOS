@@ -31,6 +31,7 @@ extern crate alloc;
 use core::str;
 use sunrise_libuser::fs::{DirectoryEntry, DirectoryEntryType, FileSystemPath, IFileSystemProxy, IFileSystemServiceProxy};
 use sunrise_libuser::{kip_header, capabilities};
+use sunrise_libuser::error::{Error, LoaderError};
 use sunrise_libkern::process::*;
 use sunrise_libuser::mem::PAGE_SIZE;
 use sunrise_libutils::div_ceil;
@@ -43,20 +44,20 @@ mod elf_loader;
 const MAX_ELF_SIZE: u64 = 128 * 1024 * 1024;
 
 /// Start the given titleid by loading its content from the provided filesystem.
-fn boot(fs: &IFileSystemProxy, titleid: u64) {
+fn boot(fs: &IFileSystemProxy, titleid: u64) -> Result<(), Error> {
     info!("Booting titleid {:016x}", titleid);
 
     let val = format!("/bin/{:016x}/main", titleid);
     let mut raw_path: FileSystemPath = [0; 0x300];
     (&mut raw_path[0..val.len()]).copy_from_slice(val.as_bytes());
-    let file = fs.open_file(1, &raw_path).unwrap_or_else(|error| panic!("Expected open_file('/bin') to work: {:?}", error));
+    let file = fs.open_file(1, &raw_path)?;
 
-    let size = file.get_size().expect("get_size to work");
+    let size = file.get_size()?;
 
     if size > MAX_ELF_SIZE {
         error!("Why is titleid {:016x} so ridiculously huge? It's {} bytes.
         Like, seriously, stop with the gifs!", titleid, size);
-        return;
+        return Err(LoaderError::InvalidElf.into());
     }
 
     let mut cur_offset = 0;
@@ -67,14 +68,15 @@ fn boot(fs: &IFileSystemProxy, titleid: u64) {
         &mut elf_data[1..=size as usize]
     };
     while cur_offset < size {
-        let read_count = file.read(0, cur_offset, size - cur_offset, &mut elf_data).expect("Read to work");
+        let read_count = file.read(0, cur_offset, size - cur_offset, &mut elf_data)?;
         if read_count == 0 {
-            panic!("Unexpected end of file while reading /bin/{:016x}/main", titleid);
+            error!("Unexpected end of file while reading /bin/{:016x}/main", titleid);
+            return Err(LoaderError::InvalidElf.into());
         }
         cur_offset += read_count;
     }
 
-    let elf = elf_loader::from_data(&elf_data);
+    let elf = elf_loader::from_data(&elf_data)?;
 
     let mut flags = ProcInfoFlags(0);
     flags.set_64bit(false);
@@ -89,7 +91,7 @@ fn boot(fs: &IFileSystemProxy, titleid: u64) {
         Some(kacs) => kacs,
         None => {
             error!("TitleID {:016x} did not have a KAC section. Bailing.", titleid);
-            return;
+            return Err(LoaderError::InvalidKacs.into());
         }
     };
 
@@ -98,19 +100,28 @@ fn boot(fs: &IFileSystemProxy, titleid: u64) {
         process_category: ProcessCategory::RegularTitle,
         title_id: titleid,
         code_addr: aslr_base as _,
-        code_num_pages: div_ceil(elf_loader::get_size(&elf), PAGE_SIZE) as u32,
+        code_num_pages: div_ceil(elf_loader::get_size(&elf)?, PAGE_SIZE) as u32,
         flags,
         resource_limit_handle: None,
         system_resource_num_pages: 0,
-    }, &kacs).expect("CreateProcess to work flawlessly");
+    }, &kacs)?;
 
     debug!("Loading ELF");
-    elf_loader::load_builtin(&process, &elf, aslr_base);
+    elf_loader::load_builtin(&process, &elf, aslr_base)?;
 
     debug!("Starting process.");
     if let Err(err) = process.start(0, 0, PAGE_SIZE as u32 * 16) {
-        error!("Failed to start titleid {:016x}: {}", titleid, err)
+        error!("Failed to start titleid {:016x}: {}", titleid, err);
+        return Err(err)
     }
+
+    Ok(())
+}
+
+fn get_titleid_from_path(titleid: &[u8]) -> Result<u64, Error> {
+    let titleid = str::from_utf8(titleid).or(Err(LoaderError::InvalidPath))?;
+    let titleid = u64::from_str_radix(titleid, 16).or(Err(LoaderError::InvalidPath))?;
+    Ok(titleid)
 }
 
 fn main() {
@@ -128,14 +139,21 @@ fn main() {
             file_size: 0
         }; 12];
         loop {
-            let count = directory.read(&mut entries).unwrap();
+            let count = directory.read(&mut entries).unwrap_or_else(|err| {
+                error!("Failed to read directory: {:?}", err);
+                0
+            });
             if count == 0 {
                 break;
             }
             let entries = &mut entries[..count as usize];
             for entry in entries {
                 raw_path = entry.path;
-                let endpos = raw_path.iter().position(|v| *v == 0).unwrap_or(301);
+                let endpos = raw_path.iter().position(|v| *v == 0).unwrap_or(raw_path.len());
+                if endpos > 0x300 - 16 {
+                    error!("Path too big in /bin.");
+                    continue;
+                }
                 raw_path[endpos..endpos + 16].copy_from_slice(b"/flags/boot.flag");
                 if fs.get_entry_type(&raw_path).is_ok() {
                     let endpos = entry.path.iter()
@@ -143,10 +161,12 @@ fn main() {
                         .skip(5)
                         .find(|(_, v)| **v == b'/' || **v == b'\0')
                         .map(|(idx, _)| idx).unwrap_or_else(|| entry.path.len());
-                    let titleid = &entry.path[5..endpos];
-                    let titleid = str::from_utf8(titleid).unwrap();
-                    let titleid = u64::from_str_radix(titleid, 16).unwrap();
-                    boot(&fs, titleid);
+                    if let Ok(titleid) = get_titleid_from_path(&entry.path[5..endpos]) {
+                        let _ = boot(&fs, titleid);
+                    } else {
+                        error!("Non-ASCII titleid found in /boot.");
+                        continue;
+                    }
                 }
             }
         }
