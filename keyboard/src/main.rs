@@ -32,7 +32,6 @@ use futures::future::FutureObj;
 use sunrise_libuser::keyboard::StaticService as _;
 use sunrise_libuser::types::*;
 use sunrise_libuser::error::{Error, HidError};
-use log::info;
 use sunrise_libuser::types::{ReadableEvent, WritableEvent};
 use sunrise_libuser::syscalls;
 use spin::{Once, Mutex};
