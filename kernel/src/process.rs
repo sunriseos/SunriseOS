@@ -9,8 +9,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use crate::event::{IRQEvent, ReadableEvent, WritableEvent, Waitable};
 use crate::sync::{SpinLockIRQ, SpinLock, Mutex};
-use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use core::fmt::{self, Debug};
+use core::sync::atomic::{AtomicUsize, Ordering};
 use crate::scheduler;
 use crate::error::{KernelError, UserspaceError};
 use crate::ipc::{ServerPort, ClientPort, ServerSession, ClientSession};
@@ -18,6 +17,8 @@ use crate::mem::VirtualAddress;
 use failure::Backtrace;
 use crate::frame_allocator::PhysicalMemRegion;
 use crate::sync::SpinRwLock;
+
+use atomic::Atomic;
 
 pub mod thread_local_storage;
 mod capabilities;
@@ -98,7 +99,7 @@ static NEXT_PROCESS_ID: AtomicUsize = AtomicUsize::new(0);
 #[derive(Debug)]
 pub struct ThreadStruct {
     /// The state of this thread.
-    pub state: ThreadStateAtomic,
+    pub state: Atomic<ThreadState>,
 
     /// The kernel stack it uses for handling syscalls/irqs.
     pub kstack: KernelStack,
@@ -381,70 +382,6 @@ impl ThreadState {
     }
 }
 
-// TODO: Create/use a library to create Atomic Enum.
-// BODY: We have at least one (probably more) atomic enums that we rolled by hand
-// BODY: in the kernel. The one I know about: ThreadStateAtomic. Really, this
-// BODY: should ideally be done automatically by a crate, either a macro or a
-// BODY: custom derive. This would allow us to auto-generate the documentation.
-/// Stores a ThreadState atomically.
-pub struct ThreadStateAtomic(AtomicUsize);
-
-impl Debug for ThreadStateAtomic {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Debug::fmt(&self.load(Ordering::SeqCst), f)
-    }
-}
-
-#[allow(missing_docs)]
-#[allow(clippy::missing_docs_in_private_items)]
-impl ThreadStateAtomic {
-    pub fn new(state: ThreadState) -> ThreadStateAtomic {
-        ThreadStateAtomic(AtomicUsize::new(state as usize))
-    }
-
-    pub fn into_inner(self) -> ThreadState {
-        ThreadState::from_primitive(self.0.into_inner())
-    }
-
-    pub fn load(&self, order: Ordering) -> ThreadState {
-        ThreadState::from_primitive(self.0.load(order))
-    }
-
-    pub fn store(&self, val: ThreadState, order: Ordering) {
-        self.0.store(val as usize, order)
-    }
-
-    pub fn swap(&self, val: ThreadState, order: Ordering) -> ThreadState {
-        ThreadState::from_primitive(self.0.swap(val as usize, order))
-    }
-
-    pub fn compare_and_swap(&self, current: ThreadState, new: ThreadState, order: Ordering) -> ThreadState {
-        ThreadState::from_primitive(self.0.compare_and_swap(current as usize, new as usize, order))
-    }
-
-    pub fn compare_exchange(&self, current: ThreadState, new: ThreadState, success: Ordering, failure: Ordering) -> Result<ThreadState, ThreadState> {
-        self.0.compare_exchange(current as usize, new as usize, success, failure)
-            .map(ThreadState::from_primitive)
-            .map_err(ThreadState::from_primitive)
-    }
-
-    pub fn compare_exchange_weak(&self, current: ThreadState, new: ThreadState, success: Ordering, failure: Ordering) -> Result<ThreadState, ThreadState> {
-        self.0.compare_exchange_weak(current as usize, new as usize, success, failure)
-            .map(ThreadState::from_primitive)
-            .map_err(ThreadState::from_primitive)
-    }
-
-    pub fn fetch_update<F>(&self, mut f: F, fetch_order: Ordering, set_order: Ordering) -> Result<ThreadState, ThreadState>
-    where
-        F: FnMut(ThreadState) -> Option<ThreadState>
-    {
-        self.0.fetch_update(|v| f(ThreadState::from_primitive(v)).map(|v| v as usize),
-                            fetch_order, set_order)
-            .map(ThreadState::from_primitive)
-            .map_err(ThreadState::from_primitive)
-    }
-}
-
 impl ProcessStruct {
     /// Creates a new process.
     ///
@@ -638,7 +575,7 @@ impl ThreadStruct {
         let empty_hwcontext = SpinLockIRQ::new(ThreadHardwareContext::default());
 
         // the state of the process, Stopped
-        let state = ThreadStateAtomic::new(ThreadState::Stopped);
+        let state = Atomic::new(ThreadState::Stopped);
 
         // allocate its thread local storage region
         let tls = belonging_process.tls_manager.lock().allocate_tls(&mut pmemory)?;
@@ -722,7 +659,7 @@ impl ThreadStruct {
         let mut process = ProcessStruct::create_first_process();
 
         // the state of the process, currently running
-        let state = ThreadStateAtomic::new(ThreadState::Running);
+        let state = Atomic::new(ThreadState::Running);
 
         // use the already allocated stack
         let kstack = KernelStack::get_current_stack();

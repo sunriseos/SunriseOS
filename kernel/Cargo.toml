@@ -29,6 +29,7 @@ mashup = "0.1.9"
 tinybmp = "0.1.0"
 acpi = { git = "https://github.com/sunriseos/acpi.git" }
 plain = "0.2.3"
+atomic = "0.4.5"
 
 [dependencies.smallvec]
 default-features = false
