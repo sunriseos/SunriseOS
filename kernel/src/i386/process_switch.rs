@@ -245,14 +245,16 @@ pub unsafe fn prepare_for_first_schedule(t: &ThreadStruct, entrypoint: usize, us
     // *  poison ebp * 0x00000000 <---+  < "get_stack_start()"
     // *  poison eip * 0x00000000
     let initial_registers = RegistersOnStack {
+        // Please keep the order of those arguments - they are currently ordered
+        // the same way `pushad; pushfd;` does.
         eflags: 0x00000000, // no flag set, seems ok
         edi: 0, // Overwritten by process_switch
         esi: 0,
         ebp: stack_start,                         // -+
         esp: 0, // ignored by the popad anyway    //  |
         ebx: userspace_stack as u32,              //  |
-        ecx: userspace_args.0 as u32,             //  |
         edx: userspace_args.1 as u32,             //  |
+        ecx: userspace_args.0 as u32,             //  |
         eax: entrypoint as u32,                   //  |
         callback_eip: first_schedule as u32       //  |
         // --------------                             |
