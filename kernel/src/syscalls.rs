@@ -747,7 +747,7 @@ pub fn set_process_memory_permission(proc_hnd: u32, addr: usize, size: usize, pe
         if meminfo.address() < addr {
             dstmem.map_partial_shared_mapping(frames.clone(), meminfo.address(), meminfo.phys_offset(), addr - meminfo.address(), meminfo.state().ty(), meminfo.flags()).expect("Can't fail");
         }
-        if meminfo.address() + meminfo.length() > addr + size && meminfo.length() > PAGE_SIZE {
+        if meminfo.address() + meminfo.length() > addr + size {
             let phys_offset = meminfo.phys_offset() + addr + size - meminfo.address();
             dstmem.map_partial_shared_mapping(frames.clone(), addr + size, phys_offset, (meminfo.address() + meminfo.length()) - (addr + size), meminfo.state().ty(), meminfo.flags()).expect("Can't fail");
         }
