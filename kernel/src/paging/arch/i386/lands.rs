@@ -58,6 +58,4 @@ const_assert!(UserLand::START.0 < UserLand::END.0);
 const_assert!(RecursiveTablesLand::START.0 < RecursiveTablesLand::END.0);
 
 const_assert!(KernelLand::START.0 % (ENTRY_COUNT * PAGE_SIZE) == 0);
-// TODO: Ask the weird animal if this will unleash the kraken.
-//const_assert!(UserLand::START.0   % (ENTRY_COUNT * PAGE_SIZE) == 0);
 const_assert!(RecursiveTablesLand::START.0 % (ENTRY_COUNT * PAGE_SIZE) == 0);
