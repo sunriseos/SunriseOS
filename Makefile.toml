@@ -40,117 +40,117 @@ install_crate = { rustup_component_name = "rust-src" }
 [tasks.install-mkisofs-rs]
 install_crate = { crate_name = "mkisofs-rs", binary = "mkisofs-rs", test_arg = "--help", min_version = "0.1.1" }
 
-[tasks.install-cargo-xbuild]
+[tasks.install-xargo]
 dependencies = ["install-rust-src"]
-install_crate = { crate_name = "cargo-xbuild", binary = "cargo", test_arg = ["xbuild", "--help"], min_version = "0.5.14" }
+install_crate = { crate_name = "xargo", binary = "xargo", test_arg = "--version", min_version = "0.3.16" }
 
 [tasks.bootstrap]
 description = "Compiles the i386 bootstrap for debug"
-dependencies = ["bootstrap-linker", "install-cargo-xbuild"]
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-bootstrap" ]
+dependencies = ["bootstrap-linker", "install-xargo"]
+command = "xargo"
+args = ["build", "--target=i386-unknown-none", "--package=sunrise-bootstrap" ]
 
 [tasks.bootstrap-release]
 description = "Compiles the i386 bootstrap for release"
-dependencies = ["bootstrap-linker", "install-cargo-xbuild"]
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-bootstrap", "--release" ]
+dependencies = ["bootstrap-linker", "install-xargo"]
+command = "xargo"
+args = ["build", "--target=i386-unknown-none", "--package=sunrise-bootstrap", "--release" ]
 
 [tasks.kernel]
 description = "Compiles the kernel for debug"
-dependencies = ["kernel-linker", "install-cargo-xbuild"]
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-kernel", "-Z", "package-features", "--features=panic-on-exception"]
+dependencies = ["kernel-linker", "install-xargo"]
+command = "xargo"
+args = ["build", "--target=i386-unknown-none", "--package=sunrise-kernel", "-Z", "package-features", "--features=panic-on-exception"]
 
 [tasks.kernel-release]
 description = "Compiles the kernel for release"
-dependencies = ["kernel-linker", "install-cargo-xbuild"]
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none", "--package=sunrise-kernel", "--release" ]
+dependencies = ["kernel-linker", "install-xargo"]
+command = "xargo"
+args = ["build", "--target=i386-unknown-none", "--package=sunrise-kernel", "--release" ]
 
 [tasks.vi]
 description = "Compiles sunrise-vi"
-dependencies = ["install-cargo-xbuild"]
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-vi"]
+dependencies = ["install-xargo"]
+command = "xargo"
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-vi"]
 
 [tasks.vi-release]
 description = "Compiles sunrise-vi"
-dependencies = ["install-cargo-xbuild"]
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-vi", "--release"]
+dependencies = ["install-xargo"]
+command = "xargo"
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-vi", "--release"]
 
 [tasks.sm]
 description = "Compiles sunrise-sm"
-dependencies = ["install-cargo-xbuild"]
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-sm"]
+dependencies = ["install-xargo"]
+command = "xargo"
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-sm"]
 
 [tasks.sm-release]
 description = "Compiles sunrise-sm"
-dependencies = ["install-cargo-xbuild"]
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-sm", "--release"]
+dependencies = ["install-xargo"]
+command = "xargo"
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-sm", "--release"]
 
 [tasks.shell]
 description = "Compiles sunrise-shell"
-dependencies = ["install-cargo-xbuild"]
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-shell"]
+dependencies = ["install-xargo"]
+command = "xargo"
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-shell"]
 
 [tasks.shell-release]
 description = "Compiles sunrise-shell"
-dependencies = ["install-cargo-xbuild"]
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-shell", "--release"]
+dependencies = ["install-xargo"]
+command = "xargo"
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-shell", "--release"]
 
 [tasks.wall-clock]
 description = "Compiles sunrise-wall-clock"
-dependencies = ["install-cargo-xbuild"]
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-wall-clock"]
+dependencies = ["install-xargo"]
+command = "xargo"
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-wall-clock"]
 
 [tasks.wall-clock-release]
 description = "Compiles sunrise-wall-clock"
-dependencies = ["install-cargo-xbuild"]
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-wall-clock", "--release"]
+dependencies = ["install-xargo"]
+command = "xargo"
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-wall-clock", "--release"]
 
 [tasks.ahci]
 description = "Compiles sunrise-ahci"
-dependencies = ["install-cargo-xbuild"]
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-ahci"]
+dependencies = ["install-xargo"]
+command = "xargo"
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-ahci"]
 
 [tasks.ahci-release]
 description = "Compiles sunrise-ahci"
-dependencies = ["install-cargo-xbuild"]
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-ahci", "--release"]
+dependencies = ["install-xargo"]
+command = "xargo"
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-ahci", "--release"]
 
 [tasks.time]
 description = "Compiles sunrise-time"
-dependencies = ["install-cargo-xbuild"]
-command = "cargo"
-args = ["xrustc", "--target=i386-unknown-none-user", "--package=sunrise-time", "--", "-Zexternal-macro-backtrace"]
+dependencies = ["install-xargo"]
+command = "xargo"
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-time"]
 
 [tasks.time-release]
 description = "Compiles sunrise-time"
-dependencies = ["install-cargo-xbuild"]
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-time", "--release"]
+dependencies = ["install-xargo"]
+command = "xargo"
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-time", "--release"]
 
 [tasks.fs]
 description = "Compiles sunrise-fs"
-dependencies = ["install-cargo-xbuild"]
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-fs"]
+dependencies = ["install-xargo"]
+command = "xargo"
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-fs"]
 
 [tasks.fs-release]
 description = "Compiles sunrise-fs"
-dependencies = ["install-cargo-xbuild"]
-command = "cargo"
-args = ["xbuild", "--target=i386-unknown-none-user", "--package=sunrise-fs", "--release"]
+dependencies = ["install-xargo"]
+command = "xargo"
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-fs", "--release"]
 
 [tasks.userspace]
 description = "Compiles userspace apps"
@@ -168,13 +168,13 @@ script = [
 '''
 cp target/i386-unknown-none/debug/sunrise-bootstrap           isofiles/boot/
 cp target/i386-unknown-none/debug/sunrise-kernel              isofiles/boot/
-cp target/i386-unknown-none-user/debug/sunrise-shell          isofiles/boot/
-cp target/i386-unknown-none-user/debug/sunrise-time           isofiles/boot/
-cp target/i386-unknown-none-user/debug/sunrise-wall-clock     isofiles/boot/
-cp target/i386-unknown-none-user/debug/sunrise-sm             isofiles/boot/
-cp target/i386-unknown-none-user/debug/sunrise-vi             isofiles/boot/
-cp target/i386-unknown-none-user/debug/sunrise-ahci           isofiles/boot/
-cp target/i386-unknown-none-user/debug/sunrise-fs             isofiles/boot/
+cp target/i386-unknown-sunrise-user/debug/sunrise-shell          isofiles/boot/
+cp target/i386-unknown-sunrise-user/debug/sunrise-time           isofiles/boot/
+cp target/i386-unknown-sunrise-user/debug/sunrise-wall-clock     isofiles/boot/
+cp target/i386-unknown-sunrise-user/debug/sunrise-sm             isofiles/boot/
+cp target/i386-unknown-sunrise-user/debug/sunrise-vi             isofiles/boot/
+cp target/i386-unknown-sunrise-user/debug/sunrise-ahci           isofiles/boot/
+cp target/i386-unknown-sunrise-user/debug/sunrise-fs             isofiles/boot/
 mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
 '''
 ]
@@ -187,13 +187,13 @@ script = [
 '''
 cp target/i386-unknown-none/release/sunrise-bootstrap           isofiles/boot/
 cp target/i386-unknown-none/release/sunrise-kernel              isofiles/boot/
-cp target/i386-unknown-none-user/release/sunrise-shell          isofiles/boot/
-cp target/i386-unknown-none-user/release/sunrise-time           isofiles/boot/
-cp target/i386-unknown-none-user/release/sunrise-wall-clock     isofiles/boot/
-cp target/i386-unknown-none-user/release/sunrise-sm             isofiles/boot/
-cp target/i386-unknown-none-user/release/sunrise-vi             isofiles/boot/
-cp target/i386-unknown-none-user/release/sunrise-ahci           isofiles/boot/
-cp target/i386-unknown-none-user/release/sunrise-fs             isofiles/boot/
+cp target/i386-unknown-sunrise-user/release/sunrise-shell          isofiles/boot/
+cp target/i386-unknown-sunrise-user/release/sunrise-time           isofiles/boot/
+cp target/i386-unknown-sunrise-user/release/sunrise-wall-clock     isofiles/boot/
+cp target/i386-unknown-sunrise-user/release/sunrise-sm             isofiles/boot/
+cp target/i386-unknown-sunrise-user/release/sunrise-vi             isofiles/boot/
+cp target/i386-unknown-sunrise-user/release/sunrise-ahci           isofiles/boot/
+cp target/i386-unknown-sunrise-user/release/sunrise-fs             isofiles/boot/
 mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
 '''
 ]
@@ -288,15 +288,30 @@ args = ["-c", "kernel/src/main.rs", "bootstrap/src/main.rs",
 	"swipc-parser/src/lib.rs", "time/src/main.rs", "libtimezone/src/lib.rs"
 ]
 
-[tasks.clippy-sunrise-target]
-description = "Run clippy on sunrise components"
-dependencies = ["install-cargo-xbuild", "refresh-crates"]
+[tasks.clippy-sunrise-kernel-target]
+description = "Run clippy on sunrise kernel and bootstrap"
+dependencies = ["install-xargo", "refresh-crates"]
 install_crate = { rustup_component_name = "clippy" }
-command = "cargo"
-args = ["xclippy", "--target=i386-unknown-none",
+command = "xargo"
+args = ["clippy", "--target=i386-unknown-none",
+    "-p", "sunrise-kernel",
+    "-p", "sunrise-bootstrap",
+	"--",
+	"@@split(CLIPPY_RULES, )",
+	"${@}",
+	]
+
+[tasks.clippy-sunrise-userspace-target]
+description = "Run clippy on sunrise userspace"
+dependencies = ["install-xargo", "refresh-crates"]
+install_crate = { rustup_component_name = "clippy" }
+command = "xargo"
+args = ["clippy", "--target=i386-unknown-sunrise-user",
 	"--all", "--exclude", "swipc-gen", "--exclude", "swipc-parser",
 	"--exclude", "disk-initializer",
 	"--exclude", "docs",
+	"--exclude", "sunrise-kernel",
+	"--exclude", "sunrise-bootstrap",
 	"--",
 	"@@split(CLIPPY_RULES, )",
 	"${@}",
@@ -315,7 +330,7 @@ args = ["clippy",
 	]
 
 [tasks.clippy]
-dependencies = ["clippy-host-target", "clippy-sunrise-target"]
+dependencies = ["clippy-host-target", "clippy-sunrise-kernel-target", "clippy-sunrise-userspace-target"]
 
 [tasks.swipc-gen]
 description = "Get the output of running gen_ipc on an ipcdef file"

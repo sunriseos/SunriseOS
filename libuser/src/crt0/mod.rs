@@ -5,7 +5,7 @@
 pub mod relocation;
 
 /// Executable entrypoint. Handle relocations and calls real_start.
-#[cfg(target_os = "none")]
+#[cfg(target_os = "sunrise")]
 #[naked]
 #[no_mangle]
 #[link_section = ".text.crt0"]
@@ -54,7 +54,7 @@ pub unsafe extern fn start() {
 
 /// Clean module bss.
 /// NOTE: Even if the bss should be cleared before calling anything in Rust, all functions used here are guaranteed to not use the bss.
-#[cfg(target_os = "none")]
+#[cfg(target_os = "sunrise")]
 #[no_mangle]
 #[link_section = ".text.crt0"]
 pub unsafe extern fn clean_bss(module_header: *const relocation::ModuleHeader) {

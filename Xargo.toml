@@ -1,0 +1,10 @@
+[dependencies.core]
+stage = 0
+
+[dependencies.compiler_builtins]
+version = "=0.1.16"
+stage = 0
+features = ["core", "mem"]
+
+[dependencies.alloc]
+stage = 0
