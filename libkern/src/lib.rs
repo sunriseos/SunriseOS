@@ -275,7 +275,10 @@ impl MemoryPermissions {
     /// Checks that the permissions as valid - that is, it should be one of
     /// ---, R--, RW- or R-X.
     pub fn check(self) -> Result<(), error::KernelError> {
-        if 1 << self.bits() & 0x2B != 0 { // Accept NONE, R, RW, RX
+        // 0x2B is a bitmask where each bit represents an allowed
+        // MemoryPermission state: NONE, R, RW, RX.
+        // The permission is turned into an index into that bitmask.
+        if 1 << self.bits() & 0x2B != 0 {
             Ok(())
         } else {
             Err(error::KernelError::InvalidMemPerms)
