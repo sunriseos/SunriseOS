@@ -30,9 +30,9 @@ appropriate version.
 
 ## Building
 
-To build, simply use `cargo make iso-release`. This will generate a live CD
-called `os.iso` which can be booted from to run SunriseOS. `cargo make iso` can
-be used to generate a live CD running in debug mode.
+To build, simply use `cargo make iso --profile production`. This will generate a
+live CD called `os.iso` which can be booted from to run SunriseOS.
+`cargo make iso` can be used to generate a live CD running in debug mode.
 
 ## Qemu
 
