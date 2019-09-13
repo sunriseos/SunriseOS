@@ -80,8 +80,8 @@ use crate::devices::hpet::TIMER_DRIVER;
 /// 
 /// - If the timer resolution cannot handle it, this is not going to be accurate.
 /// - Minimal resolution for HPET (10Mhz) / HPET QEMU (100Mhz): 100ns / 10ns
-pub fn wait_ns(ns: usize) -> impl Waitable {
-    TimerEvent::new(ns as u64)
+pub fn wait_ns(ns: u64) -> impl Waitable {
+    TimerEvent::new(ns)
 }
 
 #[derive(Debug)]

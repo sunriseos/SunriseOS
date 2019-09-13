@@ -191,7 +191,7 @@ pub fn wait_synchronization(handles_ptr: UserSpacePtr<[u32]>, timeout_ns: usize)
 
     // Add a waitable for the timeout.
     let timeout_waitable = if timeout_ns != usize::max_value() && timeout_ns != 0 {
-        Some(timer::wait_ns(timeout_ns))
+        Some(timer::wait_ns(timeout_ns as u64))
     } else {
         None
     };
@@ -435,7 +435,7 @@ pub fn sleep_thread(nanos: usize) -> Result<(), UserspaceError> {
         scheduler::schedule();
         Ok(())
     } else {
-        event::wait(Some(&timer::wait_ns(nanos) as &dyn Waitable)).map(|_| ())
+        event::wait(Some(&timer::wait_ns(nanos as u64) as &dyn Waitable)).map(|_| ())
     }
 }
 
