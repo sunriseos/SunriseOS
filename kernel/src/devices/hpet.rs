@@ -336,8 +336,10 @@ impl HpetTimer {
 
 impl Hpet {
     /// The minimal precision we are going to use for the HPET in femtosecond.
-    ///
-    /// By specs, the minimal frequency of the HPET is 10Mhz, so our minimal resolution can be 100 nanoseconds.
+    /// 
+    // TODO: Switch to a lower update frequency in HPET 
+    // BODY: By specs, the minimal frequency of the HPET is 10Mhz, so our minimal precision can be 100 nanoseconds but for now it's 1 milliseconds.
+    // BODY: For that to be possible, we need to take care of the sleep_thread logic and usage in the userland drivers (e.g: AHCI).
     const PRECISION_FS: u64 = 1_000_000 * 1_000_000;
 
     /// Create a new HPET device instance from MMIO registers.
