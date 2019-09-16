@@ -79,6 +79,7 @@ impl EfiGuid {
     /// ID of an EFI Encryption Key in x509 certificate mode.
     ///
     /// See UEFI Specification 32.4.1 Signature Database.
+    #[allow(dead_code)]
     const EFI_CERT_X509: EfiGuid =
         EfiGuid::new(0xa5c059a1, 0x94e4, 0x4aa7, [0x87, 0xb5, 0xab, 0x15, 0x5c, 0x2b, 0xf0, 0x72]);
 }
@@ -119,7 +120,9 @@ impl EfiTime {
     fn current() -> EfiTime {
         let curtime = Utc::now();
         EfiTime {
-            year: curtime.year() as u16,
+            // Panic on negative year. This shouldn't happen unless system clock
+            // is set before year 1...
+            year: u16::try_from(curtime.year()).unwrap(),
             month: curtime.month() as u8,
             day: curtime.day() as u8,
             hour: curtime.hour() as u8,
@@ -292,7 +295,9 @@ fn serialize_var(mut file: &mut File, name: &str, guid: EfiGuid, attributes: Var
 }
 
 fn main() {
+    /// Size of our firmware volume. 128KiB.
     const FV_LENGTH: u64 = 0x20000;
+    /// Size of a block in our firmware volume. 4 KiB.
     const FV_BLOCKSIZE: u32 = 0x1000;
     let mut file = File::create("target/OVMF_VARS.fd").unwrap();
     bincode::serialize_into(&mut file, &EfiFirmwareVolume {
