@@ -77,6 +77,39 @@ install_crate = { crate_name = "mkisofs-rs", binary = "mkisofs-rs", test_arg = "
 dependencies = ["install-rust-src"]
 install_crate = { crate_name = "xargo", binary = "xargo", test_arg = "--version", min_version = "0.3.16" }
 
+[tasks.gen-secureboot-keys]
+# https://wiki.gentoo.org/wiki/Sakaki%27s_EFI_Install_Guide/Configuring_Secure_Boot
+# This link is the most useful stuff I could find.
+# We're going to use the same key for the PK, the KEK and the DB. No reason to
+# make an overcomplicated setup.
+condition = { platforms = ["linux"] }
+script = ['''
+mkdir -p target/keys
+# Generate the Secure Boot Key.
+# TODO: Integrate secureboot key generation into setup-ovmf.
+# BODY: Secure boot keygen depends on openssl, efitools and sed - none of which
+# BODY: are available on windows. We should integrate it all into the
+# BODY: gen-secureboot-keys tool.
+openssl req -new -x509 -newkey rsa:2048 -subj "/CN=SecureBoot Platform Key/" -outform PEM -keyout target/keys/PK.key -out target/keys/PK.crt -nodes -sha256
+
+# Random UUID chosen by fair dice roll.
+cert-to-efi-sig-list -g "6270c1f5-7f36-4239-8be0-b617d586e07e" target/keys/PK.crt target/keys/PK.esl
+
+# Not a random UUID. This is used by OVMF to detect the PK.crt in the SMBIOS
+# type 11 strings.
+sed \
+    -e 's/^-----BEGIN CERTIFICATE-----$/4e32566d-8e9e-4f52-81d3-5bb9715f9727:/' \
+    -e '/^-----END CERTIFICATE-----$/d' \
+    <target/keys/PK.crt \
+    | tr -d '\n' > target/keys/PK.oemstr
+''']
+
+[tasks.setup-ovmf]
+condition = { platforms = ["linux"] }
+dependencies = ["gen-secureboot-keys"]
+command = "cargo"
+args = ["run", "-p", "gen-secureboot-keys"]
+
 [tasks.bootstrap]
 description = "Compiles the i386 bootstrap"
 dependencies = ["bootstrap-linker", "install-xargo"]
