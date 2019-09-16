@@ -78,6 +78,7 @@ pub fn check_thread_killed() {
 #[allow(missing_docs)]
 pub struct UserspaceHardwareContext {
     pub esp: usize,
+    pub gs: usize,
     pub ebp: usize,
     pub edi: usize,
     pub esi: usize,
@@ -169,6 +170,8 @@ const_assert_eq!((GdtIndex::UTlsElf as u16) << 3 | 0b11, 0x43);
 ///     +----------------+  |      |  +----------------+       |
 ///     |   Pushed ebp   |  |      |  |   Pushed ebp   |       |
 ///     +----------------+  |      |  +----------------+       |
+///     |   Pushed gs    |  |      |  |   Pushed gs    |       |
+///     +----------------+  |      |  +----------------+       |
 ///     | Pushed esp cpy |  |      |  | Pushed esp cpy |     <-+
 ///     +----------------+  |      |  +----------------+
 ///     | Pushed arg ptr | -+      +- | Pushed arg ptr |
@@ -235,21 +238,23 @@ macro_rules! trap_gate_asm {
         push esi
         push edi
         push ebp
+        mov ax, gs
+        push eax
         // Are we in the privilege change state or unchanged ? Look at pushed CS
-        mov eax, [esp + 0x24] // cs is 9 registers away at that time * 4 bytes / reg
+        mov eax, [esp + 0x28] // cs is 10 registers away at that time * 4 bytes / reg
         and eax, 0x3
         jz 1f
 
     0: // if priv changed
         // copy the esp pushed by cpu
-        mov eax, [esp + 0x2C] // cs is 11 registers away at that time * 4 bytes / reg
+        mov eax, [esp + 0x30] // pushed esp is 12 registers away at that time * 4 bytes / reg
         push eax
 
         jmp 2f
     1: // else if priv unchanged
         // cpu did not push an esp, we are still running on the same stack: compute it
         mov eax, esp
-        add eax, 0x2C // old esp is 11 registers away at that time * 4 bytes / reg
+        add eax, 0x30 // old esp is 12 registers away at that time * 4 bytes / reg
         push eax
     2: // endif
 
@@ -265,22 +270,10 @@ macro_rules! trap_gate_asm {
         // Call some rust code, passing it a pointer to the UserspaceHardwareContext
         call $0
 
-        // Handler finished, returning
-
-        // Check whether we're returning to the same privilege level
-        mov eax, [esp + 0x2C] // cs is 11 registers away at that time * 4 bytes / reg
-        and eax, 0x3
-        jz 4f
-    3: // if changing priv
-        // Load userspace tls segment
-        mov ax, 0x43
-        mov gs, ax
-        jmp 5f
-    4: // else if not changing priv
-    5: // endif
-
-        // Restore registers.
+        // Handler finished, restore registers.
         add esp, 0x8 // pop and ignore the pushed arg ptr and esp cpy
+        pop eax // Restore GS to previous value
+        mov gs, ax
         pop ebp
         pop edi
         pop esi
