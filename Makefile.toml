@@ -208,62 +208,53 @@ args = ["build", "--target=i386-unknown-sunrise-user", "@@split(COMPILER_FLAGS, 
 description = "Compiles userspace apps"
 dependencies = ["userspace-nostd", "std_hello_world", "uutils"]
 
+[tasks.iso-common]
+private = true
+description = "Copies the KIPs to the isofiles folder."
+dependencies = ["bootstrap", "kernel", "userspace"]
+script_runner = "@shell"
+script = ['''
+mkdir -p target/isofiles/boot
+cp target/i386-unknown-none/$PROFILE_NAME/sunrise-bootstrap           target/isofiles/boot/
+cp target/i386-unknown-none/$PROFILE_NAME/sunrise-kernel              target/isofiles/boot/
+cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-shell       target/isofiles/boot/
+cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-time        target/isofiles/boot/
+cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-wall-clock  target/isofiles/boot/
+cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-sm          target/isofiles/boot/
+cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-vi          target/isofiles/boot/
+cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-ahci        target/isofiles/boot/
+cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-fs          target/isofiles/boot/
+''']
+
 [tasks.iso]
 description = "Creates a bootable ISO containing the kernel and grub."
-dependencies = ["bootstrap", "kernel", "userspace", "install-mkisofs-rs"]
+dependencies = ["iso-common", "install-mkisofs-rs"]
 script_runner = "@shell"
 script = [
 '''
-cp target/i386-unknown-none/$PROFILE_NAME/sunrise-bootstrap           isofiles/boot/
-cp target/i386-unknown-none/$PROFILE_NAME/sunrise-kernel              isofiles/boot/
-cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-shell          isofiles/boot/
-cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-time           isofiles/boot/
-cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-wall-clock     isofiles/boot/
-cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-sm             isofiles/boot/
-cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-vi             isofiles/boot/
-cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-ahci           isofiles/boot/
-cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-fs             isofiles/boot/
-cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-loader         isofiles/boot/
-cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-keyboard       isofiles/boot/
-mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
+mkisofs-rs external/grub/isofiles isofiles target/isofiles/ -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
 '''
 ]
 
 [tasks.disk]
-description = "Creates an empty disk image."
-script = [
-'''
-mkdir -p external/filesystem/disk_template/bin/wall-clock/flags
-cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-wall-clock     external/filesystem/disk_template/bin/wall-clock/main
-
-# TODO: https://github.com/sagiegurari/shell2batch/issues/9
-touch external/filesystem/disk_template/bin/wall-clock/flags/boot.flag
-
-mkdir -p external/filesystem/disk_template/bin/std_hello_world/flags
-cp target/i386-unknown-sunrise-user/$PROFILE_NAME/std_hello_world    external/filesystem/disk_template/bin/std_hello_world/main
-
-mkdir -p external/filesystem/disk_template/bin/twili/flags
-cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-twili external/filesystem/disk_template/bin/twili/main
-touch external/filesystem/disk_template/bin/twili/flags/boot.flag
-
-mkdir -p external/filesystem/disk_template/bin/uutils
-cp target/i386-unknown-sunrise-user/$PROFILE_NAME/uutils     external/filesystem/disk_template/bin/uutils/main
-
-cargo run --manifest-path disk-initializer/Cargo.toml -- DISK.img 157286400 external/filesystem/disk_template/
-'''
-]
+description = "Creates a disk image with SunriseOS installed."
+dependencies = ["iso"]
+command = "cargo"
+# Order of the folders is important. The first elements get priority.
+args = ["run", "--manifest-path", "disk-initializer/Cargo.toml", "--", "DISK.img", "209715200", "target/isofiles/", "isofiles/", "external/filesystem/disk_template/"]
 
 [tasks.qemu]
-description = "Runs the bootable ISO in qemu."
-dependencies = ["iso", "disk"]
-command = "qemu-system-i386"
+description = "Runs SunriseOS in qemu."
+dependencies = ["disk"]
+# No secure boot args
+command = "qemu-system-x86_64"
 args = [
     "@@split(QEMU_COMMON_FLAGS, )", "@@split(QEMU_EXTRA_FLAGS, )"
 ]
 
 [tasks.qemu-gdb]
 description = "Runs the bootable ISO in qemu."
-dependencies = ["iso", "disk"]
+dependencies = ["disk"]
 command = "qemu-system-i386"
 args = [
     "@@split(QEMU_COMMON_FLAGS, )", "@@split(QEMU_EXTRA_FLAGS, )",
@@ -420,6 +411,7 @@ install_crate = { rustup_component_name = "clippy" }
 command = "cargo"
 args = ["clippy",
 	"-p", "swipc-gen", "-p", "swipc-parser", "-p", "docs", "-p", "disk-initializer",
+	"-p", "gen-secureboot-keys",
 	"--",
 	"@@split(CLIPPY_RULES, )",
 	"${@}",
