@@ -33,8 +33,8 @@ QEMU_COMMON_FLAGS = """\
     -no-reboot \
     -drive id=diskA,file=DISK.img,format=raw,if=none -device ahci,id=ahci \
     -device ide-drive,drive=diskA,bus=ahci.0 \
-    -machine q35 \
-    -m 512M"""
+    -machine q35,smm=on, \
+    -m 512""" # 512MiB ram is required for UEFI boot. Go figure...
 
 #### Profile-specific flags
 # Which subfolder of target will rustc put its files into. Target is
@@ -233,6 +233,49 @@ script_runner = "@shell"
 script = [
 '''
 mkisofs-rs external/grub/isofiles isofiles target/isofiles/ -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
+''']
+
+[tasks.iso-secure]
+description = "Generate a secure GRUB UEFI image, and creates a bootable ISO with it."
+dependencies = ["iso-common", "gen-secureboot-keys", "install-mkisofs-rs"]
+script = ['''
+# Sign GRUB configuration and kernel with a fresh key.
+TEMPDIR=$(mktemp -d)
+TEMPFILE=$(mktemp)
+cat >$TEMPFILE <<EOF
+    Key-Type: RSA
+    Key-Length: 2048
+    Key-Usage: encrypt,sign,auth
+    Name-Real: secureboot
+    Name-Comment: Secure Boot Key
+    Name-Email: none@none.com
+    Expire-Date: 0
+    %no-ask-passphrase
+    %no-protection
+    %commit
+    %echo done
+EOF
+
+gpg --homedir $TEMPDIR --batch --gen-key $TEMPFILE
+
+for i in `find external/grub/isofiles/boot/ isofiles/boot/ target/isofiles/boot/ \( -name "*.cfg" -or -name "*.png" -or \
+  -name "*.mod" -or -name "*.lst" -or -name "sunrise-*" \) -and ! -name "*.sig"`;
+do
+  # First strip prefix
+  filename=${i#"external/grub/isofiles/boot/"}
+  filename=${filename#"target/isofiles/boot/"}
+  filename=${filename#"isofiles/boot/"}
+
+  mkdir -p $(dirname target/isofiles/boot/$filename)
+  gpg --homedir $TEMPDIR -u secureboot --yes --batch --output target/isofiles/boot/${filename}.sig --detach-sign $i
+done
+
+# Install GRUB as an EFI bootloader.
+gpg --yes --homedir $TEMPDIR --export --output target/keys/grub_secureboot.key
+mkdir -p target/isofiles/efi/boot
+grub-mkimage --pubkey target/keys/grub_secureboot.key -c external/embedded_grub.cfg -O x86_64-efi -p "" -o target/grubx64.efi --compression=xz ahci part_msdos part_gpt normal configfile true test efi_uga efi_gop gfxterm gfxmenu gfxterm_menu fat multiboot2 probe parttool png all_video gfxterm_background gettext pgp gcry_sha256 gcry_rsa
+sbsign --key target/keys/PK.key --cert target/keys/PK.crt --output target/isofiles/efi/boot/bootx64.efi target/grubx64.efi
+mkisofs-rs external/grub/isofiles isofiles target/isofiles/ -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
 '''
 ]
 
@@ -243,13 +286,31 @@ command = "cargo"
 # Order of the folders is important. The first elements get priority.
 args = ["run", "--manifest-path", "disk-initializer/Cargo.toml", "--", "DISK.img", "209715200", "target/isofiles/", "isofiles/", "external/filesystem/disk_template/"]
 
+[tasks.disk-secure]
+extend = "disk"
+dependencies = ["iso-secure"]
+
 [tasks.qemu]
 description = "Runs SunriseOS in qemu."
 dependencies = ["disk"]
 # No secure boot args
 command = "qemu-system-x86_64"
 args = [
-    "@@split(QEMU_COMMON_FLAGS, )", "@@split(QEMU_EXTRA_FLAGS, )"
+    "@@split(QEMU_COMMON_FLAGS, )", "@@split(QEMU_EXTRA_FLAGS, )",
+]
+
+[tasks.qemu-secure]
+description = "Runs SunriseOS in a SecureBoot-enabled qemu."
+dependencies = ["disk-secure", "setup-ovmf"]
+env.KEY = { script = "cat target/keys/PK.oemstr" }
+command = "qemu-system-x86_64"
+args = [
+    "@@split(QEMU_COMMON_FLAGS, )", "@@split(QEMU_EXTRA_FLAGS, )",
+    "-drive", "if=pflash,format=raw,readonly,file=external/ovmf/OVMF_CODE-pure-efi.fd",
+    "-drive", "if=pflash,format=raw,readonly,file=target/OVMF_VARS.fd",
+    "-global", "driver=cfi.pflash01,property=secure,value=on",
+    "-smbios", "type=11,value=${KEY}",
+    "-debugcon", "file:debug.log", "-global", "isa-debugcon.iobase=0x402"
 ]
 
 [tasks.qemu-gdb]
