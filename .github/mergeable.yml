@@ -6,7 +6,7 @@ mergeable:
     validate:
     - do: approvals
       min:
-        count: 2
+        count: 1
         message: "non-trivial PRs need to be reviewed by everyone before it can be merged."
     - do: label
       must_include:
