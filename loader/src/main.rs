@@ -15,7 +15,7 @@
 //! together under the same loader binary. Instead of using `fsp-ldr`, we will
 //! look for binaries in the filesystem's `/bin`, using the following hierarchy:
 //!
-//! - /bin/<titleid>
+//! - /bin/<titlename>
 //!   - main
 //!   - main.npdm
 //!   - flags/
@@ -48,10 +48,10 @@ mod elf_loader;
 const MAX_ELF_SIZE: u64 = 128 * 1024 * 1024;
 
 /// Start the given titleid by loading its content from the provided filesystem.
-fn boot(fs: &IFileSystemProxy, titleid: u64, args: &[u8]) -> Result<(), Error> {
-    info!("Booting titleid {:016x}", titleid);
+fn boot(fs: &IFileSystemProxy, titlename: &str, args: &[u8]) -> Result<(), Error> {
+    info!("Booting titleid {}", titlename);
 
-    let val = format!("/bin/{:016x}/main", titleid);
+    let val = format!("/bin/{}/main", titlename);
     let mut raw_path: FileSystemPath = [0; 0x300];
     (&mut raw_path[0..val.len()]).copy_from_slice(val.as_bytes());
     let file = fs.open_file(1, &raw_path)?;
@@ -59,8 +59,8 @@ fn boot(fs: &IFileSystemProxy, titleid: u64, args: &[u8]) -> Result<(), Error> {
     let size = file.get_size()?;
 
     if size > MAX_ELF_SIZE {
-        error!("Why is titleid {:016x} so ridiculously huge? It's {} bytes.
-        Like, seriously, stop with the gifs!", titleid, size);
+        error!("Why is titleid {} so ridiculously huge? It's {} bytes.
+        Like, seriously, stop with the gifs!", titlename, size);
         return Err(LoaderError::InvalidElf.into());
     }
 
@@ -74,7 +74,7 @@ fn boot(fs: &IFileSystemProxy, titleid: u64, args: &[u8]) -> Result<(), Error> {
     while cur_offset < size {
         let read_count = file.read(0, cur_offset, size - cur_offset, &mut elf_data)?;
         if read_count == 0 {
-            error!("Unexpected end of file while reading /bin/{:016x}/main", titleid);
+            error!("Unexpected end of file while reading /bin/{}/main", titlename);
             return Err(LoaderError::InvalidElf.into());
         }
         cur_offset += read_count;
@@ -94,10 +94,15 @@ fn boot(fs: &IFileSystemProxy, titleid: u64, args: &[u8]) -> Result<(), Error> {
     let kacs = match elf_loader::get_kacs(&elf) {
         Some(kacs) => kacs,
         None => {
-            error!("TitleID {:016x} did not have a KAC section. Bailing.", titleid);
+            error!("TitleID {} did not have a KAC section. Bailing.", titlename);
             return Err(LoaderError::InvalidKacs.into());
         }
     };
+
+    let mut titlename_bytes = [0; 12];
+    let titlename_len = core::cmp::min(titlename.len(), titlename_bytes.len());
+    titlename_bytes[..titlename_len].copy_from_slice(
+        titlename[..titlename_len].as_bytes());
 
     let elf_size = elf_loader::get_size(&elf)?;
 
@@ -115,9 +120,9 @@ fn boot(fs: &IFileSystemProxy, titleid: u64, args: &[u8]) -> Result<(), Error> {
     let total_size = elf_size + align_up(args_size, PAGE_SIZE);
 
     let process = sunrise_libuser::syscalls::create_process(&ProcInfo {
-        name: *b"Application\0",
+        name: titlename_bytes,
         process_category: ProcessCategory::RegularTitle,
-        title_id: titleid,
+        title_id: 0,
         code_addr: aslr_base as _,
         code_num_pages: div_ceil(total_size, PAGE_SIZE) as u32,
         flags,
@@ -149,18 +154,11 @@ fn boot(fs: &IFileSystemProxy, titleid: u64, args: &[u8]) -> Result<(), Error> {
 
     debug!("Starting process.");
     if let Err(err) = process.start(0, 0, PAGE_SIZE as u32 * 16) {
-        error!("Failed to start titleid {:016x}: {}", titleid, err);
+        error!("Failed to start titleid {}: {}", titlename, err);
         return Err(err)
     }
 
     Ok(())
-}
-
-/// Turn the given UTF-8 titleid into an u64 titleid.
-fn get_titleid_from_path(titleid: &[u8]) -> Result<u64, Error> {
-    let titleid = str::from_utf8(titleid).or(Err(LoaderError::InvalidPath))?;
-    let titleid = u64::from_str_radix(titleid, 16).or(Err(LoaderError::InvalidPath))?;
-    Ok(titleid)
 }
 
 fn main() {
@@ -200,7 +198,7 @@ fn main() {
                         .skip(5)
                         .find(|(_, v)| **v == b'/' || **v == b'\0')
                         .map(|(idx, _)| idx).unwrap_or_else(|| entry.path.len());
-                    if let Ok(titleid) = get_titleid_from_path(&entry.path[5..endpos]) {
+                    if let Ok(titleid) = str::from_utf8(&entry.path[5..endpos]) {
                         let _ = boot(&fs, titleid, &[]);
                     } else {
                         error!("Non-ASCII titleid found in /boot.");
