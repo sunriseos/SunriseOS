@@ -150,7 +150,7 @@ fn main() {
             let entries = &mut entries[..count as usize];
             for entry in entries {
                 raw_path = entry.path;
-                let endpos = raw_path.iter().position(|v| *v == 0).unwrap_or(raw_path.len());
+                let endpos = raw_path.iter().position(|v| *v == 0).unwrap_or_else(|| raw_path.len());
                 if endpos > 0x300 - 16 {
                     error!("Path too big in /bin.");
                     continue;
