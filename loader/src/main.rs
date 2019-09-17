@@ -131,7 +131,7 @@ fn boot(fs: &IFileSystemProxy, titlename: &str, args: &[u8]) -> Result<(), Error
     }, &kacs)?;
 
     debug!("Loading ELF");
-    elf_loader::load_builtin(&process, &elf, aslr_base)?;
+    elf_loader::load_file(&process, &elf, aslr_base)?;
 
     debug!("Handling args");
     let addr = find_free_address(args_size, 0x1000)?;

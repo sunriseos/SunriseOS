@@ -79,7 +79,7 @@ pub fn get_kacs<'a>(elf: &'a ElfFile<'_>) -> Option<&'a [u8]> {
 /// - `KernelError`
 ///   - A syscall failed while trying to map the remote process memory or set
 ///     the mappings' permissions.
-pub fn load_builtin(process: &Process, elf: &ElfFile<'_>, base: usize) -> Result<(), Error> {
+pub fn load_file(process: &Process, elf: &ElfFile<'_>, base: usize) -> Result<(), Error> {
     // load all segments into the page_table we had above
     for ph in elf.program_iter().filter(|ph|
         if let Ok(Load) = ph.get_type() { true } else { false })
