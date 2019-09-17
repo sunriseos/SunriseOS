@@ -465,11 +465,27 @@ impl ProcessStruct {
         // ResourceLimit + 1 thread => 0x10801
         // Check imageSize + mainThreadStackSize + stackSize > memoryUsageCapacity => 0xD001 MemoryExhaustion
 
-        // Ensure we haven't already been started.
-        let oldstate = this.state.load(Ordering::SeqCst);
-        if oldstate != ProcessState::Created && oldstate != ProcessState::CreatedAttached {
-            return Err(UserspaceError::ProcessAlreadyStarted);
-        }
+        // Ensure we haven't already been started. Prevent running this method
+        // twice.
+        let oldstate = loop {
+            let oldstate = this.state.load(Ordering::Relaxed);
+            if oldstate != ProcessState::Created && oldstate != ProcessState::CreatedAttached {
+                return Err(UserspaceError::ProcessAlreadyStarted);
+            }
+
+            // Set new state early. Normally done after mapping memory and
+            // creating the first thread, among other things. Shouldn't matter
+            // for our purposes.
+            let newstate = match oldstate {
+                ProcessState::Created => ProcessState::Started,
+                ProcessState::CreatedAttached => ProcessState::StartedAttached,
+                _ => unreachable!()
+            };
+            let res = this.state.compare_exchange(oldstate, newstate, Ordering::SeqCst, Ordering::SeqCst);
+            if res.is_ok() {
+                break oldstate;
+            }
+        };
 
         // ResourceLimit reserve align_up(stackSize, PAGE_SIZE) memory
         // Allocate stack within new map region.
@@ -488,18 +504,22 @@ impl ProcessStruct {
         this.phandles.lock().add_handle(Arc::new(Handle::Thread(first_thread.clone())));
         // SetEntryArguments - done in ThreadStruct::start for us.
 
-        let newstate = match oldstate {
-            ProcessState::Created => ProcessState::Started,
-            ProcessState::CreatedAttached => ProcessState::StartedAttached,
-            _ => unreachable!()
-        };
-        this.state.store(newstate, Ordering::SeqCst);
-        // Signal process
+        // Normally, state is set here. We do it a bit earlier to make our
+        // atomic easier to manage.
 
         if let Err(err) = ThreadStruct::start(first_thread) {
-            // Start failed, go back to Created state.
+            // Start failed, go back to Created state. there is at worse
+            // the process will have been set to the "exited" state by
+            // svcTerminate before it had a chance to run. Allowing it to be
+            // restarted in that case isn't a huge deal.
+            //
+            // We don't undo the allocation of the stack. Nintendo doesn't
+            // either.
+            //
+            // An annoying side-effect of using atomics here: The temporary
+            // "Started" state is observable. Oh well.
+
             this.state.store(oldstate, Ordering::SeqCst);
-            // Signal process
             return Err(err.into());
         }
         Ok(())
