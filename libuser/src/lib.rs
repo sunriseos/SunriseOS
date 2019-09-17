@@ -60,6 +60,8 @@ pub mod time {}
 pub mod fs {}
 #[gen_ipc(path = "../../ipcdefs/keyboard.id", prefix = "sunrise_libuser")]
 pub mod keyboard {}
+#[gen_ipc(path = "../../ipcdefs/loader.id", prefix = "sunrise_libuser")]
+pub mod ldr {}
 #[gen_ipc(path = "../../ipcdefs/example.id", prefix = "sunrise_libuser")]
 pub mod example {}
 

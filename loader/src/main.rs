@@ -31,14 +31,21 @@ extern crate alloc;
 use core::str;
 use core::slice;
 use core::mem::size_of;
+use alloc::boxed::Box;
 
 use sunrise_libuser::fs::{DirectoryEntry, DirectoryEntryType, FileSystemPath, IFileSystemProxy, IFileSystemServiceProxy};
 use sunrise_libuser::{kip_header, capabilities};
+use sunrise_libuser::ipc::server::{port_handler};
+use sunrise_libuser::futures::{WaitableManager, WorkQueue};
 use sunrise_libuser::error::{Error, LoaderError};
+use sunrise_libuser::ldr::ILoaderInterface;
 use sunrise_libuser::syscalls::{self, map_process_memory};
 use sunrise_libkern::process::*;
 use sunrise_libuser::mem::{find_free_address, PAGE_SIZE};
 use sunrise_libutils::{align_up, div_ceil};
+
+use futures::future::FutureObj;
+use lazy_static::lazy_static;
 
 mod elf_loader;
 
@@ -161,9 +168,26 @@ fn boot(fs: &IFileSystemProxy, titlename: &str, args: &[u8]) -> Result<(), Error
     Ok(())
 }
 
+lazy_static! {
+    /// The filesystem to boot titles from.
+    static ref BOOT_FROM_FS: IFileSystemProxy = {
+        let fs_proxy = IFileSystemServiceProxy::raw_new().unwrap();
+        fs_proxy.open_disk_partition(0, 0).unwrap()
+    };
+}
+
+#[derive(Debug, Default)]
+struct LoaderIface;
+
+impl ILoaderInterface for LoaderIface {
+    fn launch_title(&mut self, _workqueue: WorkQueue<'static>, title_name: &[u8], args: &[u8]) -> Result<(), Error> {
+        let title_name = str::from_utf8(title_name).or(Err(LoaderError::ProgramNotFound))?;
+        boot(&*BOOT_FROM_FS, title_name, args)
+    }
+}
+
 fn main() {
-    let fs_proxy = IFileSystemServiceProxy::raw_new().unwrap();
-    let fs = fs_proxy.open_disk_partition(0, 0).unwrap();
+    let fs = &*BOOT_FROM_FS;
 
     let mut raw_path: FileSystemPath = [0; 0x300];
     (&mut raw_path[0..4]).copy_from_slice(b"/bin");
@@ -210,6 +234,13 @@ fn main() {
     } else {
         warn!("No /bin folder on filesystem!");
     }
+
+    let mut man = WaitableManager::new();
+
+    let handler = port_handler(man.work_queue(), "ldr:shel", LoaderIface::dispatch).unwrap();
+    man.work_queue().spawn(FutureObj::new(Box::new(handler)));
+
+    man.run();
 }
 
 kip_header!(HEADER = sunrise_libuser::caps::KipHeader {
@@ -237,6 +268,9 @@ capabilities!(CAPABILITIES = Capabilities {
         sunrise_libuser::syscalls::nr::QueryMemory,
         sunrise_libuser::syscalls::nr::ConnectToNamedPort,
         sunrise_libuser::syscalls::nr::SendSyncRequestWithUserBuffer,
+
+        sunrise_libuser::syscalls::nr::ReplyAndReceiveWithUserBuffer,
+        sunrise_libuser::syscalls::nr::AcceptSession,
 
         sunrise_libuser::syscalls::nr::CreateProcess,
         sunrise_libuser::syscalls::nr::MapProcessMemory,

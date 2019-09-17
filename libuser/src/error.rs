@@ -316,6 +316,8 @@ enum_with_val! {
         InvalidKacs = 4,
         /// Invalid path read.
         InvalidPath = 6,
+        /// Tried to launch a title that does not exist.
+        ProgramNotFound = 8,
         /// The ELF is corrupted.
         InvalidElf = 9,
     }

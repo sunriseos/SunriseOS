@@ -823,6 +823,8 @@ dependencies = [
 name = "sunrise-loader"
 version = "0.1.0"
 dependencies = [
+ "futures-preview 0.3.0-alpha.17 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "sunrise-libkern 0.1.0",
  "sunrise-libuser 0.1.0",

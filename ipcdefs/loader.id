@@ -1,0 +1,3 @@
+interface sunrise_libuser::ldr::ILoaderInterface is ldr:shel {
+    [0] launch_title(array<u8, 9> title_name, array<u8, 9> args);
+}
