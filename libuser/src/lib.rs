@@ -38,6 +38,7 @@ pub extern crate log as __log;
 
 use swipc_gen::gen_ipc;
 
+pub mod argv;
 pub mod caps;
 pub mod syscalls;
 pub mod mem;
@@ -123,7 +124,8 @@ pub unsafe extern fn real_start() -> ! {
     }
 
     log_impl::init();
-    let _ret = main(0, core::ptr::null());
+    let (argc, argv) = (argv::argc(), argv::argv());
+    let _ret = main(argc, argv);
     syscalls::exit_process();
 }
 
