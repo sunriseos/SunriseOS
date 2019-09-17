@@ -36,7 +36,7 @@ use crate::libuser::sm;
 use crate::libuser::fs::{IFileSystemServiceProxy, IFileSystemProxy, IFileProxy};
 use crate::libuser::window::{Window, Color};
 use crate::libuser::terminal::{Terminal, WindowSize};
-use crate::libuser::threads::Thread;
+use crate::libuser::threads::{self, Thread};
 use crate::libuser::error::{Error, FileSystemError};
 use crate::libuser::syscalls;
 
@@ -494,7 +494,7 @@ fn test_threads(terminal: Terminal) -> Terminal {
 
     let mut terminal = Arc::new(Mutex::new(terminal));
 
-    let t = Thread::create(thread_b, Arc::into_raw(terminal.clone()) as usize)
+    let t = Thread::create(thread_b, Arc::into_raw(terminal.clone()) as usize, threads::DEFAULT_STACK_SIZE)
         .expect("Failed to create thread B");
     t.start()
         .expect("Failed to start thread B");
