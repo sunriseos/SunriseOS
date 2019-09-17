@@ -27,7 +27,6 @@ extern crate lazy_static;
 pub mod error;
 
 use core::fmt;
-use bitfield::bitfield;
 use static_assertions::assert_eq_size;
 use core::mem::size_of;
 

@@ -118,6 +118,7 @@ fn boot(fs: &IFileSystemProxy, titleid: u64) -> Result<(), Error> {
     Ok(())
 }
 
+/// Turn the given UTF-8 titleid into an u64 titleid.
 fn get_titleid_from_path(titleid: &[u8]) -> Result<u64, Error> {
     let titleid = str::from_utf8(titleid).or(Err(LoaderError::InvalidPath))?;
     let titleid = u64::from_str_radix(titleid, 16).or(Err(LoaderError::InvalidPath))?;

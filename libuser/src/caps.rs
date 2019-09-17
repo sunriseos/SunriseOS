@@ -28,17 +28,18 @@
 //!
 //! ```
 //! extern crate sunrise_libuser;
-//! use sunrise_libuser::{syscalls, caps, capabilities};
-//! kip_header!(HEADER = KipHeader {
+//! use sunrise_libuser::{syscalls, caps, capabilities, kip_header};
+//! use sunrise_libuser::caps::ProcessCategory;
+//! kip_header!(HEADER = caps::KipHeader {
 //!     magic: *b"KIP1",
 //!     name: *b"test\0\0\0\0\0\0\0\0",
 //!     title_id: 0x0200000000001000,
-//!     category: 1,
+//!     process_category: ProcessCategory::KernelBuiltin,
 //!     main_thread_priority: 0,
 //!     default_cpu_core: 0,
+//!     reserved: 0,
 //!     flags: 0,
 //!     stack_page_count: 16,
-//!     ..default::Default()
 //! });
 //!
 //! capabilities!(CAPABILITIES = Capabilities {
@@ -139,12 +140,13 @@ pub use sunrise_libkern::process::{KipHeader, ProcessCategory};
 ///
 /// ```no_run
 /// extern crate sunrise_libuser;
-/// use sunrise_libuser::{syscalls, caps, capabilities};
-/// capabilities!(HEADER = KipHeader {
+/// use sunrise_libuser::{caps, kip_header};
+/// use sunrise_libuser::caps::ProcessCategory;
+/// kip_header!(HEADER = caps::KipHeader {
 ///     magic: *b"KIP1",
 ///     name: *b"test\0\0\0\0\0\0\0\0",
 ///     title_id: 0x0200000000001000,
-///     category: 1,
+///     process_category: ProcessCategory::KernelBuiltin,
 ///     main_thread_priority: 0,
 ///     default_cpu_core: 0,
 ///     flags: 0,
