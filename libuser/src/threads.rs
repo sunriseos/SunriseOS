@@ -82,13 +82,24 @@ struct StackContext {
 }
 
 impl StackContext {
-    /// Create a new StackContext from a given size.
+    /// Create a new StackContext from a given size. The stack size must be bigger than 0.
+    ///
+    /// # Errors
+    ///
+    /// - `InvalidSize`
+    ///   - The size passed was 0
+    ///   - The size overflows when rounded up to the nearest multiple of PAGE_SIZE.
     pub fn new(stack_size: usize) -> Result<Self, Error> {
-        let stack_layout_res: Result<Layout, Error> = Layout::from_size_align(stack_size, crate::mem::PAGE_SIZE).map_err(|_| KernelError::InvalidSize.into());
-        let stack_layout = stack_layout_res?;
+        if stack_size == 0 {
+            return Err(KernelError::InvalidSize.into());
+        }
+
+        let stack_layout = Layout::from_size_align(stack_size, crate::mem::PAGE_SIZE)
+            .or(Err(KernelError::InvalidSize))?;
 
         Ok(StackContext {
             stack_address: unsafe {
+                // Safety: We manually alloc the stack from the given stack_layout and dealloc it on Drop.
                 alloc(stack_layout) as *const u8
             },
             stack_layout
@@ -104,11 +115,13 @@ impl StackContext {
 impl Drop for StackContext {
     fn drop(&mut self) {
         unsafe {
+            // Safety: We manually desalloc the stack only when droping the StackContext so this is safe.
             dealloc(self.stack_address as *mut u8, self.stack_layout);
         }
     }
 }
 
+// Safety: This is safe as StackContext content will not be modified after creation.
 unsafe impl Sync for StackContext {}
 unsafe impl Send for StackContext {}
 
