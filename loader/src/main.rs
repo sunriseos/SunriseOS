@@ -72,14 +72,17 @@ fn boot(fs: &IFileSystemProxy, titlename: &str, args: &[u8]) -> Result<(), Error
     }
 
     let mut cur_offset = 0;
+
+    // Ensure we have a properly aligned buffer to avoid pathological worse-case
+    // scenario in ahci.
     let mut elf_data = vec![0; size as usize + 1];
-    let mut elf_data = if elf_data.as_ptr() as usize % 2 == 0 {
+    let elf_data = if elf_data.as_ptr() as usize % 2 == 0 {
         &mut elf_data[0..size as usize]
     } else {
         &mut elf_data[1..=size as usize]
     };
     while cur_offset < size {
-        let read_count = file.read(0, cur_offset, size - cur_offset, &mut elf_data)?;
+        let read_count = file.read(0, cur_offset, size - cur_offset, &mut elf_data[cur_offset as usize..])?;
         if read_count == 0 {
             error!("Unexpected end of file while reading /bin/{}/main", titlename);
             return Err(LoaderError::InvalidElf.into());
