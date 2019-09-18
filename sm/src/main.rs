@@ -223,6 +223,18 @@ fn main() {
     man.run();
 }
 
+kip_header!(HEADER = sunrise_libuser::caps::KipHeader {
+    magic: *b"KIP1",
+    name: *b"sm\0\0\0\0\0\0\0\0\0\0",
+    title_id: 0x0200000000000004,
+    process_category: sunrise_libuser::caps::ProcessCategory::KernelBuiltin,
+    main_thread_priority: 0,
+    default_cpu_core: 0,
+    flags: 0,
+    reserved: 0,
+    stack_page_count: 16,
+});
+
 capabilities!(CAPABILITIES = Capabilities {
     svcs: [
         sunrise_libuser::syscalls::nr::SleepThread,

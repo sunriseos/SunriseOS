@@ -9,8 +9,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use crate::event::{IRQEvent, ReadableEvent, WritableEvent, Waitable};
 use crate::sync::{SpinLockIRQ, SpinLock, Mutex};
-use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use core::fmt::{self, Debug};
+use core::sync::atomic::{AtomicUsize, Ordering};
 use crate::scheduler;
 use crate::error::{KernelError, UserspaceError};
 use crate::ipc::{ServerPort, ClientPort, ServerSession, ClientSession};
@@ -19,19 +18,47 @@ use failure::Backtrace;
 use crate::frame_allocator::PhysicalMemRegion;
 use crate::sync::SpinRwLock;
 
+use atomic::Atomic;
+
 pub mod thread_local_storage;
 mod capabilities;
 pub use self::capabilities::ProcessCapabilities;
-use crate::paging::{InactiveHierarchy, InactiveHierarchyTrait};
+use crate::paging::{InactiveHierarchy, InactiveHierarchyTrait, PAGE_SIZE, MappingAccessRights};
 use self::thread_local_storage::TLSManager;
 use crate::i386::interrupt_service_routines::UserspaceHardwareContext;
+use sunrise_libkern::process::ProcInfo;
+use sunrise_libkern::MemoryType;
+
+/// The state the process is currently in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProcessState {
+    /// Process is freshly created with svcCreateProcess and has not yet been
+    /// started.
+    Created,
+    /// Process has been attached with a debugger before it was started.
+    CreatedAttached,
+    /// Process has been started.
+    Started,
+    /// Process has crashed.
+    ///
+    /// Processes will not enter this state unless they were created with EnableDebug.
+    Crashed,
+    /// Process is started and has a debugger attached.
+    StartedAttached,
+    /// Process is currently exiting.
+    Exiting,
+    /// Process is stopped.
+    Exited,
+    /// Process has been suspended.
+    DebugSuspended
+}
 
 /// The struct representing a process. There's one for every process.
 ///
 /// It contains many information about the process :
 ///
 /// - Its type (regular userspace process, or kworker)
-/// - Its state (Running, Scheduled, Stopped)
+/// - Its state
 /// - Its memory pages
 /// - Its kernel stack, for syscalls and interrupts
 /// - Its hardware context, to be restored on rescheduling
@@ -49,11 +76,15 @@ pub struct ProcessStruct {
     /// A ProcessStruct with no thread left will eventually be dropped.
     // todo choose a better lock
     pub threads:              SpinLockIRQ<Vec<Weak<ThreadStruct>>>,
-    /// Marks when the process is dying.
-    pub killed:               AtomicBool,
+
+    /// The entrypoint of the main thread.
+    pub entrypoint:           VirtualAddress,
 
     /// Permissions of this process.
     pub capabilities:             ProcessCapabilities,
+
+    /// The state the process is currently in.
+    state:                    Atomic<ProcessState>,
 
     /// Tracks used and free allocated Thread Local Storage regions of this process.
     pub tls_manager: Mutex<TLSManager>,
@@ -93,7 +124,7 @@ static NEXT_PROCESS_ID: AtomicUsize = AtomicUsize::new(0);
 #[derive(Debug)]
 pub struct ThreadStruct {
     /// The state of this thread.
-    pub state: ThreadStateAtomic,
+    pub state: Atomic<ThreadState>,
 
     /// The kernel stack it uses for handling syscalls/irqs.
     pub kstack: KernelStack,
@@ -376,70 +407,6 @@ impl ThreadState {
     }
 }
 
-// TODO: Create/use a library to create Atomic Enum.
-// BODY: We have at least one (probably more) atomic enums that we rolled by hand
-// BODY: in the kernel. The one I know about: ThreadStateAtomic. Really, this
-// BODY: should ideally be done automatically by a crate, either a macro or a
-// BODY: custom derive. This would allow us to auto-generate the documentation.
-/// Stores a ThreadState atomically.
-pub struct ThreadStateAtomic(AtomicUsize);
-
-impl Debug for ThreadStateAtomic {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Debug::fmt(&self.load(Ordering::SeqCst), f)
-    }
-}
-
-#[allow(missing_docs)]
-#[allow(clippy::missing_docs_in_private_items)]
-impl ThreadStateAtomic {
-    pub fn new(state: ThreadState) -> ThreadStateAtomic {
-        ThreadStateAtomic(AtomicUsize::new(state as usize))
-    }
-
-    pub fn into_inner(self) -> ThreadState {
-        ThreadState::from_primitive(self.0.into_inner())
-    }
-
-    pub fn load(&self, order: Ordering) -> ThreadState {
-        ThreadState::from_primitive(self.0.load(order))
-    }
-
-    pub fn store(&self, val: ThreadState, order: Ordering) {
-        self.0.store(val as usize, order)
-    }
-
-    pub fn swap(&self, val: ThreadState, order: Ordering) -> ThreadState {
-        ThreadState::from_primitive(self.0.swap(val as usize, order))
-    }
-
-    pub fn compare_and_swap(&self, current: ThreadState, new: ThreadState, order: Ordering) -> ThreadState {
-        ThreadState::from_primitive(self.0.compare_and_swap(current as usize, new as usize, order))
-    }
-
-    pub fn compare_exchange(&self, current: ThreadState, new: ThreadState, success: Ordering, failure: Ordering) -> Result<ThreadState, ThreadState> {
-        self.0.compare_exchange(current as usize, new as usize, success, failure)
-            .map(ThreadState::from_primitive)
-            .map_err(ThreadState::from_primitive)
-    }
-
-    pub fn compare_exchange_weak(&self, current: ThreadState, new: ThreadState, success: Ordering, failure: Ordering) -> Result<ThreadState, ThreadState> {
-        self.0.compare_exchange_weak(current as usize, new as usize, success, failure)
-            .map(ThreadState::from_primitive)
-            .map_err(ThreadState::from_primitive)
-    }
-
-    pub fn fetch_update<F>(&self, mut f: F, fetch_order: Ordering, set_order: Ordering) -> Result<ThreadState, ThreadState>
-    where
-        F: FnMut(ThreadState) -> Option<ThreadState>
-    {
-        self.0.fetch_update(|v| f(ThreadState::from_primitive(v)).map(|v| v as usize),
-                            fetch_order, set_order)
-            .map(ThreadState::from_primitive)
-            .map_err(ThreadState::from_primitive)
-    }
-}
-
 impl ProcessStruct {
     /// Creates a new process.
     ///
@@ -449,7 +416,7 @@ impl ProcessStruct {
     ///
     /// Panics if max PID has been reached, which it shouldn't have since we're the first process.
     // todo: return an error instead of panicking
-    pub fn new(name: String, kacs: Option<&[u8]>) -> Result<Arc<ProcessStruct>, KernelError> {
+    pub fn new(procinfo: &ProcInfo, kacs: Option<&[u8]>) -> Result<Arc<ProcessStruct>, KernelError> {
         // allocate its memory space
         let pmemory = Mutex::new(ProcessMemory::default());
 
@@ -469,11 +436,12 @@ impl ProcessStruct {
         let p = Arc::new(
             ProcessStruct {
                 pid,
-                name,
+                name: String::from_utf8_lossy(&procinfo.name).into_owned(),
+                entrypoint: VirtualAddress(procinfo.code_addr as usize),
                 pmemory,
+                state: Atomic::new(ProcessState::Created),
                 threads: SpinLockIRQ::new(Vec::new()),
                 phandles: SpinLockIRQ::new(HandleTable::default()),
-                killed: AtomicBool::new(false),
                 tls_manager: Mutex::new(TLSManager::default()),
                 thread_maternity: SpinLock::new(Vec::new()),
                 capabilities
@@ -481,6 +449,80 @@ impl ProcessStruct {
         );
 
         Ok(p)
+    }
+
+    /// Creates the initial thread, allocates the stack, and starts the process.
+    ///
+    /// # Errors
+    ///
+    /// - `ThreadAlreadyStarted`
+    ///   - Process is already started.
+    /// - `ProcessKilled` if the process struct was tagged `killed` before we
+    ///    had time to start it.
+    /// - `MemoryExhausted`
+    ///    - Failed to allocate stack or thread TLS.
+    pub fn start(this: &Arc<Self>, _main_thread_priority: u32, stack_size: usize) -> Result<(), UserspaceError> {
+        // ResourceLimit + 1 thread => 0x10801
+        // Check imageSize + mainThreadStackSize + stackSize > memoryUsageCapacity => 0xD001 MemoryExhaustion
+
+        // Ensure we haven't already been started. Prevent running this method
+        // twice.
+        let oldstate = loop {
+            let oldstate = this.state.load(Ordering::Relaxed);
+            if oldstate != ProcessState::Created && oldstate != ProcessState::CreatedAttached {
+                return Err(UserspaceError::ProcessAlreadyStarted);
+            }
+
+            // Set new state early. Normally done after mapping memory and
+            // creating the first thread, among other things. Shouldn't matter
+            // for our purposes.
+            let newstate = match oldstate {
+                ProcessState::Created => ProcessState::Started,
+                ProcessState::CreatedAttached => ProcessState::StartedAttached,
+                _ => unreachable!()
+            };
+            let res = this.state.compare_exchange(oldstate, newstate, Ordering::SeqCst, Ordering::SeqCst);
+            if res.is_ok() {
+                break oldstate;
+            }
+        };
+
+        // ResourceLimit reserve align_up(stackSize, PAGE_SIZE) memory
+        // Allocate stack within new map region.
+        let stack_size = sunrise_libutils::align_up(stack_size, PAGE_SIZE);
+        let mut pmem = this.pmemory.lock();
+        let stack_addr = pmem.find_available_space(stack_size)?;
+        pmem.create_regular_mapping(stack_addr, stack_size, MemoryType::Stack, MappingAccessRights::u_rw())?;
+        core::mem::drop(pmem);
+
+        // Set self.mainThreadStackSize = stack_size.
+
+        // self.heapCapacity = self.memory_capacity - self.image_size - self.mainThreadStackSize;
+        // Initialize handle table - Done in the new function in SunriseOS.
+        let first_thread = ThreadStruct::new(this, this.entrypoint, stack_addr + stack_size, None)?;
+        // InitForUser(), need to figure out what this does
+        this.phandles.lock().add_handle(Arc::new(Handle::Thread(first_thread.clone())));
+        // SetEntryArguments - done in ThreadStruct::start for us.
+
+        // Normally, state is set here. We do it a bit earlier to make our
+        // atomic easier to manage.
+
+        if let Err(err) = ThreadStruct::start(first_thread) {
+            // Start failed, go back to Created state. there is at worse
+            // the process will have been set to the "exited" state by
+            // svcTerminate before it had a chance to run. Allowing it to be
+            // restarted in that case isn't a huge deal.
+            //
+            // We don't undo the allocation of the stack. Nintendo doesn't
+            // either.
+            //
+            // An annoying side-effect of using atomics here: The temporary
+            // "Started" state is observable. Oh well.
+
+            this.state.store(oldstate, Ordering::SeqCst);
+            return Err(err.into());
+        }
+        Ok(())
     }
 
     /// Creates the very first process at boot.
@@ -516,10 +558,11 @@ impl ProcessStruct {
         ProcessStruct {
                 pid,
                 name: String::from("init"),
+                entrypoint: VirtualAddress(0),
                 pmemory: Mutex::new(pmemory),
                 threads: SpinLockIRQ::new(Vec::new()),
                 phandles: SpinLockIRQ::new(HandleTable::default()),
-                killed: AtomicBool::new(false),
+                state: Atomic::new(ProcessState::Started),
                 thread_maternity: SpinLock::new(Vec::new()),
                 tls_manager: Mutex::new(TLSManager::default()),
                 capabilities: ProcessCapabilities::default(),
@@ -537,7 +580,8 @@ impl ProcessStruct {
     /// another thread that would want to spawn a thread after we killed all ours.
     pub fn kill_process(this: Arc<Self>) {
         // mark the process as killed
-        this.killed.store(true, Ordering::SeqCst);
+        // Set exiting and exited.
+        this.state.store(ProcessState::Exited, Ordering::SeqCst);
 
         // kill our baby threads. Those threads have never run, we don't even bother
         // scheduling them so the can free their resources, just drop the hole maternity.
@@ -593,7 +637,7 @@ impl ThreadStruct {
         let empty_hwcontext = SpinLockIRQ::new(ThreadHardwareContext::default());
 
         // the state of the process, Stopped
-        let state = ThreadStateAtomic::new(ThreadState::Stopped);
+        let state = Atomic::new(ThreadState::Stopped);
 
         // allocate its thread local storage region
         let tls = belonging_process.tls_manager.lock().allocate_tls(&mut pmemory)?;
@@ -612,12 +656,14 @@ impl ThreadStruct {
 
         // if we're creating the main thread, push a handle to it in the process' handle table,
         // and give it to the thread as an argument.
-        let arg = match arg {
-            Some(arg) => arg,
+        let args = match arg {
+            Some(arg) => (arg, 0),
             None => {
                 debug_assert!(belonging_process.threads.lock().is_empty() &&
                               belonging_process.thread_maternity.lock().is_empty(), "Argument shouldn't be None");
-                belonging_process.phandles.lock().add_handle(Arc::new(Handle::Thread(Arc::downgrade(&t)))) as usize
+                let handle = belonging_process.phandles.lock().add_handle(Arc::new(Handle::Thread(Arc::downgrade(&t))));
+
+                (0, handle as usize)
             }
         };
 
@@ -625,7 +671,7 @@ impl ThreadStruct {
         unsafe {
             // Safety: We just created the ThreadStruct, and own the only reference
             // to it, so we *know* it never has been scheduled, and cannot be.
-            prepare_for_first_schedule(&t, ep.addr(), arg, stack.addr());
+            prepare_for_first_schedule(&t, ep.addr(), args, stack.addr());
         }
 
         // make a weak copy that we will return
@@ -634,7 +680,7 @@ impl ThreadStruct {
         // add it to the process' list of threads, and to the maternity, simultaneously
         let mut maternity = belonging_process.thread_maternity.lock();
         let mut threads_vec = belonging_process.threads.lock();
-        if belonging_process.killed.load(Ordering::SeqCst) {
+        if belonging_process.state.load(Ordering::SeqCst) == ProcessState::Exited {
             // process was killed while we were waiting for the lock.
             // do not add the process to the vec, cancel the thread creation.
             drop(t);
@@ -675,7 +721,7 @@ impl ThreadStruct {
         let mut process = ProcessStruct::create_first_process();
 
         // the state of the process, currently running
-        let state = ThreadStateAtomic::new(ThreadState::Running);
+        let state = Atomic::new(ThreadState::Running);
 
         // use the already allocated stack
         let kstack = KernelStack::get_current_stack();
@@ -727,7 +773,7 @@ impl ThreadStruct {
         )?;
         // remove it from the maternity
         let mut maternity = thread.process.thread_maternity.lock();
-        if thread.process.killed.load(Ordering::SeqCst) {
+        if thread.process.state.load(Ordering::SeqCst) == ProcessState::Exited {
             // process was killed while we were waiting for the lock.
             // do not start process to the vec, cancel the thread start.
             return Err(KernelError::ProcessKilled { backtrace: Backtrace::new() })

@@ -86,7 +86,7 @@ unsafe fn set_current_thread<R, F: FnOnce() -> R>(t: Arc<ThreadStruct>, f: F) ->
 
     let r = f();
 
-    t.state.compare_and_swap(ThreadState::Scheduled, ThreadState::Running, Ordering::SeqCst);
+    let _ = t.state.compare_exchange(ThreadState::Scheduled, ThreadState::Running, Ordering::SeqCst, Ordering::SeqCst);
 
     r
 }
@@ -116,7 +116,11 @@ pub fn add_to_schedule_queue(thread: Arc<ThreadStruct>) {
         return;
     }
 
-    let oldstate = thread.state.compare_and_swap(ThreadState::Stopped, ThreadState::Scheduled, Ordering::SeqCst);
+    let oldstate = thread.state.compare_exchange(ThreadState::Stopped, ThreadState::Scheduled, Ordering::SeqCst, Ordering::SeqCst);
+    let oldstate = match oldstate {
+        Ok(v) => v,
+        Err(v) => v
+    };
 
     assert!(oldstate == ThreadState::Stopped || oldstate == ThreadState::Killed,
                "Process added to schedule queue was not stopped : {:?}", oldstate);
@@ -158,7 +162,11 @@ where
 {
     {
         let thread = get_current_thread();
-        let old = thread.state.compare_and_swap(ThreadState::Running, ThreadState::Stopped, Ordering::SeqCst);
+        let old = thread.state.compare_exchange(ThreadState::Running, ThreadState::Stopped, Ordering::SeqCst, Ordering::SeqCst);
+        let old = match old {
+            Ok(v) => v,
+            Err(v) => v
+        };
         assert!(old == ThreadState::Killed || old == ThreadState::Running, "Old was in invalid state {:?} before unscheduling", old);
         mem::drop(guard)
     }

@@ -1,6 +1,8 @@
 #![feature(external_doc)]
+#![deny(intra_doc_link_resolution_failure)]
+
 #![doc(include = "../README.md")]
- 
+
 fn main() {}
 
 pub mod building {
@@ -8,6 +10,10 @@ pub mod building {
 }
 pub mod updating_rust_version {
     #![doc(include = "../UPDATE_RUST.md")]
+}
+
+pub mod security_architecture {
+    #![doc(include = "../SECURITY_ARCHITECTURE.md")]
 }
 
 // TODO: Add design goals documentation.

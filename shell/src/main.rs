@@ -550,6 +550,18 @@ static LOUIS6: &[u8] = include_bytes!("../img/meme6.gif");
 /// Meme for KFS7
 static LOUIS7: &[u8] = include_bytes!("../img/meme7.gif");
 
+kip_header!(HEADER = sunrise_libuser::caps::KipHeader {
+    magic: *b"KIP1",
+    name: *b"shell\0\0\0\0\0\0\0",
+    title_id: 0x0200000000001000,
+    process_category: sunrise_libuser::caps::ProcessCategory::KernelBuiltin,
+    main_thread_priority: 0,
+    default_cpu_core: 0,
+    flags: 0,
+    reserved: 0,
+    stack_page_count: 16,
+});
+
 capabilities!(CAPABILITIES = Capabilities {
     svcs: [
         libuser::syscalls::nr::SleepThread,

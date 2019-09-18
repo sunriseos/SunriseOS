@@ -4,6 +4,7 @@ use core::slice;
 use crate::types::*;
 pub use sunrise_libkern::nr;
 pub use sunrise_libkern::{MemoryInfo, MemoryPermissions};
+pub use sunrise_libkern::process::*;
 use crate::error::KernelError;
 
 // Assembly blob can't get documented, but clippy requires it.
@@ -523,6 +524,138 @@ pub fn map_mmio_region(physical_address: usize, size: usize, virtual_address: us
 pub unsafe fn set_thread_area(address: usize) -> Result<(), KernelError> {
     unsafe {
         syscall(nr::SetThreadArea, address, 0, 0, 0, 0, 0)?;
+        Ok(())
+    }
+}
+
+/// Change permission of a page-aligned memory region. Acceptable permissions
+/// are ---, r-- and rw-. In other words, it is not allowed to set the
+/// executable bit, nor is it acceptable to use write-only permissions.
+///
+/// This can only be used on memory regions with the
+/// [`process_permission_change_allowed`] state.
+///
+/// # Errors
+///
+/// - `InvalidAddress`
+///   - Supplied address is not page-aligned.
+/// - `InvalidSize`
+///    - Supplied size is zero or not page-aligned.
+/// - `InvalidMemState`
+///    - Supplied memory range is not contained within the target process
+///      address space.
+///    - Supplied memory range does not have the [`process_permission_change_allowed`]
+///      state.
+///
+/// [`process_permission_change_allowed`]: sunrise_libkern::MemoryState::PROCESS_PERMISSION_CHANGE_ALLOWED
+pub fn set_process_memory_permission(proc_hnd: &Process, addr: usize, size: usize, perms: MemoryPermissions) -> Result<(), KernelError> {
+    unsafe {
+        syscall(nr::SetProcessMemoryPermission, (proc_hnd.0).0.get() as _, addr, size, perms.bits() as _, 0, 0)?;
+        Ok(())
+    }
+}
+
+/// Maps the given src memory range from a remote process into the current
+/// process as RW-. This is used by the Loader to load binaries into the memory
+/// region allocated by the kernel in [`create_process`](create_process).
+///
+/// The src region should have the MAP_PROCESS state, which is only available on
+/// CodeStatic/CodeMutable and ModuleCodeStatic/ModuleCodeMutable.
+///
+/// # Errors
+///
+/// - `InvalidAddress`
+///    - src_addr or dst_addr is not aligned to 0x1000.
+/// - `InvalidSize`
+///    - size is 0
+///    - size is not aligned to 0x1000.
+/// - `InvalidMemState`
+///    - `src_addr + size` overflows
+///    - `dst_addr + size` overflows
+///    - The src region is outside of the UserLand address space.
+///    - The dst region is outside of the UserLand address space, or within the
+///      heap or map memory region.
+///    - The src memory pages does not have the MAP_PROCESS state.
+///    - The dst memory pages is not of the Unmapped type.
+/// - `InvalidHandle`
+///    - The handle passed as an argument does not exist or is not a Process
+///      handle.
+pub fn map_process_memory(dstaddr: usize, proc_handle: &Process, srcaddr: usize, size: usize) -> Result<(), KernelError> {
+    unsafe {
+        syscall(nr::MapProcessMemory, dstaddr, (proc_handle.0).0.get() as _, srcaddr, size, 0, 0)?;
+        Ok(())
+    }
+}
+
+/// Unmaps a memory range mapped with [map_process_memory()]. `dst_addr` is an
+/// address in the current address space, while `src_addr` is the address in the
+/// remote address space that was previously mapped.
+///
+/// It is possible to partially unmap a ProcessMemory.
+///
+/// # Errors
+///
+/// - `InvalidAddress`
+///    - src_addr or dst_addr is not aligned to 0x1000.
+/// - `InvalidSize`
+///    - size is 0
+///    - size is not aligned to 0x1000.
+/// - `InvalidMemState`
+///    - `src_addr + size` overflows
+///    - `dst_addr + size` overflows
+///    - The src region is outside of the UserLand address space.
+///    - The dst region is outside of the UserLand address space, or within the
+///      heap or map memory region.
+///    - The src memory pages does not have the MAP_PROCESS state.
+///    - The src memory pages is not of the ProcessMemory type.
+/// - `InvalidMemRange`
+///    - The given source range does not map the same pages as the given dst
+///      range.
+/// - `InvalidHandle`
+///    - The handle passed as an argument does not exist or is not a Process
+///      handle.
+pub fn unmap_process_memory(dstaddr: usize, proc_handle: &Process, srcaddr: usize, size: usize) -> Result<(), KernelError> {
+    unsafe {
+        syscall(nr::UnmapProcessMemory, dstaddr, (proc_handle.0).0.get() as _, srcaddr, size, 0, 0)?;
+        Ok(())
+    }
+}
+
+/// Creates a new process with the given parameters.
+///
+/// Note that you probably don't want to use this! Look instead for
+/// ProcessMana's `LaunchTitle` function.
+pub fn create_process(procinfo: &ProcInfo, caps: &[u8]) -> Result<Process, KernelError> {
+    unsafe {
+        let (hnd, ..) = syscall(nr::CreateProcess, procinfo as *const _ as usize, caps.as_ptr() as usize, caps.len() / 4, 0, 0, 0)?;
+        Ok(Process(Handle::new(hnd as _)))
+    }
+}
+
+/// Start the given process on the provided CPU with the provided scheduler
+/// priority.
+///
+/// A stack of the given size will be allocated using the process' memory
+/// resource limit and memory pool.
+///
+/// The entrypoint is assumed to be the first address of the `code_addr` region
+/// provided in [create_process()]. It takes two parameters: the first is the
+/// usermode exception handling context, and should always be NULL. The second
+/// is a handle to the main thread.
+///
+/// # Errors
+///
+/// - `InvalidProcessorId`
+///   - Attempted to start the process on a processor that doesn't exist on the
+///     current machine, or a processor that the process is not allowed to use.
+/// - `InvalidThreadPriority`
+///   - Attempted to use a priority above 0x3F, or a priority that the created
+///     process is not allowed to use.
+/// - `MemoryFull`
+///   - Provided stack size is bigger than available vmem space.
+pub fn start_process(process_handle: &Process, main_thread_prio: u32, default_cpuid: u32, main_thread_stacksz: u32) -> Result<(), KernelError> {
+    unsafe {
+        syscall(nr::StartProcess, (process_handle.0).0.get() as usize, main_thread_prio as _, default_cpuid as _, main_thread_stacksz as _, 0, 0)?;
         Ok(())
     }
 }

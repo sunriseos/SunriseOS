@@ -46,6 +46,8 @@ use core::fmt;
 pub enum Error {
     /// A Kernel Error. Usually returned by syscalls.
     Kernel(KernelError, Backtrace),
+    /// Loader error.
+    Loader(LoaderError, Backtrace),
     /// Service Manager error.
     Sm(SmError, Backtrace),
     //Vi(ViError, Backtrace),
@@ -71,6 +73,7 @@ impl Error {
         match Module(module) {
             Module::Kernel => Error::Kernel(KernelError::from_description(description), Backtrace::new()),
             Module::FileSystem => Error::FileSystem(FileSystemError(description), Backtrace::new()),
+            Module::Loader => Error::Loader(LoaderError(description), Backtrace::new()),
             Module::Sm => Error::Sm(SmError(description), Backtrace::new()),
             //Module::Vi => Error::Vi(ViError(description), Backtrace::new()),
             Module::Libuser => Error::Libuser(LibuserError(description), Backtrace::new()),
@@ -87,6 +90,7 @@ impl Error {
         match *self {
             Error::Kernel(err, ..) => err.description() << 9 | Module::Kernel.0,
             Error::FileSystem(err, ..) => err.0 << 9 | Module::FileSystem.0,
+            Error::Loader(err, ..) => err.0 << 9 | Module::Loader.0,
             Error::Sm(err, ..) => err.0 << 9 | Module::Sm.0,
             //Error::Vi(err, ..) => err.0 << 9 | Module::Vi.0,
             Error::Libuser(err, ..) => err.0 << 9 | Module::Libuser.0,
@@ -187,6 +191,7 @@ enum_with_val! {
     struct Module(u32) {
         Kernel = 1,
         FileSystem = 2,
+        Loader = 9,
         Sm = 21,
         Vi = 114,
         Time = 116,
@@ -276,7 +281,7 @@ impl From<AhciError> for Error {
 }
 
 enum_with_val! {
-    /// AHCI driver errors.
+    /// Time errors.
     #[derive(PartialEq, Eq, Clone, Copy)]
     pub struct TimeError(u32) {
         /// The given calendar timestamp couldn't be computed.
@@ -298,3 +303,21 @@ impl From<TimeError> for Error {
     }
 }
 
+enum_with_val! {
+    /// Loader errors.
+    #[derive(PartialEq, Eq, Clone, Copy)]
+    pub struct LoaderError(u32) {
+        /// KACs are invalid.
+        InvalidKacs = 4,
+        /// Invalid path read.
+        InvalidPath = 6,
+        /// The ELF is corrupted.
+        InvalidElf = 9,
+    }
+}
+
+impl From<LoaderError> for Error {
+    fn from(error: LoaderError) -> Self {
+        Error::Loader(error, Backtrace::new())
+    }
+}

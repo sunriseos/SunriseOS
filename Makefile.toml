@@ -129,9 +129,15 @@ dependencies = ["install-xargo"]
 command = "xargo"
 args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-fs", "@@split(COMPILER_FLAGS, )"]
 
+[tasks.loader]
+description = "Compiles sunrise-loader"
+dependencies = ["install-xargo"]
+command = "xargo"
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-loader", "@@split(COMPILER_FLAGS, )"]
+
 [tasks.userspace]
 description = "Compiles userspace apps"
-dependencies = ["shell", "wall-clock", "sm", "vi", "ahci", "time", "fs"]
+dependencies = ["shell", "wall-clock", "sm", "vi", "ahci", "time", "fs", "loader"]
 
 [tasks.iso]
 description = "Creates a bootable ISO containing the kernel and grub."
@@ -148,27 +154,27 @@ cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-sm             isofile
 cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-vi             isofiles/boot/
 cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-ahci           isofiles/boot/
 cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-fs             isofiles/boot/
+cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-loader         isofiles/boot/
 mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
 '''
 ]
 
 [tasks.disk]
 description = "Creates an empty disk image."
-command = "cargo"
-args = ["run", "--manifest-path", "disk-initializer/Cargo.toml", "--", "DISK.img", "52428800", "external/filesystem/disk_template/"]
+script = [
+'''
+mkdir -p external/filesystem/disk_template/bin/0200000000000000/flags
+cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-wall-clock     external/filesystem/disk_template/bin/0200000000000000/main
 
-# because we can't have a dependency on a file ರ_ರ
-[tasks.create-disk-if-not-exist]
-description = "Invokes the task `disk` if DISK.img does not already exist."
-condition_script = [ "[ ! -e DISK.img ]" ]
-run_task = "disk"
-
-[tasks.create-disk-if-not-exist.windows]
-condition_script = [ "if exists DISK.img exit 1" ]
+# TODO: https://github.com/sagiegurari/shell2batch/issues/9
+touch external/filesystem/disk_template/bin/0200000000000000/flags/boot.flag
+cargo run --manifest-path disk-initializer/Cargo.toml -- DISK.img 52428800 external/filesystem/disk_template/
+'''
+]
 
 [tasks.qemu]
 description = "Runs the bootable ISO in qemu."
-dependencies = ["iso", "create-disk-if-not-exist"]
+dependencies = ["iso", "disk"]
 command = "qemu-system-i386"
 args = [
     "@@split(QEMU_COMMON_FLAGS, )", "@@split(QEMU_EXTRA_FLAGS, )"
@@ -216,7 +222,8 @@ args = ["-c", "kernel/src/main.rs", "bootstrap/src/main.rs",
 	"shell/src/main.rs", "libuser/src/lib.rs", "wall-clock/src/main.rs",
 	"sm/src/main.rs", "vi/src/main.rs", "ahci/src/main.rs",
 	"libutils/src/lib.rs", "libkern/src/lib.rs", "swipc-gen/src/lib.rs",
-	"swipc-parser/src/lib.rs", "time/src/main.rs", "libtimezone/src/lib.rs"
+	"swipc-parser/src/lib.rs", "time/src/main.rs", "libtimezone/src/lib.rs",
+	"loader/src/main.rs"
 ]
 
 [tasks.clippy-sunrise-kernel-target]

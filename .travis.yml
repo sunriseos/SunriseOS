@@ -26,7 +26,7 @@ script:
 - if [ "windows" = "${TRAVIS_OS_NAME}" ]; then export PATH=${TRAVIS_HOME}/.cargo/bin:/c/Windows/system32:/c/Windows:/c/Windows/System32/Wbem:/c/Windows/System32/WindowsPowerShell/v1.0; fi
 - cargo make iso
 - cargo make --profile production iso
-- cargo make create-disk-if-not-exist
+- cargo make disk
 - if [ -z "${NO_TESTS_NO_DEPLOY}" ]; then cargo make test; fi
 - if [ -z "${NO_TESTS_NO_DEPLOY}" ]; then cargo make doc-full; fi
 - if [ -z "${NO_TESTS_NO_DEPLOY}" ]; then cargo make clippy -- -D warnings; fi

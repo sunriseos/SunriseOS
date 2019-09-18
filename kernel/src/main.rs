@@ -50,7 +50,6 @@ extern crate bitfield;
 extern crate mashup;
 
 use core::fmt::Write;
-use alloc::string::String;
 use crate::utils::io;
 
 pub mod paging;
@@ -95,6 +94,7 @@ use crate::mem::VirtualAddress;
 use crate::process::{ProcessStruct, ThreadStruct};
 use sunrise_libkern::MemoryType;
 use crate::cpu_locals::init_cpu_locals;
+use sunrise_libkern::process::*;
 
 /// Forces a double fault by stack overflowing.
 ///
@@ -141,11 +141,37 @@ fn main() {
         info!("Loading {}", module.name());
         let mapped_module = elf_loader::map_grub_module(module)
             .unwrap_or_else(|_| panic!("Unable to find available memory for module {}", module.name()));
-        let proc = ProcessStruct::new(String::from(module.name()), elf_loader::get_kacs(&mapped_module)).unwrap();
+
+        let kip_header = elf_loader::get_kip_header(&mapped_module)
+            .unwrap_or_else(|| panic!("Unable to find KIP header for module {}", module.name()));
+
+        let mut flags = ProcInfoFlags(0);
+        flags.set_address_space_type(ProcInfoAddrSpace::AS32Bit);
+        flags.set_debug(true);
+        flags.set_pool_partition(PoolPartition::Sysmodule);
+
+        // TODO: ASLR
+        // BODY: We should generate a random aslr base.
+        let aslr_base = 0x400000;
+
+        let procinfo = ProcInfo {
+            name: kip_header.name,
+            process_category: kip_header.process_category,
+            title_id: kip_header.title_id,
+            code_addr: aslr_base as _,
+            // We don't need this, the kernel loader allocates multiple code
+            // pages.
+            code_num_pages: 0,
+            flags,
+            resource_limit_handle: None,
+            system_resource_num_pages: 0
+        };
+
+        let proc = ProcessStruct::new(&procinfo, elf_loader::get_kacs(&mapped_module)).unwrap();
         let (ep, sp) = {
                 let mut pmemlock = proc.pmemory.lock();
 
-                let ep = elf_loader::load_builtin(&mut pmemlock, &mapped_module);
+                let ep = elf_loader::load_builtin(&mut pmemlock, &mapped_module, aslr_base);
 
                 let stack = pmemlock.find_available_space(20 * PAGE_SIZE)
                     .unwrap_or_else(|_| panic!("Cannot create a stack for process {:?}", proc));

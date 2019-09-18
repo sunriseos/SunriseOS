@@ -7,7 +7,8 @@
 use crate::i386;
 use crate::mem::{VirtualAddress, PhysicalAddress};
 use crate::mem::{UserSpacePtr, UserSpacePtrMut};
-use crate::paging::MappingAccessRights;
+use crate::paging::{MappingAccessRights, PAGE_SIZE};
+use crate::paging::lands::{UserLand, VirtualSpaceLand};
 use crate::frame_allocator::{PhysicalMemRegion, FrameAllocator, FrameAllocatorTrait};
 use crate::paging::mapping::MappingFrames;
 use crate::process::{Handle, ThreadStruct, ProcessStruct};
@@ -21,7 +22,8 @@ use crate::error::{UserspaceError, KernelError};
 use crate::sync::SpinRwLock;
 use crate::timer;
 use failure::Backtrace;
-use sunrise_libkern::{MemoryInfo, MemoryAttributes, MemoryPermissions, MemoryType};
+use sunrise_libkern::{MemoryInfo, MemoryAttributes, MemoryPermissions, MemoryType, MemoryState};
+use sunrise_libkern::process::*;
 use bit_field::BitArray;
 use crate::i386::gdt::{GDT, GdtIndex};
 use core::convert::TryFrom;
@@ -672,5 +674,449 @@ pub fn set_thread_area(segment_base_address: usize) -> Result<(), UserspaceError
     // store it in the thread struct.
     let thread = get_current_thread();
     *thread.tls_elf.lock() = segment_base_address;
+    Ok(())
+}
+
+/// Change permission of a page-aligned memory region. Acceptable permissions
+/// are ---, r-- and rw-. In other words, it is not allowed to set the
+/// executable bit, nor is it acceptable to use write-only permissions.
+///
+/// This can only be used on memory regions with the
+/// [`process_permission_change_allowed`] state.
+///
+/// # Errors
+///
+/// - `InvalidAddress`
+///   - Supplied address is not page-aligned.
+/// - `InvalidSize`
+///    - Supplied size is zero or not page-aligned.
+/// - `InvalidMemState`
+///    - Supplied memory range is not contained within the target process
+///      address space.
+///    - Supplied memory range does not have the [`process_permission_change_allowed`]
+///      state.
+///
+/// [`process_permission_change_allowed`]: sunrise_libkern::MemoryState::PROCESS_PERMISSION_CHANGE_ALLOWED
+pub fn set_process_memory_permission(proc_hnd: u32, addr: usize, size: usize, perms: u32) -> Result<(), UserspaceError> {
+    let addr = VirtualAddress(addr);
+
+    addr.check_aligned_to(PAGE_SIZE)?;
+    if size == 0 || size & (PAGE_SIZE - 1) != 0 {
+        return Err(UserspaceError::InvalidSize);
+    }
+
+    if addr.checked_add(size).is_none() {
+        return Err(UserspaceError::InvalidMemState);
+    }
+
+    let perms = MemoryPermissions::from_bits(perms).ok_or(UserspaceError::InvalidMemPerms)?;
+    perms.check()?;
+
+    let dstproc = scheduler::get_current_process().phandles.lock().get_handle(proc_hnd)?.as_process()?;
+    // Use dstproc.addrSpace
+    if !UserLand::contains_region(addr, size) {
+        return Err(UserspaceError::InvalidMemState);
+    }
+
+    // # KMemoryManager::SetProcessMemoryPermission
+
+    let mut size = size;
+    let mut addr = addr;
+
+    let mut dstmem = dstproc.pmemory.lock();
+
+    dstmem.check_range(addr, size,
+        MemoryState::PROCESS_PERMISSION_CHANGE_ALLOWED, MemoryState::PROCESS_PERMISSION_CHANGE_ALLOWED,
+        MemoryPermissions::empty(), MemoryPermissions::empty(),
+        MemoryAttributes::all(), MemoryAttributes::empty(),
+        MemoryAttributes::IPC_MAPPED | MemoryAttributes::DEVICE_MAPPED)?;
+
+    while size != 0 {
+        let meminfo = dstmem.query_memory(addr);
+
+        let mapping_addr = meminfo.mapping().address();
+        let mapping_length = meminfo.mapping().length();
+        core::mem::drop(meminfo);
+        let meminfo = dstmem.unmap(mapping_addr, mapping_length).expect("Unmap can't fail.");
+
+        let frames = if let MappingFrames::Shared(frames) = meminfo.frames() {
+            frames
+        } else {
+            panic!("Non-shared frames in mapping {:?}", meminfo);
+        };
+
+        // Split mapping
+        if meminfo.address() < addr {
+            dstmem.map_partial_shared_mapping(frames.clone(), meminfo.address(), meminfo.phys_offset(), addr - meminfo.address(), meminfo.state().ty(), meminfo.flags()).expect("Can't fail");
+        }
+        if meminfo.address() + meminfo.length() > addr + size {
+            let phys_offset = meminfo.phys_offset() + addr + size - meminfo.address();
+            dstmem.map_partial_shared_mapping(frames.clone(), addr + size, phys_offset, (meminfo.address() + meminfo.length()) - (addr + size), meminfo.state().ty(), meminfo.flags()).expect("Can't fail");
+        }
+
+        // Handle middle mapping.
+        let offset_in_mapping = addr - meminfo.address();
+        let offset = offset_in_mapping + meminfo.phys_offset();
+        let curlen = core::cmp::min(size, meminfo.length() - offset_in_mapping);
+
+        let out_type = match meminfo.state().ty() {
+            MemoryType::CodeStatic => if perms.contains(MemoryPermissions::WRITABLE) { MemoryType::CodeMutable } else { MemoryType::CodeStatic },
+            MemoryType::ModuleCodeStatic => if perms.contains(MemoryPermissions::WRITABLE) { MemoryType::ModuleCodeMutable } else { MemoryType::ModuleCodeStatic },
+            _ => unreachable!("Got a state PROCESS_PERMISSION_CHANGE_ALLOWED that wasn't CodeStatic or ModuleCodeStatic, but a {:?}", meminfo.state().ty())
+        };
+
+        dstmem.map_partial_shared_mapping(frames.clone(), addr, offset, curlen, out_type, perms.into())?;
+
+        size -= curlen;
+        addr += curlen;
+    }
+
+    Ok(())
+}
+
+/// Maps the given src memory range from a remote process into the current
+/// process as RW-. This is used by the Loader to load binaries into the memory
+/// region allocated by the kernel in [create_process()].
+///
+/// The src region should have the MAP_PROCESS state, which is only available on
+/// CodeStatic/CodeMutable and ModuleCodeStatic/ModuleCodeMutable.
+///
+/// # Errors
+///
+/// - `InvalidAddress`
+///    - src_addr or dst_addr is not aligned to 0x1000.
+/// - `InvalidSize`
+///    - size is 0
+///    - size is not aligned to 0x1000.
+/// - `InvalidMemState`
+///    - `src_addr + size` overflows
+///    - `dst_addr + size` overflows
+///    - The src region is outside of the UserLand address space.
+///    - The dst region is outside of the UserLand address space, or within the
+///      heap or map memory region.
+///    - The src memory pages does not have the MAP_PROCESS state.
+///    - The dst memory pages is not of the Unmapped type.
+/// - `InvalidHandle`
+///    - The handle passed as an argument does not exist or is not a Process
+///      handle.
+pub fn map_process_memory(dst_addr: usize, proc_hnd: u32, src_addr: usize, size: usize) -> Result<(), UserspaceError> {
+    let dst_addr = VirtualAddress(dst_addr);
+    let src_addr = VirtualAddress(src_addr);
+
+    src_addr.check_aligned_to(PAGE_SIZE)?;
+    dst_addr.check_aligned_to(PAGE_SIZE)?;
+
+    if size == 0 || size & (PAGE_SIZE - 1) != 0 {
+        return Err(UserspaceError::InvalidSize);
+    }
+
+    if src_addr.checked_add(size).is_none() {
+        return Err(UserspaceError::InvalidMemState);
+    }
+    if dst_addr.checked_add(size).is_none() {
+        return Err(UserspaceError::InvalidMemState);
+    }
+
+    let curproc = scheduler::get_current_process();
+    let srcproc = curproc.phandles.lock().get_handle(proc_hnd)?.as_process()?;
+
+    // check srcproc address space
+    if !UserLand::contains_region(src_addr, size) {
+        return Err(UserspaceError::InvalidMemState);
+    }
+
+    // If dst_addr is within Heap region or Map region, error out.
+    if !UserLand::contains_region(dst_addr, size) {
+        return Err(UserspaceError::InvalidMemRange)
+    }
+
+    let mut size = size;
+    let mut src_addr = src_addr;
+    let mut dst_addr = dst_addr;
+
+    let srcmem = srcproc.pmemory.lock();
+    let mut dstmem = curproc.pmemory.lock();
+
+    // Check we're allowed to MAP_PROCESS in the source.
+    srcmem.check_range(src_addr, size,
+        MemoryState::MAP_PROCESS_ALLOWED, MemoryState::MAP_PROCESS_ALLOWED,
+        MemoryPermissions::empty(), MemoryPermissions::empty(),
+        MemoryAttributes::all(), MemoryAttributes::empty(),
+        MemoryAttributes::IPC_MAPPED | MemoryAttributes::DEVICE_MAPPED)?;
+
+    // Check the destination is fully unmapped.
+    dstmem.check_range(dst_addr, size,
+        MemoryState::all(), MemoryType::Unmapped.get_memory_state(),
+        MemoryPermissions::empty(), MemoryPermissions::empty(),
+        MemoryAttributes::empty(), MemoryAttributes::empty(),
+        MemoryAttributes::empty())?;
+
+    while size != 0 {
+        let meminfo = srcmem.query_memory(src_addr);
+
+        let offset_in_mapping = src_addr - meminfo.mapping().address();
+        let offset = offset_in_mapping + meminfo.mapping().phys_offset();
+        let curlen = core::cmp::min(size, meminfo.mapping().length() - offset_in_mapping);
+        if let MappingFrames::Shared(frames) = meminfo.mapping().frames() {
+            dstmem.map_partial_shared_mapping(frames.clone(), dst_addr, offset, curlen,
+                MemoryType::ProcessMemory, MappingAccessRights::u_rw())
+                .unwrap_or_else(|err| panic!("Failed to map in dst mem: {:?}", err));
+        } else {
+            panic!("Got a broken meminfo with non-arc'd frames: {:?}", meminfo);
+        }
+        size -= curlen;
+        src_addr += curlen;
+        dst_addr += curlen;
+    }
+
+    Ok(())
+}
+
+/// Unmaps a memory range mapped with [map_process_memory()]. `dst_addr` is an
+/// address in the current address space, while `src_addr` is the address in the
+/// remote address space that was previously mapped.
+///
+/// It is possible to partially unmap a ProcessMemory.
+///
+/// # Errors
+///
+/// - `InvalidAddress`
+///    - src_addr or dst_addr is not aligned to 0x1000.
+/// - `InvalidSize`
+///    - size is 0
+///    - size is not aligned to 0x1000.
+/// - `InvalidMemState`
+///    - `src_addr + size` overflows
+///    - `dst_addr + size` overflows
+///    - The src region is outside of the UserLand address space.
+///    - The dst region is outside of the UserLand address space, or within the
+///      heap or map memory region.
+///    - The src memory pages does not have the MAP_PROCESS state.
+///    - The src memory pages is not of the ProcessMemory type.
+/// - `InvalidMemRange`
+///    - The given source range does not map the same pages as the given dst
+///      range.
+/// - `InvalidHandle`
+///    - The handle passed as an argument does not exist or is not a Process
+///      handle.
+pub fn unmap_process_memory(dst_addr: usize, proc_hnd: u32, src_addr: usize, size: usize) -> Result<(), UserspaceError> {
+    let src_addr = VirtualAddress(src_addr);
+    let dst_addr = VirtualAddress(dst_addr);
+
+    src_addr.check_aligned_to(PAGE_SIZE)?;
+    dst_addr.check_aligned_to(PAGE_SIZE)?;
+
+    if size == 0 || size & (PAGE_SIZE - 1) != 0 {
+        return Err(UserspaceError::InvalidSize);
+    }
+
+    if src_addr.checked_add(size).is_none() {
+        return Err(UserspaceError::InvalidMemState);
+    }
+    if dst_addr.checked_add(size).is_none() {
+        return Err(UserspaceError::InvalidMemState);
+    }
+
+    let curproc = scheduler::get_current_process();
+    let srcproc = curproc.phandles.lock().get_handle(proc_hnd)?.as_process()?;
+
+    // check srcproc address space
+    if !UserLand::contains_region(src_addr, size) {
+        return Err(UserspaceError::InvalidMemState);
+    }
+
+    // If dst_addr is within Heap region or Map region, error out.
+    if !UserLand::contains_region(dst_addr, size) {
+        return Err(UserspaceError::InvalidMemRange)
+    }
+
+    let mut size = size;
+    let mut src_addr = src_addr;
+    let mut dst_addr = dst_addr;
+
+    let srcmem = srcproc.pmemory.lock();
+    let mut dstmem = curproc.pmemory.lock();
+
+    // Check we're allowed to MAP_PROCESS in the source.
+    srcmem.check_range(src_addr, size,
+        MemoryState::MAP_PROCESS_ALLOWED, MemoryState::MAP_PROCESS_ALLOWED,
+        MemoryPermissions::empty(), MemoryPermissions::empty(),
+        MemoryAttributes::all(), MemoryAttributes::empty(),
+        MemoryAttributes::IPC_MAPPED | MemoryAttributes::DEVICE_MAPPED)?;
+
+    // Check the destination is all ProcessMemory.
+    dstmem.check_range(dst_addr, size,
+        MemoryState::all(), MemoryType::ProcessMemory.get_memory_state(),
+        MemoryPermissions::empty(), MemoryPermissions::empty(),
+        MemoryAttributes::all(), MemoryAttributes::empty(),
+        MemoryAttributes::empty())?;
+
+    // TODO: UnmapProcessMemory: Verify that the src page list == dst page list.
+    // BODY: In UnmapProcessMemory, we don't ensure that src_address is correct,
+    // BODY: that is, we don't check that the frames in the dst match the frame
+    // BODY: in the src. HOS/NX does this by building a PageList (essentially
+    // BODY: a vector of frames) and comparing them.
+    // BODY:
+    // BODY: We could do something similar by iterating over the Mappings and
+    // BODY: checking if their Frames + PhysOffset are equals.
+
+    // Unmap.
+    while size != 0 {
+        let mapping_address;
+        let mapping_length;
+
+        {
+            let meminfo = dstmem.query_memory(dst_addr);
+            mapping_address = meminfo.mapping().address();
+            mapping_length = meminfo.mapping().length();
+        }
+
+        let mapping = dstmem.unmap(mapping_address, mapping_length).unwrap();
+        let offset_in_mapping = dst_addr - mapping.address();
+        let curlen = core::cmp::min(size, mapping.length() - offset_in_mapping);
+
+        if let MappingFrames::Shared(frames) = mapping.frames() {
+
+            // Remap left bit
+            if offset_in_mapping != 0 {
+                dstmem.map_partial_shared_mapping(frames.clone(), mapping.address(),
+                    mapping.phys_offset(), offset_in_mapping, mapping.state().ty(),
+                    mapping.flags()).unwrap();
+            }
+
+            // Remap right bit
+            if curlen != mapping.length() - offset_in_mapping {
+                dstmem.map_partial_shared_mapping(frames.clone(),
+                    mapping.address() + offset_in_mapping + size,
+                    mapping.phys_offset() + offset_in_mapping + size,
+                    mapping.length() - (offset_in_mapping + size),
+                    mapping.state().ty(),
+                    mapping.flags()).unwrap();
+            }
+        } else {
+            panic!("Got a broken meminfo with non-arc'd frames: {:?}", mapping);
+        }
+        size -= curlen;
+        src_addr += curlen;
+        dst_addr += curlen;
+    }
+
+    Ok(())
+}
+
+/// Creates a new process. This will create an empty address space without any
+/// thread yet. The size of this address space is controlled through
+/// the [ProcInfoAddrSpace] found in `procinfo`.
+///
+/// It will create an empty memory region at `code_addr` spanning
+/// `code_num_pages` pages. This region will initially not have any user
+/// permissions - the user is expected to call set_process_memory_permissions.
+///
+/// The code region needs to fall within a region called the code allowed
+/// region, which depends on the address space:
+///
+/// For 32-bit address space: 0x00200000-0x003FFFFFFF
+///
+/// For 36-bit address space: 0x08000000-0x007FFFFFFF
+///
+/// For 39-bit address space: 0x08000000-0x7FFFFFFFFF
+///
+/// # Errors
+///
+/// * `InvalidEnum`
+///    * ProcInfo contains invalid bitfields
+/// * `InvalidAddress`
+///    * ProcInfo's `code_addr` is not 21-bit aligned.
+/// * `InvalidMemRange`
+///    * ProcInfo's `code_addr` is not within the allowed code region.
+/// * All the errors from [crate::process::capabilities::ProcessCapabilities#parse_kacs]
+pub fn create_process(procinfo: UserSpacePtr<ProcInfo>, caps: UserSpacePtr<[u8]>) -> Result<usize, UserspaceError> {
+    // Ensure the procinfo structure is well-formed.
+    procinfo.flags.check()?;
+
+    let code_allowed_region = match procinfo.flags.address_space_type() {
+        ProcInfoAddrSpace::AS32BitNoMap |
+        ProcInfoAddrSpace::AS32Bit => 0x00200000..=0x003FFFFFFF,
+        ProcInfoAddrSpace::AS36Bit => 0x08000000..=0x007FFFFFFF,
+        ProcInfoAddrSpace::AS39Bit => 0x08000000..=0x7FFFFFFFFF
+    };
+
+    // The code address must be aligned with 21 bit.
+    if procinfo.code_addr & ((1 << 21) - 1) != 0 {
+        return Err(UserspaceError::InvalidAddress);
+    }
+
+    // Check code_num_pages < 0 => InvalidSize. Our code_num_pages is unsigned,
+    // we don't need to do this.
+
+    // Check personalMmHeapNumPages < 0 => InvalidSize. Again, unsigned.
+    // Check !((code_num_pages | personal_mm_heap_num_pages) & 0xFFF0000000000000) => InvalidSize.
+    // Check code_num_pages + personal_mm_heap_num_pages overflows => MemoryExhaustion
+    // Check !((code_num_pages + personal_mm_heap_num_pages) & 0xFFF0000000000000) => InvalidSize.
+    // No clue what these checks are for.
+
+    // Check that our region is contained in the code_allowed_region.
+    if !(code_allowed_region.contains(&procinfo.code_addr) &&
+        code_allowed_region.contains(&(procinfo.code_addr + (u64::from(procinfo.code_num_pages) * PAGE_SIZE as u64))))
+    {
+        return Err(UserspaceError::InvalidMemRange)
+    }
+
+    // Check (code_num_pages | personal_mm_heap_num_pages) >> 21 => MemoryExhaustion
+    // Check (code_num_pages + personal_mm_heap_num_pages) >> 21 => MemoryExhaustion
+
+    let newproc = ProcessStruct::new(&procinfo, Some(&caps[..]))?;
+
+    // Enter KProcess::CreateFromUserData
+
+    // TODO: Create memory region reservations
+    // BODY: Memory region reservations is sort of insane in HOS/NX - especially
+    // BODY: for 32-bit. I'll figure it out later.
+
+    newproc.pmemory.lock().create_regular_mapping(VirtualAddress(procinfo.code_addr as usize), procinfo.code_num_pages as usize * PAGE_SIZE, MemoryType::CodeStatic, MappingAccessRights::k_r())?;
+
+    let curproc = scheduler::get_current_process();
+    let hnd = curproc.phandles.lock().add_handle(Arc::new(Handle::Process(newproc)));
+    Ok(hnd as _)
+}
+
+/// Start the given process on the provided CPU with the provided scheduler
+/// priority.
+///
+/// A stack of the given size will be allocated using the process' memory
+/// resource limit and memory pool.
+///
+/// The entrypoint is assumed to be the first address of the `code_addr` region
+/// provided in [create_process()]. It takes two parameters: the first is the
+/// usermode exception handling context, and should always be NULL. The second
+/// is a handle to the main thread.
+///
+/// # Errors
+///
+/// - `InvalidProcessorId`
+///   - Attempted to start the process on a processor that doesn't exist on the
+///     current machine, or a processor that the process is not allowed to use.
+/// - `InvalidThreadPriority`
+///   - Attempted to use a priority above 0x3F, or a priority that the created
+///     process is not allowed to use.
+/// - `MemoryFull`
+///   - Provided stack size is bigger than available vmem space.
+pub fn start_process(hnd: u32, main_thread_prio: u32, default_cpuid: u32, main_thread_stacksz: usize) -> Result<(), UserspaceError> {
+    let target_proc = scheduler::get_current_process().phandles.lock().get_handle(hnd)?.as_process()?;
+
+    // Check max CPU ID
+    // || !target_proc.capabilities.allowed_cpu_id_bitmask.get_bit(default_cpuid)
+    if default_cpuid > 1 {
+        return Err(UserspaceError::InvalidProcessorId)
+    }
+
+    // || !target_proc.capabilities.allowed_thread_prio_bit_mask.get_bit(main_thread_prio)
+    if main_thread_prio > 0x3F {
+        return Err(UserspaceError::InvalidThreadPriority)
+    }
+
+    // Set process default cpu core.
+
+    ProcessStruct::start(&target_proc, main_thread_prio, main_thread_stacksz)?;
     Ok(())
 }
