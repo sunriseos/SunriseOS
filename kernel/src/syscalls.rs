@@ -682,7 +682,7 @@ pub fn set_thread_area(segment_base_address: usize) -> Result<(), UserspaceError
 /// executable bit, nor is it acceptable to use write-only permissions.
 ///
 /// This can only be used on memory regions with the
-/// [process_permission_change_allowed] state.
+/// [`process_permission_change_allowed`] state.
 ///
 /// # Errors
 ///
@@ -693,8 +693,10 @@ pub fn set_thread_area(segment_base_address: usize) -> Result<(), UserspaceError
 /// - `InvalidMemState`
 ///    - Supplied memory range is not contained within the target process
 ///      address space.
-///    - Supplied memory range does not have the [process_permission_change_allowed]
+///    - Supplied memory range does not have the [`process_permission_change_allowed`]
 ///      state.
+///
+/// [`process_permission_change_allowed`]: sunrise_libkern::MemoryState::PROCESS_PERMISSION_CHANGE_ALLOWED
 pub fn set_process_memory_permission(proc_hnd: u32, addr: usize, size: usize, perms: u32) -> Result<(), UserspaceError> {
     let addr = VirtualAddress(addr);
 

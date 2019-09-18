@@ -533,7 +533,7 @@ pub unsafe fn set_thread_area(address: usize) -> Result<(), KernelError> {
 /// executable bit, nor is it acceptable to use write-only permissions.
 ///
 /// This can only be used on memory regions with the
-/// [process_permission_change_allowed] state.
+/// [`process_permission_change_allowed`] state.
 ///
 /// # Errors
 ///
@@ -544,8 +544,10 @@ pub unsafe fn set_thread_area(address: usize) -> Result<(), KernelError> {
 /// - `InvalidMemState`
 ///    - Supplied memory range is not contained within the target process
 ///      address space.
-///    - Supplied memory range does not have the [process_permission_change_allowed]
+///    - Supplied memory range does not have the [`process_permission_change_allowed`]
 ///      state.
+///
+/// [`process_permission_change_allowed`]: sunrise_libkern::MemoryState::PROCESS_PERMISSION_CHANGE_ALLOWED
 pub fn set_process_memory_permission(proc_hnd: &Process, addr: usize, size: usize, perms: MemoryPermissions) -> Result<(), KernelError> {
     unsafe {
         syscall(nr::SetProcessMemoryPermission, (proc_hnd.0).0.get() as _, addr, size, perms.bits() as _, 0, 0)?;
@@ -555,7 +557,7 @@ pub fn set_process_memory_permission(proc_hnd: &Process, addr: usize, size: usiz
 
 /// Maps the given src memory range from a remote process into the current
 /// process as RW-. This is used by the Loader to load binaries into the memory
-/// region allocated by the kernel in [create_process()].
+/// region allocated by the kernel in [`create_process`](create_process).
 ///
 /// The src region should have the MAP_PROCESS state, which is only available on
 /// CodeStatic/CodeMutable and ModuleCodeStatic/ModuleCodeMutable.

@@ -1,4 +1,6 @@
 #![feature(external_doc)]
+#![deny(intra_doc_link_resolution_failure)]
+
 #![doc(include = "../README.md")]
 
 fn main() {}

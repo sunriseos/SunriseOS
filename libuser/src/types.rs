@@ -448,9 +448,10 @@ impl Process {
     /// resource limit and memory pool.
     ///
     /// The entrypoint is assumed to be the first address of the `code_addr` region
-    /// provided in [create_process()]. It takes two parameters: the first is the
-    /// usermode exception handling context, and should always be NULL. The second
-    /// is a handle to the main thread.
+    /// provided in [`create_process`](crate::syscalls::create_process()). It
+    /// takes two parameters: the first is the usermode exception handling
+    /// context, and should always be NULL. The second is a handle to the main
+    /// thread.
     ///
     /// # Errors
     ///

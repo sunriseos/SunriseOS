@@ -157,5 +157,6 @@ TODO: Write our threat models. Will require careful planning.
 
 [Boot Configuration Table (BCT)]: https://switchbrew.org/wiki/BCT
 [Package1]: https://switchbrew.org/wiki/Package1
+[Package2]: https://switchbrew.org/wiki/Package2
 [switchbrew wiki]: https://switchbrew.org/
 [NPDM]: http://switchbrew.org/index.php?title=NPDM
