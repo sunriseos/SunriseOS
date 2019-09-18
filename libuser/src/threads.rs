@@ -95,6 +95,7 @@ impl StackContext {
         })
     }
 
+    /// Get the address of the stack top.
     pub fn get_stack_top(&self) -> *const u8 {
         self.stack_address.wrapping_add(self.stack_layout.size())
     }
