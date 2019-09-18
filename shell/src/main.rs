@@ -29,8 +29,9 @@ use crate::libuser::sm;
 use crate::libuser::fs::{IFileSystemServiceProxy, IFileSystemProxy, IFileProxy};
 use crate::libuser::window::{Window, Color};
 use crate::libuser::terminal::{Terminal, WindowSize};
+use crate::libuser::ldr::{ILoaderInterfaceProxy};
 use crate::libuser::threads::{self, Thread};
-use crate::libuser::error::{Error, FileSystemError};
+use crate::libuser::error::{Error, LoaderError, FileSystemError};
 use crate::libuser::syscalls;
 use crate::libuser::ps2::Keyboard;
 
@@ -152,6 +153,7 @@ pub fn get_next_line(logger: &mut Terminal, keyboard: &mut Keyboard, echo: bool)
 fn main() {
     let mut terminal = Terminal::new(WindowSize::FontLines(-1, false)).unwrap();
     let mut keyboard = Keyboard::new().unwrap();
+    let loader = ILoaderInterfaceProxy::raw_new().unwrap();
 
     let fs_proxy = IFileSystemServiceProxy::raw_new().unwrap();
     let filesystem = fs_proxy.open_disk_partition(0, 0).unwrap();
@@ -250,8 +252,19 @@ fn main() {
                 let _ = writeln!(&mut terminal, "test_threads: Run threads that concurrently print As and Bs");
                 let _ = writeln!(&mut terminal, "test_divide_by_zero: Check exception handling by throwing a divide by zero");
                 let _ = writeln!(&mut terminal, "test_page_fault: Check exception handling by throwing a page_fault");
+            },
+            name => {
+                // Try to run it as an external binary.
+                match loader.launch_title(name.as_bytes(), line.as_bytes()) {
+                    Err(Error::Loader(LoaderError::ProgramNotFound, _)) => {
+                        let _ = writeln!(&mut terminal, "Unknown command");
+                    },
+                    Err(err) => {
+                        let _ = writeln!(&mut terminal, "Error: {:?}", err);
+                    },
+                    Ok(_) => ()
+                }
             }
-            _ => { let _ = writeln!(&mut terminal, "Unknown command"); }
         }
     }
 }
