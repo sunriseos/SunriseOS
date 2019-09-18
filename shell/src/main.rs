@@ -21,17 +21,10 @@
 use gif;
 #[macro_use]
 extern crate alloc;
-#[macro_use]
-extern crate log;
-#[macro_use]
-extern crate lazy_static;
+
 #[macro_use]
 extern crate sunrise_libuser as libuser;
 
-
-
-mod ps2;
-use crate::libuser::io;
 use crate::libuser::sm;
 use crate::libuser::fs::{IFileSystemServiceProxy, IFileSystemProxy, IFileProxy};
 use crate::libuser::window::{Window, Color};
@@ -39,13 +32,19 @@ use crate::libuser::terminal::{Terminal, WindowSize};
 use crate::libuser::threads::Thread;
 use crate::libuser::error::{Error, FileSystemError};
 use crate::libuser::syscalls;
+use crate::libuser::ps2::Keyboard;
 
 use core::fmt::Write;
-use alloc::vec::Vec;
 use alloc::string::String;
+use alloc::vec::Vec;
 use alloc::sync::Arc;
-use spin::Mutex;
 use bstr::ByteSlice;
+use lazy_static::lazy_static;
+use spin::Mutex;
+
+use log::warn;
+use log::error;
+
 
 lazy_static! {
     /// Represent the current work directory.
@@ -54,7 +53,7 @@ lazy_static! {
 
 /// Asks the user to login repeatedly. Returns with an error if the /etc/passwd
 /// file is invalid or doesn't exist.
-fn login(mut terminal: &mut Terminal, filesystem: &IFileSystemProxy) -> Result<(), Error> {
+fn login(mut terminal: &mut Terminal, keyboard: &mut Keyboard, filesystem: &IFileSystemProxy) -> Result<(), Error> {
     let mut ipc_path = [0x0; 0x300];
     ipc_path[..b"/etc/passwd".len()].copy_from_slice(b"/etc/passwd");
 
@@ -75,11 +74,11 @@ fn login(mut terminal: &mut Terminal, filesystem: &IFileSystemProxy) -> Result<(
     loop {
         let _ = write!(&mut terminal, "Login: ");
         let _ = terminal.draw();
-        let username = ps2::get_next_line(&mut terminal, true);
+        let username = get_next_line(&mut terminal, keyboard, true);
         let username = username.trim_end_matches('\n');
 
         let _ = writeln!(&mut terminal, "Password: ");
-        let password = ps2::get_next_line(&mut terminal, false);
+        let password = get_next_line(&mut terminal, keyboard, false);
         let password = password.trim_end_matches('\n');
 
         let hash = sha1::Sha1::from(&password).digest().bytes();
@@ -106,9 +105,9 @@ fn login(mut terminal: &mut Terminal, filesystem: &IFileSystemProxy) -> Result<(
 /// The function takes care of prompting for the password in no-echo mode. If
 /// an error is returned, then it should be assumed that the user was not added
 /// to /etc/passwd.
-fn user_add(mut terminal: &mut Terminal, filesystem: &IFileSystemProxy, username: &str) -> Result<(), Error> {
+fn user_add(mut terminal: &mut Terminal, keyboard: &mut Keyboard, filesystem: &IFileSystemProxy, username: &str) -> Result<(), Error> {
     let _ = writeln!(&mut terminal, "Password: ");
-    let password = ps2::get_next_line(&mut terminal, false);
+    let password = get_next_line(&mut terminal, keyboard, false);
     let password = password.trim_end_matches('\n');
 
     let hash = sha1::Sha1::from(&password).digest().bytes();
@@ -130,20 +129,41 @@ fn user_add(mut terminal: &mut Terminal, filesystem: &IFileSystemProxy, username
     Ok(())
 }
 
+/// Read key presses until a \n is detected, and return the string
+/// (excluding \n).
+pub fn get_next_line(logger: &mut Terminal, keyboard: &mut Keyboard, echo: bool) -> String {
+    let mut ret = String::from("");
+    loop {
+        let key = keyboard.read_key();
+        if echo {
+            let _ = write!(logger, "{}", key);
+            logger.draw().unwrap();
+        }
+        if key == '\n' {
+            return ret;
+        } else if key == '\x08' {
+            ret.pop();
+        } else {
+            ret.push(key);
+        }
+    }
+}
+
 fn main() {
     let mut terminal = Terminal::new(WindowSize::FontLines(-1, false)).unwrap();
+    let mut keyboard = Keyboard::new().unwrap();
 
     let fs_proxy = IFileSystemServiceProxy::raw_new().unwrap();
     let filesystem = fs_proxy.open_disk_partition(0, 0).unwrap();
 
     cat(&mut terminal, &filesystem, "/etc/motd").unwrap();
 
-    if let Err(err) = login(&mut terminal, &filesystem) {
+    if let Err(err) = login(&mut terminal, &mut keyboard, &filesystem) {
         error!("Error while setting up login: {:?}", err);
     }
 
     loop {
-        let line = ps2::get_next_line(&mut terminal, true);
+        let line = get_next_line(&mut terminal, &mut keyboard, true);
         let mut arguments = line.split_whitespace();
         let command_opt = arguments.next();
 
@@ -157,7 +177,7 @@ fn main() {
                     None => {
                         let _ = writeln!(&mut terminal, "usage: useradd <username>");
                     }
-                    Some(username) => match user_add(&mut terminal, &filesystem, username) {
+                    Some(username) => match user_add(&mut terminal, &mut keyboard, &filesystem, username) {
                         Ok(_) => (),
                         Err(err) => {
                             let _ = writeln!(&mut terminal, "Failed to add user: {:?}", err);
@@ -165,13 +185,13 @@ fn main() {
                     },
                 }
             }
-            "meme1" => show_gif(&LOUIS1[..]),
-            "meme2" => show_gif(&LOUIS2[..]),
-            "meme3" => show_gif(&LOUIS3[..]),
-            "meme4" => show_gif(&LOUIS4[..]),
-            "meme5" => show_gif(&LOUIS5[..]),
-            "meme6" => show_gif(&LOUIS6[..]),
-            "memset" => show_gif(&LOUIS7[..]),
+            "meme1" => show_gif(&mut keyboard, &LOUIS1[..]),
+            "meme2" => show_gif(&mut keyboard, &LOUIS2[..]),
+            "meme3" => show_gif(&mut keyboard, &LOUIS3[..]),
+            "meme4" => show_gif(&mut keyboard, &LOUIS4[..]),
+            "meme5" => show_gif(&mut keyboard, &LOUIS5[..]),
+            "meme6" => show_gif(&mut keyboard, &LOUIS6[..]),
+            "memset" => show_gif(&mut keyboard, &LOUIS7[..]),
             "cat" => {
                 match arguments.nth(0) {
                     None => {
@@ -428,7 +448,7 @@ fn ls(mut terminal: &mut Terminal, filesystem: &IFileSystemProxy, orig_path: Opt
 
 /// Shows a GIF in a new window, blocking the caller. When a key is pressed, the
 /// window is closed and control is given back to the caller.
-fn show_gif(louis: &[u8]) {
+fn show_gif(keyboard: &mut Keyboard, louis: &[u8]) {
     let mut reader = gif::Decoder::new(&louis[..]).read_info().unwrap();
     let mut window = Window::new(0, 0, u32::from(reader.width()), u32::from(reader.height())).unwrap();
     let mut buf = Vec::new();
@@ -451,7 +471,7 @@ fn show_gif(louis: &[u8]) {
             }
         }
         window.draw().unwrap();
-        if ps2::try_read_key().is_some() {
+        if keyboard.try_read_key().is_some() {
             return
         }
     }
@@ -570,6 +590,7 @@ capabilities!(CAPABILITIES = Capabilities {
         libuser::syscalls::nr::WaitSynchronization,
         libuser::syscalls::nr::OutputDebugString,
         libuser::syscalls::nr::SetThreadArea,
+        libuser::syscalls::nr::ClearEvent,
 
         libuser::syscalls::nr::SetHeapSize,
         libuser::syscalls::nr::QueryMemory,
@@ -582,6 +603,5 @@ capabilities!(CAPABILITIES = Capabilities {
         libuser::syscalls::nr::SendSyncRequestWithUserBuffer,
         libuser::syscalls::nr::CreateSharedMemory,
         libuser::syscalls::nr::CreateInterruptEvent,
-    ],
-    raw_caps: [libuser::caps::ioport(0x60), libuser::caps::ioport(0x64), libuser::caps::irq_pair(1, 0x3FF)]
+    ]
 });

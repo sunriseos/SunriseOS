@@ -57,12 +57,15 @@ pub mod ahci {}
 pub mod time {}
 #[gen_ipc(path = "../../ipcdefs/filesystem.id", prefix = "sunrise_libuser")]
 pub mod fs {}
+#[gen_ipc(path = "../../ipcdefs/keyboard.id", prefix = "sunrise_libuser")]
+pub mod keyboard {}
 #[gen_ipc(path = "../../ipcdefs/example.id", prefix = "sunrise_libuser")]
 pub mod example {}
 
 pub mod error;
 pub mod allocator;
 pub mod terminal;
+pub mod ps2;
 pub mod window;
 pub mod zero_box;
 mod crt0;

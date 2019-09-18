@@ -59,6 +59,8 @@ pub enum Error {
     Time(TimeError, Backtrace),
     /// Filesystem driver error
     FileSystem(FileSystemError, Backtrace),
+    /// HID errors
+    Hid(HidError, Backtrace),
     /// An unknown error type. Either someone returned a custom error, or this
     /// version of libuser is outdated.
     Unknown(u32, Backtrace)
@@ -79,6 +81,7 @@ impl Error {
             Module::Libuser => Error::Libuser(LibuserError(description), Backtrace::new()),
             Module::Time => Error::Time(TimeError(description), Backtrace::new()),
             Module::Ahci => Error::Ahci(AhciError(description), Backtrace::new()),
+            Module::Hid => Error::Hid(HidError(description), Backtrace::new()),
             _ => Error::Unknown(errcode, Backtrace::new())
         }
     }
@@ -96,6 +99,7 @@ impl Error {
             Error::Libuser(err, ..) => err.0 << 9 | Module::Libuser.0,
             Error::Ahci(err, ..) => err.0 << 9 | Module::Ahci.0,
             Error::Time(err, ..) => err.0 << 9 | Module::Time.0,
+            Error::Hid(err, ..) => err.0 << 9 | Module::Hid.0,
             Error::Unknown(err, ..) => err,
         }
     }
@@ -195,6 +199,7 @@ enum_with_val! {
         Sm = 21,
         Vi = 114,
         Time = 116,
+        Hid = 202,
         Libuser = 415,
         Ahci = 416,
     }
@@ -319,5 +324,20 @@ enum_with_val! {
 impl From<LoaderError> for Error {
     fn from(error: LoaderError) -> Self {
         Error::Loader(error, Backtrace::new())
+    }
+}
+
+enum_with_val! {
+    /// HID driver errors.
+    #[derive(PartialEq, Eq, Clone, Copy)]
+    pub struct HidError(u32) {
+        /// The keyboard was idle and no new data can be provided.
+        NoKeyboardStateUpdate = 999,
+    }
+}
+
+impl From<HidError> for Error {
+    fn from(error: HidError) -> Self {
+        Error::Hid(error, Backtrace::new())
     }
 }
