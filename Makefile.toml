@@ -24,7 +24,7 @@ CLIPPY_RULES = """
 -W clippy::used_underscore_binding \
 -W clippy::wildcard_dependencies \
 -W clippy::wrong_pub_self_convention"""
-QEMU_COMMON_FLAGS = """
+QEMU_COMMON_FLAGS = """\
     -boot d \
     -cdrom os.iso \
     -serial stdio \
