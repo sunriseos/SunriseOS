@@ -99,7 +99,7 @@ impl StackContext {
 
         Ok(StackContext {
             stack_address: unsafe {
-                // Safety: We manually alloc the stack from the given stack_layout and dealloc it on Drop.
+                // Safety: We error from the function early if stack_size is 0. We don't care much about whether the block is initialized.
                 alloc(stack_layout) as *const u8
             },
             stack_layout
@@ -115,13 +115,14 @@ impl StackContext {
 impl Drop for StackContext {
     fn drop(&mut self) {
         unsafe {
-            // Safety: We manually desalloc the stack only when droping the StackContext so this is safe.
+            // Safety: The stack_address is guaranteed to be valid (it was allocated on construction). We also keep the layout around to ensure it stays the same between alloc and dealloc.
             dealloc(self.stack_address as *mut u8, self.stack_layout);
         }
     }
 }
 
-// Safety: This is safe as StackContext content will not be modified after creation.
+// Safety: This is safe as StackContext does not contain any internal mutability.
+// In fact, its content (that is, the pointer itself and the layout) are immutable after creation.
 unsafe impl Sync for StackContext {}
 unsafe impl Send for StackContext {}
 
