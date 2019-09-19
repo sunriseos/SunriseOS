@@ -59,15 +59,72 @@
 use crate::types::Thread as ThreadHandle;
 use crate::syscalls;
 use crate::error::Error;
+use crate::error::KernelError;
 use crate::thread_local_storage::TlsElf;
 use sunrise_libkern::{TLS, IpcBuffer};
 use alloc::boxed::Box;
+use alloc::alloc::{alloc, dealloc, Layout};
 use core::mem::ManuallyDrop;
 use core::fmt;
 use spin::Once;
 
-/// Size of a thread's stack, in bytes.
-const STACK_SIZE: usize = 0x8000;
+/// Default size of a thread's stack, in bytes.
+pub const DEFAULT_STACK_SIZE: usize = 0x8000;
+
+/// Stack allocation informations
+#[derive(Debug)]
+struct StackContext {
+    /// The addresss of the allocated stack
+    stack_address: *const u8,
+
+    /// The stack layout.
+    stack_layout: Layout
+}
+
+impl StackContext {
+    /// Create a new StackContext from a given size. The stack size must be bigger than 0.
+    ///
+    /// # Errors
+    ///
+    /// - `InvalidSize`
+    ///   - The size passed was 0
+    ///   - The size overflows when rounded up to the nearest multiple of PAGE_SIZE.
+    pub fn new(stack_size: usize) -> Result<Self, Error> {
+        if stack_size == 0 {
+            return Err(KernelError::InvalidSize.into());
+        }
+
+        let stack_layout = Layout::from_size_align(stack_size, crate::mem::PAGE_SIZE)
+            .or(Err(KernelError::InvalidSize))?;
+
+        Ok(StackContext {
+            stack_address: unsafe {
+                // Safety: We error from the function early if stack_size is 0. We don't care much about whether the block is initialized.
+                alloc(stack_layout) as *const u8
+            },
+            stack_layout
+        })
+    }
+
+    /// Get the address of the stack top.
+    pub fn get_stack_top(&self) -> *const u8 {
+        self.stack_address.wrapping_add(self.stack_layout.size())
+    }
+}
+
+impl Drop for StackContext {
+    fn drop(&mut self) {
+        unsafe {
+            // Safety: The stack_address is guaranteed to be valid (it was allocated on construction). We also keep the layout around to ensure it stays the same between alloc and dealloc.
+            dealloc(self.stack_address as *mut u8, self.stack_layout);
+        }
+    }
+}
+
+// Safety: This is safe as StackContext does not contain any internal mutability.
+// In fact, its content (that is, the pointer itself and the layout) are immutable after creation.
+unsafe impl Sync for StackContext {}
+unsafe impl Send for StackContext {}
 
 /// Structure holding the thread local context of a thread.
 /// Allocated at thread creation by the creator of the thread.
@@ -84,7 +141,7 @@ pub struct ThreadContext {
     /// and will never be freed as it'll be the last thread alive.
     ///
     /// `Some` for every other thread.
-    stack: Option<Box<[u8; STACK_SIZE]>>,
+    stack: Option<StackContext>,
     /// The thread local storage of this thread.
     ///
     /// This is where `#[thread_local]` statics live.
@@ -214,7 +271,7 @@ impl Thread {
     // body:
     // body: The simpler way to fix this would be to continue allocating the stack on the heap,
     // body: but remap the last page with no permissions with the yet unimplemented svcMapMemory syscall.
-    pub fn create(entry: fn (usize) -> (), arg: usize) -> Result<Self, Error> {
+    pub fn create(entry: fn (usize) -> (), arg: usize, stack_size: usize) -> Result<Self, Error> {
 
         let tls_elf = Once::new();
         tls_elf.call_once(TlsElf::allocate);
@@ -222,7 +279,7 @@ impl Thread {
         let context = ManuallyDrop::new(Box::new(ThreadContext {
             entry_point: entry,
             arg,
-            stack: Some(box [0u8; STACK_SIZE]),
+            stack: Some(StackContext::new(stack_size)?),
             tls_elf: tls_elf,
             thread_handle: Once::new(), // will be rewritten in a second
         }));
@@ -232,7 +289,7 @@ impl Thread {
             syscalls::create_thread(
                 thread_trampoline,
                 &**context as *const ThreadContext as usize,
-                (&**context.stack.as_ref().unwrap() as *const u8).wrapping_add(STACK_SIZE),
+                context.stack.as_ref().unwrap().get_stack_top(),
                 0,
                 0)
         } {
@@ -290,7 +347,6 @@ extern "fastcall" fn thread_trampoline(thread_context_addr: usize) -> ! {
     debug!("exiting thread");
     syscalls::exit_thread()
 }
-
 
 impl Drop for Thread {
     fn drop(&mut self) {
