@@ -58,6 +58,19 @@ fn main() {
 }
 
 // TODO: Move this out of here
+kip_header!(HEADER = sunrise_libuser::caps::KipHeader {
+    magic: *b"KIP1",
+    name: *b"std_hellowor",
+    title_id: 0x0200000000001060,
+    process_category: sunrise_libuser::caps::ProcessCategory::KernelBuiltin,
+    main_thread_priority: 0,
+    default_cpu_core: 0,
+    flags: 0,
+    reserved: 0,
+    stack_page_count: 16,
+});
+
+// TODO: Move this out of here
 capabilities!(CAPABILITIES = Capabilities {
     svcs: [
         sunrise_libuser::syscalls::nr::SleepThread,
