@@ -32,6 +32,32 @@ use core::mem::size_of;
 
 pub mod process;
 
+/// The state the
+enum_with_val! {
+    #[derive(Default, Clone, Copy, PartialEq, Eq)]
+    pub struct ProcessState(u8) {
+        /// Process is freshly created with svcCreateProcess and has not yet been
+        /// started.
+        Created = 0,
+        /// Process has been attached with a debugger before it was started.
+        CreatedAttached = 1,
+        /// Process has been started.
+        Started = 2,
+        /// Process has crashed.
+        ///
+        /// Processes will not enter this state unless they were created with EnableDebug.
+        Crashed = 3,
+        /// Process is started and has a debugger attached.
+        StartedAttached = 4,
+        /// Process is currently exiting.
+        Exiting = 5,
+        /// Process is stopped.
+        Exited = 6,
+        /// Process has been suspended.
+        DebugSuspended = 7
+    }
+}
+
 bitflags! {
     /// Represents the current state of a memory region: why is it allocated, and
     /// what operations are allowed.

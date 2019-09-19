@@ -27,31 +27,69 @@ use crate::paging::{InactiveHierarchy, InactiveHierarchyTrait, PAGE_SIZE, Mappin
 use self::thread_local_storage::TLSManager;
 use crate::i386::interrupt_service_routines::UserspaceHardwareContext;
 use sunrise_libkern::process::ProcInfo;
-use sunrise_libkern::MemoryType;
+use sunrise_libkern::{ProcessState, MemoryType};
 
-/// The state the process is currently in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ProcessState {
-    /// Process is freshly created with svcCreateProcess and has not yet been
-    /// started.
-    Created,
-    /// Process has been attached with a debugger before it was started.
-    CreatedAttached,
-    /// Process has been started.
-    Started,
-    /// Process has crashed.
+/// Data related to the (user-visible) state the current process is in. The
+/// maternity is stored here to ensure there is no race condition between
+/// setting the state to Exited and adding threads to the maternity.
+#[derive(Debug)]
+struct ProcessStateData {
+    /// Whether the process is currently in a signaled state. Set to true when
+    /// changing the state, and false when the user calls reset_signal(). Note
+    /// that once the Exited state is reached, the process is permanently
+    /// signaled.
+    signaled: bool,
+
+    /// The current state of the process.
+    state: ProcessState,
+
+    /// Threads waiting on this process to get signaled.
+    waiting_threads: Vec<Arc<ThreadStruct>>,
+
+    /// An array of the created but not yet started threads.
     ///
-    /// Processes will not enter this state unless they were created with EnableDebug.
-    Crashed,
-    /// Process is started and has a debugger attached.
-    StartedAttached,
-    /// Process is currently exiting.
-    Exiting,
-    /// Process is stopped.
-    Exited,
-    /// Process has been suspended.
-    DebugSuspended
+    /// When we create a thread, we return a handle to userspace containing a weak reference to the thread,
+    /// which has not been added to the schedule queue yet.
+    /// To prevent it from being dropped, we must keep at least 1 strong reference somewhere.
+    /// This is the job of the maternity. It holds references to threads that no one has for now.
+    /// When a thread is started, its only strong reference is removed from the maternity, and put
+    /// in the scheduler, which is now in charge of keeping it alive (or not).
+    ///
+    /// Note that we store in the process struct a strong reference to a thread, which itself
+    /// has a strong reference to the same process struct. This creates a cycle, and we loose
+    /// the behaviour of "a process is dropped when its last *living* thread is dropped".
+    /// The non-started threads will keep the process struct alive. This makes it possible to
+    /// pass a non-started thread handle to another process, and let it start it for us, even after
+    /// our last living thread has died.
+    ///
+    /// However, because of this, if a thread creates other threads, does not share the handles,
+    /// and dies before starting them, the process struct will be kept alive indefinitely
+    /// by those non-started threads that no one can start, and the process will stay that way
+    /// until it is explicitly stopped from outside.
+    // TODO: Use a better lock around thread_maternity.
+    // BODY: Thread maternity currently uses a SpinLock. We should ideally use a
+    // BODY: scheduling mutex there.
+    thread_maternity: Vec<Arc<ThreadStruct>>,
 }
+
+impl ProcessStateData {
+    /// Sets the state to the given new state, and signal the process, causing
+    /// any threads waiting on the process to get woken up.
+    fn set_state(&mut self, newstate: ProcessState) {
+        self.state = newstate;
+        self.signal();
+    }
+
+    /// Set the process to the signaled state, and wake up any thread waiting
+    /// on this process to get signaled.
+    fn signal(&mut self) {
+        self.signaled = true;
+        while let Some(thread) = self.waiting_threads.pop() {
+            scheduler::add_to_schedule_queue(thread);
+        }
+    }
+}
+
 
 /// The struct representing a process. There's one for every process.
 ///
@@ -84,35 +122,10 @@ pub struct ProcessStruct {
     pub capabilities:             ProcessCapabilities,
 
     /// The state the process is currently in.
-    state:                    Atomic<ProcessState>,
+    state:                    Mutex<ProcessStateData>,
 
     /// Tracks used and free allocated Thread Local Storage regions of this process.
     pub tls_manager: Mutex<TLSManager>,
-
-    /// An array of the created but not yet started threads.
-    ///
-    /// When we create a thread, we return a handle to userspace containing a weak reference to the thread,
-    /// which has not been added to the schedule queue yet.
-    /// To prevent it from being dropped, we must keep at least 1 strong reference somewhere.
-    /// This is the job of the maternity. It holds references to threads that no one has for now.
-    /// When a thread is started, its only strong reference is removed from the maternity, and put
-    /// in the scheduler, which is now in charge of keeping it alive (or not).
-    ///
-    /// Note that we store in the process struct a strong reference to a thread, which itself
-    /// has a strong reference to the same process struct. This creates a cycle, and we loose
-    /// the behaviour of "a process is dropped when its last *living* thread is dropped".
-    /// The non-started threads will keep the process struct alive. This makes it possible to
-    /// pass a non-started thread handle to another process, and let it start it for us, even after
-    /// our last living thread has died.
-    ///
-    /// However, because of this, if a thread creates other threads, does not share the handles,
-    /// and dies before starting them, the process struct will be kept alive indefinitely
-    /// by those non-started threads that no one can start, and the process will stay that way
-    /// until it is explicitly stopped from outside.
-    // TODO: Use a better lock around thread_maternity.
-    // BODY: Thread maternity currently uses a SpinLock. We should ideally use a
-    // BODY: scheduling mutex there.
-    thread_maternity: SpinLock<Vec<Arc<ThreadStruct>>>,
 }
 
 /// Next available PID.
@@ -481,11 +494,15 @@ impl ProcessStruct {
                 name: String::from_utf8_lossy(&procinfo.name).into_owned(),
                 entrypoint: VirtualAddress(procinfo.code_addr as usize),
                 pmemory,
-                state: Atomic::new(ProcessState::Created),
+                state: Mutex::new(ProcessStateData {
+                    state: ProcessState::Created,
+                    signaled: false,
+                    waiting_threads: Vec::new(),
+                    thread_maternity: Vec::new(),
+                }),
                 threads: SpinLockIRQ::new(Vec::new()),
                 phandles: SpinLockIRQ::new(HandleTable::default()),
                 tls_manager: Mutex::new(TLSManager::default()),
-                thread_maternity: SpinLock::new(Vec::new()),
                 capabilities
             }
         );
@@ -504,30 +521,17 @@ impl ProcessStruct {
     /// - `MemoryExhausted`
     ///    - Failed to allocate stack or thread TLS.
     pub fn start(this: &Arc<Self>, _main_thread_priority: u32, stack_size: usize) -> Result<(), UserspaceError> {
+
+        // Lock state mutex.
+        let mut statelock = this.state.lock();
+
         // ResourceLimit + 1 thread => 0x10801
         // Check imageSize + mainThreadStackSize + stackSize > memoryUsageCapacity => 0xD001 MemoryExhaustion
 
-        // Ensure we haven't already been started. Prevent running this method
-        // twice.
-        let oldstate = loop {
-            let oldstate = this.state.load(Ordering::Relaxed);
-            if oldstate != ProcessState::Created && oldstate != ProcessState::CreatedAttached {
-                return Err(UserspaceError::ProcessAlreadyStarted);
-            }
-
-            // Set new state early. Normally done after mapping memory and
-            // creating the first thread, among other things. Shouldn't matter
-            // for our purposes.
-            let newstate = match oldstate {
-                ProcessState::Created => ProcessState::Started,
-                ProcessState::CreatedAttached => ProcessState::StartedAttached,
-                _ => unreachable!()
-            };
-            let res = this.state.compare_exchange(oldstate, newstate, Ordering::SeqCst, Ordering::SeqCst);
-            if res.is_ok() {
-                break oldstate;
-            }
-        };
+        let oldstate = statelock.state;
+        if oldstate != ProcessState::Created && oldstate != ProcessState::CreatedAttached {
+            return Err(UserspaceError::ProcessAlreadyStarted);
+        }
 
         // ResourceLimit reserve align_up(stackSize, PAGE_SIZE) memory
         // Allocate stack within new map region.
@@ -546,22 +550,20 @@ impl ProcessStruct {
         this.phandles.lock().add_handle(Arc::new(Handle::Thread(first_thread.clone())));
         // SetEntryArguments - done in ThreadStruct::start for us.
 
-        // Normally, state is set here. We do it a bit earlier to make our
-        // atomic easier to manage.
+        // Set to new state.
+        statelock.set_state(match oldstate {
+            ProcessState::Created => ProcessState::Started,
+            ProcessState::CreatedAttached => ProcessState::StartedAttached,
+            _ => unreachable!()
+        });
 
         if let Err(err) = ThreadStruct::start(first_thread) {
-            // Start failed, go back to Created state. there is at worse
-            // the process will have been set to the "exited" state by
-            // svcTerminate before it had a chance to run. Allowing it to be
-            // restarted in that case isn't a huge deal.
+            // Start failed, go back to Created state. We don't undo the
+            // allocation of the stack. Nintendo doesn't either.
             //
-            // We don't undo the allocation of the stack. Nintendo doesn't
-            // either.
-            //
-            // An annoying side-effect of using atomics here: The temporary
-            // "Started" state is observable. Oh well.
+            // Nintendo signals when re-entering created state. Weird.
+            statelock.set_state(oldstate);
 
-            this.state.store(oldstate, Ordering::SeqCst);
             return Err(err.into());
         }
         Ok(())
@@ -604,14 +606,18 @@ impl ProcessStruct {
                 pmemory: Mutex::new(pmemory),
                 threads: SpinLockIRQ::new(Vec::new()),
                 phandles: SpinLockIRQ::new(HandleTable::default()),
-                state: Atomic::new(ProcessState::Started),
-                thread_maternity: SpinLock::new(Vec::new()),
+                state: Mutex::new(ProcessStateData {
+                    signaled: false,
+                    state: ProcessState::Started,
+                    waiting_threads: Vec::new(),
+                    thread_maternity: Vec::new(),
+                }),
                 tls_manager: Mutex::new(TLSManager::default()),
                 capabilities: ProcessCapabilities::default(),
         }
     }
 
-    /// Kills a process by killing all of its threads.
+    /// Kills the current process by killing all of its threads.
     ///
     /// When a thread is about to return to userspace, it checks if its state is Killed.
     /// In this case it unschedules itself instead, and its ThreadStruct is dropped.
@@ -620,14 +626,47 @@ impl ProcessStruct {
     ///
     /// We also mark the process struct as killed to prevent race condition with
     /// another thread that would want to spawn a thread after we killed all ours.
-    pub fn kill_process(this: Arc<Self>) {
-        // mark the process as killed
-        // Set exiting and exited.
-        this.state.store(ProcessState::Exited, Ordering::SeqCst);
+    pub fn kill_current_process() {
+        let this = scheduler::get_current_process();
+        let mut statelock = this.state.lock();
+
+        // Enter critical section.
+        if ![ProcessState::Started, ProcessState::StartedAttached, ProcessState::DebugSuspended]
+            .contains(&statelock.state)
+        {
+            // Leave critical section.
+            // In nintendo's code, the flow here is a bit weird. It kills the
+            // current thread. I find this a bit weird. If we call
+            // kill_current_process while not started, then something is clearly
+            // wrong in the kernel. So we'll panic instead.
+            panic!("Invalid state! Attempted to kill the current process while it wasn't started.");
+        }
+
+        // Normally, has the following flow:
+        // statelock.state = ProcessState::Exiting;
+        // Leave critical section.
+        // drop(statelock);
+        // KProcess::MaskThreads0x70Until(curThread)
+        // Destroy handle table.
+        // KMailBox::SendMail(0, KProcess::KMail)
+        // KThread::Exit(curThread)
+
+        // The SendMail will cause a kernel thread to wake up and
+        // (eventually) finalize the process, moving it to the exited
+        // state. Its flow is:
+        // KProcess::MaskThreads0x70Until(0)
+        // KProcess::SignalExitToDebugExited()
+        // KProcess::SignalExit()
+
+        // We're going to make things a **lot** simpler. We're just
+        // going to immediately set ourselves as exiting, kill our
+        // threads, and set ourselves as exited.
+        statelock.state = ProcessState::Exiting;
 
         // kill our baby threads. Those threads have never run, we don't even bother
         // scheduling them so the can free their resources, just drop the hole maternity.
-        this.thread_maternity.lock().clear();
+        statelock.thread_maternity.clear();
+        drop(statelock);
 
         // kill all other regular threads
         for weak_thread in this.threads.lock().iter() {
@@ -635,7 +674,8 @@ impl ProcessStruct {
                 ThreadStruct::exit(t);
             }
         }
-        drop(this);
+
+        this.state.lock().state = ProcessState::Exited;
     }
 
 }
@@ -705,7 +745,7 @@ impl ThreadStruct {
             Some(arg) => (arg, 0),
             None => {
                 debug_assert!(belonging_process.threads.lock().is_empty() &&
-                              belonging_process.thread_maternity.lock().is_empty(), "Argument shouldn't be None");
+                              belonging_process.state.lock().thread_maternity.is_empty(), "Argument shouldn't be None");
                 let handle = belonging_process.phandles.lock().add_handle(Arc::new(Handle::Thread(Arc::downgrade(&t))));
 
                 (0, handle as usize)
@@ -723,18 +763,18 @@ impl ThreadStruct {
         let ret = Arc::downgrade(&t);
 
         // add it to the process' list of threads, and to the maternity, simultaneously
-        let mut maternity = belonging_process.thread_maternity.lock();
-        let mut threads_vec = belonging_process.threads.lock();
-        if belonging_process.state.load(Ordering::SeqCst) == ProcessState::Exited {
+        let mut statelock = belonging_process.state.lock();
+        if statelock.state == ProcessState::Exited {
             // process was killed while we were waiting for the lock.
             // do not add the process to the vec, cancel the thread creation.
             drop(t);
             return Err(KernelError::ProcessKilled { backtrace: Backtrace::new() })
         }
+        let mut threads_vec = belonging_process.threads.lock();
         // push a weak in the threads_vec
         threads_vec.push(Arc::downgrade(&t));
         // and put the only strong in the maternity
-        maternity.push(t);
+        statelock.thread_maternity.push(t);
 
         Ok(ret)
     }
@@ -820,12 +860,13 @@ impl ThreadStruct {
             KernelError::ThreadAlreadyStarted { backtrace: Backtrace::new() }
         )?;
         // remove it from the maternity
-        let mut maternity = thread.process.thread_maternity.lock();
-        if thread.process.state.load(Ordering::SeqCst) == ProcessState::Exited {
+        let mut statelock = thread.process.state.lock();
+        if statelock.state == ProcessState::Exited {
             // process was killed while we were waiting for the lock.
             // do not start process to the vec, cancel the thread start.
             return Err(KernelError::ProcessKilled { backtrace: Backtrace::new() })
         }
+        let maternity = &mut statelock.thread_maternity;
         let cradle = maternity.iter().position(|baby| Arc::ptr_eq(baby, &thread));
         match cradle {
             None => {

@@ -248,7 +248,7 @@ pub fn output_debug_string(msg: UserSpacePtr<[u8]>, level: usize, target: UserSp
 
 /// Kills our own process.
 pub fn exit_process() -> Result<(), UserspaceError> {
-    ProcessStruct::kill_process(get_current_process());
+    ProcessStruct::kill_current_process();
     Ok(())
 }
 

@@ -397,7 +397,7 @@ macro_rules! trap_gate_asm {
 ///         let thread = get_current_thread();                                       //
 ///         error!("{}, errorcode: {}, in {:#?}",                                    // handler_strategy
 ///             $exception_name, $hwcontext.errcode, thread);                        // (here: kill)
-///         ProcessStruct::kill_process(thread.process.clone());                     //
+///         ProcessStruct::kill_current_process();                                   //
 ///     }
 ///
 ///     // if we're returning to userspace, check we haven't been killed
@@ -476,7 +476,7 @@ macro_rules! generate_trap_gate_handler {
         {
             let thread = get_current_thread();
             error!("{}, errorcode: {}, in {:#?}", $exception_name, $hwcontext.errcode, thread);
-            ProcessStruct::kill_process(thread.process.clone());
+            ProcessStruct::kill_current_process();
         }
     };
 
@@ -484,7 +484,7 @@ macro_rules! generate_trap_gate_handler {
         {
             let thread = get_current_thread();
             error!("{}, in {:#?}", $exception_name, thread);
-            ProcessStruct::kill_process(thread.process.clone());
+            ProcessStruct::kill_current_process();
         }
     };
     // end handler
@@ -724,7 +724,7 @@ fn user_page_fault_handler(_exception_name: &'static str, hwcontext: &mut Usersp
 
     let thread = get_current_thread();
     error!("Page Fault accessing {:?}, exception errcode: {:?} in {:#?}", cause_address, errcode, thread);
-    ProcessStruct::kill_process(thread.process.clone());
+    ProcessStruct::kill_current_process();
 }
 
 generate_trap_gate_handler!(name: "x87 FPU floating-point error",
@@ -957,13 +957,13 @@ fn syscall_interrupt_dispatcher(_exception_name: &'static str, hwcontext: &mut U
             let curproc = get_current_process();
             error!("Process {} attempted to use unauthorized syscall {} ({:#04x}), killing",
                    curproc.name, syscall_name, syscall_nr);
-            ProcessStruct::kill_process(curproc);
+            ProcessStruct::kill_current_process();
         },
         _ => {
             let curproc = get_current_process();
             error!("Process {} attempted to use unknown syscall {} ({:#04x}), killing",
                    curproc.name, syscall_name, syscall_nr);
-            ProcessStruct::kill_process(curproc);
+            ProcessStruct::kill_current_process();
         }
     }
 }
