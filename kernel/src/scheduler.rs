@@ -122,7 +122,7 @@ pub fn add_to_schedule_queue(thread: Arc<ThreadStruct>) {
         Err(v) => v
     };
 
-    assert!(oldstate == ThreadState::Stopped || oldstate == ThreadState::Killed,
+    assert!(oldstate == ThreadState::Stopped || oldstate == ThreadState::Exited,
                "Process added to schedule queue was not stopped : {:?}", oldstate);
 
     queue_lock.push(thread)
@@ -167,13 +167,13 @@ where
             Ok(v) => v,
             Err(v) => v
         };
-        assert!(old == ThreadState::Killed || old == ThreadState::Running, "Old was in invalid state {:?} before unscheduling", old);
+        assert!(old == ThreadState::Exited || old == ThreadState::Running, "Old was in invalid state {:?} before unscheduling", old);
         mem::drop(guard)
     }
 
     let guard = internal_schedule(lock, true);
 
-    if get_current_thread().state.load(Ordering::SeqCst) == ThreadState::Killed {
+    if get_current_thread().state.load(Ordering::SeqCst) == ThreadState::Exited {
         Err(UserspaceError::Canceled)
     } else {
         Ok(guard)

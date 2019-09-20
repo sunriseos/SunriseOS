@@ -258,6 +258,12 @@ impl Thread {
         .map_err(|v| v.into())
     }
 
+    /// Wait for the thread to exit.
+    pub fn join(&self) -> Result<(), Error> {
+        let thread_handle = (*self.0).thread_handle.r#try().unwrap().0.as_ref();
+        syscalls::wait_synchronization(&[thread_handle], None).map_err(|v| v.into()).map(|_| ())
+    }
+
     /// Allocates resources for a thread. To start it, call [`start`].
     ///
     /// Allocates the stack, sets up the context and TLS, and calls `svcCreateThread`.

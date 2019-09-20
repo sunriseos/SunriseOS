@@ -272,7 +272,7 @@ pub fn connect_to_port(handle: u32) -> Result<usize, UserspaceError> {
 
 /// Kills our own thread.
 pub fn exit_thread() -> Result<(), UserspaceError> {
-    ThreadStruct::kill(get_current_thread());
+    ThreadStruct::exit(get_current_thread());
     Ok(())
 }
 

@@ -512,23 +512,23 @@ fn test_threads(terminal: Terminal) -> Terminal {
         }
     }
 
-    let mut terminal = Arc::new(Mutex::new(terminal));
+    let terminal = Arc::new(Mutex::new(terminal));
 
     let t = Thread::create(thread_b, Arc::into_raw(terminal.clone()) as usize, threads::DEFAULT_STACK_SIZE)
         .expect("Failed to create thread B");
     t.start()
         .expect("Failed to start thread B");
 
+
     // thread is running b, run a meanwhile
     thread_a(Arc::into_raw(terminal.clone()) as usize);
 
     // Wait for thread_b to terminate.
-    loop {
-        match Arc::try_unwrap(terminal) {
-            Ok(terminal) => break terminal.into_inner(),
-            Err(x) => terminal = x
-        }
-        let _ = libuser::syscalls::sleep_thread(0);
+    t.join().expect("Cannot wait for thread B to finish");
+
+    match Arc::try_unwrap(terminal) {
+        Ok(terminal) => terminal.into_inner(),
+        Err(_) => panic!("Cannot Arc::try_unwrap after the exit of thread b, this is unexpected!")
     }
 }
 

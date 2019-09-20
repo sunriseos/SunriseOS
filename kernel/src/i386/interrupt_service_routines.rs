@@ -56,7 +56,7 @@ use sunrise_libkern::{nr, SYSCALL_NAMES};
 /// As this function will be the last that will be called by a thread before dying,
 /// caller must make sure all of its scope variables are ok to be leaked.
 pub fn check_thread_killed() {
-    if scheduler::get_current_thread().state.load(Ordering::SeqCst) == ThreadState::Killed {
+    if scheduler::get_current_thread().state.load(Ordering::SeqCst) == ThreadState::Exited {
         let lock = SpinLockIRQ::new(());
         loop { // in case of spurious wakeups
             let _ = scheduler::unschedule(&lock, lock.lock());
