@@ -108,7 +108,7 @@ pub struct ProcessStruct {
     /// However, because of this, if a thread creates other threads, does not share the handles,
     /// and dies before starting them, the process struct will be kept alive indefinitely
     /// by those non-started threads that no one can start, and the process will stay that way
-    /// until it is explicitly killed from outside.
+    /// until it is explicitly stopped from outside.
     // TODO: Use a better lock around thread_maternity.
     // BODY: Thread maternity currently uses a SpinLock. We should ideally use a
     // BODY: scheduling mutex there.
@@ -233,7 +233,7 @@ impl ThreadStateEvent {
 impl Waitable for Weak<ThreadStruct> {
     fn is_signaled(&self) -> bool {
         if let Some(thread) = self.upgrade() {
-            return thread.state.load(Ordering::Relaxed) == ThreadState::Exited;
+            return thread.state.load(Ordering::Relaxed) == ThreadState::TerminationPending;
         }
 
         // Cannot upgrade to Arc? The thread is dead, so it totally have exited!
@@ -417,33 +417,33 @@ impl HandleTable {
 
 /// The state of a thread.
 ///
+/// - Paused: not in the scheduled queue, waiting for an event
 /// - Running: currently on the CPU
+/// - TerminationPending: dying, will be unscheduled and dropped at syscall boundary
 /// - Scheduled: scheduled to be running
-/// - Stopped: not in the scheduled queue, waiting for an event
-/// - Exited: dying, will be unscheduled and dropped at syscall boundary
 ///
 /// Since SMP is not supported, there is only one Running thread.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(usize)]
 pub enum ThreadState {
-    /// Currently on the CPU.
-    Running = 0,
-    /// Scheduled to be running.
-    Scheduled = 1,
     /// Not in the scheduled queue, waiting for an event.
-    Stopped = 2,
+    Paused = 1,
+    /// Currently on the CPU.
+    Running = 2,
     /// Dying, will be unscheduled and dropped at syscall boundary.
-    Exited = 3,
+    TerminationPending = 3,
+    /// Scheduled to be running.
+    Scheduled = 4,
 }
 
 impl ThreadState {
     /// ThreadState is stored in the ThreadStruct as an AtomicUsize. This function casts it back to the enum.
     fn from_primitive(v: usize) -> ThreadState {
         match v {
-            0 => ThreadState::Running,
-            1 => ThreadState::Scheduled,
-            2 => ThreadState::Stopped,
-            3 => ThreadState::Exited,
+            1 => ThreadState::Paused,
+            2 => ThreadState::Running,
+            3 => ThreadState::TerminationPending,
+            4 => ThreadState::Scheduled,
             _ => panic!("Invalid thread state"),
         }
     }
@@ -678,8 +678,8 @@ impl ThreadStruct {
         // hardware context will be computed later in this function, write a dummy value for now
         let empty_hwcontext = SpinLockIRQ::new(ThreadHardwareContext::default());
 
-        // the state of the process, Stopped
-        let state = Atomic::new(ThreadState::Stopped);
+        // the state of the process, Paused
+        let state = Atomic::new(ThreadState::Paused);
 
         // allocate its thread local storage region
         let tls = belonging_process.tls_manager.lock().allocate_tls(&mut pmemory)?;
@@ -847,8 +847,8 @@ impl ThreadStruct {
     ///
     /// If the thread was already in the `Exited` state, this function is a no-op.
     pub fn exit(this: Arc<Self>) {
-        let old_state = this.state.swap(ThreadState::Exited, Ordering::SeqCst);
-        if old_state == ThreadState::Exited {
+        let old_state = this.state.swap(ThreadState::TerminationPending, Ordering::SeqCst);
+        if old_state == ThreadState::TerminationPending {
             // if the thread was already marked exited, don't do anything.
             return;
         }
