@@ -528,7 +528,7 @@ fn test_threads(terminal: Terminal) -> Terminal {
 
     match Arc::try_unwrap(terminal) {
         Ok(terminal) => terminal.into_inner(),
-        Err(_) => panic!("Cannot Arc::try_unwrap after the exit of thread b, this is unexpected!")
+        _ => panic!("Cannot Arc::try_unwrap after the exit of thread b, this is unexpected!")
     }
 }
 

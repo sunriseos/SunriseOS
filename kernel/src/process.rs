@@ -211,7 +211,7 @@ pub enum Handle {
     SharedMemory(Arc<SpinRwLock<Vec<PhysicalMemRegion>>>),
 }
 
-/// The underlying shared object of a [ThreadStateReadableEvent].
+/// The underlying shared object of a [Weak<ThreadStrct>].
 #[derive(Debug)]
 struct ThreadStateEvent {
     /// List of threads waiting on this thread to exit. When this thread exit, all
