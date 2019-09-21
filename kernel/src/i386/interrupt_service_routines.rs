@@ -924,6 +924,7 @@ fn syscall_interrupt_dispatcher(_exception_name: &'static str, hwcontext: &mut U
         (true, nr::MapSharedMemory) => hwcontext.apply0(map_shared_memory(x0 as _, x1 as _, x2 as _, x3 as _)),
         (true, nr::UnmapSharedMemory) => hwcontext.apply0(unmap_shared_memory(x0 as _, x1 as _, x2 as _)),
         (true, nr::CloseHandle) => hwcontext.apply0(close_handle(x0 as _)),
+        (true, nr::ResetSignal) => hwcontext.apply0(reset_signal(x0 as _)),
         (true, nr::WaitSynchronization) => hwcontext.apply1(wait_synchronization(UserSpacePtr::from_raw_parts(x0 as _, x1), x2)),
         (true, nr::ConnectToNamedPort) => hwcontext.apply1(connect_to_named_port(UserSpacePtr(x0 as _))),
         (true, nr::SendSyncRequestWithUserBuffer) => hwcontext.apply0(send_sync_request_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), x2 as _)),

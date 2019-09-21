@@ -1147,3 +1147,29 @@ pub fn get_process_info(hnd: u32, info_type: u32) -> Result<usize, UserspaceErro
         _ => Err(UserspaceError::InvalidEnum)
     }
 }
+
+/// Clear the "signaled" state of a readable event or process. After calling
+/// this on a signaled event, [wait_synchronization()] on this handle will wait
+/// until the handle is signaled again.
+///
+/// Takes either a `ReadableEvent` or a `Process`.
+///
+/// Note that once a Process enters the Exited state, it is permanently signaled
+/// and cannot be reset. Calling ResetSignal will return an InvalidState error.
+///
+/// # Errors
+///
+/// - `InvalidState`
+///   - The event wasn't signaled.
+///   - The process was in Exited state.
+pub fn reset_signal(hnd: u32) -> Result<(), UserspaceError> {
+    let hnd = scheduler::get_current_process().phandles.lock().get_handle(hnd)?;
+
+    match &*hnd {
+        Handle::Process(process) =>
+            process.clear_signal().map_err(|err| err.into()),
+        Handle::ReadableEvent(revent) =>
+            revent.clear_signal().map_err(|err| err.into()),
+        _ => Err(UserspaceError::InvalidHandle)
+    }
+}

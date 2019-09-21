@@ -692,3 +692,24 @@ pub fn get_process_info(process_handle: &Process, ty: ProcessInfoType) -> Result
         Ok(info as _)
     }
 }
+
+/// Clear the "signaled" state of a readable event or process. After calling
+/// this on a signaled event, [wait_synchronization()] on this handle will wait
+/// until the handle is signaled again.
+///
+/// Takes either a [ReadableEvent] or a [Process].
+///
+/// Note that once a Process enters the Exited state, it is permanently signaled
+/// and cannot be reset. Calling ResetSignal will return an InvalidState error.
+///
+/// # Errors
+///
+/// - `InvalidState`
+///   - The event wasn't signaled.
+///   - The process was in Exited state.
+pub(crate) fn reset_signal(event: HandleRef) -> Result<(), KernelError> {
+    unsafe {
+        syscall(nr::ResetSignal, event.inner.get() as _, 0, 0, 0, 0, 0)?;
+        Ok(())
+    }
+}

@@ -477,6 +477,35 @@ impl Process {
         let info = syscalls::get_process_info(self, ProcessInfoType::ProcessState)?;
         Ok(ProcessState(info as u8))
     }
+
+    /// Waits for the process to change state. Use [Process::state] to get the
+    /// new state and [Process::reset_signal] to reset the signaled state.
+    ///
+    /// # Panics
+    ///
+    /// Panics if used from outside the context of a Future spawned on a libuser
+    /// future executor. Please make sure you only call this function from a
+    /// future spawned on a WaitableManager.
+    pub fn wait_async<'a>(&self, queue: crate::futures::WorkQueue<'a>) -> impl core::future::Future<Output = Result<(), Error>> + Unpin + 'a {
+        self.0.as_ref().wait_async(queue)
+    }
+
+    /// Clear the "signaled" state of a process. A process moves to the signaled
+    /// state when it changes `ProcessState` (e.g. when exiting).
+    ///
+    /// Note that once a Process enters the Exited state, it is permanently
+    /// signaled and cannot be reset. Calling `reset_signal` will return an
+    /// InvalidState error.
+    ///
+    /// # Errors
+    ///
+    /// - `InvalidState`
+    ///   - The event wasn't signaled.
+    ///   - The process was in Exited state.
+    pub fn reset_signal(&self) -> Result<(), Error> {
+        syscalls::reset_signal(self.0.as_ref())?;
+        Ok(())
+    }
 }
 
 /// A handle to memory that may be mapped in multiple processes at the same time.

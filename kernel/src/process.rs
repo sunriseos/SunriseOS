@@ -269,6 +269,7 @@ impl Handle {
             Handle::ServerPort(ref serverport) => Ok(serverport),
             Handle::ServerSession(ref serversession) => Ok(serversession),
             Handle::Thread(ref thread) => Ok(thread),
+            Handle::Process(ref process) => Ok(process),
             _ => Err(UserspaceError::InvalidHandle),
         }
     }
@@ -578,6 +579,28 @@ impl ProcessStruct {
         self.state.lock().state
     }
 
+    /// Clears the signaled state of this process.
+    ///
+    /// If the state is Exited, this function will return an error and the
+    /// process will remain signaled.
+    ///
+    /// # Errors
+    ///
+    /// - `InvalidState`
+    ///   - Process is not currently signaled.
+    ///   - Process is in Exited state.
+    pub fn clear_signal(&self) -> Result<(), KernelError> {
+        let mut statelock = self.state.lock();
+        if statelock.signaled && statelock.state != ProcessState::Exited {
+            statelock.signaled = false;
+            Ok(())
+        } else {
+            Err(KernelError::InvalidState {
+                backtrace: Backtrace::new()
+            })
+        }
+    }
+
     /// Creates the very first process at boot.
     /// Called internally by create_first_thread.
     ///
@@ -686,7 +709,15 @@ impl ProcessStruct {
 
         this.state.lock().state = ProcessState::Exited;
     }
+}
 
+impl Waitable for Arc<ProcessStruct> {
+    fn is_signaled(&self) -> bool {
+        self.state.lock().signaled
+    }
+    fn register(&self) {
+        self.state.lock().waiting_threads.push(scheduler::get_current_thread());
+    }
 }
 
 impl Drop for ProcessStruct {
