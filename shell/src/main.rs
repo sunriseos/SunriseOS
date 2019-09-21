@@ -255,14 +255,17 @@ fn main() {
             },
             name => {
                 // Try to run it as an external binary.
-                match loader.launch_title(name.as_bytes(), line.as_bytes()) {
+                let res = loader.launch_title(name.as_bytes(), line.as_bytes())
+                    .and_then(|pid| loader.wait(pid));
+
+                match res {
                     Err(Error::Loader(LoaderError::ProgramNotFound, _)) => {
                         let _ = writeln!(&mut terminal, "Unknown command");
                     },
                     Err(err) => {
                         let _ = writeln!(&mut terminal, "Error: {:?}", err);
                     },
-                    Ok(_) => ()
+                    Ok(_exitstatus) => ()
                 }
             }
         }

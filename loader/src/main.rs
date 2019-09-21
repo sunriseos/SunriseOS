@@ -21,6 +21,7 @@
 //!   - flags/
 //!     - boot.flag
 
+#![feature(async_await)]
 #![no_std]
 
 #[macro_use]
@@ -32,20 +33,24 @@ use core::str;
 use core::slice;
 use core::mem::size_of;
 use alloc::boxed::Box;
+use alloc::collections::BTreeMap;
 
 use sunrise_libuser::fs::{DirectoryEntry, DirectoryEntryType, FileSystemPath, IFileSystemProxy, IFileSystemServiceProxy};
 use sunrise_libuser::{kip_header, capabilities};
 use sunrise_libuser::ipc::server::{port_handler};
 use sunrise_libuser::futures::{WaitableManager, WorkQueue};
-use sunrise_libuser::error::{Error, LoaderError};
-use sunrise_libuser::ldr::ILoaderInterface;
+use sunrise_libuser::error::{Error, LoaderError, PmError};
+use sunrise_libuser::ldr::ILoaderInterfaceAsync;
 use sunrise_libuser::syscalls::{self, map_process_memory};
+use sunrise_libuser::types::{Pid, Process};
 use sunrise_libkern::process::*;
 use sunrise_libuser::mem::{find_free_address, PAGE_SIZE};
 use sunrise_libutils::{align_up, div_ceil};
 
 use futures::future::FutureObj;
 use lazy_static::lazy_static;
+
+use spin::Mutex;
 
 mod elf_loader;
 
@@ -54,8 +59,12 @@ mod elf_loader;
 /// file bigger than 128MiB.
 const MAX_ELF_SIZE: u64 = 128 * 1024 * 1024;
 
+lazy_static! {
+    static ref PROCESSES: Mutex<BTreeMap<u64, Process>> = Mutex::new(BTreeMap::new());
+}
+
 /// Start the given titleid by loading its content from the provided filesystem.
-fn boot(fs: &IFileSystemProxy, titlename: &str, args: &[u8]) -> Result<(), Error> {
+fn boot(fs: &IFileSystemProxy, titlename: &str, args: &[u8]) -> Result<Pid, Error> {
     info!("Booting titleid {}", titlename);
 
     let val = format!("/bin/{}/main", titlename);
@@ -174,7 +183,10 @@ fn boot(fs: &IFileSystemProxy, titlename: &str, args: &[u8]) -> Result<(), Error
         return Err(err)
     }
 
-    Ok(())
+    let pid = process.pid()?;
+    PROCESSES.lock().insert(pid.0, process);
+
+    Ok(pid)
 }
 
 lazy_static! {
@@ -188,10 +200,50 @@ lazy_static! {
 #[derive(Debug, Default)]
 struct LoaderIface;
 
-impl ILoaderInterface for LoaderIface {
-    fn launch_title(&mut self, _workqueue: WorkQueue<'static>, title_name: &[u8], args: &[u8]) -> Result<(), Error> {
-        let title_name = str::from_utf8(title_name).or(Err(LoaderError::ProgramNotFound))?;
-        boot(&*BOOT_FROM_FS, title_name, args)
+impl ILoaderInterfaceAsync for LoaderIface {
+    fn launch_title(&mut self, _workqueue: WorkQueue<'static>, title_name: &[u8], args: &[u8]) -> FutureObj<'_, Result<u64, Error>> {
+        let res = (|| -> Result<u64, Error> {
+            let title_name = str::from_utf8(title_name).or(Err(LoaderError::ProgramNotFound))?;
+            let Pid(pid) = boot(&*BOOT_FROM_FS, title_name, args)?;
+            Ok(pid)
+        })();
+        FutureObj::new(Box::new(async move {
+            res
+        }))
+    }
+
+    fn wait(&mut self, workqueue: WorkQueue<'static>, pid: u64) -> FutureObj<'_, Result<u32, Error>> {
+        FutureObj::new(Box::new(async move {
+            // Weird logic: we create an as_ref_static process, and then we'll
+            // relock PROCESSES each time we want a process to reset signal and
+            // stuff. This kinda sucks.
+            //
+            // TODO: Unify Handle/HandleRef behind a single trait.
+            // BODY: The fact I have to do this makes me think there's really a
+            // BODY: problem in the handle/handleref design. Maybe there should be a
+            // BODY: trait unifying Handle/HandleRef, and `Process` and co should be
+            // BODY: generic on those? That would allow me to call the functions on
+            // BODY: "borrowed lifetime-erased" handles.
+            // BODY:
+            // BODY: This trait could probably be AsRef or Borrow. Ideally the
+            // BODY: generic types would be an internal implementation details
+            // BODY: and we'd just expose "Process" and "ProcessBorrowed" types
+            // BODY: through typedef/newtypes. Needs a lot of thought.
+            let process_wait = (PROCESSES.lock().get(&pid)
+                .ok_or(PmError::PidNotFound)?.0).as_ref_static();
+            loop {
+                process_wait.wait_async(workqueue.clone()).await?;
+                let lock = PROCESSES.lock();
+                let process = lock.get(&pid)
+                    .ok_or(PmError::PidNotFound)?;
+                process.reset_signal()?;
+                if process.state()? == ProcessState::Exited {
+                    PROCESSES.lock().remove(&pid);
+                    // TODO: Return exit state.
+                    return Ok(0);
+                }
+            }
+        }))
     }
 }
 
@@ -286,6 +338,10 @@ capabilities!(CAPABILITIES = Capabilities {
         sunrise_libuser::syscalls::nr::UnmapProcessMemory,
         sunrise_libuser::syscalls::nr::SetProcessMemoryPermission,
         sunrise_libuser::syscalls::nr::StartProcess,
+
+        sunrise_libuser::syscalls::nr::GetProcessInfo,
+        sunrise_libuser::syscalls::nr::GetProcessId,
+        sunrise_libuser::syscalls::nr::ResetSignal,
     ],
     raw_caps: [sunrise_libuser::caps::ioport(0x60), sunrise_libuser::caps::ioport(0x64), sunrise_libuser::caps::irq_pair(1, 0x3FF)]
 });

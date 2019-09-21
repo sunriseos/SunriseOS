@@ -1,3 +1,4 @@
 interface sunrise_libuser::ldr::ILoaderInterface is ldr:shel {
-    [0] launch_title(array<u8, 9> title_name, array<u8, 9> args);
+    [0] launch_title(array<u8, 9> title_name, array<u8, 9> args) -> u64 pid;
+    [1] wait(u64 pid) -> u32 exit_status;
 }

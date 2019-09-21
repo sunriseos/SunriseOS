@@ -100,7 +100,7 @@ impl<'a> HandleRef<'a> {
     /// Panics if used from outside the context of a Future spawned on a libuser
     /// future executor. Please make sure you only call this function from a
     /// future spawned on a WaitableManager.
-    fn wait_async<'b>(self, queue: WorkQueue<'b>)-> impl core::future::Future<Output = Result<(), Error>> + Unpin +'b {
+    pub fn wait_async<'b>(self, queue: WorkQueue<'b>)-> impl core::future::Future<Output = Result<(), Error>> + Unpin +'b {
         #[allow(missing_docs, clippy::missing_docs_in_private_items)]
         struct MyFuture<'a> {
             queue: crate::futures::WorkQueue<'a>,
@@ -638,5 +638,5 @@ impl Drop for MappedSharedMemory {
 /// Each process in Horizon is given a unique, non-reusable PID. It may be used
 /// to associate capabilities or resources to a particular process. For instance,
 /// sm might associate a process' service access permissions to its pid.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Pid(pub u64);
