@@ -26,8 +26,8 @@ pub use self::capabilities::ProcessCapabilities;
 use crate::paging::{InactiveHierarchy, InactiveHierarchyTrait, PAGE_SIZE, MappingAccessRights};
 use self::thread_local_storage::TLSManager;
 use crate::i386::interrupt_service_routines::UserspaceHardwareContext;
-use sunrise_libkern::process::ProcInfo;
-use sunrise_libkern::{ProcessState, MemoryType};
+use sunrise_libkern::process::{ProcessState, ProcInfo};
+use sunrise_libkern::MemoryType;
 
 /// Data related to the (user-visible) state the current process is in. The
 /// maternity is stored here to ensure there is no race condition between
@@ -567,6 +567,14 @@ impl ProcessStruct {
             return Err(err.into());
         }
         Ok(())
+    }
+
+    /// Gets the state of this process.
+    pub fn state(&self) -> ProcessState {
+        // Note: In nintendo, this code is *always* protected by a critical
+        // section on the g_sched object. We don't have that, so instead we go
+        // through a lock surrounding the ProcessStruct.
+        self.state.lock().state
     }
 
     /// Creates the very first process at boot.
