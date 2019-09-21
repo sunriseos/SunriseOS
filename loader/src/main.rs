@@ -29,12 +29,16 @@ extern crate log;
 extern crate alloc;
 
 use core::str;
+use core::slice;
+use core::mem::size_of;
+
 use sunrise_libuser::fs::{DirectoryEntry, DirectoryEntryType, FileSystemPath, IFileSystemProxy, IFileSystemServiceProxy};
 use sunrise_libuser::{kip_header, capabilities};
 use sunrise_libuser::error::{Error, LoaderError};
+use sunrise_libuser::syscalls::{self, map_process_memory};
 use sunrise_libkern::process::*;
-use sunrise_libuser::mem::PAGE_SIZE;
-use sunrise_libutils::div_ceil;
+use sunrise_libuser::mem::{find_free_address, PAGE_SIZE};
+use sunrise_libutils::{align_up, div_ceil};
 
 mod elf_loader;
 
@@ -44,7 +48,7 @@ mod elf_loader;
 const MAX_ELF_SIZE: u64 = 128 * 1024 * 1024;
 
 /// Start the given titleid by loading its content from the provided filesystem.
-fn boot(fs: &IFileSystemProxy, titleid: u64) -> Result<(), Error> {
+fn boot(fs: &IFileSystemProxy, titleid: u64, args: &[u8]) -> Result<(), Error> {
     info!("Booting titleid {:016x}", titleid);
 
     let val = format!("/bin/{:016x}/main", titleid);
@@ -95,12 +99,27 @@ fn boot(fs: &IFileSystemProxy, titleid: u64) -> Result<(), Error> {
         }
     };
 
+    let elf_size = elf_loader::get_size(&elf)?;
+
+    // Note: this calculation seems very, very, **very** wrong in Atmosphere.
+    // https://github.com/Atmosphere-NX/Atmosphere/blob/93d83c5/stratosphere/loader/source/ldr_process_creation.cpp#L495
+    //
+    // Like, wtf is this. So we do our own, based on our usage. See
+    // libuser::argv for more info.
+    let args_size = args.len() * 2 + 0x20;
+    let args_size = align_up(args_size, size_of::<usize>());
+    // Add a whole page for the vector of ptrs.
+    let args_size = args_size + 0x1000 / size_of::<usize>();
+    let args_size = align_up(args_size, PAGE_SIZE);
+
+    let total_size = elf_size + align_up(args_size, PAGE_SIZE);
+
     let process = sunrise_libuser::syscalls::create_process(&ProcInfo {
         name: *b"Application\0",
         process_category: ProcessCategory::RegularTitle,
         title_id: titleid,
         code_addr: aslr_base as _,
-        code_num_pages: div_ceil(elf_loader::get_size(&elf)?, PAGE_SIZE) as u32,
+        code_num_pages: div_ceil(total_size, PAGE_SIZE) as u32,
         flags,
         resource_limit_handle: None,
         system_resource_num_pages: 0,
@@ -108,6 +127,25 @@ fn boot(fs: &IFileSystemProxy, titleid: u64) -> Result<(), Error> {
 
     debug!("Loading ELF");
     elf_loader::load_builtin(&process, &elf, aslr_base)?;
+
+    debug!("Handling args");
+    let addr = find_free_address(args_size, 0x1000)?;
+    map_process_memory(addr, &process, aslr_base + elf_size, args_size)?;
+
+    // Copy the ELF data in the remote process.
+    let dest_ptr = addr as *mut u8;
+    let dest = unsafe {
+        // Safety: Guaranteed to be OK if the syscall returns successfully.
+        slice::from_raw_parts_mut(dest_ptr, args_size)
+    };
+    // Copy header
+    dest[0..4].copy_from_slice(&args_size.to_le_bytes());
+    dest[4..8].copy_from_slice(&args.len().to_le_bytes());
+    // Copy raw cmdline.
+    dest[0x20..0x20 + args.len()].copy_from_slice(args);
+
+    // Maybe I should panic if this fails, cuz that'd be really bad.
+    syscalls::unmap_process_memory(addr, &process, aslr_base + elf_size, args_size)?;
 
     debug!("Starting process.");
     if let Err(err) = process.start(0, 0, PAGE_SIZE as u32 * 16) {
@@ -163,7 +201,7 @@ fn main() {
                         .find(|(_, v)| **v == b'/' || **v == b'\0')
                         .map(|(idx, _)| idx).unwrap_or_else(|| entry.path.len());
                     if let Ok(titleid) = get_titleid_from_path(&entry.path[5..endpos]) {
-                        let _ = boot(&fs, titleid);
+                        let _ = boot(&fs, titleid, &[]);
                     } else {
                         error!("Non-ASCII titleid found in /boot.");
                         continue;
