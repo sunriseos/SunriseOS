@@ -545,7 +545,7 @@ impl ProcessStruct {
 
         // self.heapCapacity = self.memory_capacity - self.image_size - self.mainThreadStackSize;
         // Initialize handle table - Done in the new function in SunriseOS.
-        let first_thread = ThreadStruct::new(this, this.entrypoint, stack_addr + stack_size, None)?;
+        let first_thread = ThreadStruct::new_locked(this, &mut *statelock, this.entrypoint, stack_addr + stack_size, None)?;
         // InitForUser(), need to figure out what this does
         this.phandles.lock().add_handle(Arc::new(Handle::Thread(first_thread.clone())));
         // SetEntryArguments - done in ThreadStruct::start for us.
@@ -557,7 +557,8 @@ impl ProcessStruct {
             _ => unreachable!()
         });
 
-        if let Err(err) = ThreadStruct::start(first_thread) {
+        let first_thread = Weak::upgrade(&first_thread).unwrap();
+        if let Err(err) = ThreadStruct::start_locked(&first_thread, &mut *statelock) {
             // Start failed, go back to Created state. We don't undo the
             // allocation of the stack. Nintendo doesn't either.
             //
@@ -647,7 +648,7 @@ impl ProcessStruct {
             // current thread. I find this a bit weird. If we call
             // kill_current_process while not started, then something is clearly
             // wrong in the kernel. So we'll panic instead.
-            panic!("Invalid state! Attempted to kill the current process while it wasn't started.");
+            panic!("Invalid state! Attempted to kill the current process while it wasn't started: {:?}.", statelock.state);
         }
 
         // Normally, has the following flow:
@@ -717,6 +718,12 @@ impl ThreadStruct {
     ///   thread in the process' handle table, and this handle will be given as an argument to
     ///   the thread itself when it starts, so that the main thread can know its thread handle.
     pub fn new(belonging_process: &Arc<ProcessStruct>, ep: VirtualAddress, stack: VirtualAddress, arg: Option<usize>) -> Result<Weak<Self>, KernelError> {
+        Self::new_locked(belonging_process, &mut *belonging_process.state.lock(), ep, stack, arg)
+    }
+
+    /// See [ThreadStruct::new]. Takes the ProcessStruct.data pre-locked to
+    /// avoid deadlocks in [ProcessStruct::start()].
+    fn new_locked(belonging_process: &Arc<ProcessStruct>, belonging_process_data: &mut ProcessStateData, ep: VirtualAddress, stack: VirtualAddress, arg: Option<usize>) -> Result<Weak<Self>, KernelError> {
         // get its process memory
         let mut pmemory = belonging_process.pmemory.lock();
 
@@ -753,7 +760,7 @@ impl ThreadStruct {
             Some(arg) => (arg, 0),
             None => {
                 debug_assert!(belonging_process.threads.lock().is_empty() &&
-                              belonging_process.state.lock().thread_maternity.is_empty(), "Argument shouldn't be None");
+                              belonging_process_data.thread_maternity.is_empty(), "Argument shouldn't be None");
                 let handle = belonging_process.phandles.lock().add_handle(Arc::new(Handle::Thread(Arc::downgrade(&t))));
 
                 (0, handle as usize)
@@ -771,8 +778,7 @@ impl ThreadStruct {
         let ret = Arc::downgrade(&t);
 
         // add it to the process' list of threads, and to the maternity, simultaneously
-        let mut statelock = belonging_process.state.lock();
-        if statelock.state == ProcessState::Exited {
+        if belonging_process_data.state == ProcessState::Exited {
             // process was killed while we were waiting for the lock.
             // do not add the process to the vec, cancel the thread creation.
             drop(t);
@@ -782,7 +788,7 @@ impl ThreadStruct {
         // push a weak in the threads_vec
         threads_vec.push(Arc::downgrade(&t));
         // and put the only strong in the maternity
-        statelock.thread_maternity.push(t);
+        belonging_process_data.thread_maternity.push(t);
 
         Ok(ret)
     }
@@ -852,6 +858,31 @@ impl ThreadStruct {
         t
     }
 
+    /// See [ThreadStruct::start]. Takes the ProcessStruct.data pre-locked to
+    /// avoid deadlocks in [ProcessStruct::start()].
+    #[allow(clippy::needless_pass_by_value)] // more readable
+    fn start_locked(thread: &Arc<Self>, belonging_process_data: &mut ProcessStateData) -> Result<(), KernelError> {
+        // remove it from the maternity
+        if belonging_process_data.state == ProcessState::Exited {
+            // process was killed while we were waiting for the lock.
+            // do not start process to the vec, cancel the thread start.
+            return Err(KernelError::ProcessKilled { backtrace: Backtrace::new() })
+        }
+        let maternity = &mut belonging_process_data.thread_maternity;
+        let cradle = maternity.iter().position(|baby| Arc::ptr_eq(baby, &thread));
+        match cradle {
+            None => {
+                // the thread was not found in the maternity, meaning it had already started.
+                Err(KernelError::InvalidState { backtrace: Backtrace::new() })
+            },
+            Some(pos) => {
+                // remove it from maternity, and put it in the schedule queue
+                scheduler::add_to_schedule_queue(maternity.remove(pos));
+                Ok(())
+            }
+        }
+    }
+
     /// Takes a reference to a thread, removes it from the maternity, and adds it to the schedule queue.
     ///
     /// We take only a weak reference, to permit calling this function easily with a thread_handle.
@@ -865,28 +896,10 @@ impl ThreadStruct {
     pub fn start(this: Weak<Self>) -> Result<(), KernelError> {
         let thread = this.upgrade().ok_or(
             // the thread was dropped, meaning it has already been killed.
-            KernelError::ThreadAlreadyStarted { backtrace: Backtrace::new() }
+            KernelError::InvalidState { backtrace: Backtrace::new() }
         )?;
-        // remove it from the maternity
-        let mut statelock = thread.process.state.lock();
-        if statelock.state == ProcessState::Exited {
-            // process was killed while we were waiting for the lock.
-            // do not start process to the vec, cancel the thread start.
-            return Err(KernelError::ProcessKilled { backtrace: Backtrace::new() })
-        }
-        let maternity = &mut statelock.thread_maternity;
-        let cradle = maternity.iter().position(|baby| Arc::ptr_eq(baby, &thread));
-        match cradle {
-            None => {
-                // the thread was not found in the maternity, meaning it had already started.
-                Err(KernelError::InvalidState { backtrace: Backtrace::new() })
-            },
-            Some(pos) => {
-                // remove it from maternity, and put it in the schedule queue
-                scheduler::add_to_schedule_queue(maternity.remove(pos));
-                Ok(())
-            }
-        }
+        Self::start_locked(&thread, &mut *thread.process.state.lock())?;
+        Ok(())
     }
 
     /// Sets the thread to the `Exited` state.

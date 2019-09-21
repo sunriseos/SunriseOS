@@ -168,22 +168,13 @@ fn main() {
         };
 
         let proc = ProcessStruct::new(&procinfo, elf_loader::get_kacs(&mapped_module)).unwrap();
-        let (ep, sp) = {
+        {
                 let mut pmemlock = proc.pmemory.lock();
-
-                let ep = elf_loader::load_builtin(&mut pmemlock, &mapped_module, aslr_base);
-
-                let stack = pmemlock.find_available_space(20 * PAGE_SIZE)
-                    .unwrap_or_else(|_| panic!("Cannot create a stack for process {:?}", proc));
-                pmemlock.guard(stack, PAGE_SIZE, MemoryType::Reserved).unwrap();
-                pmemlock.create_regular_mapping(stack + PAGE_SIZE, 19 * PAGE_SIZE, MemoryType::Stack, MappingAccessRights::u_rw()).unwrap();
-
-                (VirtualAddress(ep), stack + 20 * PAGE_SIZE)
+                elf_loader::load_builtin(&mut pmemlock, &mapped_module, aslr_base);
         };
-        let thread = ThreadStruct::new(&proc, ep, sp, None)
-            .expect("failed creating thread for service");
-        ThreadStruct::start(thread)
-            .expect("failed starting thread for service");
+
+        ProcessStruct::start(&proc, u32::from(kip_header.main_thread_priority), kip_header.stack_page_count as usize * PAGE_SIZE)
+            .expect("failed creating process");
     }
 
     let lock = sync::SpinLockIRQ::new(());
