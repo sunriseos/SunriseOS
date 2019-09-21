@@ -61,8 +61,9 @@ enum_with_val! {
         /// The remote part of the session was closed.
         PortRemoteDead = 123,
         // UnhandledInterrupt = 124,
-        /// Attempted to start a process that was already started.
-        ProcessAlreadyStarted = 125,
+        /// Attempted to do an operation that's invalid in the handle's current
+        /// state.
+        InvalidState = 125,
         /// Attempted to use an unknown value, reserved for future use.
         ReservedValue = 126,
         // InvalidHardwareBreakpoint = 127,
@@ -116,7 +117,7 @@ impl fmt::Display for KernelError {
             KernelError::ExceedingMaximum => write!(f, "Argument exceeded maximum possible value."),
             KernelError::NoSuchEntry => write!(f, "The entry does not exist."),
             KernelError::PortRemoteDead => write!(f, "Remote handle closed. Usually happens when an IPC got sent in the wrong format."),
-            KernelError::ProcessAlreadyStarted => write!(f, "Process already started."),
+            KernelError::InvalidState => write!(f, "Handle is in invalid state for this operation."),
             KernelError(err) => write!(f, "Unknown error: {}", err)
         }
     }

@@ -530,7 +530,7 @@ impl ProcessStruct {
 
         let oldstate = statelock.state;
         if oldstate != ProcessState::Created && oldstate != ProcessState::CreatedAttached {
-            return Err(UserspaceError::ProcessAlreadyStarted);
+            return Err(UserspaceError::InvalidState);
         }
 
         // ResourceLimit reserve align_up(stackSize, PAGE_SIZE) memory
@@ -871,7 +871,7 @@ impl ThreadStruct {
         match cradle {
             None => {
                 // the thread was not found in the maternity, meaning it had already started.
-                Err(KernelError::ThreadAlreadyStarted { backtrace: Backtrace::new() })
+                Err(KernelError::InvalidState { backtrace: Backtrace::new() })
             },
             Some(pos) => {
                 // remove it from maternity, and put it in the schedule queue
