@@ -7,6 +7,7 @@ use core::marker::PhantomData;
 use crate::syscalls;
 use core::num::NonZeroU32;
 use sunrise_libkern::MemoryPermissions;
+use sunrise_libkern::process::{ProcessState, ProcessInfoType};
 use crate::error::{Error, KernelError};
 use crate::ipc::{Message, MessageTy};
 use crate::futures::WorkQueue;
@@ -466,6 +467,15 @@ impl Process {
     pub fn start(&self, main_thread_prio: u32, default_cpuid: u32, main_thread_stack_sz: u32) -> Result<(), Error> {
         syscalls::start_process(self, main_thread_prio, default_cpuid, main_thread_stack_sz)
             .map_err(|v| v.into())
+    }
+
+    /// Get the state the given process is currently in.
+    ///
+    /// Shouldn't ever return an error, unless the user is doing weird things
+    /// with handles.
+    pub fn state(&self) -> Result<ProcessState, Error> {
+        let info = syscalls::get_process_info(self, ProcessInfoType::ProcessState)?;
+        Ok(ProcessState(info as u8))
     }
 }
 

@@ -672,3 +672,23 @@ pub fn start_process(process_handle: &Process, main_thread_prio: u32, default_cp
         Ok(())
     }
 }
+
+/// Extract information from a process.
+///
+/// Info Type        | Description
+/// -----------------|--------------------------
+/// ProcessState = 0 | The state the current process is in. Returns an instance
+///                  | of [sunrise_libkern::process::ProcessState].
+///
+/// # Errors
+///
+/// - `InvalidHandle`
+///   - The passed handle is invalid or not a process.
+/// - `InvalidEnum`
+///   - The passed info_type is unknown.
+pub fn get_process_info(process_handle: &Process, ty: ProcessInfoType) -> Result<u32, KernelError> {
+    unsafe {
+        let (info, ..) = syscall(nr::GetProcessInfo, (process_handle.0).0.get() as usize, ty.0 as usize, 0, 0, 0, 0)?;
+        Ok(info as _)
+    }
+}

@@ -212,3 +212,12 @@ enum_with_val! {
         DebugSuspended = 7
     }
 }
+
+enum_with_val! {
+    /// Kind of information to extract from a process wit `get_process_info`.
+    #[derive(Default, Clone, Copy, PartialEq, Eq)]
+    pub struct ProcessInfoType(pub u32) {
+        /// Get the state the process is currently in.
+        ProcessState = 0,
+    }
+}

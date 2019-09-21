@@ -1124,3 +1124,26 @@ pub fn start_process(hnd: u32, main_thread_prio: u32, default_cpuid: u32, main_t
     ProcessStruct::start(&target_proc, main_thread_prio, main_thread_stacksz)?;
     Ok(())
 }
+
+/// Extract information from a process.
+///
+/// Info Type        | Description
+/// -----------------|--------------------------
+/// ProcessState = 0 | The state the current process is in. Returns an instance
+///                  | of [sunrise_libkern::process::ProcessState].
+///
+/// # Errors
+///
+/// - `InvalidHandle`
+///   - The passed handle is invalid or not a process.
+/// - `InvalidEnum`
+///   - The passed info_type is unknown.
+pub fn get_process_info(hnd: u32, info_type: u32) -> Result<usize, UserspaceError> {
+    let info_type = ProcessInfoType(info_type);
+    let target_proc = scheduler::get_current_process().phandles.lock().get_handle(hnd)?.as_process()?;
+
+    match info_type {
+        ProcessInfoType::ProcessState => Ok(target_proc.state().0 as usize),
+        _ => Err(UserspaceError::InvalidEnum)
+    }
+}
