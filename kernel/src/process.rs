@@ -164,7 +164,7 @@ pub struct ThreadStruct {
     /// Thread state event
     ///
     /// This is used when signaling that this thread as exited.
-    state_event: Arc<ThreadStateEvent>
+    state_event: ThreadStateEvent
 }
 
 /// A handle to a userspace-accessible resource.
@@ -693,9 +693,9 @@ impl ThreadStruct {
                 tls_region: tls,
                 tls_elf: SpinLock::new(VirtualAddress(0x00000000)),
                 userspace_hwcontext: SpinLock::new(UserspaceHardwareContext::default()),
-                state_event: Arc::new(ThreadStateEvent {
+                state_event: ThreadStateEvent {
                     waiting_threads: SpinLock::new(Vec::new())
-                }),
+                },
             }
         );
 
@@ -792,9 +792,9 @@ impl ThreadStruct {
                 tls_region: tls,
                 tls_elf: SpinLock::new(VirtualAddress(0x00000000)),
                 userspace_hwcontext: SpinLock::new(UserspaceHardwareContext::default()),
-                state_event: Arc::new(ThreadStateEvent {
+                state_event: ThreadStateEvent {
                     waiting_threads: SpinLock::new(Vec::new())
-                }),
+                },
             }
         );
 
