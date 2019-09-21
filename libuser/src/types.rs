@@ -506,6 +506,19 @@ impl Process {
         syscalls::reset_signal(self.0.as_ref())?;
         Ok(())
     }
+
+    /// Gets the [Pid] of this Process.
+    ///
+    /// Will return an `InvalidHandle` error if called on `Process::current()`.
+    ///
+    /// # Errors
+    ///
+    /// - `InvalidHandle`
+    ///   - Called in `Process::current()`.
+    pub fn pid(&self) -> Result<Pid, Error> {
+        let pid = syscalls::get_process_id(self)?;
+        Ok(Pid(pid))
+    }
 }
 
 /// A handle to memory that may be mapped in multiple processes at the same time.

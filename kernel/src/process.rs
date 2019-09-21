@@ -412,12 +412,29 @@ impl HandleTable {
     }
 
     /// Gets the Kernel Handle associated with the given userspace handle number.
+    ///
+    /// # Errors
+    ///
+    /// - `InvalidHandle`
+    ///    - The provided handle does not exist in the handle table.
     pub fn get_handle(&self, handle: u32) -> Result<Arc<Handle>, UserspaceError> {
         match handle {
             0xFFFF8000 => Ok(Arc::new(Handle::Thread(Arc::downgrade(&scheduler::get_current_thread())))),
             0xFFFF8001 => Ok(Arc::new(Handle::Process(scheduler::get_current_process()))),
             handle => self.table.get(&handle).cloned().ok_or(UserspaceError::InvalidHandle)
         }
+    }
+
+    /// Gets the Kernel Handle associated with the given userspace handle number.
+    ///
+    /// Does not interpret 0xFFFF8000 and 0xFFFF8001.
+    ///
+    /// # Errors
+    ///
+    /// - `InvalidHandle`
+    ///    - The provided handle does not exist in the handle table.
+    pub fn get_handle_no_alias(&self, handle: u32) -> Result<Arc<Handle>, UserspaceError> {
+        self.table.get(&handle).cloned().ok_or(UserspaceError::InvalidHandle)
     }
 
     /// Deletes the mapping from the given userspace handle number. Returns the

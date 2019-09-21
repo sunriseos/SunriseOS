@@ -713,3 +713,20 @@ pub(crate) fn reset_signal(event: HandleRef) -> Result<(), KernelError> {
         Ok(())
     }
 }
+
+/// Gets the PID of the given Process handle. Alias handles (0xFFFF8000 and
+/// 0xFFFF8001) are not allowed here. PIDs are global, unique identifiers for a
+/// given process. PIDs are never reused, and can be passed over IPC safely (the
+/// kernel ensures the correct pid is passed when a process does a request),
+/// making them the best way for sysmodule to identify a calling process.
+///
+/// # Errors
+///
+/// - `InvalidHandle`
+///   - The given handle is invalid or not a process.
+pub fn get_process_id(process_handle: &Process) -> Result<u64, KernelError> {
+    unsafe {
+        let (pid, ..) = syscall(nr::GetProcessInfo, (process_handle.0).0.get() as usize, 0, 0, 0, 0, 0)?;
+        Ok(pid as _)
+    }
+}

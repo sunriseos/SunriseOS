@@ -928,6 +928,7 @@ fn syscall_interrupt_dispatcher(_exception_name: &'static str, hwcontext: &mut U
         (true, nr::WaitSynchronization) => hwcontext.apply1(wait_synchronization(UserSpacePtr::from_raw_parts(x0 as _, x1), x2)),
         (true, nr::ConnectToNamedPort) => hwcontext.apply1(connect_to_named_port(UserSpacePtr(x0 as _))),
         (true, nr::SendSyncRequestWithUserBuffer) => hwcontext.apply0(send_sync_request_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), x2 as _)),
+        (true, nr::GetProcessId) => hwcontext.apply1(get_process_id(x0 as _)),
         (true, nr::OutputDebugString) => hwcontext.apply0(output_debug_string(UserSpacePtr::from_raw_parts(x0 as _, x1), x2, UserSpacePtr::from_raw_parts(x3 as _, x4))),
         (true, nr::CreateSession) => hwcontext.apply2(create_session(x0 != 0, x1 as _)),
         (true, nr::AcceptSession) => hwcontext.apply1(accept_session(x0 as _)),

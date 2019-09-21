@@ -1173,3 +1173,20 @@ pub fn reset_signal(hnd: u32) -> Result<(), UserspaceError> {
         _ => Err(UserspaceError::InvalidHandle)
     }
 }
+
+/// Gets the PID of the given Process handle. Alias handles (0xFFFF8000 and
+/// 0xFFFF8001) are not allowed here. PIDs are global, unique identifiers for a
+/// given process. PIDs are never reused, and can be passed over IPC safely (the
+/// kernel ensures the correct pid is passed when a process does a request),
+/// making them the best way for sysmodule to identify a calling process.
+///
+/// # Errors
+///
+/// - `InvalidHandle`
+///   - The given handle is invalid or not a process.
+pub fn get_process_id(hnd: u32) -> Result<usize, UserspaceError> {
+    let process = scheduler::get_current_process().phandles.lock()
+        .get_handle_no_alias(hnd)?.as_process()?;
+
+    Ok(process.pid)
+}
