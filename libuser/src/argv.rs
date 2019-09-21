@@ -184,6 +184,7 @@ fn __libuser_get_args() -> (usize, isize) {
             return NO_ARGS;
         }
 
+        #[allow(clippy::cast_ptr_alignment)]
         let __system_argv = unsafe {
             // Safety: The data is valid, (argdata is big enough) and the ptr
             // is properly aligned at this point thanks to the realignment done
@@ -266,6 +267,7 @@ fn __libuser_get_args() -> (usize, isize) {
 
         __system_argv[__system_argc] = 0;
 
+        #[allow(clippy::cast_possible_wrap)]
         (__system_argv.as_ptr() as usize, __system_argc as isize)
     })
 }
