@@ -147,20 +147,26 @@ fn boot(fs: &IFileSystemProxy, titlename: &str, args: &[u8]) -> Result<(), Error
     let addr = find_free_address(args_size, 0x1000)?;
     map_process_memory(addr, &process, aslr_base + elf_size, args_size)?;
 
-    // Copy the ELF data in the remote process.
-    let dest_ptr = addr as *mut u8;
-    let dest = unsafe {
-        // Safety: Guaranteed to be OK if the syscall returns successfully.
-        slice::from_raw_parts_mut(dest_ptr, args_size)
-    };
-    // Copy header
-    dest[0..4].copy_from_slice(&args_size.to_le_bytes());
-    dest[4..8].copy_from_slice(&args.len().to_le_bytes());
-    // Copy raw cmdline.
-    dest[0x20..0x20 + args.len()].copy_from_slice(args);
+    {
+        // Copy the ELF data in the remote process.
+        let dest_ptr = addr as *mut u8;
+        let dest = unsafe {
+            // Safety: Guaranteed to be OK if the syscall returns successfully.
+            slice::from_raw_parts_mut(dest_ptr, args_size)
+        };
+        // Copy header
+        dest[0..4].copy_from_slice(&args_size.to_le_bytes());
+        dest[4..8].copy_from_slice(&args.len().to_le_bytes());
+        // Copy raw cmdline.
+        dest[0x20..0x20 + args.len()].copy_from_slice(args);
+    }
 
     // Maybe I should panic if this fails, cuz that'd be really bad.
-    syscalls::unmap_process_memory(addr, &process, aslr_base + elf_size, args_size)?;
+    unsafe {
+        // Safety: this memory was previously mapped and all pointers to it
+        // should have been dropped already.
+        syscalls::unmap_process_memory(addr, &process, aslr_base + elf_size, args_size)?;
+    }
 
     debug!("Starting process.");
     if let Err(err) = process.start(0, 0, PAGE_SIZE as u32 * 16) {

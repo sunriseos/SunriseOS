@@ -136,24 +136,30 @@ fn load_segment(process: &Process, segment: ProgramHeader<'_>, elf_file: &ElfFil
     let addr = find_free_address(mem_size_total, 0x1000)?;
     map_process_memory(addr, process, virtual_addr, mem_size_total)?;
 
-    // Copy the ELF data in the remote process.
-    let dest_ptr = addr as *mut u8;
-    let dest = unsafe {
-        // Safety: Guaranteed to be OK if the syscall returns successfully.
-        slice::from_raw_parts_mut(dest_ptr, mem_size_total)
-    };
-    let (dest_data, dest_pad) = dest.split_at_mut(segment.file_size() as usize);
+    {
+        // Copy the ELF data in the remote process.
+        let dest_ptr = addr as *mut u8;
+        let dest = unsafe {
+            // Safety: Guaranteed to be OK if the syscall returns successfully.
+            slice::from_raw_parts_mut(dest_ptr, mem_size_total)
+        };
+        let (dest_data, dest_pad) = dest.split_at_mut(segment.file_size() as usize);
 
-    // Copy elf data
-    dest_data.copy_from_slice(elf_data);
+        // Copy elf data
+        dest_data.copy_from_slice(elf_data);
 
-    // Fill remaining with 0s
-    for byte in dest_pad.iter_mut() {
-        *byte = 0x00;
+        // Fill remaining with 0s
+        for byte in dest_pad.iter_mut() {
+            *byte = 0x00;
+        }
     }
 
     // Maybe I should panic if this fails, cuz that'd be really bad.
-    syscalls::unmap_process_memory(addr, process, virtual_addr, mem_size_total)?;
+    unsafe {
+        // Safety: this memory was previously mapped and all pointers to it
+        // should have been dropped already.
+        syscalls::unmap_process_memory(addr, process, virtual_addr, mem_size_total)?;
+    }
 
     syscalls::set_process_memory_permission(process, virtual_addr, mem_size_total, flags)?;
 

@@ -546,11 +546,15 @@ impl MappedSharedMemory {
     }
 
     /// Gets a raw pointer to the underlying shared memory.
+    ///
+    /// The pointer is valid until the MappedSharedMemory instance gets dropped.
     pub fn as_ptr(&self) -> *const u8 {
         self.addr as *const u8
     }
 
     /// Gets a mutable raw pointer to the underlying shared memory.
+    ///
+    /// The pointer is valid until the MappedSharedMemory instance gets dropped.
     pub fn as_mut_ptr(&self) -> *mut u8 {
         self.addr as *mut u8
     }
@@ -569,7 +573,11 @@ impl MappedSharedMemory {
 
 impl Drop for MappedSharedMemory {
     fn drop(&mut self) {
-        let _ = syscalls::unmap_shared_memory(&self.handle, self.addr, self.size);
+        unsafe {
+            // Safety: If this is dropped, then all references given out to the
+            // data pointed to by addr should have been dropped as well.
+            let _ = syscalls::unmap_shared_memory(&self.handle, self.addr, self.size);
+        }
     }
 }
 

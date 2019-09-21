@@ -252,15 +252,19 @@ pub fn map_shared_memory(handle: &SharedMemory, addr: usize, size: usize, perm: 
 ///
 /// Unmaps a shared memory mapping at the given address.
 ///
+/// # Safety
+///
+/// This function unmaps the memory, invalidating any pointer to the given
+/// region. The user must take care that no pointers point to this region before
+/// calling this function.
+///
 /// # Errors:
 ///
 /// - addr must point to a mapping backed by the given handle
 /// - Size must be equal to the size of the backing shared memory handle.
-pub fn unmap_shared_memory(handle: &SharedMemory, addr: usize, size: usize) -> Result<(), KernelError> {
-    unsafe {
-        syscall(nr::UnmapSharedMemory, (handle.0).0.get() as _, addr, size, 0, 0, 0)?;
-        Ok(())
-    }
+pub unsafe fn unmap_shared_memory(handle: &SharedMemory, addr: usize, size: usize) -> Result<(), KernelError> {
+    syscall(nr::UnmapSharedMemory, (handle.0).0.get() as _, addr, size, 0, 0, 0)?;
+    Ok(())
 }
 
 // Not totally public because it's not safe to use directly
@@ -593,6 +597,12 @@ pub fn map_process_memory(dstaddr: usize, proc_handle: &Process, srcaddr: usize,
 ///
 /// It is possible to partially unmap a ProcessMemory.
 ///
+/// # Safety
+///
+/// This function unmaps the memory, invalidating any pointer to the given
+/// region. The user must take care that no pointers point to this region before
+/// calling this function.
+///
 /// # Errors
 ///
 /// - `InvalidAddress`
@@ -614,11 +624,9 @@ pub fn map_process_memory(dstaddr: usize, proc_handle: &Process, srcaddr: usize,
 /// - `InvalidHandle`
 ///    - The handle passed as an argument does not exist or is not a Process
 ///      handle.
-pub fn unmap_process_memory(dstaddr: usize, proc_handle: &Process, srcaddr: usize, size: usize) -> Result<(), KernelError> {
-    unsafe {
-        syscall(nr::UnmapProcessMemory, dstaddr, (proc_handle.0).0.get() as _, srcaddr, size, 0, 0)?;
-        Ok(())
-    }
+pub unsafe fn unmap_process_memory(dstaddr: usize, proc_handle: &Process, srcaddr: usize, size: usize) -> Result<(), KernelError> {
+    syscall(nr::UnmapProcessMemory, dstaddr, (proc_handle.0).0.get() as _, srcaddr, size, 0, 0)?;
+    Ok(())
 }
 
 /// Creates a new process with the given parameters.
