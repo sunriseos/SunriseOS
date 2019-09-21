@@ -14,9 +14,11 @@ use core::fmt::Debug;
 use alloc::sync::Arc;
 use crate::sync::{SpinLock, SpinLockIRQ};
 use alloc::vec::Vec;
-use crate::error::UserspaceError;
+use crate::error::{KernelError, UserspaceError};
 use crate::process::ThreadStruct;
 use crate::scheduler;
+
+use failure::Backtrace;
 
 /// A waitable item.
 ///
@@ -159,8 +161,17 @@ pub struct ReadableEvent {
 
 impl ReadableEvent {
     /// Clears the signaled state.
-    pub fn clear_signal(&self) {
-        self.parent.state.store(false, Ordering::SeqCst);
+    ///
+    /// # Errors
+    ///
+    /// - `InvalidState`
+    ///   - The event wasn't signaled.
+    pub fn clear_signal(&self) -> Result<(), KernelError> {
+        let oldstate = self.parent.state.swap(false, Ordering::SeqCst);
+        if oldstate == false {
+            return Err(KernelError::InvalidState { backtrace: Backtrace::new() })
+        }
+        Ok(())
     }
 }
 
@@ -192,8 +203,17 @@ impl WritableEvent {
         }
     }
     /// Clears the signaled state.
-    pub fn clear_signal(&self) {
-        self.parent.state.store(false, Ordering::SeqCst);
+    ///
+    /// # Errors
+    ///
+    /// - `InvalidState`
+    ///   - The event wasn't signaled.
+    pub fn clear_signal(&self) -> Result<(), KernelError> {
+        let oldstate = self.parent.state.swap(false, Ordering::SeqCst);
+        if oldstate == false {
+            return Err(KernelError::InvalidState { backtrace: Backtrace::new() })
+        }
+        Ok(())
     }
 }
 

@@ -463,15 +463,19 @@ pub fn signal_event(handle: u32) -> Result<(), UserspaceError> {
 ///
 /// Takes either a [crate::event::ReadableEvent] or a
 /// [crate::event::WritableEvent].
+///
+/// # Errors
+///
+/// - `InvalidState`
+///   - The event wasn't signaled.
 pub fn clear_event(handle: u32) -> Result<(), UserspaceError> {
     let proc = scheduler::get_current_process();
     let handle = proc.phandles.lock().get_handle(handle)?;
     match &*handle {
-        Handle::ReadableEvent(event) => event.clear_signal(),
-        Handle::WritableEvent(event) => event.clear_signal(),
+        Handle::ReadableEvent(event) => event.clear_signal().map_err(|err| err.into()),
+        Handle::WritableEvent(event) => event.clear_signal().map_err(|err| err.into()),
         _ => Err(UserspaceError::InvalidHandle)?
     }
-    Ok(())
 }
 
 /// Create a new Port pair. Those ports are linked to each-other: The server will

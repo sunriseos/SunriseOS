@@ -208,6 +208,11 @@ pub fn signal_event(event: &WritableEvent) -> Result<(), KernelError> {
 /// [signal_event()] is called once again.
 ///
 /// Takes either a [ReadableEvent] or a [WritableEvent].
+///
+/// # Errors
+///
+/// - `InvalidState`
+///   - The event wasn't signaled.
 pub(crate) fn clear_event(event: HandleRef) -> Result<(), KernelError> {
     unsafe {
         syscall(nr::ClearEvent, event.inner.get() as _, 0, 0, 0, 0, 0)?;
