@@ -116,13 +116,13 @@ pub fn add_to_schedule_queue(thread: Arc<ThreadStruct>) {
         return;
     }
 
-    let oldstate = thread.state.compare_exchange(ThreadState::Stopped, ThreadState::Scheduled, Ordering::SeqCst, Ordering::SeqCst);
+    let oldstate = thread.state.compare_exchange(ThreadState::Paused, ThreadState::Scheduled, Ordering::SeqCst, Ordering::SeqCst);
     let oldstate = match oldstate {
         Ok(v) => v,
         Err(v) => v
     };
 
-    assert!(oldstate == ThreadState::Stopped || oldstate == ThreadState::Killed,
+    assert!(oldstate == ThreadState::Paused || oldstate == ThreadState::TerminationPending,
                "Process added to schedule queue was not stopped : {:?}", oldstate);
 
     queue_lock.push(thread)
@@ -132,7 +132,7 @@ pub fn add_to_schedule_queue(thread: Arc<ThreadStruct>) {
 pub fn is_in_schedule_queue(queue: &SpinLockIRQGuard<'_, Vec<Arc<ThreadStruct>>>,
                             thread: &Arc<ThreadStruct>) -> bool {
     CURRENT_THREAD.borrow().iter().filter(|v| {
-        v.state.load(Ordering::SeqCst) != ThreadState::Stopped
+        v.state.load(Ordering::SeqCst) != ThreadState::Paused
     }).chain(queue.iter()).any(|elem| Arc::ptr_eq(thread, elem))
 }
 
@@ -162,18 +162,18 @@ where
 {
     {
         let thread = get_current_thread();
-        let old = thread.state.compare_exchange(ThreadState::Running, ThreadState::Stopped, Ordering::SeqCst, Ordering::SeqCst);
+        let old = thread.state.compare_exchange(ThreadState::Running, ThreadState::Paused, Ordering::SeqCst, Ordering::SeqCst);
         let old = match old {
             Ok(v) => v,
             Err(v) => v
         };
-        assert!(old == ThreadState::Killed || old == ThreadState::Running, "Old was in invalid state {:?} before unscheduling", old);
+        assert!(old == ThreadState::TerminationPending || old == ThreadState::Running, "Old was in invalid state {:?} before unscheduling", old);
         mem::drop(guard)
     }
 
     let guard = internal_schedule(lock, true);
 
-    if get_current_thread().state.load(Ordering::SeqCst) == ThreadState::Killed {
+    if get_current_thread().state.load(Ordering::SeqCst) == ThreadState::TerminationPending {
         Err(UserspaceError::Canceled)
     } else {
         Ok(guard)

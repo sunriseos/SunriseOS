@@ -108,7 +108,7 @@ pub struct ProcessStruct {
     /// However, because of this, if a thread creates other threads, does not share the handles,
     /// and dies before starting them, the process struct will be kept alive indefinitely
     /// by those non-started threads that no one can start, and the process will stay that way
-    /// until it is explicitly killed from outside.
+    /// until it is explicitly stopped from outside.
     // TODO: Use a better lock around thread_maternity.
     // BODY: Thread maternity currently uses a SpinLock. We should ideally use a
     // BODY: scheduling mutex there.
@@ -160,6 +160,11 @@ pub struct ThreadStruct {
     ///
     /// Registers are backed up every time we enter the kernel via a syscall/exception, for debug purposes.
     pub userspace_hwcontext: SpinLock<UserspaceHardwareContext>,
+
+    /// Thread state event
+    ///
+    /// This is used when signaling that this thread as exited.
+    state_event: ThreadStateEvent
 }
 
 /// A handle to a userspace-accessible resource.
@@ -206,6 +211,42 @@ pub enum Handle {
     SharedMemory(Arc<SpinRwLock<Vec<PhysicalMemRegion>>>),
 }
 
+/// The underlying shared object of a [Weak<ThreadStrct>].
+#[derive(Debug)]
+struct ThreadStateEvent {
+    /// List of threads waiting on this thread to exit. When this thread exit, all
+    /// those threads will be rescheduled.
+    waiting_threads: SpinLock<Vec<Arc<ThreadStruct>>>
+}
+
+impl ThreadStateEvent {
+    /// Signals the event, waking up any thread waiting on its value.
+    pub fn signal(&self) {
+        let mut threads = self.waiting_threads.lock();
+        while let Some(thread) = threads.pop() {
+            scheduler::add_to_schedule_queue(thread);
+        }
+    }
+}
+
+/// If this waitable is signaled, this means the thread has exited.
+impl Waitable for Weak<ThreadStruct> {
+    fn is_signaled(&self) -> bool {
+        if let Some(thread) = self.upgrade() {
+            return thread.state.load(Ordering::SeqCst) == ThreadState::TerminationPending;
+        }
+
+        // Cannot upgrade to Arc? The thread is dead, so it totally have exited!
+        true
+    }
+
+    fn register(&self) {
+        if let Some(thread) = self.upgrade() {
+            thread.state_event.waiting_threads.lock().push(scheduler::get_current_thread());
+        }
+    }
+}
+
 impl Handle {
     /// Gets the handle as a [Waitable], or return a `UserspaceError` if the handle cannot be waited on.
     pub fn as_waitable(&self) -> Result<&dyn Waitable, UserspaceError> {
@@ -214,6 +255,7 @@ impl Handle {
             Handle::InterruptEvent(ref waitable) => Ok(waitable),
             Handle::ServerPort(ref serverport) => Ok(serverport),
             Handle::ServerSession(ref serversession) => Ok(serversession),
+            Handle::Thread(ref thread) => Ok(thread),
             _ => Err(UserspaceError::InvalidHandle),
         }
     }
@@ -375,33 +417,33 @@ impl HandleTable {
 
 /// The state of a thread.
 ///
+/// - Paused: not in the scheduled queue, waiting for an event
 /// - Running: currently on the CPU
+/// - TerminationPending: dying, will be unscheduled and dropped at syscall boundary
 /// - Scheduled: scheduled to be running
-/// - Stopped: not in the scheduled queue, waiting for an event
-/// - Killed: dying, will be unscheduled and dropped at syscall boundary
 ///
 /// Since SMP is not supported, there is only one Running thread.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(usize)]
 pub enum ThreadState {
-    /// Currently on the CPU.
-    Running = 0,
-    /// Scheduled to be running.
-    Scheduled = 1,
     /// Not in the scheduled queue, waiting for an event.
-    Stopped = 2,
+    Paused = 1,
+    /// Currently on the CPU.
+    Running = 2,
     /// Dying, will be unscheduled and dropped at syscall boundary.
-    Killed = 3,
+    TerminationPending = 3,
+    /// Scheduled to be running.
+    Scheduled = 4,
 }
 
 impl ThreadState {
     /// ThreadState is stored in the ThreadStruct as an AtomicUsize. This function casts it back to the enum.
     fn from_primitive(v: usize) -> ThreadState {
         match v {
-            0 => ThreadState::Running,
-            1 => ThreadState::Scheduled,
-            2 => ThreadState::Stopped,
-            3 => ThreadState::Killed,
+            1 => ThreadState::Paused,
+            2 => ThreadState::Running,
+            3 => ThreadState::TerminationPending,
+            4 => ThreadState::Scheduled,
             _ => panic!("Invalid thread state"),
         }
     }
@@ -590,7 +632,7 @@ impl ProcessStruct {
         // kill all other regular threads
         for weak_thread in this.threads.lock().iter() {
             if let Some(t) = Weak::upgrade(weak_thread) {
-                ThreadStruct::kill(t);
+                ThreadStruct::exit(t);
             }
         }
         drop(this);
@@ -636,8 +678,8 @@ impl ThreadStruct {
         // hardware context will be computed later in this function, write a dummy value for now
         let empty_hwcontext = SpinLockIRQ::new(ThreadHardwareContext::default());
 
-        // the state of the process, Stopped
-        let state = Atomic::new(ThreadState::Stopped);
+        // the state of the process, Paused
+        let state = Atomic::new(ThreadState::Paused);
 
         // allocate its thread local storage region
         let tls = belonging_process.tls_manager.lock().allocate_tls(&mut pmemory)?;
@@ -651,6 +693,9 @@ impl ThreadStruct {
                 tls_region: tls,
                 tls_elf: SpinLock::new(VirtualAddress(0x00000000)),
                 userspace_hwcontext: SpinLock::new(UserspaceHardwareContext::default()),
+                state_event: ThreadStateEvent {
+                    waiting_threads: SpinLock::new(Vec::new())
+                },
             }
         );
 
@@ -747,6 +792,9 @@ impl ThreadStruct {
                 tls_region: tls,
                 tls_elf: SpinLock::new(VirtualAddress(0x00000000)),
                 userspace_hwcontext: SpinLock::new(UserspaceHardwareContext::default()),
+                state_event: ThreadStateEvent {
+                    waiting_threads: SpinLock::new(Vec::new())
+                },
             }
         );
 
@@ -792,18 +840,22 @@ impl ThreadStruct {
         }
     }
 
-    /// Sets the thread to the `Killed` state.
+    /// Sets the thread to the `Exited` state.
     ///
     /// We reschedule the thread (cancelling any waiting it was doing).
     /// In this state, the thread will die when attempting to return to userspace.
     ///
-    /// If the thread was already in the `Killed` state, this function is a no-op.
-    pub fn kill(this: Arc<Self>) {
-        let old_state = this.state.swap(ThreadState::Killed, Ordering::SeqCst);
-        if old_state == ThreadState::Killed {
-            // if the thread was already marked killed, don't do anything.
+    /// If the thread was already in the `Exited` state, this function is a no-op.
+    pub fn exit(this: Arc<Self>) {
+        let old_state = this.state.swap(ThreadState::TerminationPending, Ordering::SeqCst);
+        if old_state == ThreadState::TerminationPending {
+            // if the thread was already marked exited, don't do anything.
             return;
         }
+
+        // Signal that we are exited.
+        this.state_event.signal();
+
         scheduler::add_to_schedule_queue(this);
     }
 }
