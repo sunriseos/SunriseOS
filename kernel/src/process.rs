@@ -233,7 +233,7 @@ impl ThreadStateEvent {
 impl Waitable for Weak<ThreadStruct> {
     fn is_signaled(&self) -> bool {
         if let Some(thread) = self.upgrade() {
-            return thread.state.load(Ordering::Relaxed) == ThreadState::TerminationPending;
+            return thread.state.load(Ordering::SeqCst) == ThreadState::TerminationPending;
         }
 
         // Cannot upgrade to Arc? The thread is dead, so it totally have exited!
