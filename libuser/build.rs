@@ -44,6 +44,8 @@ fn main() {
 
         // Force a rebuild if the SwIPC definition changes.
         writeln!(generated_mod).unwrap();
+
+        writeln!(generated_mod, "/// Auto generated for rebuilding \"{}\"", module_complete_path.to_str().unwrap()).unwrap();
         writeln!(generated_mod, "const _: &[u8] = include_bytes!(\"{}\");", module_complete_path.to_str().unwrap()).unwrap();
 
         f.write_all(generated_mod.as_bytes()).unwrap();

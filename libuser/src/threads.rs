@@ -364,6 +364,20 @@ impl Drop for Thread {
     }
 }
 
+#[cfg(feature = "build-for-std-app")]
+extern {
+    /// Initialisation of the main thread's thread local structures:
+    ///
+    /// When a main thread starts, the kernel puts the handle of its own thread in one of its registers.
+    /// The main thread should perform relocations, and then call this function, which will:
+    ///
+    /// * put the main thread's handle in [MAIN_THREAD_CONTEXT].
+    /// * save a pointer to it in its [TLS].
+    /// * perform copy of `.tdata` and `.tbss` for the main thread.
+    #[no_mangle] // called from asm
+    pub fn init_main_thread(handle: ThreadHandle);
+}
+
 /// Initialisation of the main thread's thread local structures:
 ///
 /// When a main thread starts, the kernel puts the handle of its own thread in one of its registers.
@@ -373,7 +387,7 @@ impl Drop for Thread {
 /// * save a pointer to it in its [TLS].
 /// * perform copy of `.tdata` and `.tbss` for the main thread.
 #[no_mangle] // called from asm
-#[cfg(all(target_os = "sunrise", not(feature = "build-for-std-app")))]
+#[cfg(not(feature = "build-for-std-app"))]
 pub extern fn init_main_thread(handle: u32) {
     let handle = ThreadHandle(Handle::new(handle));
 
