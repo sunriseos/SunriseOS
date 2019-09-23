@@ -168,7 +168,7 @@ impl ReadableEvent {
     ///   - The event wasn't signaled.
     pub fn clear_signal(&self) -> Result<(), KernelError> {
         let oldstate = self.parent.state.swap(false, Ordering::SeqCst);
-        if oldstate == false {
+        if !oldstate {
             return Err(KernelError::InvalidState { backtrace: Backtrace::new() })
         }
         Ok(())
@@ -210,7 +210,7 @@ impl WritableEvent {
     ///   - The event wasn't signaled.
     pub fn clear_signal(&self) -> Result<(), KernelError> {
         let oldstate = self.parent.state.swap(false, Ordering::SeqCst);
-        if oldstate == false {
+        if !oldstate {
             return Err(KernelError::InvalidState { backtrace: Backtrace::new() })
         }
         Ok(())

@@ -197,6 +197,7 @@ lazy_static! {
     };
 }
 
+/// Struct implementing the ldr:shel service.
 #[derive(Debug, Default)]
 struct LoaderIface;
 

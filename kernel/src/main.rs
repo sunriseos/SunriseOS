@@ -89,10 +89,9 @@ pub use crate::heap_allocator::rust_oom;
 static ALLOCATOR: heap_allocator::Allocator = heap_allocator::Allocator::new();
 
 use crate::i386::stack;
-use crate::paging::{PAGE_SIZE, MappingAccessRights};
+use crate::paging::PAGE_SIZE;
 use crate::mem::VirtualAddress;
-use crate::process::{ProcessStruct, ThreadStruct};
-use sunrise_libkern::MemoryType;
+use crate::process::ProcessStruct;
 use crate::cpu_locals::init_cpu_locals;
 use sunrise_libkern::process::*;
 
