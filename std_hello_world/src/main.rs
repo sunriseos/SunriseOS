@@ -11,6 +11,7 @@ use std::io::SeekFrom;
 
 use std::fs::{self, DirEntry};
 use std::path::Path;
+use std::thread;
 
 // one possible implementation of walking a directory only visiting files
 fn visit_dirs(dir: &Path, cb: &dyn Fn(&DirEntry)) -> io::Result<()> {
@@ -32,6 +33,8 @@ fn visit_dirs(dir: &Path, cb: &dyn Fn(&DirEntry)) -> io::Result<()> {
 fn print_entry(entry: &DirEntry) {
     println!("{:?}", entry);
 }
+
+
 
 fn main() {
     println!("Hello from main");
@@ -55,6 +58,14 @@ fn main() {
 
     println!("{:?}", fs::metadata(Path::new("system:/etc")).map(|m| m.is_dir()));
     visit_dirs(Path::new("/"), &print_entry).unwrap();
+
+    let thread_spawned = thread::spawn(|| {
+        println!("Hello from spawned thread");
+    });
+
+    thread_spawned.join().unwrap();
+    println!("Hello from main thread");
+
 }
 
 // TODO: Move this out of here
@@ -75,6 +86,9 @@ capabilities!(CAPABILITIES = Capabilities {
     svcs: [
         sunrise_libuser::syscalls::nr::SleepThread,
         sunrise_libuser::syscalls::nr::ExitProcess,
+        sunrise_libuser::syscalls::nr::CreateThread,
+        sunrise_libuser::syscalls::nr::StartThread,
+        sunrise_libuser::syscalls::nr::ExitThread,
         sunrise_libuser::syscalls::nr::CloseHandle,
         sunrise_libuser::syscalls::nr::WaitSynchronization,
         sunrise_libuser::syscalls::nr::OutputDebugString,
