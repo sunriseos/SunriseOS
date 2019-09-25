@@ -12,11 +12,11 @@ use std::io::SeekFrom;
 use std::fs::{self, DirEntry};
 use std::path::Path;
 use std::thread;
+use std::env;
 
 // one possible implementation of walking a directory only visiting files
 fn visit_dirs(dir: &Path, cb: &dyn Fn(&DirEntry)) -> io::Result<()> {
-    //println!("{}", dir.is_dir());
-    //if dir.is_dir() {
+    if dir.is_dir() {
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
             let path = entry.path();
@@ -26,7 +26,7 @@ fn visit_dirs(dir: &Path, cb: &dyn Fn(&DirEntry)) -> io::Result<()> {
                 cb(&entry);
             }
         }
-    //}
+    }
     Ok(())
 }
 
@@ -65,6 +65,11 @@ fn main() {
 
     thread_spawned.join().unwrap();
     println!("Hello from main thread");
+
+    // Prints each argument on a separate line
+    for argument in env::args() {
+        println!("{}", argument);
+    }
 
 }
 

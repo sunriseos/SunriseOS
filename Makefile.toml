@@ -169,7 +169,6 @@ cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-ahci           isofile
 cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-fs             isofiles/boot/
 cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-loader         isofiles/boot/
 cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-keyboard       isofiles/boot/
-cp target/i386-unknown-sunrise-user/$PROFILE_NAME/std_hello_world        isofiles/boot/
 mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltorito.img --no-emul-boot --boot-info-table --embedded-boot external/grub/embedded.img
 '''
 ]
@@ -182,7 +181,12 @@ mkdir -p external/filesystem/disk_template/bin/wall-clock/flags
 cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-wall-clock     external/filesystem/disk_template/bin/wall-clock/main
 
 # TODO: https://github.com/sagiegurari/shell2batch/issues/9
-#touch external/filesystem/disk_template/bin/wall-clock/flags/boot.flag
+touch external/filesystem/disk_template/bin/wall-clock/flags/boot.flag
+
+mkdir -p external/filesystem/disk_template/bin/std_hello_world/flags
+cp target/i386-unknown-sunrise-user/$PROFILE_NAME/std_hello_world    external/filesystem/disk_template/bin/std_hello_world/main
+touch external/filesystem/disk_template/bin/std_hello_world/flags/boot.flag
+
 cargo run --manifest-path disk-initializer/Cargo.toml -- DISK.img 52428800 external/filesystem/disk_template/
 '''
 ]
