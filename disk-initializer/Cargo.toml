@@ -14,7 +14,7 @@ uuid = "0.7"
 plain = "0.2"
 
 [dependencies.static_assertions]
-version  = "0.3.1"
+version  = "0.3.4"
 features = ["nightly"]
 
 [dependencies.crc]
