@@ -251,6 +251,16 @@ pub const fn log2_ceil(val: usize) -> usize {
     core::mem::size_of::<usize>() * 8 - val.leading_zeros() as usize - (val & (val - 1) == 0) as usize
 }
 
+/// Cast a slice while keeping the lifetimes.
+///
+/// Thanks I hate it.
+// TODO: Write safety guide
+#[allow(clippy::cast_ptr_alignment)]
+pub unsafe fn cast_mut<T, R>(data: &mut [T]) -> &mut [R] {
+    let elem_of_r = core::mem::size_of::<T>() * data.len() / core::mem::size_of::<R>();
+    core::slice::from_raw_parts_mut(data.as_mut_ptr() as *mut R, elem_of_r)
+}
+
 #[cfg(test)]
 mod test {
     use super::*;

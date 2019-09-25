@@ -37,8 +37,7 @@
 use core::mem::{size_of, align_of};
 
 use spin::Once;
-use sunrise_libkern::MemoryPermissions;
-use sunrise_libutils::align_up;
+use sunrise_libutils::{align_up, cast_mut};
 
 use crate::syscalls::query_memory;
 
@@ -79,7 +78,10 @@ pub extern fn argv() -> *const *const u8 {
 ///
 /// First returned value is the argv, second value is the argc.
 //#[cfg(feature = "crt0")]
+#[allow(clippy::cognitive_complexity)]
 fn __libuser_get_args() -> (usize, isize) {
+    use sunrise_libkern::MemoryPermissions;
+
     /// Once argdata is parsed, this static contains the pointer to the argument
     /// vector and the size of that vector.
     static ARGS: Once<(usize, isize)> = Once::new();
@@ -108,6 +110,7 @@ fn __libuser_get_args() -> (usize, isize) {
         };
 
         if !meminfo.perms.contains(MemoryPermissions::READABLE | MemoryPermissions::WRITABLE) {
+            debug!("Weird args. Perms broken.");
             return NO_ARGS;
         }
 
@@ -123,13 +126,14 @@ fn __libuser_get_args() -> (usize, isize) {
 
         // Do some sanity checks.
         if argdata_allocsize == 0 || argdata_strsize == 0 {
+            debug!("Weird args. Allocsize 0 or strsize 0.");
             return NO_ARGS;
         }
 
         if (argdata - meminfo.baseaddr) + argdata_allocsize > meminfo.size {
             // Args don't fit the memory region. Something properly fucked up.
             // Let's pretend we have none.
-            error!("Weird args. We claim to have {:x} args, but only have {:x} bytes of mem.", argdata_allocsize, meminfo.size);
+            debug!("Weird args. We claim to have {:x} args, but only have {:x} bytes of mem.", argdata_allocsize, meminfo.size);
             return NO_ARGS;
         }
 
@@ -150,12 +154,14 @@ fn __libuser_get_args() -> (usize, isize) {
 
         // Skip the ProgramArguments structure.
         if argdata.len() < 0x20 {
+            debug!("Weird args. Not big enough for ProgramArguments.");
             return NO_ARGS;
         }
         let (_, argdata) = argdata.split_at_mut(0x20);
 
         // Recover the cmdline. Why + 1? God only knows. Ask libnx devs.
         if argdata.len() < argdata_strsize + 1 {
+            debug!("Weird args. Not big enough for cmdline.");
             return NO_ARGS;
         }
         let (args, argdata) = argdata.split_at_mut(argdata_strsize + 1);
@@ -165,6 +171,7 @@ fn __libuser_get_args() -> (usize, isize) {
         // the size of argdata_strsize, since in the worst case we'll end up
         // copying the whole thing.
         if argdata.len() < argdata_strsize + 1 {
+            debug!("Weird args. Not big enough for 2nd cmdline.");
             return NO_ARGS;
         }
         let (argstorage, argdata) = argdata.split_at_mut(argdata_strsize + 1);
@@ -175,21 +182,21 @@ fn __libuser_get_args() -> (usize, isize) {
             let argdata_nbr = argdata.as_ptr() as usize;
             align_up(argdata_nbr, align_of::<usize>()) - argdata_nbr
         };
-        let (_, argdata) = argstorage.split_at_mut(offset_to_aligned);
+        let (_, argdata) = argdata.split_at_mut(offset_to_aligned);
 
         // Calculate the max amount of pointers we can store. We need to be able
         // to store at least 2.
         let max_argv = argdata.len() / size_of::<usize>();
         if max_argv < 2 {
+            debug!("Weird args. Needs to have space for at least two ptrs.");
             return NO_ARGS;
         }
 
-        #[allow(clippy::cast_ptr_alignment)]
-        let __system_argv = unsafe {
+        let __system_argv: &mut [usize] = unsafe {
             // Safety: The data is valid, (argdata is big enough) and the ptr
             // is properly aligned at this point thanks to the realignment done
             // above.
-            core::slice::from_raw_parts_mut(argdata.as_ptr() as *mut usize, max_argv)
+            cast_mut(argdata)
         };
         let mut __system_argc = 0;
 
@@ -248,7 +255,7 @@ fn __libuser_get_args() -> (usize, isize) {
                     arg_start = Some(argi + 1);
                     quote_flag = true;
                 } else if args[argi] != 0 {
-                    arg_start = Some(argi + 1);
+                    arg_start = Some(argi);
                     arg_len += 1;
                 }
             }
