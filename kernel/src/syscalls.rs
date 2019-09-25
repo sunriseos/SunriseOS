@@ -248,7 +248,7 @@ pub fn output_debug_string(msg: UserSpacePtr<[u8]>, level: usize, target: UserSp
 
 /// Kills our own process.
 pub fn exit_process() -> Result<(), UserspaceError> {
-    ProcessStruct::kill_process(get_current_process());
+    ProcessStruct::kill_current_process();
     Ok(())
 }
 
@@ -303,7 +303,7 @@ pub fn create_thread(ip: usize, arg: usize, sp: usize, _priority: u32, _processo
 /// # Error
 ///
 /// * `InvalidHandle` if the handle is not a thread_handle,
-/// * `ProcessAlreadyStarted` if the thread has already started,
+/// * `InvalidState` if the thread has already started,
 #[allow(clippy::unit_arg)]
 pub fn start_thread(thread_handle: u32) -> Result<(), UserspaceError> {
     let cur_proc = get_current_process();
@@ -463,15 +463,19 @@ pub fn signal_event(handle: u32) -> Result<(), UserspaceError> {
 ///
 /// Takes either a [crate::event::ReadableEvent] or a
 /// [crate::event::WritableEvent].
+///
+/// # Errors
+///
+/// - `InvalidState`
+///   - The event wasn't signaled.
 pub fn clear_event(handle: u32) -> Result<(), UserspaceError> {
     let proc = scheduler::get_current_process();
     let handle = proc.phandles.lock().get_handle(handle)?;
     match &*handle {
-        Handle::ReadableEvent(event) => event.clear_signal(),
-        Handle::WritableEvent(event) => event.clear_signal(),
+        Handle::ReadableEvent(event) => event.clear_signal().map_err(|err| err.into()),
+        Handle::WritableEvent(event) => event.clear_signal().map_err(|err| err.into()),
         _ => Err(UserspaceError::InvalidHandle)?
     }
-    Ok(())
 }
 
 /// Create a new Port pair. Those ports are linked to each-other: The server will
@@ -1119,4 +1123,70 @@ pub fn start_process(hnd: u32, main_thread_prio: u32, default_cpuid: u32, main_t
 
     ProcessStruct::start(&target_proc, main_thread_prio, main_thread_stacksz)?;
     Ok(())
+}
+
+/// Extract information from a process.
+///
+/// Info Type        | Description
+/// -----------------|--------------------------
+/// ProcessState = 0 | The state the current process is in. Returns an instance
+///                  | of [sunrise_libkern::process::ProcessState].
+///
+/// # Errors
+///
+/// - `InvalidHandle`
+///   - The passed handle is invalid or not a process.
+/// - `InvalidEnum`
+///   - The passed info_type is unknown.
+pub fn get_process_info(hnd: u32, info_type: u32) -> Result<usize, UserspaceError> {
+    let info_type = ProcessInfoType(info_type);
+    let target_proc = scheduler::get_current_process().phandles.lock().get_handle(hnd)?.as_process()?;
+
+    match info_type {
+        ProcessInfoType::ProcessState => Ok(target_proc.state().0 as usize),
+        _ => Err(UserspaceError::InvalidEnum)
+    }
+}
+
+/// Clear the "signaled" state of a readable event or process. After calling
+/// this on a signaled event, [wait_synchronization()] on this handle will wait
+/// until the handle is signaled again.
+///
+/// Takes either a `ReadableEvent` or a `Process`.
+///
+/// Note that once a Process enters the Exited state, it is permanently signaled
+/// and cannot be reset. Calling ResetSignal will return an InvalidState error.
+///
+/// # Errors
+///
+/// - `InvalidState`
+///   - The event wasn't signaled.
+///   - The process was in Exited state.
+pub fn reset_signal(hnd: u32) -> Result<(), UserspaceError> {
+    let hnd = scheduler::get_current_process().phandles.lock().get_handle(hnd)?;
+
+    match &*hnd {
+        Handle::Process(process) =>
+            process.clear_signal().map_err(|err| err.into()),
+        Handle::ReadableEvent(revent) =>
+            revent.clear_signal().map_err(|err| err.into()),
+        _ => Err(UserspaceError::InvalidHandle)
+    }
+}
+
+/// Gets the PID of the given Process handle. Alias handles (0xFFFF8000 and
+/// 0xFFFF8001) are not allowed here. PIDs are global, unique identifiers for a
+/// given process. PIDs are never reused, and can be passed over IPC safely (the
+/// kernel ensures the correct pid is passed when a process does a request),
+/// making them the best way for sysmodule to identify a calling process.
+///
+/// # Errors
+///
+/// - `InvalidHandle`
+///   - The given handle is invalid or not a process.
+pub fn get_process_id(hnd: u32) -> Result<usize, UserspaceError> {
+    let process = scheduler::get_current_process().phandles.lock()
+        .get_handle_no_alias(hnd)?.as_process()?;
+
+    Ok(process.pid)
 }

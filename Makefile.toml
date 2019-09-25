@@ -170,11 +170,11 @@ mkisofs-rs external/grub/isofiles isofiles -o os.iso -b boot/grub/i386-pc/eltori
 description = "Creates an empty disk image."
 script = [
 '''
-mkdir -p external/filesystem/disk_template/bin/0200000000000000/flags
-cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-wall-clock     external/filesystem/disk_template/bin/0200000000000000/main
+mkdir -p external/filesystem/disk_template/bin/wall-clock/flags
+cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-wall-clock     external/filesystem/disk_template/bin/wall-clock/main
 
 # TODO: https://github.com/sagiegurari/shell2batch/issues/9
-touch external/filesystem/disk_template/bin/0200000000000000/flags/boot.flag
+#touch external/filesystem/disk_template/bin/wall-clock/flags/boot.flag
 cargo run --manifest-path disk-initializer/Cargo.toml -- DISK.img 52428800 external/filesystem/disk_template/
 '''
 ]

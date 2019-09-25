@@ -43,8 +43,8 @@ pub enum KernelError {
     ProcessKilled {
         backtrace: Backtrace,
     },
-    #[fail(display = "Thread was already started")]
-    ThreadAlreadyStarted {
+    #[fail(display = "Handle was in invalid state for this operation.")]
+    InvalidState {
         backtrace: Backtrace,
     },
     #[fail(display = "Invalid combination of values passed.")]
@@ -90,7 +90,7 @@ impl From<KernelError> for UserspaceError {
         match err {
             KernelError::PhysicalMemoryExhaustion { .. } => UserspaceError::MemoryFull,
             KernelError::VirtualMemoryExhaustion { .. } => UserspaceError::MemoryFull,
-            KernelError::ThreadAlreadyStarted { .. } => UserspaceError::ProcessAlreadyStarted,
+            KernelError::InvalidState { .. } => UserspaceError::InvalidState,
             KernelError::InvalidAddress { .. } => UserspaceError::InvalidAddress,
             KernelError::InvalidSize { .. } => UserspaceError::InvalidSize,
             KernelError::InvalidCombination { .. } => UserspaceError::InvalidCombination,

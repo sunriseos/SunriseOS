@@ -89,10 +89,9 @@ pub use crate::heap_allocator::rust_oom;
 static ALLOCATOR: heap_allocator::Allocator = heap_allocator::Allocator::new();
 
 use crate::i386::stack;
-use crate::paging::{PAGE_SIZE, MappingAccessRights};
+use crate::paging::PAGE_SIZE;
 use crate::mem::VirtualAddress;
-use crate::process::{ProcessStruct, ThreadStruct};
-use sunrise_libkern::MemoryType;
+use crate::process::ProcessStruct;
 use crate::cpu_locals::init_cpu_locals;
 use sunrise_libkern::process::*;
 
@@ -168,22 +167,13 @@ fn main() {
         };
 
         let proc = ProcessStruct::new(&procinfo, elf_loader::get_kacs(&mapped_module)).unwrap();
-        let (ep, sp) = {
+        {
                 let mut pmemlock = proc.pmemory.lock();
-
-                let ep = elf_loader::load_builtin(&mut pmemlock, &mapped_module, aslr_base);
-
-                let stack = pmemlock.find_available_space(20 * PAGE_SIZE)
-                    .unwrap_or_else(|_| panic!("Cannot create a stack for process {:?}", proc));
-                pmemlock.guard(stack, PAGE_SIZE, MemoryType::Reserved).unwrap();
-                pmemlock.create_regular_mapping(stack + PAGE_SIZE, 19 * PAGE_SIZE, MemoryType::Stack, MappingAccessRights::u_rw()).unwrap();
-
-                (VirtualAddress(ep), stack + 20 * PAGE_SIZE)
+                elf_loader::load_builtin(&mut pmemlock, &mapped_module, aslr_base);
         };
-        let thread = ThreadStruct::new(&proc, ep, sp, None)
-            .expect("failed creating thread for service");
-        ThreadStruct::start(thread)
-            .expect("failed starting thread for service");
+
+        ProcessStruct::start(&proc, u32::from(kip_header.main_thread_priority), kip_header.stack_page_count as usize * PAGE_SIZE)
+            .expect("failed creating process");
     }
 
     let lock = sync::SpinLockIRQ::new(());

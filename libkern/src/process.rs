@@ -186,3 +186,38 @@ pub struct KipHeader {
 // Safety: KipHeader is a repr(C) struct with no padding, and all bit patterns
 // are valid.
 unsafe impl Plain for KipHeader {}
+
+enum_with_val! {
+    /// The state the process is currently in.
+    #[derive(Default, Clone, Copy, PartialEq, Eq)]
+    pub struct ProcessState(pub u8) {
+        /// Process is freshly created with svcCreateProcess and has not yet been
+        /// started.
+        Created = 0,
+        /// Process has been attached with a debugger before it was started.
+        CreatedAttached = 1,
+        /// Process has been started.
+        Started = 2,
+        /// Process has crashed.
+        ///
+        /// Processes will not enter this state unless they were created with EnableDebug.
+        Crashed = 3,
+        /// Process is started and has a debugger attached.
+        StartedAttached = 4,
+        /// Process is currently exiting.
+        Exiting = 5,
+        /// Process is stopped.
+        Exited = 6,
+        /// Process has been suspended.
+        DebugSuspended = 7
+    }
+}
+
+enum_with_val! {
+    /// Kind of information to extract from a process wit `get_process_info`.
+    #[derive(Default, Clone, Copy, PartialEq, Eq)]
+    pub struct ProcessInfoType(pub u32) {
+        /// Get the state the process is currently in.
+        ProcessState = 0,
+    }
+}

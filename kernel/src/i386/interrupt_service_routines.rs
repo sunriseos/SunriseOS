@@ -397,7 +397,7 @@ macro_rules! trap_gate_asm {
 ///         let thread = get_current_thread();                                       //
 ///         error!("{}, errorcode: {}, in {:#?}",                                    // handler_strategy
 ///             $exception_name, $hwcontext.errcode, thread);                        // (here: kill)
-///         ProcessStruct::kill_process(thread.process.clone());                     //
+///         ProcessStruct::kill_current_process();                                   //
 ///     }
 ///
 ///     // if we're returning to userspace, check we haven't been killed
@@ -476,7 +476,7 @@ macro_rules! generate_trap_gate_handler {
         {
             let thread = get_current_thread();
             error!("{}, errorcode: {}, in {:#?}", $exception_name, $hwcontext.errcode, thread);
-            ProcessStruct::kill_process(thread.process.clone());
+            ProcessStruct::kill_current_process();
         }
     };
 
@@ -484,7 +484,7 @@ macro_rules! generate_trap_gate_handler {
         {
             let thread = get_current_thread();
             error!("{}, in {:#?}", $exception_name, thread);
-            ProcessStruct::kill_process(thread.process.clone());
+            ProcessStruct::kill_current_process();
         }
     };
     // end handler
@@ -724,7 +724,7 @@ fn user_page_fault_handler(_exception_name: &'static str, hwcontext: &mut Usersp
 
     let thread = get_current_thread();
     error!("Page Fault accessing {:?}, exception errcode: {:?} in {:#?}", cause_address, errcode, thread);
-    ProcessStruct::kill_process(thread.process.clone());
+    ProcessStruct::kill_current_process();
 }
 
 generate_trap_gate_handler!(name: "x87 FPU floating-point error",
@@ -924,9 +924,11 @@ fn syscall_interrupt_dispatcher(_exception_name: &'static str, hwcontext: &mut U
         (true, nr::MapSharedMemory) => hwcontext.apply0(map_shared_memory(x0 as _, x1 as _, x2 as _, x3 as _)),
         (true, nr::UnmapSharedMemory) => hwcontext.apply0(unmap_shared_memory(x0 as _, x1 as _, x2 as _)),
         (true, nr::CloseHandle) => hwcontext.apply0(close_handle(x0 as _)),
+        (true, nr::ResetSignal) => hwcontext.apply0(reset_signal(x0 as _)),
         (true, nr::WaitSynchronization) => hwcontext.apply1(wait_synchronization(UserSpacePtr::from_raw_parts(x0 as _, x1), x2)),
         (true, nr::ConnectToNamedPort) => hwcontext.apply1(connect_to_named_port(UserSpacePtr(x0 as _))),
         (true, nr::SendSyncRequestWithUserBuffer) => hwcontext.apply0(send_sync_request_with_user_buffer(UserSpacePtrMut::from_raw_parts_mut(x0 as _, x1), x2 as _)),
+        (true, nr::GetProcessId) => hwcontext.apply1(get_process_id(x0 as _)),
         (true, nr::OutputDebugString) => hwcontext.apply0(output_debug_string(UserSpacePtr::from_raw_parts(x0 as _, x1), x2, UserSpacePtr::from_raw_parts(x3 as _, x4))),
         (true, nr::CreateSession) => hwcontext.apply2(create_session(x0 != 0, x1 as _)),
         (true, nr::AcceptSession) => hwcontext.apply1(accept_session(x0 as _)),
@@ -943,6 +945,7 @@ fn syscall_interrupt_dispatcher(_exception_name: &'static str, hwcontext: &mut U
         (true, nr::UnmapProcessMemory) => hwcontext.apply0(unmap_process_memory(x0 as _, x1 as _, x2 as _, x3 as _)),
         (true, nr::CreateProcess) => hwcontext.apply1(create_process(UserSpacePtr(x0 as _), UserSpacePtr::from_raw_parts(x1 as _, x2 * 4))),
         (true, nr::StartProcess) => hwcontext.apply0(start_process(x0 as _, x1 as _, x2 as _, x3 as _)),
+        (true, nr::GetProcessInfo) => hwcontext.apply1(get_process_info(x0 as _, x1 as _)),
 
         // sunrise extensions
         (true, nr::MapFramebuffer) => hwcontext.apply4(map_framebuffer()),
@@ -957,13 +960,13 @@ fn syscall_interrupt_dispatcher(_exception_name: &'static str, hwcontext: &mut U
             let curproc = get_current_process();
             error!("Process {} attempted to use unauthorized syscall {} ({:#04x}), killing",
                    curproc.name, syscall_name, syscall_nr);
-            ProcessStruct::kill_process(curproc);
+            ProcessStruct::kill_current_process();
         },
         _ => {
             let curproc = get_current_process();
             error!("Process {} attempted to use unknown syscall {} ({:#04x}), killing",
                    curproc.name, syscall_name, syscall_nr);
-            ProcessStruct::kill_process(curproc);
+            ProcessStruct::kill_current_process();
         }
     }
 }

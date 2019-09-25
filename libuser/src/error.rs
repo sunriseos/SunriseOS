@@ -48,6 +48,8 @@ pub enum Error {
     Kernel(KernelError, Backtrace),
     /// Loader error.
     Loader(LoaderError, Backtrace),
+    /// Process Manager error.
+    Pm(PmError, Backtrace),
     /// Service Manager error.
     Sm(SmError, Backtrace),
     //Vi(ViError, Backtrace),
@@ -76,6 +78,7 @@ impl Error {
             Module::Kernel => Error::Kernel(KernelError::from_description(description), Backtrace::new()),
             Module::FileSystem => Error::FileSystem(FileSystemError(description), Backtrace::new()),
             Module::Loader => Error::Loader(LoaderError(description), Backtrace::new()),
+            Module::Pm => Error::Pm(PmError(description), Backtrace::new()),
             Module::Sm => Error::Sm(SmError(description), Backtrace::new()),
             //Module::Vi => Error::Vi(ViError(description), Backtrace::new()),
             Module::Libuser => Error::Libuser(LibuserError(description), Backtrace::new()),
@@ -94,6 +97,7 @@ impl Error {
             Error::Kernel(err, ..) => err.description() << 9 | Module::Kernel.0,
             Error::FileSystem(err, ..) => err.0 << 9 | Module::FileSystem.0,
             Error::Loader(err, ..) => err.0 << 9 | Module::Loader.0,
+            Error::Pm(err, ..) => err.0 << 9 | Module::Pm.0,
             Error::Sm(err, ..) => err.0 << 9 | Module::Sm.0,
             //Error::Vi(err, ..) => err.0 << 9 | Module::Vi.0,
             Error::Libuser(err, ..) => err.0 << 9 | Module::Libuser.0,
@@ -102,6 +106,22 @@ impl Error {
             Error::Hid(err, ..) => err.0 << 9 | Module::Hid.0,
             Error::Unknown(err, ..) => err,
         }
+    }
+}
+
+enum_with_val! {
+    #[derive(PartialEq, Eq, Clone, Copy)]
+    struct Module(u32) {
+        Kernel = 1,
+        FileSystem = 2,
+        Loader = 9,
+        Pm = 15,
+        Sm = 21,
+        Vi = 114,
+        Time = 116,
+        Hid = 202,
+        Libuser = 415,
+        Ahci = 416,
     }
 }
 
@@ -187,21 +207,6 @@ enum_with_val! {
 impl From<FileSystemError> for Error {
     fn from(error: FileSystemError) -> Self {
         Error::FileSystem(error, Backtrace::new())
-    }
-}
-
-enum_with_val! {
-    #[derive(PartialEq, Eq, Clone, Copy)]
-    struct Module(u32) {
-        Kernel = 1,
-        FileSystem = 2,
-        Loader = 9,
-        Sm = 21,
-        Vi = 114,
-        Time = 116,
-        Hid = 202,
-        Libuser = 415,
-        Ahci = 416,
     }
 }
 
@@ -316,6 +321,8 @@ enum_with_val! {
         InvalidKacs = 4,
         /// Invalid path read.
         InvalidPath = 6,
+        /// Tried to launch a title that does not exist.
+        ProgramNotFound = 8,
         /// The ELF is corrupted.
         InvalidElf = 9,
     }
@@ -324,6 +331,21 @@ enum_with_val! {
 impl From<LoaderError> for Error {
     fn from(error: LoaderError) -> Self {
         Error::Loader(error, Backtrace::new())
+    }
+}
+
+enum_with_val! {
+    /// PM Errors.
+    #[derive(PartialEq, Eq, Clone, Copy)]
+    pub struct PmError(u32) {
+        /// Pid not found
+        PidNotFound = 1,
+    }
+}
+
+impl From<PmError> for Error {
+    fn from(error: PmError) -> Self {
+        Error::Pm(error, Backtrace::new())
     }
 }
 

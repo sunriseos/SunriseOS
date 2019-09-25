@@ -208,6 +208,11 @@ pub fn signal_event(event: &WritableEvent) -> Result<(), KernelError> {
 /// [signal_event()] is called once again.
 ///
 /// Takes either a [ReadableEvent] or a [WritableEvent].
+///
+/// # Errors
+///
+/// - `InvalidState`
+///   - The event wasn't signaled.
 pub(crate) fn clear_event(event: HandleRef) -> Result<(), KernelError> {
     unsafe {
         syscall(nr::ClearEvent, event.inner.get() as _, 0, 0, 0, 0, 0)?;
@@ -252,15 +257,19 @@ pub fn map_shared_memory(handle: &SharedMemory, addr: usize, size: usize, perm: 
 ///
 /// Unmaps a shared memory mapping at the given address.
 ///
+/// # Safety
+///
+/// This function unmaps the memory, invalidating any pointer to the given
+/// region. The user must take care that no pointers point to this region before
+/// calling this function.
+///
 /// # Errors:
 ///
 /// - addr must point to a mapping backed by the given handle
 /// - Size must be equal to the size of the backing shared memory handle.
-pub fn unmap_shared_memory(handle: &SharedMemory, addr: usize, size: usize) -> Result<(), KernelError> {
-    unsafe {
-        syscall(nr::UnmapSharedMemory, (handle.0).0.get() as _, addr, size, 0, 0, 0)?;
-        Ok(())
-    }
+pub unsafe fn unmap_shared_memory(handle: &SharedMemory, addr: usize, size: usize) -> Result<(), KernelError> {
+    syscall(nr::UnmapSharedMemory, (handle.0).0.get() as _, addr, size, 0, 0, 0)?;
+    Ok(())
 }
 
 // Not totally public because it's not safe to use directly
@@ -593,6 +602,12 @@ pub fn map_process_memory(dstaddr: usize, proc_handle: &Process, srcaddr: usize,
 ///
 /// It is possible to partially unmap a ProcessMemory.
 ///
+/// # Safety
+///
+/// This function unmaps the memory, invalidating any pointer to the given
+/// region. The user must take care that no pointers point to this region before
+/// calling this function.
+///
 /// # Errors
 ///
 /// - `InvalidAddress`
@@ -614,11 +629,9 @@ pub fn map_process_memory(dstaddr: usize, proc_handle: &Process, srcaddr: usize,
 /// - `InvalidHandle`
 ///    - The handle passed as an argument does not exist or is not a Process
 ///      handle.
-pub fn unmap_process_memory(dstaddr: usize, proc_handle: &Process, srcaddr: usize, size: usize) -> Result<(), KernelError> {
-    unsafe {
-        syscall(nr::UnmapProcessMemory, dstaddr, (proc_handle.0).0.get() as _, srcaddr, size, 0, 0)?;
-        Ok(())
-    }
+pub unsafe fn unmap_process_memory(dstaddr: usize, proc_handle: &Process, srcaddr: usize, size: usize) -> Result<(), KernelError> {
+    syscall(nr::UnmapProcessMemory, dstaddr, (proc_handle.0).0.get() as _, srcaddr, size, 0, 0)?;
+    Ok(())
 }
 
 /// Creates a new process with the given parameters.
@@ -657,5 +670,63 @@ pub fn start_process(process_handle: &Process, main_thread_prio: u32, default_cp
     unsafe {
         syscall(nr::StartProcess, (process_handle.0).0.get() as usize, main_thread_prio as _, default_cpuid as _, main_thread_stacksz as _, 0, 0)?;
         Ok(())
+    }
+}
+
+/// Extract information from a process.
+///
+/// Info Type        | Description
+/// -----------------|--------------------------
+/// ProcessState = 0 | The state the current process is in. Returns an instance
+///                  | of [sunrise_libkern::process::ProcessState].
+///
+/// # Errors
+///
+/// - `InvalidHandle`
+///   - The passed handle is invalid or not a process.
+/// - `InvalidEnum`
+///   - The passed info_type is unknown.
+pub fn get_process_info(process_handle: &Process, ty: ProcessInfoType) -> Result<u32, KernelError> {
+    unsafe {
+        let (info, ..) = syscall(nr::GetProcessInfo, (process_handle.0).0.get() as usize, ty.0 as usize, 0, 0, 0, 0)?;
+        Ok(info as _)
+    }
+}
+
+/// Clear the "signaled" state of a readable event or process. After calling
+/// this on a signaled event, [wait_synchronization()] on this handle will wait
+/// until the handle is signaled again.
+///
+/// Takes either a [ReadableEvent] or a [Process].
+///
+/// Note that once a Process enters the Exited state, it is permanently signaled
+/// and cannot be reset. Calling ResetSignal will return an InvalidState error.
+///
+/// # Errors
+///
+/// - `InvalidState`
+///   - The event wasn't signaled.
+///   - The process was in Exited state.
+pub(crate) fn reset_signal(event: HandleRef) -> Result<(), KernelError> {
+    unsafe {
+        syscall(nr::ResetSignal, event.inner.get() as _, 0, 0, 0, 0, 0)?;
+        Ok(())
+    }
+}
+
+/// Gets the PID of the given Process handle. Alias handles (0xFFFF8000 and
+/// 0xFFFF8001) are not allowed here. PIDs are global, unique identifiers for a
+/// given process. PIDs are never reused, and can be passed over IPC safely (the
+/// kernel ensures the correct pid is passed when a process does a request),
+/// making them the best way for sysmodule to identify a calling process.
+///
+/// # Errors
+///
+/// - `InvalidHandle`
+///   - The given handle is invalid or not a process.
+pub fn get_process_id(process_handle: &Process) -> Result<u64, KernelError> {
+    unsafe {
+        let (pid, ..) = syscall(nr::GetProcessInfo, (process_handle.0).0.get() as usize, 0, 0, 0, 0, 0)?;
+        Ok(pid as _)
     }
 }

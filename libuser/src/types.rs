@@ -7,6 +7,7 @@ use core::marker::PhantomData;
 use crate::syscalls;
 use core::num::NonZeroU32;
 use sunrise_libkern::MemoryPermissions;
+use sunrise_libkern::process::{ProcessState, ProcessInfoType};
 use crate::error::{Error, KernelError};
 use crate::ipc::{Message, MessageTy};
 use crate::futures::WorkQueue;
@@ -99,7 +100,7 @@ impl<'a> HandleRef<'a> {
     /// Panics if used from outside the context of a Future spawned on a libuser
     /// future executor. Please make sure you only call this function from a
     /// future spawned on a WaitableManager.
-    fn wait_async<'b>(self, queue: WorkQueue<'b>)-> impl core::future::Future<Output = Result<(), Error>> + Unpin +'b {
+    pub fn wait_async<'b>(self, queue: WorkQueue<'b>)-> impl core::future::Future<Output = Result<(), Error>> + Unpin +'b {
         #[allow(missing_docs, clippy::missing_docs_in_private_items)]
         struct MyFuture<'a> {
             queue: crate::futures::WorkQueue<'a>,
@@ -467,6 +468,57 @@ impl Process {
         syscalls::start_process(self, main_thread_prio, default_cpuid, main_thread_stack_sz)
             .map_err(|v| v.into())
     }
+
+    /// Get the state the given process is currently in.
+    ///
+    /// Shouldn't ever return an error, unless the user is doing weird things
+    /// with handles.
+    pub fn state(&self) -> Result<ProcessState, Error> {
+        let info = syscalls::get_process_info(self, ProcessInfoType::ProcessState)?;
+        Ok(ProcessState(info as u8))
+    }
+
+    /// Waits for the process to change state. Use [Process::state] to get the
+    /// new state and [Process::reset_signal] to reset the signaled state.
+    ///
+    /// # Panics
+    ///
+    /// Panics if used from outside the context of a Future spawned on a libuser
+    /// future executor. Please make sure you only call this function from a
+    /// future spawned on a WaitableManager.
+    pub fn wait_async<'a>(&self, queue: crate::futures::WorkQueue<'a>) -> impl core::future::Future<Output = Result<(), Error>> + Unpin + 'a {
+        self.0.as_ref().wait_async(queue)
+    }
+
+    /// Clear the "signaled" state of a process. A process moves to the signaled
+    /// state when it changes `ProcessState` (e.g. when exiting).
+    ///
+    /// Note that once a Process enters the Exited state, it is permanently
+    /// signaled and cannot be reset. Calling `reset_signal` will return an
+    /// InvalidState error.
+    ///
+    /// # Errors
+    ///
+    /// - `InvalidState`
+    ///   - The event wasn't signaled.
+    ///   - The process was in Exited state.
+    pub fn reset_signal(&self) -> Result<(), Error> {
+        syscalls::reset_signal(self.0.as_ref())?;
+        Ok(())
+    }
+
+    /// Gets the [Pid] of this Process.
+    ///
+    /// Will return an `InvalidHandle` error if called on `Process::current()`.
+    ///
+    /// # Errors
+    ///
+    /// - `InvalidHandle`
+    ///   - Called in `Process::current()`.
+    pub fn pid(&self) -> Result<Pid, Error> {
+        let pid = syscalls::get_process_id(self)?;
+        Ok(Pid(pid))
+    }
 }
 
 /// A handle to memory that may be mapped in multiple processes at the same time.
@@ -546,11 +598,15 @@ impl MappedSharedMemory {
     }
 
     /// Gets a raw pointer to the underlying shared memory.
+    ///
+    /// The pointer is valid until the MappedSharedMemory instance gets dropped.
     pub fn as_ptr(&self) -> *const u8 {
         self.addr as *const u8
     }
 
     /// Gets a mutable raw pointer to the underlying shared memory.
+    ///
+    /// The pointer is valid until the MappedSharedMemory instance gets dropped.
     pub fn as_mut_ptr(&self) -> *mut u8 {
         self.addr as *mut u8
     }
@@ -569,7 +625,11 @@ impl MappedSharedMemory {
 
 impl Drop for MappedSharedMemory {
     fn drop(&mut self) {
-        let _ = syscalls::unmap_shared_memory(&self.handle, self.addr, self.size);
+        unsafe {
+            // Safety: If this is dropped, then all references given out to the
+            // data pointed to by addr should have been dropped as well.
+            let _ = syscalls::unmap_shared_memory(&self.handle, self.addr, self.size);
+        }
     }
 }
 
@@ -578,5 +638,5 @@ impl Drop for MappedSharedMemory {
 /// Each process in Horizon is given a unique, non-reusable PID. It may be used
 /// to associate capabilities or resources to a particular process. For instance,
 /// sm might associate a process' service access permissions to its pid.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Pid(pub u64);

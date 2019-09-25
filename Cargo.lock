@@ -385,7 +385,7 @@ name = "lazy_static"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "spin 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spin 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -400,7 +400,7 @@ source = "git+https://github.com/sunriseos/libfat.git#2fc179154b3e7861a93f5f5b4a
 dependencies = [
  "arrayvec 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "num-traits 0.2.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "spin 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spin 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "storage_device 1.0.0 (git+https://github.com/Sunriseos/storage_device.git)",
 ]
 
@@ -414,7 +414,7 @@ name = "linked_list_allocator"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "spin 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spin 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -625,7 +625,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "spin"
-version = "0.5.1"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
@@ -679,7 +679,7 @@ dependencies = [
  "futures-preview 0.3.0-alpha.17 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)",
- "spin 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spin 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "static_assertions 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "sunrise-libuser 0.1.0",
  "sunrise-libutils 0.1.0",
@@ -695,7 +695,7 @@ dependencies = [
  "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "multiboot2 0.7.1 (git+https://github.com/sunriseos/multiboot2-elf64.git)",
  "smallvec 0.6.10 (registry+https://github.com/rust-lang/crates.io-index)",
- "spin 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spin 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "static_assertions 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "sunrise-libutils 0.1.0",
  "xmas-elf 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -742,7 +742,7 @@ dependencies = [
  "plain 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustc-demangle 0.1.15 (registry+https://github.com/rust-lang/crates.io-index)",
  "smallvec 0.6.10 (registry+https://github.com/rust-lang/crates.io-index)",
- "spin 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spin 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "static_assertions 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "sunrise-libkern 0.1.0",
  "sunrise-libutils 0.1.0",
@@ -759,7 +759,7 @@ dependencies = [
  "generic-array 0.13.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)",
- "spin 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spin 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "sunrise-libuser 0.1.0",
  "sunrise-libutils 0.1.0",
 ]
@@ -803,7 +803,7 @@ dependencies = [
  "libm 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "linked_list_allocator 0.6.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)",
- "spin 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spin 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "sunrise-libkern 0.1.0",
  "sunrise-libutils 0.1.0",
  "swipc-gen 0.1.0",
@@ -823,7 +823,11 @@ dependencies = [
 name = "sunrise-loader"
 version = "0.1.0"
 dependencies = [
+ "core-futures-tls 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "futures-preview 0.3.0-alpha.17 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spin 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "sunrise-libkern 0.1.0",
  "sunrise-libuser 0.1.0",
  "sunrise-libutils 0.1.0",
@@ -840,7 +844,7 @@ dependencies = [
  "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "sha1 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "spin 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spin 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "sunrise-libuser 0.1.0",
 ]
 
@@ -852,7 +856,7 @@ dependencies = [
  "hashbrown 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)",
- "spin 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spin 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "sunrise-libuser 0.1.0",
 ]
 
@@ -865,7 +869,7 @@ dependencies = [
  "futures-preview 0.3.0-alpha.17 (registry+https://github.com/rust-lang/crates.io-index)",
  "generic-array 0.13.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)",
- "spin 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spin 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "sunrise-libtimezone 0.1.0",
  "sunrise-libuser 0.1.0",
  "sunrise-libutils 0.1.0",
@@ -878,7 +882,7 @@ dependencies = [
  "futures-preview 0.3.0-alpha.17 (registry+https://github.com/rust-lang/crates.io-index)",
  "hashbrown 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "spin 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spin 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "sunrise-libuser 0.1.0",
  "sunrise-libutils 0.1.0",
 ]
@@ -889,7 +893,7 @@ version = "0.1.0"
 dependencies = [
  "bstr 0.2.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)",
- "spin 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spin 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "sunrise-libuser 0.1.0",
 ]
 
@@ -1108,7 +1112,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum sha1 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)" = "2579985fda508104f7587689507983eadd6a6e84dd35d6d115361f530916fa0d"
 "checksum smallvec 0.6.10 (registry+https://github.com/rust-lang/crates.io-index)" = "ab606a9c5e214920bb66c458cd7be8ef094f813f20fe77a54cc7dbfff220d4b7"
 "checksum spin 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)" = "ceac490aa12c567115b40b7b7fceca03a6c9d53d5defea066123debc83c5dc1f"
-"checksum spin 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)" = "cbdb51a221842709c2dd65b62ad4b78289fc3e706a02c17a26104528b6aa7837"
+"checksum spin 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)" = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 "checksum static_assertions 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)" = "b4f8de36da215253eb5f24020bfaa0646613b48bf7ebe36cdfa37c3b3b33b241"
 "checksum storage_device 1.0.0 (git+https://github.com/Sunriseos/storage_device.git)" = "<none>"
 "checksum strsim 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "bb4f380125926a99e52bc279241539c018323fab05ad6368b56f93d9369ff550"

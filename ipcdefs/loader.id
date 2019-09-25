@@ -1,0 +1,10 @@
+# A mishmash of Nintendo's loader and pm in a single disgusting service.
+#
+# Responsible for creating, loading, starting and waiting on processes.
+interface sunrise_libuser::ldr::ILoaderInterface is ldr:shel {
+    # Create, load and start the process `title_name` with the given args.
+    # Returns the process' pid.
+    [0] launch_title(array<u8, 9> title_name, array<u8, 9> args) -> u64 pid;
+    # Wait for the process with the given pid, returning the exit status.
+    [1] wait(u64 pid) -> u32 exit_status;
+}
