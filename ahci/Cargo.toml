@@ -9,7 +9,7 @@ edition = "2018"
 sunrise-libuser = { path = "../libuser" }
 sunrise-libutils = { path = "../libutils" }
 spin = "0.5"
-log = "0.4.6"
+log = "0.4.8"
 bitfield = "0.13"
 futures-preview = { version = "0.3.0-alpha.16", default-features = false, features = ["nightly", "alloc"] }
 

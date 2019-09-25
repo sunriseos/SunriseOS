@@ -7,7 +7,7 @@ edition = "2018"
 
 [dependencies]
 gif = { git = "https://github.com/SunriseOS/image-gif" }
-log = "0.4.6"
+log = "0.4.8"
 sunrise-libuser = { path = "../libuser" }
 spin = "0.5"
 bstr = { version = "0.2", default-features = false }
