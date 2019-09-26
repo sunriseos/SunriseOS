@@ -267,6 +267,13 @@ bitflags! {
         const WRITABLE = 1 << 1;
         /// The area is executable.
         const EXECUTABLE = 1 << 2;
+
+        /// The area is ReadOnly.
+        const RO = MemoryPermissions::READABLE.bits();
+        /// The area is RW.
+        const RW = MemoryPermissions::READABLE.bits() | MemoryPermissions::WRITABLE.bits();
+        /// The area is RX.
+        const RX = MemoryPermissions::READABLE.bits() | MemoryPermissions::EXECUTABLE.bits();
     }
 }
 

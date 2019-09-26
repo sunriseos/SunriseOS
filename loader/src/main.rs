@@ -44,6 +44,7 @@ use sunrise_libuser::ldr::ILoaderInterfaceAsync;
 use sunrise_libuser::syscalls::{self, map_process_memory};
 use sunrise_libuser::types::{Pid, Process};
 use sunrise_libkern::process::*;
+use sunrise_libkern::MemoryPermissions;
 use sunrise_libuser::mem::{find_free_address, PAGE_SIZE};
 use sunrise_libutils::{align_up, div_ceil};
 
@@ -176,6 +177,8 @@ fn boot(fs: &IFileSystemProxy, titlename: &str, args: &[u8]) -> Result<Pid, Erro
         // should have been dropped already.
         syscalls::unmap_process_memory(addr, &process, aslr_base + elf_size, args_size)?;
     }
+
+    syscalls::set_process_memory_permission(&process, aslr_base + elf_size, args_size, MemoryPermissions::RW)?;
 
     debug!("Starting process.");
     if let Err(err) = process.start(0, 0, PAGE_SIZE as u32 * 16) {
