@@ -18,7 +18,7 @@ pub trait TimerDriver {
     ///
     /// # Note:
     /// - The driver *must* asure that the ticks are monotonic.
-    fn is_after_or_equal_target_ticks(&self, target_ticks: u64) -> bool;
+    fn is_after_or_equal_main_ticks(&self, target_ticks: u64) -> bool;
 
     /// Convert the given nanoseconds to timer ticks.
     fn convert_ns_to_ticks(&self, ns: u64) -> u64;
@@ -27,6 +27,7 @@ pub trait TimerDriver {
 use core::cmp::Ordering as CmpOrdering;
 
 /// Timer state.
+#[derive(Debug)]
 struct TimerState {
     /// The waiting thread.
     target_waiter: Arc<ThreadStruct>,
@@ -126,7 +127,7 @@ impl Waitable for TimerEvent {
         let mut target_ticks = self.target_ticks.lock();
         let result = {
             let timer_driver = TIMER_DRIVER.r#try().expect("Timer driver is not initialized!").lock();
-            timer_driver.is_after_or_equal_target_ticks(*target_ticks)
+            timer_driver.is_after_or_equal_main_ticks(*target_ticks)
         };
 
         if result {
@@ -165,27 +166,39 @@ fn register_timer_event(event: &TimerEvent) {
 ///
 /// - This must be called by the timer IRQ handler.
 pub fn wakeup_waiters() {
-    // TODO: mask interruptions?
     let mut timer_driver = TIMER_DRIVER.r#try().expect("Timer driver is not initialized!").lock();
 
     let mut states = TIMER_STATES.lock();
 
-    // Get all threads to wake up.
-    let target_index: Vec<usize> = states.iter().enumerate().filter(|x| timer_driver.is_after_or_equal_target_ticks(x.1.target_ticks)).map(|x| x.0).collect();
+    loop {
+        // Get all threads to wake up.
+        let next_oneshot_idx = states.iter().position(|x| !timer_driver.is_after_or_equal_main_ticks(x.target_ticks)).unwrap_or_else(|| states.len());
 
-    // Remove threads from the state Vec and schedule them.
-    for _ in target_index {
-        // As the vec is always sorted, we just remove the first element every time
-        let state = states.remove(0);
-        crate::scheduler::add_to_schedule_queue(state.target_waiter);
+        let next_oneshot = states.get(next_oneshot_idx);
+
+        if let Some(next_oneshot) = next_oneshot {
+            timer_driver.set_oneshot_timer(next_oneshot.target_ticks);
+        }
+
+        // Remove threads from the state Vec and schedule them.
+        for state in states.drain(..next_oneshot_idx) {
+            // As the vec is always sorted, we just remove the first element every time
+            crate::scheduler::add_to_schedule_queue(state.target_waiter);
+        }
+
+        let next_oneshot = states.get(0);
+        if next_oneshot.is_none() {
+            break;
+        }
+
+        let next_oneshot = next_oneshot.unwrap();
+
+        // The next oneshot is still past accumulator?
+        if !timer_driver.is_after_or_equal_main_ticks(next_oneshot.target_ticks) {
+           break;
+        }
+
+        // If we went over our next oneshot's target tick, let's run the loop again!
+        log::debug!("Oneshot overrun retrying...");
     }
-
-    let next_oneshot = states.get(0);
-
-    // Setup next oneshot if present.
-    if let Some(next_oneshot) = next_oneshot {
-        timer_driver.set_oneshot_timer(next_oneshot.target_ticks);
-    }
-
-    // TODO: unmask interruptions?
 }

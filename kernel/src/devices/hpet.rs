@@ -486,7 +486,7 @@ impl timer::TimerDriver for Hpet {
         self.get_main_counter_value() + ticks
     }
 
-    fn is_after_or_equal_target_ticks(&self, target_ticks: u64) -> bool {
+    fn is_after_or_equal_main_ticks(&self, target_ticks: u64) -> bool {
         self.get_main_counter_value() >= target_ticks
     }
 
