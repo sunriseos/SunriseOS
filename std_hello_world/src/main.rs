@@ -14,6 +14,8 @@ use std::path::Path;
 use std::thread;
 use std::env;
 
+use std::process::Command;
+
 // one possible implementation of walking a directory only visiting files
 fn visit_dirs(dir: &Path, cb: &dyn Fn(&DirEntry)) -> io::Result<()> {
     if dir.is_dir() {
@@ -66,10 +68,25 @@ fn main() {
     thread_spawned.join().unwrap();
     println!("Hello from main thread");
 
+    println!("Arguments:");
     // Prints each argument on a separate line
     for argument in env::args() {
         println!("{}", argument);
     }
+
+    if env::args().nth(0).is_none() {
+        println!("Spawning ourself with some arguments!");
+        Command::new("std_hello_world")
+                .arg("Hey")
+                .arg("You")
+                .spawn()
+                .expect("std_hello_world command failed to start")
+                .wait()
+                .expect("std_hello_world command wait failed");
+        println!("Child process is dead!");
+    }
+
+    println!("Job done");
 
 }
 
