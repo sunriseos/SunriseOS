@@ -48,7 +48,7 @@ use sunrise_libkern::MemoryPermissions;
 use sunrise_libuser::mem::{find_free_address, PAGE_SIZE};
 use sunrise_libutils::{align_up, div_ceil};
 
-use futures::future::FutureObj;
+use sunrise_libuser::futures_rs::future::FutureObj;
 use lazy_static::lazy_static;
 
 use spin::Mutex;

@@ -10,7 +10,6 @@ sunrise-libkern = { path = "../libkern" }
 sunrise-libutils = { path = "../libutils" }
 log = "0.4"
 xmas-elf = "0.7.0"
-futures-preview = { version = "0.3.0-alpha.16", default-features = false, features = ["nightly", "alloc"] }
 spin = "0.5.2"
 core = { package = "core-futures-tls", version = "0.1.1" }
 
