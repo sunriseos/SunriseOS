@@ -254,7 +254,12 @@ pub const fn log2_ceil(val: usize) -> usize {
 /// Cast a slice while keeping the lifetimes.
 ///
 /// Thanks I hate it.
-// TODO: Write safety guide
+///
+/// # Safety
+///
+/// `data` must be aligned for R, even for zero-length slices.
+///
+/// `T` must be safely castable as `R`. This generally means that T and R must both be POD types without padding.
 #[allow(clippy::cast_ptr_alignment)]
 pub unsafe fn cast_mut<T, R>(data: &mut [T]) -> &mut [R] {
     let elem_of_r = core::mem::size_of::<T>() * data.len() / core::mem::size_of::<R>();
