@@ -1,15 +1,18 @@
 //! GPT definition module.
-//! 
+//!
 //! Specs: https://web.archive.org/web/20190822022034/https://uefi.org/sites/default/files/resources/UEFI_Spec_2_8_final.pdf
 
 use uuid::Uuid;
 
 use byteorder::{LE, ByteOrder};
 use super::utils::calculate_crc32;
-use storage_device::Block;
 use crate::interface::storage::IStorage;
 use crate::LibUserResult;
 use core::fmt;
+use sunrise_libuser::error::Error;
+
+const BLOCK_SIZE: usize = 512;
+const BLOCK_SIZE_U64: u64 = BLOCK_SIZE as u64;
 
 /// A raw uuid representation.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -269,10 +272,10 @@ impl GPTHeader {
     pub const MAGIC: u64 = 0x5452415020494645;
 
     /// Read the GPT header from the disk
-    pub fn from_storage_device(storage_device: &mut dyn IStorage, lba_index: u64) -> LibUserResult<Self> {
+    pub fn from_storage_device(storage_device: &mut dyn IStorage<Error = Error>, lba_index: u64) -> LibUserResult<Self> {
         let mut data = [0x0; 0x5C];
 
-        storage_device.read(lba_index * Block::LEN_U64, &mut data)?;
+        storage_device.read(lba_index * BLOCK_SIZE_U64, &mut data)?;
 
         Ok(Self::from_bytes(data))
     }
@@ -329,9 +332,9 @@ impl GPTHeader {
     }
 
     /// Update the CRC32 of the header.
-    /// 
+    ///
     /// Note:
-    /// 
+    ///
     /// This should be called after having manually update the CRC32 of the partition table.
     pub fn update_header_crc(&mut self) {
         self.crc32 = calculate_crc32(&self.write(false));

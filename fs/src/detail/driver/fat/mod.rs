@@ -14,8 +14,10 @@ mod file;
 mod filesystem;
 mod error;
 
+use storage_device::StorageDevice;
+
 use sunrise_libuser::fs::FileSystemType;
-use sunrise_libuser::error::FileSystemError;
+use sunrise_libuser::error::{Error, FileSystemError};
 use filesystem::FatFileSystem;
 
 use error::from_driver;
@@ -24,12 +26,12 @@ use error::from_driver;
 pub struct FATDriver;
 
 impl FileSystemDriver for FATDriver {
-    fn construct(&self, storage: PartitionStorage) -> LibUserResult<Box<dyn FileSystemOperations>> {
+    fn construct(&self, storage: Box<dyn StorageDevice<Error = Error> + Send>) -> LibUserResult<Box<dyn FileSystemOperations>> {
         let filesystem_instance = FatFileSystem::from_storage(storage)?;
         Ok(Box::new(filesystem_instance) as Box<dyn FileSystemOperations>)
     }
 
-    fn probe(&self, storage: &mut PartitionStorage) -> Option<FileSystemType> {
+    fn probe(&self, storage: &mut (dyn StorageDevice<Error = Error> + Send)) -> Option<FileSystemType> {
         libfat::get_fat_type(storage, 0).ok().and_then(|filesytem_type| {
             match filesytem_type {
                 FatFsType::Fat12 => Some(FileSystemType::FAT12),
@@ -46,7 +48,7 @@ impl FileSystemDriver for FATDriver {
         }
     }
 
-    fn format(&self, storage: PartitionStorage, filesytem_type: FileSystemType) -> LibUserResult<()> {
+    fn format(&self, storage: Box<dyn StorageDevice<Error = Error> + Send>, filesytem_type: FileSystemType) -> LibUserResult<()> {
         let fat_type = match filesytem_type {
             FileSystemType::FAT12 => FatFsType::Fat12,
             FileSystemType::FAT16 => FatFsType::Fat16,

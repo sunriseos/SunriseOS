@@ -10,7 +10,11 @@ use crate::LibUserResult;
 use crate::interface::driver::FileSystemDriver;
 use crate::interface::filesystem::FileSystemOperations;
 
-use storage_device::{Block, BlockCount, BlockDevice, BlockError, BlockResult, BlockIndex};
+use storage_device::block::Block;
+use storage_device::block_device::*;
+use storage_device::storage_device::StorageBlockDevice;
+use storage_device::cached_block_device::CachedBlockDevice;
+
 use sunrise_libuser::fs::{DiskId, FileSystemType, PartitionId};
 use sunrise_libuser::ahci::*;
 use sunrise_libuser::ahci::Block as AhciBlock;
@@ -18,7 +22,7 @@ use sunrise_libuser::error::{AhciError, Error, FileSystemError};
 
 use lazy_static::lazy_static;
 use alloc::sync::{Arc, Weak};
-use crate::interface::storage::{PartitionStorage, IStorage, StorageCachedBlockDevice};
+use crate::interface::storage::{PartitionStorage, IStorage};
 
 use hashbrown::HashMap;
 
@@ -31,7 +35,7 @@ pub struct DriverManager {
     registry: Vec<Box<dyn FileSystemDriver>>,
 
     /// The drives actually opened.
-    drives: HashMap<DiskId, Arc<Mutex<Box<dyn IStorage>>>>,
+    drives: HashMap<DiskId, Arc<Mutex<Box<dyn IStorage<Error = Error>>>>>,
 
     /// The partitions opened in drives.
     partitions: PartitionHashMap<Box<dyn FileSystemOperations>>,
@@ -58,7 +62,7 @@ impl DriverManager {
     }
 
     /// Add a new drive to the open hashmap.
-    pub fn add_opened_drive(&mut self, disk_id: DiskId, drive: Arc<Mutex<Box<dyn IStorage>>>) {
+    pub fn add_opened_drive(&mut self, disk_id: DiskId, drive: Arc<Mutex<Box<dyn IStorage<Error = Error>>>>) {
         self.drives.insert(disk_id, drive);
         self.partitions.insert(disk_id, HashMap::new());
     }
@@ -72,7 +76,7 @@ impl DriverManager {
 
         for disk_id in 0..disk_count {
             let ahci_disk = self.ahci_interface.get_disk(disk_id)?;
-            let device = Arc::new(Mutex::new(Box::new(StorageCachedBlockDevice::new(AhciDiskStorage::new(ahci_disk), 0x100)) as Box<dyn IStorage>));
+            let device = Arc::new(Mutex::new(Box::new(StorageBlockDevice::new(CachedBlockDevice::new(AhciDiskStorage::new(ahci_disk), 0x100))) as Box<dyn IStorage<Error = Error>>));
             self.add_opened_drive(disk_id, device);
         }
 
@@ -80,7 +84,7 @@ impl DriverManager {
     }
 
     /// Open a AHCI disk as a IStorage.
-    pub fn open_disk_storage(&mut self, disk_id: DiskId) -> LibUserResult<Arc<Mutex<Box<dyn IStorage>>>> {
+    pub fn open_disk_storage(&mut self, disk_id: DiskId) -> LibUserResult<Arc<Mutex<Box<dyn IStorage<Error = Error>>>>> {
         self.drives.get(&disk_id).ok_or_else(|| FileSystemError::DiskNotFound.into()).map(|arc| arc.clone())
     }
 
@@ -102,7 +106,7 @@ impl DriverManager {
         // No instance found, create a new one and cache it.
         for driver in &self.registry {
             if driver.probe(&mut storage).is_some() {
-                let res = Arc::new(Mutex::new(driver.construct(storage)?));
+                let res = Arc::new(Mutex::new(driver.construct(Box::new(storage))?));
 
                 disk_hashmap.insert(partition_id, Arc::downgrade(&res));
                 return Ok(res)
@@ -116,7 +120,7 @@ impl DriverManager {
     pub fn format_disk_partition(&self, storage: PartitionStorage, filesytem_type: FileSystemType) -> LibUserResult<()> {
         for driver in &self.registry {
             if driver.is_supported(filesytem_type) {
-                return driver.format(storage, filesytem_type)
+                return driver.format(Box::new(storage), filesytem_type)
             }
         }
 
@@ -144,53 +148,28 @@ impl AhciDiskStorage {
     }
 }
 
-/// Convert a libuser error to a block error.
-fn libuser_error_to_block_error(error: Error, is_read: bool) -> BlockError {
-    match error {
-        Error::Ahci(error, _) => {
-            match error {
-                AhciError::InvalidArg => {
-                    panic!("Invalid argument sent to ahci")
-                }
-                AhciError::IoError => {
-                    if is_read {
-                        BlockError::ReadError
-                    } else {
-                        BlockError::WriteError
-                    }
-                }
-                _ => BlockError::Unknown
-            }
-        }
-        _ => panic!("{}", error)
-    }
-}
-
 impl BlockDevice for AhciDiskStorage {
+    type Block = Block;
+    type Error = Error;
+
     /// Read blocks from the block device starting at the given ``index``.
-    fn read(&mut self, blocks: &mut [Block], index: BlockIndex) -> BlockResult<()> {
+    fn read(&mut self, blocks: &mut [Self::Block], index: BlockIndex) -> Result<(), Error> {
         self.inner.read_dma(index.0, unsafe {
             // Safety: This operation is safe as AhciBlock and Block have the same memory representation and the same alignment requirements.
             core::slice::from_raw_parts_mut(blocks.as_mut_ptr() as *mut AhciBlock, blocks.len())
-        }).map_err(|error| {
-            libuser_error_to_block_error(error, true)
         })
     }
 
     /// Write blocks to the block device starting at the given ``index``.
-    fn write(&mut self, blocks: &[Block], index: BlockIndex) -> BlockResult<()> {
+    fn write(&mut self, blocks: &[Self::Block], index: BlockIndex) -> Result<(), Error> {
         self.inner.write_dma(index.0, unsafe {
             // Safety: This operation is safe as AhciBlock and Block have the same memory representation and the same alignment requirements.
             core::slice::from_raw_parts(blocks.as_ptr() as *const AhciBlock, blocks.len())
-        }).map_err(|error| {
-            libuser_error_to_block_error(error, false)
         })
     }
 
     /// Return the amount of blocks hold by the block device.
-    fn count(&mut self) -> BlockResult<BlockCount> {
-        self.inner.sector_count().map_err(|error| {
-            libuser_error_to_block_error(error, true)
-        }).map(|result| BlockCount(result))
+    fn count(&mut self) -> Result<BlockCount, Error> {
+        self.inner.sector_count().map(|result| BlockCount(result))
     }
 }
