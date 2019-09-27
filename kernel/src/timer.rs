@@ -127,7 +127,7 @@ impl Waitable for TimerEvent {
         let mut target_ticks = self.target_ticks.lock();
         let result = {
             let timer_driver = TIMER_DRIVER.r#try().expect("Timer driver is not initialized!").lock();
-            timer_driver.is_after_or_equal_main_ticks(*target_ticks)
+            !timer_driver.is_after_or_equal_main_ticks(*target_ticks)
         };
 
         if result {
@@ -171,8 +171,8 @@ pub fn wakeup_waiters() {
     let mut states = TIMER_STATES.lock();
 
     loop {
-        // Get all threads to wake up.
-        let next_oneshot_idx = states.iter().position(|x| !timer_driver.is_after_or_equal_main_ticks(x.target_ticks)).unwrap_or_else(|| states.len());
+        // Get the next oneshot and setup it if we have one
+        let next_oneshot_idx = states.iter().position(|x| timer_driver.is_after_or_equal_main_ticks(x.target_ticks)).unwrap_or_else(|| states.len());
 
         let next_oneshot = states.get(next_oneshot_idx);
 
@@ -195,7 +195,7 @@ pub fn wakeup_waiters() {
 
         // The next oneshot is still past accumulator?
         if !timer_driver.is_after_or_equal_main_ticks(next_oneshot.target_ticks) {
-           break;
+            break;
         }
 
         // If we went over our next oneshot's target tick, let's run the loop again!

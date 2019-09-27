@@ -487,7 +487,7 @@ impl timer::TimerDriver for Hpet {
     }
 
     fn is_after_or_equal_main_ticks(&self, target_ticks: u64) -> bool {
-        self.get_main_counter_value() >= target_ticks
+        target_ticks >= self.get_main_counter_value()
     }
 
     /// Convert the given nanoseconds to timer ticks.
