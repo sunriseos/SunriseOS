@@ -37,10 +37,11 @@ live CD called `os.iso` which can be booted from to run SunriseOS.
 ## Qemu
 
 First, ensure you have qemu installed, as `cargo-make` will not automatically
-install it (See the [version sections](#versions)). Then, run `cargo make qemu`
-to build and run the kernel in QEmu. It will open a display server on VNC port
-5900 (overridable by setting the `VNC_PORT` environment variable) through which
-the user can interact. Logs going over serial port will be printed on stdout.
+install it (See the [version sections](#versions)). Then, run `cargo make qemu
+--profile production` to build and run the kernel in QEmu. It will open a display
+server on VNC port 5900 (overridable by setting the `VNC_PORT` environment
+variable) through which the user can interact. Logs going over serial port will be
+printed on stdout.
 
 ## Versions
 
