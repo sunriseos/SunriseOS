@@ -1140,7 +1140,8 @@ impl CmdTable {
         let mut temp_buffer_addr = buffer as usize;
         let mut index = 0;
         while length > 0 {
-            let (mut phys_addr, _, mut phys_len, phys_off) = query_physical_address(temp_buffer_addr)?;
+            let (mut phys_addr, base_addr, mut phys_len) = query_physical_address(temp_buffer_addr)?;
+            let phys_off = temp_buffer_addr as usize - base_addr;
             phys_addr += phys_off;
             phys_len -= phys_off;
             // divide into 4M regions.
