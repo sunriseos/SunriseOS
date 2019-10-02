@@ -94,7 +94,9 @@ pub fn map_mmio<T>(physical_address: usize) -> Result<*mut T, KernelError> {
 ///
 /// * query_physical_address failed.
 pub fn virt_to_phys<T>(virtual_address: *const T) -> usize {
-    let (phys_region_start, _, _, phys_region_offset) = syscalls::query_physical_address(virtual_address as usize)
+    let (phys_region_start, base_addr, _) = syscalls::query_physical_address(virtual_address as usize)
         .expect("syscall query_physical_memory failed");
-    phys_region_start + phys_region_offset
+
+    let offset = virtual_address as usize - base_addr;
+    phys_region_start + offset
 }

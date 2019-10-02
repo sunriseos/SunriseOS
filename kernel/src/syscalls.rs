@@ -117,31 +117,13 @@ pub fn create_interrupt_event(irq_num: usize, _flag: u32) -> Result<usize, Users
 /// # Return
 ///
 /// 0. The start address of the physical region.
-/// 1. 0x00000000 (On Horizon it contains the KernelSpace virtual address of this mapping,
-///    but I don't see any use for it).
-/// 2. The length of the physical region.
-// sunrise extension
-/// 3. The offset in the region of the given virtual address.
+/// 1. The start address of the virtual region.
+/// 2. The length of the region.
 ///
 /// # Error
 ///
 /// - InvalidAddress: This address does not map physical memory.
-// TODO: Kernel mappings must be physically continuous.
-// BODY: Virtual memory is a great thing, it can make a fragmented mapping appear contiguous from the
-// BODY: userspace. But unfortunately Horizon does not take advantage of this feature, and
-// BODY: allocates its mapping as a single Physical Memory Region.
-// BODY:
-// BODY: Its syscalls are based around that fact, and to do a `virt_to_phys(addr)`, you simply
-// BODY: need to `query_memory(addr).offset` to get its offset in its mapping, and compute its
-// BODY: physical address as `query_physical_address(addr).base + offset`.
-// BODY:
-// BODY: This will not work when the mapping is composed of several physical regions, and
-// BODY: Horizon drivers will not be expecting that. So for them to work on our kernel, we must
-// BODY: renounce using fragmented mappings.
-// BODY:
-// BODY: For now `query_physical_address` is providing an additional "offset in physical region" return value,
-// BODY: to help KFS drivers doing a virt_to_phys without needing to walk the list of physical regions.
-pub fn query_physical_address(virtual_address: usize) -> Result<(usize, usize, usize, usize), UserspaceError> {
+pub fn query_physical_address(virtual_address: usize) -> Result<(usize, usize, usize), UserspaceError> {
     let virtual_address = VirtualAddress(virtual_address);
     let proc = scheduler::get_current_process();
     let mem = proc.pmemory.lock();
@@ -153,11 +135,33 @@ pub fn query_physical_address(virtual_address: usize) -> Result<(usize, usize, u
         MappingFrames::None =>
             return Err(KernelError::InvalidAddress { address: virtual_address.addr(), backtrace: Backtrace::new() }.into()),
     };
-    let offset = virtual_address - mapping.mapping().address() + mapping.mapping().phys_offset();
-    let mut i = 0;
-    let pos = frames.iter().position(|region| { i += region.size(); i > offset })
-        .expect("Mapping region count is corrupted");
-    Ok((frames[pos].address().addr(), 0x00000000, frames[pos].size(), offset - (i - frames[pos].size())))
+
+    let mut base_address = mapping.mapping().address();
+    let mut virtual_offset = virtual_address.floor() - mapping.mapping().address();
+    let mut mapping_length = mapping.mapping().length();
+    let mut phys_offset = mapping.mapping().phys_offset();
+    for region in frames {
+        // Skip the frames that aren't part of the mapping.
+        if region.size() <= phys_offset {
+            phys_offset -= region.size();
+            continue;
+        }
+
+        let mut region_physaddr = region.address();
+        let mut region_size = region.size();
+        region_physaddr += phys_offset;
+        region_size -= phys_offset;
+        phys_offset = 0;
+
+        if virtual_offset < region_size {
+            return Ok((region_physaddr.addr(), base_address.addr(), core::cmp::min(mapping_length, region_size)))
+        } else {
+            virtual_offset -= region_size;
+            base_address += region_size;
+            mapping_length -= region_size;
+        }
+    }
+    unreachable!("Mapping is broken!");
 }
 
 /// Waits for one of the handles to signal an event.
