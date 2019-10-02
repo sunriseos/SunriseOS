@@ -183,22 +183,14 @@ pub fn kernel_panic(panic_origin: &PanicOrigin) -> ! {
         let _ = writeln!(SerialLogger, "Panic handler: Failed to get kernel elf symbols");
     }
 
-    // TODO: Kernel Stack dump update
-    // BODY: Update the kernel stack dump functions to be compatible the new and improved
-    // BODY: kernel panic.
-    // BODY:
-    // BODY: Now that know the origin (userspace or kernelspace) in the panic, this should
-    // BODY: be easy, and we can finally have userspace stack dumps that actually work.
-    let stackdump_source = None;
-
     // Then print the stack
-    if let Some(sds) = stackdump_source {
-        unsafe {
-            // this is unsafe, caller must check safety
-            crate::stack::dump_stack(&sds, elf_and_st)
-        }
-    } else {
-        crate::stack::KernelStack::dump_current_stack(elf_and_st)
+    match panic_origin {
+        PanicOrigin::UserspaceFault { userspace_hardware_context: register, .. } =>
+            unsafe {
+                // Safety: Hmm..
+                crate::stack::dump_stack(&crate::stack::StackDumpSource::new(register.esp, register.ebp, register.eip), elf_and_st)
+            },
+        _ => crate::stack::KernelStack::dump_current_stack(elf_and_st)
     }
 
     // Display the infamous "Blue Screen Of Death"
