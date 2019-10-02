@@ -1,5 +1,5 @@
 //! GPT definition module.
-//! 
+//!
 //! Specs: https://web.archive.org/web/20190822022034/https://uefi.org/sites/default/files/resources/UEFI_Spec_2_8_final.pdf
 
 use uuid::Uuid;
@@ -7,13 +7,13 @@ use uuid::Uuid;
 use byteorder::{ByteOrder, LE};
 use static_assertions::assert_eq_size;
 
-use storage_device::Block;
 use storage_device::StorageDevice;
-use storage_device::StorageDeviceResult;
 
 use crc::{crc32, Hasher32};
 
-use core::fmt;
+use core::fmt::{self, Debug};
+
+use super::{BLOCK_SIZE, BLOCK_SIZE_U64};
 
 /// A raw uuid representation.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -260,10 +260,10 @@ impl GPTHeader {
     pub const MAGIC: u64 = 0x5452415020494645;
 
     /// Read the GPT header from the disk
-    pub fn from_storage_device(storage_device: &mut dyn StorageDevice, lba_index: u64) -> StorageDeviceResult<Self> {
+    pub fn from_storage_device<E: Debug>(storage_device: &mut dyn StorageDevice<Error = E>, lba_index: u64) -> Result<Self, E> {
         let mut data = [0x0; 0x5C];
 
-        storage_device.read(lba_index * Block::LEN_U64, &mut data)?;
+        storage_device.read(lba_index * BLOCK_SIZE_U64, &mut data)?;
 
         Ok(Self::from_bytes(data))
     }
@@ -334,9 +334,9 @@ impl GPTHeader {
 }
 
 /// Manage partition of a IStorage.
-pub struct PartitionManager<'a> {
+pub struct PartitionManager<'a, E> {
     /// The IStorage used.
-    inner: &'a mut dyn StorageDevice,
+    inner: &'a mut dyn StorageDevice<Error = E>,
 }
 
 /// Compute the CRC32 of a given slice.
@@ -370,20 +370,20 @@ pub fn lba_to_cls(disk_lba: u64, head_count: u64, sector_count: u64) -> (u8, u8,
     )
 }
 
-impl<'a> PartitionManager<'a> {
+impl<'a, E: Debug> PartitionManager<'a, E> {
     /// Create a new partition manager.
-    pub fn new(inner: &'a mut dyn StorageDevice) -> Self {
+    pub fn new(inner: &'a mut dyn StorageDevice<Error = E>) -> Self {
         PartitionManager { inner }
     }
 
     /// Create a protective MBR
-    pub fn create_protective_mbr(&mut self) -> StorageDeviceResult<()> {
-        let mut mbr = [0x0; Block::LEN];
+    pub fn create_protective_mbr(&mut self) -> Result<(), E> {
+        let mut mbr = [0x0; BLOCK_SIZE];
 
         let partition_offset = 1;
         let partition_number = 1;
         let head_count = 64;
-        let mut sector_count = self.inner.len()? / Block::LEN_U64;
+        let mut sector_count = self.inner.len()? / BLOCK_SIZE_U64;
         if sector_count > u64::from(u32::max_value()) {
             sector_count = u64::from(u32::max_value());
         }
@@ -425,9 +425,9 @@ impl<'a> PartitionManager<'a> {
     }
 
     /// Initialize a IStorage partition table.
-    pub fn initialize(&mut self) -> StorageDeviceResult<()> {
+    pub fn initialize(&mut self) -> Result<(), E> {
         self.create_protective_mbr()?;
-        let sector_count = self.inner.len()? / Block::LEN_U64;
+        let sector_count = self.inner.len()? / BLOCK_SIZE_U64;
 
         assert!(
             sector_count > 34,
@@ -484,7 +484,7 @@ impl<'a> PartitionManager<'a> {
 
             let i = (i * core::mem::size_of::<GPTPartitionEntry>()) as u64;
             self.inner.write(
-                primary_gpt_header.partition_table_start * Block::LEN_U64 + i,
+                primary_gpt_header.partition_table_start * BLOCK_SIZE_U64 + i,
                 &raw_partition,
             )?;
             partition_table_digest.write(&raw_partition);
@@ -498,7 +498,7 @@ impl<'a> PartitionManager<'a> {
 
         // Time to write all headers now
         self.inner.write(
-            primary_gpt_header.current_lba * Block::LEN_U64,
+            primary_gpt_header.current_lba * BLOCK_SIZE_U64,
             &primary_gpt_header.write(true),
         )?;
 
@@ -508,20 +508,20 @@ impl<'a> PartitionManager<'a> {
         primary_gpt_header.partition_table_start = sector_count - 33;
         primary_gpt_header.update_header_crc();
         self.inner.write(
-            primary_gpt_header.current_lba * Block::LEN_U64,
+            primary_gpt_header.current_lba * BLOCK_SIZE_U64,
             &primary_gpt_header.write(true),
         )?;
         self.inner.write(
-            primary_gpt_header.partition_table_start * Block::LEN_U64,
+            primary_gpt_header.partition_table_start * BLOCK_SIZE_U64,
             &main_partition_bytes,
         )
     }
 }
 
 /// Iterator over GPT partitions
-pub struct PartitionIterator<'a> {
+pub struct PartitionIterator<'a, E> {
     /// The IStorage used.
-    inner: &'a mut dyn StorageDevice,
+    inner: &'a mut dyn StorageDevice<Error = E>,
 
     /// Partition sector start.
     partition_table_start: u64,
@@ -536,9 +536,9 @@ pub struct PartitionIterator<'a> {
     position: u64,
 }
 
-impl<'a> PartitionIterator<'a> {
+impl<'a, E: Debug> PartitionIterator<'a, E> {
     /// Create a new partition iterator.
-    pub fn new(inner: &'a mut dyn StorageDevice) -> StorageDeviceResult<Self> {
+    pub fn new(inner: &'a mut dyn StorageDevice<Error = E>) -> Result<Self, E> {
         let mut res = PartitionIterator {
             inner,
             partition_table_start: 0,
@@ -556,14 +556,14 @@ impl<'a> PartitionIterator<'a> {
     }
 }
 
-impl<'a> Iterator for PartitionIterator<'a> {
-    type Item = StorageDeviceResult<GPTPartitionEntry>;
+impl<'a, E: Debug> Iterator for PartitionIterator<'a, E> {
+    type Item = Result<GPTPartitionEntry, E>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.position < self.partition_entry_count {
             let mut partition_data = [0x0; core::mem::size_of::<GPTPartitionEntry>()];
             if let Err(error) = self.inner.read(
-                self.partition_table_start * Block::LEN_U64
+                self.partition_table_start * BLOCK_SIZE_U64
                     + self.position * self.partition_entry_size,
                 &mut partition_data,
             ) {
