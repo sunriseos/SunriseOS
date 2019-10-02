@@ -56,7 +56,7 @@
 //! [`Thread`]: self::threads::Thread
 //! [`thread_trampoline`]: self::threads::thread_trampoline
 
-use crate::types::Thread as ThreadHandle;
+use crate::types::{Thread as ThreadHandle, Handle};
 use crate::syscalls;
 use crate::error::Error;
 use crate::error::KernelError;
@@ -373,7 +373,9 @@ impl Drop for Thread {
 /// * save a pointer to it in its [TLS].
 /// * perform copy of `.tdata` and `.tbss` for the main thread.
 #[no_mangle] // called from asm
-pub extern fn init_main_thread(handle: ThreadHandle) {
+pub extern fn init_main_thread(handle: u32) {
+    let handle = ThreadHandle(Handle::new(handle));
+
     // save the handle in our context
     MAIN_THREAD_CONTEXT.thread_handle.call_once(|| handle);
     // save the address of our context in our TLS region

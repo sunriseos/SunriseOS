@@ -365,8 +365,8 @@ fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize, arg1: usize, arg2: 
         push $0     // Entrypoint
 
         // Clean up all registers. Also setup arguments.
-        mov ecx, $2
-        mov edx, $3
+        // mov ecx, arg1
+        // mov edx, arg2
         mov eax, 0
         mov ebx, 0
         mov ebp, 0
@@ -374,7 +374,7 @@ fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize, arg1: usize, arg2: 
         mov esi, 0
 
         iretd
-        " :: "r"(ep), "r"(userspace_stack_ptr), "r"(arg1), "r"(arg2) :
+        " :: "r"(ep), "r"(userspace_stack_ptr), "{ecx}"(arg1), "{edx}"(arg2) :
              /* Prevent using eax as input, it's used early. */ "eax" : "intel", "volatile");
     }
 
