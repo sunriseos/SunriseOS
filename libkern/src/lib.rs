@@ -1,6 +1,7 @@
 //! Types shared by user and kernel
 
 #![no_std]
+#![cfg_attr(feature = "rustc-dep-of-std", feature(staged_api))]
 #![recursion_limit="128"]
 
 // rustc warnings
@@ -16,6 +17,7 @@
 // rustdoc warnings
 #![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
 #![deny(intra_doc_link_resolution_failure)]
+//rustc-dep-of-std
 
 #[macro_use]
 extern crate sunrise_libutils;
@@ -370,6 +372,8 @@ macro_rules! syscalls {
         ---
         $max_svc_ident:ident = $max_svc_id:expr
     ) => {
+
+        #[cfg_attr(feature = "rustc-dep-of-std", stable(feature = "rust1", since = "1.0.0"))]
         pub mod $byid {
             //! Syscall numbers
             //!
@@ -380,10 +384,12 @@ macro_rules! syscalls {
 
             $(
                 #[allow(non_upper_case_globals)]
+                #[cfg_attr(feature = "rustc-dep-of-std", stable(feature = "rust1", since = "1.0.0"))]
                 pub const $name: usize = $id;
             )*
 
             #[allow(non_upper_case_globals)]
+            #[cfg_attr(feature = "rustc-dep-of-std", stable(feature = "rust1", since = "1.0.0"))]
             pub const $max_svc_ident: usize = $max_svc_id;
         }
         lazy_static! {
