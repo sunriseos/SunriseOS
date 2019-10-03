@@ -565,7 +565,8 @@ impl ProcessStruct {
         // Initialize handle table - Done in the new function in SunriseOS.
         let first_thread = ThreadStruct::new_locked(this, &mut *statelock, this.entrypoint, stack_addr + stack_size, None)?;
         // InitForUser(), need to figure out what this does
-        this.phandles.lock().add_handle(Arc::new(Handle::Thread(first_thread.clone())));
+        // This is actually done by ThreadStruct::new_locked for us:
+        // this.phandles.lock().add_handle(Arc::new(Handle::Thread(first_thread.clone())));
         // SetEntryArguments - done in ThreadStruct::start for us.
 
         // Set to new state.

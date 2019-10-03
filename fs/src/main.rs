@@ -73,7 +73,7 @@ kip_header!(HEADER = sunrise_libuser::caps::KipHeader {
     default_cpu_core: 0,
     flags: 0,
     reserved: 0,
-    stack_page_count: 16,
+    stack_page_count: 32,
 });
 
 capabilities!(CAPABILITIES = Capabilities {
