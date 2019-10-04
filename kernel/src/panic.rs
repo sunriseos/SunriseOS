@@ -187,7 +187,11 @@ pub fn kernel_panic(panic_origin: &PanicOrigin) -> ! {
     match panic_origin {
         PanicOrigin::UserspaceFault { userspace_hardware_context: register, .. } =>
             unsafe {
-                // Safety: Hmm..
+                // TODO: Dump stack in a thread-safe way.
+                // BODY: dump_stack should allow reading the stack in a
+                // BODY: thread-safe way through the use of volatile reads. This
+                // BODY: would allow having a totally safe dump_stack function
+                // BODY: that can be used at will.
                 crate::stack::dump_stack(&crate::stack::StackDumpSource::new(register.esp, register.ebp, register.eip), elf_and_st)
             },
         _ => crate::stack::KernelStack::dump_current_stack(elf_and_st)
