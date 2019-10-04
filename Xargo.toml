@@ -12,7 +12,7 @@ stage = 1
 path = "/home/thog/rust-sunrise/src/libstd/"
 
 [patch.crates-io.rustc-std-workspace-core]
-path = "../rust-sunrise/src/tools/rustc-std-workspace-core"
+path = "/home/thog/rust-sunrise/src/tools/rustc-std-workspace-core"
 
 [patch.crates-io.libc]
 git = "https://github.com/sunriseos/libc.git"
@@ -21,7 +21,3 @@ features = ['align']
 
 [patch.crates-io.sunrise-libuser]
 path = "/home/thog/SunriseOS/libuser"
-
-#[patch.crates-io.compiler_builtins]
-#git = "https://github.com/sunriseos/compiler-builtins.git"
-#branch = "sunrise"
