@@ -425,7 +425,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "libfat"
 version = "0.1.0"
-source = "git+https://github.com/sunriseos/libfat.git#dbceaf58d8d8e9838f1ba920ccb8793106da08d9"
+source = "git+https://github.com/sunriseos/libfat.git#433cc67bea1187ddf4af7130109ff5a1ad8a0722"
 dependencies = [
  "arrayvec 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -687,7 +687,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "storage_device"
 version = "1.0.0"
-source = "git+https://github.com/sunriseos/storage_device.git#fd46a0e43cdc533eb3930de4a4da17a1c0314c70"
+source = "git+https://github.com/sunriseos/storage_device.git#b6ddcf03db0ffb6f2df4778a4fe0043f77a99610"
 dependencies = [
  "lru 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)",
  "plain 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
