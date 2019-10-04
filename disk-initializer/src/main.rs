@@ -25,7 +25,9 @@ mod gpt;
 
 use gpt::{PartitionIterator, PartitionManager};
 
+/// Size of a block.
 const BLOCK_SIZE: usize = 512;
+/// Size of an AHCI block in u64.
 const BLOCK_SIZE_U64: u64 = BLOCK_SIZE as u64;
 
 

@@ -6,16 +6,12 @@ use crate::LibUserResult;
 use sunrise_libuser::error::{Error, FileSystemError};
 use storage_device::{BlockDevice, StorageDevice};
 use storage_device::storage_device::StorageBlockDevice;
-use storage_device::cached_block_device::CachedBlockDevice;
-use sunrise_libutils::align_down;
 use crate::interface::filesystem::FileOperations;
 
 use alloc::sync::Arc;
 use alloc::boxed::Box;
 use spin::Mutex;
 use core::fmt::Debug;
-
-use sunrise_libutils::align_up;
 
 /// This is the interface for a raw device, usually a block device.
 pub trait IStorage : StorageDevice + Debug + Sync + Send {
@@ -77,11 +73,13 @@ impl IStorage for PartitionStorage {
     }
 }
 
+/// Wrapper around a [FileOperations] exposing a StorageDevice interface.
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct FileStorage<F: FileOperations>(F);
 
 impl<F: FileOperations> FileStorage<F> {
+    /// Creates a new StorageDevice from the given FileOperations.
     pub fn new(f: F) -> FileStorage<F> {
         FileStorage(f)
     }
@@ -92,7 +90,7 @@ impl<F: FileOperations> StorageDevice for FileStorage<F> {
 
     /// Read the data at the given ``offset`` in the storage into a given buffer.
     fn read(&mut self, offset: u64, mut buf: &mut [u8]) -> LibUserResult<()> {
-        while buf.len() != 0 {
+        while !buf.is_empty() {
             let data_read = FileOperations::read(&mut self.0, offset, buf)?;
             if data_read == 0 {
                 return Err(FileSystemError::OutOfRange.into());
@@ -129,7 +127,7 @@ where
     B: BlockDevice<Error = Error> + Send + Sync,
     B::Block: Send + Sync
 {
-    fn set_size(&mut self, new_size: u64) -> Result<(), B::Error> {
+    fn set_size(&mut self, _new_size: u64) -> Result<(), B::Error> {
         Err(FileSystemError::ReadOnlyFileSystem.into())
     }
 }

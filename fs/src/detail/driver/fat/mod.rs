@@ -3,7 +3,6 @@
 use alloc::boxed::Box;
 use crate::LibUserResult;
 use crate::interface::driver::FileSystemDriver;
-use crate::interface::storage::{PartitionStorage};
 use crate::interface::filesystem::FileSystemOperations;
 
 use libfat;

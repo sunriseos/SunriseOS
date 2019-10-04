@@ -32,10 +32,18 @@ pub struct PartitionManager<'a> {
     inner: &'a mut dyn IStorage<Error = Error>
 }
 
+/// Size of an MBR header.
 const MBR_LEN: usize = 512;
+/// Size of an MBR header in u64.
 const MBR_LEN_U64: u64 = MBR_LEN as u64;
-const BLOCK_LEN: usize = 512;
-const BLOCK_LEN_U64: u64 = BLOCK_LEN as u64;
+
+// TODO: Query block size from disk.
+// BODY: We shouldn't be hardcoding block sizes here. We should be querying them
+// BODY: from the disk.
+/// Size of a block.
+const BLOCK_SIZE: usize = 512;
+/// Size of a block in u64.
+const BLOCK_SIZE_U64: u64 = BLOCK_SIZE as u64;
 
 impl<'a> PartitionManager<'a> {
     /// Create a new partition manager.
@@ -153,7 +161,7 @@ impl<'a> PartitionManager<'a> {
             let raw_partition = partition.write();
 
             let i = (i * core::mem::size_of::<GPTPartitionEntry>()) as u64;
-            self.inner.write(primary_gpt_header.partition_table_start * BLOCK_LEN_U64 + i, &raw_partition)?;
+            self.inner.write(primary_gpt_header.partition_table_start * BLOCK_SIZE_U64 + i, &raw_partition)?;
             partition_table_digest.write(&raw_partition);
         }
 
@@ -164,15 +172,15 @@ impl<'a> PartitionManager<'a> {
         primary_gpt_header.update_header_crc();
 
         // Time to write all headers now
-        self.inner.write(primary_gpt_header.current_lba * BLOCK_LEN_U64, &primary_gpt_header.write(true))?;
+        self.inner.write(primary_gpt_header.current_lba * BLOCK_SIZE_U64, &primary_gpt_header.write(true))?;
 
         // AND finally, setup and write the backup GPT
         primary_gpt_header.current_lba = sector_count - 1;
         primary_gpt_header.backup_lba = 1;
         primary_gpt_header.partition_table_start = sector_count - 33;
         primary_gpt_header.update_header_crc();
-        self.inner.write(primary_gpt_header.current_lba * BLOCK_LEN_U64, &primary_gpt_header.write(true))?;
-        self.inner.write(primary_gpt_header.partition_table_start * BLOCK_LEN_U64, &main_partition_bytes)?;
+        self.inner.write(primary_gpt_header.current_lba * BLOCK_SIZE_U64, &primary_gpt_header.write(true))?;
+        self.inner.write(primary_gpt_header.partition_table_start * BLOCK_SIZE_U64, &main_partition_bytes)?;
 
         self.inner.flush()
     }
@@ -231,7 +239,7 @@ impl<'a> Iterator for PartitionIterator<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         if self.position < self.partition_entry_count {
             let mut partition_data = [0x0; core::mem::size_of::<GPTPartitionEntry>()];
-            if let Err(error) = self.inner.read(self.partition_table_start * BLOCK_LEN_U64 + self.position * self.partition_entry_size, &mut partition_data) {
+            if let Err(error) = self.inner.read(self.partition_table_start * BLOCK_SIZE_U64 + self.position * self.partition_entry_size, &mut partition_data) {
                 return Some(Err(error));
             }
 
@@ -268,8 +276,8 @@ impl FileSystemProxy {
         if let Some(partition) = partition_option {
             let partition = partition?;
 
-            let partition_start = partition.first_lba * BLOCK_LEN_U64;
-            let partition_len = (partition.last_lba * BLOCK_LEN_U64) - partition_start;
+            let partition_start = partition.first_lba * BLOCK_SIZE_U64;
+            let partition_len = (partition.last_lba * BLOCK_SIZE_U64) - partition_start;
 
             let storage = PartitionStorage::new(storage, partition_start, partition_len);
             return DRIVER_MANAGER.lock().construct_filesystem_from_disk_partition(disk_id, partition_id, storage);
@@ -293,8 +301,8 @@ impl FileSystemProxy {
         if let Some(partition) = partition_option {
             let partition = partition?;
 
-            let partition_start = partition.first_lba * BLOCK_LEN_U64;
-            let partition_len = (partition.last_lba * BLOCK_LEN_U64) - partition_start;
+            let partition_start = partition.first_lba * BLOCK_SIZE_U64;
+            let partition_len = (partition.last_lba * BLOCK_SIZE_U64) - partition_start;
 
             let storage = PartitionStorage::new(storage, partition_start, partition_len);
             return DRIVER_MANAGER.lock().format_disk_partition(storage, filesytem_type);

@@ -3,7 +3,6 @@
 use crate::LibUserResult;
 use sunrise_libuser::error::{Error, FileSystemError};
 use super::error::from_driver;
-use crate::interface::storage::PartitionStorage;
 use crate::interface::filesystem::*;
 
 use alloc::boxed::Box;

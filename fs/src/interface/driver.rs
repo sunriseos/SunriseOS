@@ -6,7 +6,6 @@ use alloc::boxed::Box;
 use sunrise_libuser::fs::FileSystemType;
 use sunrise_libuser::error::Error;
 use crate::LibUserResult;
-use super::storage::PartitionStorage;
 use super::filesystem::FileSystemOperations;
 use storage_device::StorageDevice;
 

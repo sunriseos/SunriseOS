@@ -18,7 +18,7 @@ use storage_device::cached_block_device::CachedBlockDevice;
 use sunrise_libuser::fs::{DiskId, FileSystemType, PartitionId};
 use sunrise_libuser::ahci::*;
 use sunrise_libuser::ahci::Block as AhciBlock;
-use sunrise_libuser::error::{AhciError, Error, FileSystemError};
+use sunrise_libuser::error::{Error, FileSystemError};
 
 use lazy_static::lazy_static;
 use alloc::sync::{Arc, Weak};
@@ -29,13 +29,16 @@ use hashbrown::HashMap;
 /// A type to let clippy slide over it.
 type PartitionHashMap<T> = HashMap<DiskId, HashMap<PartitionId, Weak<Mutex<T>>>>;
 
+/// A boxed IStorage using the proper Error type.
+type BoxedIStorage = Box<dyn IStorage<Error = Error>>;
+
 /// Instance handling drivers registration and usage.
 pub struct DriverManager {
     /// The registry of the drivers availaible.
     registry: Vec<Box<dyn FileSystemDriver>>,
 
     /// The drives actually opened.
-    drives: HashMap<DiskId, Arc<Mutex<Box<dyn IStorage<Error = Error>>>>>,
+    drives: HashMap<DiskId, Arc<Mutex<BoxedIStorage>>>,
 
     /// The partitions opened in drives.
     partitions: PartitionHashMap<Box<dyn FileSystemOperations>>,
@@ -62,7 +65,7 @@ impl DriverManager {
     }
 
     /// Add a new drive to the open hashmap.
-    pub fn add_opened_drive(&mut self, disk_id: DiskId, drive: Arc<Mutex<Box<dyn IStorage<Error = Error>>>>) {
+    pub fn add_opened_drive(&mut self, disk_id: DiskId, drive: Arc<Mutex<BoxedIStorage>>) {
         self.drives.insert(disk_id, drive);
         self.partitions.insert(disk_id, HashMap::new());
     }
@@ -76,7 +79,7 @@ impl DriverManager {
 
         for disk_id in 0..disk_count {
             let ahci_disk = self.ahci_interface.get_disk(disk_id)?;
-            let device = Arc::new(Mutex::new(Box::new(StorageBlockDevice::new(CachedBlockDevice::new(AhciDiskStorage::new(ahci_disk), 0x100))) as Box<dyn IStorage<Error = Error>>));
+            let device = Arc::new(Mutex::new(Box::new(StorageBlockDevice::new(CachedBlockDevice::new(AhciDiskStorage::new(ahci_disk), 0x100))) as BoxedIStorage));
             self.add_opened_drive(disk_id, device);
         }
 
@@ -84,7 +87,7 @@ impl DriverManager {
     }
 
     /// Open a AHCI disk as a IStorage.
-    pub fn open_disk_storage(&mut self, disk_id: DiskId) -> LibUserResult<Arc<Mutex<Box<dyn IStorage<Error = Error>>>>> {
+    pub fn open_disk_storage(&mut self, disk_id: DiskId) -> LibUserResult<Arc<Mutex<BoxedIStorage>>> {
         self.drives.get(&disk_id).ok_or_else(|| FileSystemError::DiskNotFound.into()).map(|arc| arc.clone())
     }
 

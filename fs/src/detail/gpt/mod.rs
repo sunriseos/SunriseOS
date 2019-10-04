@@ -11,8 +11,7 @@ use crate::LibUserResult;
 use core::fmt;
 use sunrise_libuser::error::Error;
 
-const BLOCK_SIZE: usize = 512;
-const BLOCK_SIZE_U64: u64 = BLOCK_SIZE as u64;
+use super::BLOCK_SIZE_U64;
 
 /// A raw uuid representation.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
