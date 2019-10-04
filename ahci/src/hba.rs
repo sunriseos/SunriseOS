@@ -826,7 +826,7 @@ impl Px {
             // 48 bits
             fis.command.write(ATA_CMD_READ_DMA_EXT);
             fis.countl.write(sector_count as u8); // 0000h means 65536 sectors
-            fis.counth.write((sector_count << 8) as u8);
+            fis.counth.write((sector_count >> 8) as u8);
             fis.lba0.write(lba as u8);
             fis.lba1.write((lba >> 8) as u8);
             fis.lba2.write((lba >> 16) as u8);
@@ -926,7 +926,7 @@ impl Px {
             // 48 bits
             fis.command.write(ATA_CMD_WRITE_DMA_EXT);
             fis.countl.write(sector_count as u8); // 0000h means 65536 sectors
-            fis.counth.write((sector_count << 8) as u8);
+            fis.counth.write((sector_count >> 8) as u8);
             fis.lba0.write(lba as u8);
             fis.lba1.write((lba >> 8) as u8);
             fis.lba2.write((lba >> 16) as u8);
@@ -1142,6 +1142,7 @@ impl CmdTable {
         while length > 0 {
             let (mut phys_addr, base_addr, mut phys_len) = query_physical_address(temp_buffer_addr)?;
             let phys_off = temp_buffer_addr as usize - base_addr;
+            temp_buffer_addr = base_addr + phys_len;
             phys_addr += phys_off;
             phys_len -= phys_off;
             // divide into 4M regions.
@@ -1160,7 +1161,6 @@ impl CmdTable {
                 index += 1;
                 // also decrement total length.
                 length -= region_len;
-                temp_buffer_addr += region_len;
             }
         }
         // Interrupt on Completion on the last PRDT entry
