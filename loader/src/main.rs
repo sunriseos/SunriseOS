@@ -39,7 +39,7 @@ use sunrise_libuser::fs::{DirectoryEntry, DirectoryEntryType, FileSystemPath, IF
 use sunrise_libuser::{kip_header, capabilities};
 use sunrise_libuser::ipc::server::{port_handler};
 use sunrise_libuser::futures::{WaitableManager, WorkQueue};
-use sunrise_libuser::error::{Error, LoaderError, PmError};
+use sunrise_libuser::error::{Error, LoaderError, PmError, KernelError};
 use sunrise_libuser::ldr::ILoaderInterfaceAsync;
 use sunrise_libuser::syscalls::{self, map_process_memory};
 use sunrise_libuser::types::{Pid, Process};
@@ -237,12 +237,16 @@ impl ILoaderInterfaceAsync for LoaderIface {
                 .ok_or(PmError::PidNotFound)?.0).as_ref_static();
             loop {
                 process_wait.wait_async(workqueue.clone()).await?;
-                let lock = PROCESSES.lock();
+                let mut lock = PROCESSES.lock();
                 let process = lock.get(&pid)
                     .ok_or(PmError::PidNotFound)?;
-                process.reset_signal()?;
+                match process.reset_signal() {
+                    Ok(()) | Err(Error::Kernel(KernelError::InvalidState, _)) => (),
+                    Err(err) => return Err(err.into())
+                };
+
                 if process.state()? == ProcessState::Exited {
-                    PROCESSES.lock().remove(&pid);
+                    lock.remove(&pid);
                     // TODO: Return exit state.
                     return Ok(0);
                 }
