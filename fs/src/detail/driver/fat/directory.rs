@@ -1,7 +1,7 @@
 //! FAT filesystem implementation of DirectoryOperations
 use crate::LibUserResult;
-use sunrise_libuser::error::FileSystemError;
-use crate::interface::storage::PartitionStorage;
+use sunrise_libuser::error::{Error, FileSystemError};
+use storage_device::StorageDevice;
 use crate::interface::filesystem::*;
 
 use libfat::directory::dir_entry::DirectoryEntry as FatDirectoryEntry;
@@ -10,6 +10,7 @@ use super::error::from_driver;
 use core::fmt;
 use spin::Mutex;
 use alloc::sync::Arc;
+use alloc::boxed::Box;
 
 use sunrise_libuser::fs::{DirectoryEntry, DirectoryEntryType};
 use libfat::FileSystemIterator;
@@ -43,7 +44,7 @@ pub struct DirectoryInterface {
     base_path: ArrayString<[u8; PATH_LEN]>,
 
     /// libfat filesystem interface.
-    inner_fs: Arc<Mutex<libfat::filesystem::FatFileSystem<PartitionStorage>>>,
+    inner_fs: Arc<Mutex<libfat::filesystem::FatFileSystem<Box<dyn StorageDevice<Error = Error> + Send>>>>,
 
     /// The iterator used to iter over libfat's directory entries.
     internal_iter: FatDirectoryEntryIterator,
@@ -66,7 +67,7 @@ impl fmt::Debug for DirectoryInterface {
 
 impl<'a> DirectoryInterface {
     /// Create a new DirectoryInterface.
-    pub fn new(base_path: ArrayString<[u8; PATH_LEN]>, inner_fs: Arc<Mutex<libfat::filesystem::FatFileSystem<PartitionStorage>>>, internal_iter: FatDirectoryEntryIterator, filter_fn: fn(&FatDirectoryEntry) -> bool, entry_count: u64) -> Self {
+    pub fn new(base_path: ArrayString<[u8; PATH_LEN]>, inner_fs: Arc<Mutex<libfat::filesystem::FatFileSystem<Box<dyn StorageDevice<Error = Error> + Send>>>>, internal_iter: FatDirectoryEntryIterator, filter_fn: fn(&FatDirectoryEntry) -> bool, entry_count: u64) -> Self {
         DirectoryInterface { base_path, inner_fs, internal_iter, filter_fn, entry_count }
     }
 

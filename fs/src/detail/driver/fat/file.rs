@@ -1,22 +1,23 @@
 //! FAT filesystem implementation of FileOperations
 use crate::LibUserResult;
 use super::error::from_driver;
-use crate::interface::storage::PartitionStorage;
+use storage_device::StorageDevice;
 use crate::interface::filesystem::*;
 
 use libfat::directory::File;
 
 use spin::Mutex;
 use alloc::sync::Arc;
+use alloc::boxed::Box;
 
-use sunrise_libuser::error::FileSystemError;
+use sunrise_libuser::error::{Error, FileSystemError};
 
 use core::fmt;
 
 /// A libfat file interface implementing ``FileOperations``.
 pub struct FileInterface {
     /// libfat filesystem interface.
-    inner_fs: Arc<Mutex<libfat::filesystem::FatFileSystem<PartitionStorage>>>,
+    inner_fs: Arc<Mutex<libfat::filesystem::FatFileSystem<Box<dyn StorageDevice<Error = Error> + Send>>>>,
 
     /// The libfat's directory entry of this file.
     file_inner: File,
@@ -37,7 +38,7 @@ impl fmt::Debug for FileInterface {
 
 impl FileInterface {
     /// Create a new FileInterface.
-    pub fn new(inner_fs: Arc<Mutex<libfat::filesystem::FatFileSystem<PartitionStorage>>>, file_inner: File, mode: FileModeFlags) -> Self {
+    pub fn new(inner_fs: Arc<Mutex<libfat::filesystem::FatFileSystem<Box<dyn StorageDevice<Error = Error> + Send>>>>, file_inner: File, mode: FileModeFlags) -> Self {
         FileInterface { inner_fs, file_inner, mode }
     }
 }

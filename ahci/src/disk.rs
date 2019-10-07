@@ -80,26 +80,34 @@ impl Disk {
         // body: If we want to make a multi-threaded implementation,
         // body: we will have to implement some logic to choose the slot.
         let command_slot_index = 0;
-        unsafe {
-            // safe: - we just mapped buffer, so it is valid memory,
-            //         and buffer_len is its length
-            //         otherwise mapping it would have failed.
-            //       - buffer[0..buffer_len] falls in a single mapping,
-            //         we just mapped it.
-            //       - command_slot_index is 0, which is always implemented (spec),
-            //         and we give the cmd_header and cmd_table of this index.
-            //       - px is initialised.
-            Px::read_dma(
-                buffer,
-                buffer_len,
-                lba,
-                sector_count,
-                self.px,
-                &mut self.cmd_list.slots[command_slot_index],
-                self.cmd_tables[command_slot_index].as_mut().unwrap(),
-                command_slot_index,
-                self.supports_48_bit
-            )?
+        let step = if !self.supports_48_bit {
+            256
+        } else {
+            65536
+        };
+
+        for sector_step in (0..sector_count).step_by(step) {
+            unsafe {
+                // safe: - we just mapped buffer, so it is valid memory,
+                //         and buffer_len is its length
+                //         otherwise mapping it would have failed.
+                //       - buffer[0..buffer_len] falls in a single mapping,
+                //         we just mapped it.
+                //       - command_slot_index is 0, which is always implemented (spec),
+                //         and we give the cmd_header and cmd_table of this index.
+                //       - px is initialised.
+                Px::read_dma(
+                    buffer.add(sector_step as usize * 512),
+                    buffer_len - sector_step as usize * 512,
+                    lba + sector_step,
+                    core::cmp::min(sector_count - sector_step, step as u64),
+                    self.px,
+                    &mut self.cmd_list.slots[command_slot_index],
+                    self.cmd_tables[command_slot_index].as_mut().unwrap(),
+                    command_slot_index,
+                    self.supports_48_bit
+                )?
+            }
         }
         Ok(())
     }

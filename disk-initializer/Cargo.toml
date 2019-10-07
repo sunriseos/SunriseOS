@@ -8,10 +8,11 @@ edition = "2018"
 
 [dependencies]
 log = "0.4.6"
-storage_device = { git = "https://github.com/Sunriseos/storage_device.git", default-features = false, features = ["std", "cached-block-device-nightly"] }
+storage_device = { git = "https://github.com/sunriseos/storage_device.git", default-features = false, features = ["std", "cached-block-device-nightly"] }
 libfat = { git = "https://github.com/sunriseos/libfat.git" }
 uuid = "0.7"
 plain = "0.2"
+env_logger = "0.7"
 
 [dependencies.static_assertions]
 version  = "0.3.1"

@@ -25,12 +25,12 @@ use spin::Mutex;
 /// This is the ipc interface for a raw device, usually a block device.
 pub struct Storage {
     /// The detail implementation of this ipc interface.
-    inner: Arc<Mutex<Box<dyn interface::storage::IStorage>>>
+    inner: Arc<Mutex<Box<dyn interface::storage::IStorage<Error = Error>>>>
 }
 
 impl Storage {
     /// Create a new instance of IStorage using a boxed detail.
-    pub fn new(inner: Arc<Mutex<Box<dyn interface::storage::IStorage>>>) -> Self {
+    pub fn new(inner: Arc<Mutex<Box<dyn interface::storage::IStorage<Error = Error>>>>) -> Self {
         Storage {
             inner
         }
@@ -79,7 +79,7 @@ impl IStorageServer for Storage {
     }
 
     fn get_size(&mut self, _manager: WorkQueue<'static>, ) -> Result<u64, Error> {
-        self.inner.lock().get_size()
+        self.inner.lock().len()
     }
 }
 

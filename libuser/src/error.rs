@@ -180,6 +180,9 @@ enum_with_val! {
         /// The given path is too long to be resolved.
         PathTooLong = 6003,
 
+        /// Attempted to modify a read-only filesystem.
+        ReadOnlyFileSystem = 6369,
+
         /// The access to a given resource has been denied.
         AccessDenied = 6400,
 

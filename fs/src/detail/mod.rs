@@ -1,5 +1,5 @@
 //! Detail module
-//! 
+//!
 //! Contains implementations of various trait defined in the interface module.
 
 use sunrise_libuser::fs::{DiskId, FileSystemType, PartitionId};
@@ -8,8 +8,7 @@ use alloc::sync::Arc;
 use crate::LibUserResult;
 use crate::interface::storage::{PartitionStorage, IStorage};
 use crate::interface::filesystem::FileSystemOperations;
-use storage_device::Block;
-use sunrise_libuser::error::{FileSystemError};
+use sunrise_libuser::error::{Error, FileSystemError};
 
 use crc::{crc32, Hasher32};
 use spin::Mutex;
@@ -30,12 +29,25 @@ use driver::DRIVER_MANAGER;
 /// Manage partition of a IStorage.
 pub struct PartitionManager<'a> {
     /// The IStorage used.
-    inner: &'a mut dyn IStorage
+    inner: &'a mut dyn IStorage<Error = Error>
 }
+
+/// Size of an MBR header.
+const MBR_LEN: usize = 512;
+/// Size of an MBR header in u64.
+const MBR_LEN_U64: u64 = MBR_LEN as u64;
+
+// TODO: Query block size from disk.
+// BODY: We shouldn't be hardcoding block sizes here. We should be querying them
+// BODY: from the disk.
+/// Size of a block.
+const BLOCK_SIZE: usize = 512;
+/// Size of a block in u64.
+const BLOCK_SIZE_U64: u64 = BLOCK_SIZE as u64;
 
 impl<'a> PartitionManager<'a> {
     /// Create a new partition manager.
-    pub fn new(inner: &'a mut dyn IStorage) -> Self {
+    pub fn new(inner: &'a mut dyn IStorage<Error = Error>) -> Self {
         PartitionManager { inner }
     }
 
@@ -53,12 +65,12 @@ impl<'a> PartitionManager<'a> {
 
     /// Create a protective MBR
     pub fn create_protective_mbr(&mut self) -> LibUserResult<()> {
-        let mut mbr = [0x0; Block::LEN];
+        let mut mbr = [0x0; MBR_LEN];
 
         let partition_offset = 1;
         let partition_number = 1;
         let head_count = 64;
-        let mut sector_count = self.inner.get_size()? / Block::LEN_U64;
+        let mut sector_count = self.inner.len()? / MBR_LEN_U64;
         if sector_count > u64::from(u32::max_value()) {
             sector_count = u64::from(u32::max_value());
         }
@@ -98,7 +110,7 @@ impl<'a> PartitionManager<'a> {
     /// Initialize a IStorage partition table.
     pub fn initialize(&mut self) -> LibUserResult<()> {
         self.create_protective_mbr()?;
-        let sector_count = self.inner.get_size()? / Block::LEN_U64;
+        let sector_count = self.inner.len()? / MBR_LEN_U64;
 
         assert!(sector_count > 34, "The storage is too small to hold a GPT partition schema");
 
@@ -147,9 +159,9 @@ impl<'a> PartitionManager<'a> {
 
         for (i, partition) in partition_table.iter().enumerate() {
             let raw_partition = partition.write();
-            
+
             let i = (i * core::mem::size_of::<GPTPartitionEntry>()) as u64;
-            self.inner.write(primary_gpt_header.partition_table_start * Block::LEN_U64 + i, &raw_partition)?;
+            self.inner.write(primary_gpt_header.partition_table_start * BLOCK_SIZE_U64 + i, &raw_partition)?;
             partition_table_digest.write(&raw_partition);
         }
 
@@ -160,15 +172,15 @@ impl<'a> PartitionManager<'a> {
         primary_gpt_header.update_header_crc();
 
         // Time to write all headers now
-        self.inner.write(primary_gpt_header.current_lba * Block::LEN_U64, &primary_gpt_header.write(true))?;
+        self.inner.write(primary_gpt_header.current_lba * BLOCK_SIZE_U64, &primary_gpt_header.write(true))?;
 
         // AND finally, setup and write the backup GPT
         primary_gpt_header.current_lba = sector_count - 1;
         primary_gpt_header.backup_lba = 1;
         primary_gpt_header.partition_table_start = sector_count - 33;
         primary_gpt_header.update_header_crc();
-        self.inner.write(primary_gpt_header.current_lba * Block::LEN_U64, &primary_gpt_header.write(true))?;
-        self.inner.write(primary_gpt_header.partition_table_start * Block::LEN_U64, &main_partition_bytes)?;
+        self.inner.write(primary_gpt_header.current_lba * BLOCK_SIZE_U64, &primary_gpt_header.write(true))?;
+        self.inner.write(primary_gpt_header.partition_table_start * BLOCK_SIZE_U64, &main_partition_bytes)?;
 
         self.inner.flush()
     }
@@ -178,7 +190,7 @@ impl<'a> PartitionManager<'a> {
 #[derive(Debug)]
 struct PartitionIterator<'a> {
     /// The IStorage used.
-    inner: &'a mut dyn IStorage,
+    inner: &'a mut dyn IStorage<Error = Error>,
 
     /// Partition sector start.
     partition_table_start: u64,
@@ -198,7 +210,7 @@ struct PartitionIterator<'a> {
 
 impl<'a> PartitionIterator<'a> {
     /// Create a new partition iterator.
-    pub fn new(inner: &'a mut dyn IStorage, block_at_free_entry: bool) -> LibUserResult<Self> {
+    pub fn new(inner: &'a mut dyn IStorage<Error = Error>, block_at_free_entry: bool) -> LibUserResult<Self> {
         let mut res = PartitionIterator {
             inner,
             partition_table_start: 0,
@@ -227,7 +239,7 @@ impl<'a> Iterator for PartitionIterator<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         if self.position < self.partition_entry_count {
             let mut partition_data = [0x0; core::mem::size_of::<GPTPartitionEntry>()];
-            if let Err(error) = self.inner.read(self.partition_table_start * Block::LEN_U64 + self.position * self.partition_entry_size, &mut partition_data) {
+            if let Err(error) = self.inner.read(self.partition_table_start * BLOCK_SIZE_U64 + self.position * self.partition_entry_size, &mut partition_data) {
                 return Some(Err(error));
             }
 
@@ -264,8 +276,8 @@ impl FileSystemProxy {
         if let Some(partition) = partition_option {
             let partition = partition?;
 
-            let partition_start = partition.first_lba * Block::LEN_U64;
-            let partition_len = (partition.last_lba * Block::LEN_U64) - partition_start;
+            let partition_start = partition.first_lba * BLOCK_SIZE_U64;
+            let partition_len = (partition.last_lba * BLOCK_SIZE_U64) - partition_start;
 
             let storage = PartitionStorage::new(storage, partition_start, partition_len);
             return DRIVER_MANAGER.lock().construct_filesystem_from_disk_partition(disk_id, partition_id, storage);
@@ -277,7 +289,7 @@ impl FileSystemProxy {
 
     /// Open a disk as a block device.
     /// This may fail if no partition table is found.
-    pub fn open_disk_storage(&mut self, disk_id: DiskId) -> LibUserResult<Arc<Mutex<Box<dyn IStorage>>>> {
+    pub fn open_disk_storage(&mut self, disk_id: DiskId) -> LibUserResult<Arc<Mutex<Box<dyn IStorage<Error = Error>>>>> {
         DRIVER_MANAGER.lock().open_disk_storage(disk_id)
     }
 
@@ -289,8 +301,8 @@ impl FileSystemProxy {
         if let Some(partition) = partition_option {
             let partition = partition?;
 
-            let partition_start = partition.first_lba * Block::LEN_U64;
-            let partition_len = (partition.last_lba * Block::LEN_U64) - partition_start;
+            let partition_start = partition.first_lba * BLOCK_SIZE_U64;
+            let partition_len = (partition.last_lba * BLOCK_SIZE_U64) - partition_start;
 
             let storage = PartitionStorage::new(storage, partition_start, partition_len);
             return DRIVER_MANAGER.lock().format_disk_partition(storage, filesytem_type);

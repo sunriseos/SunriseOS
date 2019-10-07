@@ -1,9 +1,8 @@
 //! IFileSystem implementation using libfat.
 
 use crate::LibUserResult;
-use sunrise_libuser::error::FileSystemError;
+use sunrise_libuser::error::{Error, FileSystemError};
 use super::error::from_driver;
-use crate::interface::storage::PartitionStorage;
 use crate::interface::filesystem::*;
 
 use alloc::boxed::Box;
@@ -19,6 +18,8 @@ use alloc::sync::Arc;
 
 use spin::Mutex;
 
+use storage_device::StorageDevice;
+
 use super::file::FileInterface;
 use super::directory::DirectoryInterface;
 use super::directory::DirectoryFilterPredicate;
@@ -30,7 +31,7 @@ use arrayvec::ArrayString;
 /// A wrapper arround libfat ``FatFileSystem`` implementing ``FileSystemOperations``.
 pub struct FatFileSystem {
     /// libfat filesystem interface.
-    inner: Arc<Mutex<libfat::filesystem::FatFileSystem<PartitionStorage>>>,
+    inner: Arc<Mutex<libfat::filesystem::FatFileSystem<Box<dyn StorageDevice<Error = Error> + Send>>>>,
 }
 
 impl Debug for FatFileSystem {
@@ -42,12 +43,12 @@ impl Debug for FatFileSystem {
 
 impl FatFileSystem {
     /// Create a new FAT filesystem instance.
-    pub fn new(inner: libfat::filesystem::FatFileSystem<PartitionStorage>) -> Self {
+    pub fn new(inner: libfat::filesystem::FatFileSystem<Box<dyn StorageDevice<Error = Error> + Send>>) -> Self {
         FatFileSystem { inner: Arc::new(Mutex::new(inner)) }
     }
 
     /// Construct a FAT filesystem instance with an IStorage.
-    pub fn from_storage(storage: PartitionStorage) -> LibUserResult<Self> {
+    pub fn from_storage(storage: Box<dyn StorageDevice<Error = Error> + Send>) -> LibUserResult<Self> {
         let filesystem = libfat::get_raw_partition(storage).map_err(from_driver)?;
         Ok(Self::new(filesystem))
     }

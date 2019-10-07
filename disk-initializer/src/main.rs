@@ -1,10 +1,10 @@
 //! Disk initializer application
-//! 
+//!
 //! This app is in charge of generating a valid disk image from a file name, a size and a template directory (containing files that should be on the disk image)
-//! 
+//!
 //! The disk image contains a standard GPT partition layout and a FAT filesystem.
 //! From the disk size, it chooses a FAT filesystem that may be appropriate to fit in it.
-//! 
+//!
 //! Usage: <disk_name> <disk_size> <template_path>
 use std::env;
 use std::fs::OpenOptions;
@@ -13,7 +13,7 @@ use std::io::prelude::*;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use storage_device::*;
+use storage_device::storage_device::{StorageDevice, StorageBlockDevice};
 
 use libfat;
 use libfat::FatFileSystemResult;
@@ -24,6 +24,12 @@ use libfat::directory::File as FatFile;
 mod gpt;
 
 use gpt::{PartitionIterator, PartitionManager};
+
+/// Size of a block.
+const BLOCK_SIZE: usize = 512;
+/// Size of an AHCI block in u64.
+const BLOCK_SIZE_U64: u64 = BLOCK_SIZE as u64;
+
 
 /// Write a std file to FAT filesystem.
 fn write_file_to_filesystem<S>(
@@ -69,6 +75,8 @@ fn write_tempate_to_filesystem<S>(filesystem: &FatFileSystem<S>, dir: &Path, fil
 }
 
 fn main() {
+    env_logger::init();
+
     if env::args().len() < 4 {
         println!("usage: <disk_name> <disk_size> <template_path>");
         std::process::exit(1);
@@ -98,8 +106,8 @@ fn main() {
     let partition_option = partition_iterator.nth(0).unwrap();
 
     let partition = partition_option.expect("Invalid partition while iterating");
-    let partition_start = partition.first_lba * Block::LEN_U64;
-    let partition_len = (partition.last_lba * Block::LEN_U64) - partition_start;
+    let partition_start = partition.first_lba * BLOCK_SIZE_U64;
+    let partition_len = (partition.last_lba * BLOCK_SIZE_U64) - partition_start;
 
     libfat::format_partition(
         system_device,
