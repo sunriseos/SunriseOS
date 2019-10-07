@@ -242,7 +242,7 @@ impl ILoaderInterfaceAsync for LoaderIface {
                     .ok_or(PmError::PidNotFound)?;
                 match process.reset_signal() {
                     Ok(()) | Err(Error::Kernel(KernelError::InvalidState, _)) => (),
-                    Err(err) => return Err(err.into())
+                    Err(err) => return Err(err)
                 };
 
                 if process.state()? == ProcessState::Exited {
