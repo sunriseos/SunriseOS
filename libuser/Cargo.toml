@@ -34,6 +34,7 @@ version = "0.4.10"
 features = ["nightly"]
 version = "0.5.0"
 
+[features]
 default = []
 disable-lang-items = []
 build-for-std-app = ["disable-lang-items"]
