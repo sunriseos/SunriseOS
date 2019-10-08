@@ -33,3 +33,10 @@ version = "0.4.10"
 [dependencies.hashbrown]
 features = ["nightly"]
 version = "0.5.0"
+
+[features]
+default = []
+disable-lang-items = []
+build-for-std-app = ["disable-lang-items"]
+rustc-dep-of-std = ["disable-lang-items"]
+raw = []
