@@ -7,4 +7,4 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-sunrise-libuser = { path = "../libuser", features = ["build-for-std-app"] }
+sunrise-libuser = { path = "../libuser", default-features = false, features = ["build-for-std-app"] }

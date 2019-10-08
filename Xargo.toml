@@ -1,23 +1,17 @@
 [dependencies.core]
 stage = 0
-path = "/home/thog/rust-sunrise/src/libcore/"
 
 [dependencies.alloc]
 stage = 0
-path = "/home/thog/rust-sunrise/src/liballoc/"
 features = ['compiler-builtins-mem']
 
 [target.i386-unknown-sunrise-user.dependencies.std]
 stage = 1
-path = "/home/thog/rust-sunrise/src/libstd/"
-
-[patch.crates-io.rustc-std-workspace-core]
-path = "/home/thog/rust-sunrise/src/tools/rustc-std-workspace-core"
 
 [patch.crates-io.libc]
 git = "https://github.com/sunriseos/libc.git"
 branch = "sunrise"
 features = ['align']
 
-[patch.crates-io.sunrise-libuser]
-path = "/home/thog/SunriseOS/libuser"
+[patch."https://github.com/sunriseos/sunriseos.git".sunrise-libuser]
+path = "libuser"
