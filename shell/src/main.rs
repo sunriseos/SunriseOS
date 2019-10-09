@@ -222,9 +222,9 @@ fn main() {
                     }
                 }
             }
-            /*"ls" => if let Err(error) = ls(&mut terminal, &filesystem, arguments.nth(0)) {
+            "ls" => if let Err(error) = ls(&mut terminal, &filesystem, arguments.nth(0)) {
                 let _ = writeln!(&mut terminal, "ls: {}", error);
-            },*/
+            },
             "test_threads" => terminal = test_threads(terminal),
             "test_divide_by_zero" => test_divide_by_zero(),
             "test_page_fault" => test_page_fault(),

@@ -34,8 +34,6 @@ extern crate sunrise_libutils;
 #[doc(hidden)]
 pub extern crate log as __log;
 
-//use swipc_gen::gen_ipc;
-
 pub mod argv;
 pub mod caps;
 pub mod syscalls;

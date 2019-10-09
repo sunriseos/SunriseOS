@@ -1,4 +1,4 @@
-/// Build script in charge of handling swipc-gen job
+//! Build script in charge of handling swipc-gen job
 
 use std::env;
 use std::fs::{self, File};

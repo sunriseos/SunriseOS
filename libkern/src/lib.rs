@@ -1,6 +1,7 @@
 //! Types shared by user and kernel
 
 #![no_std]
+// This feature is needed to reexport syscall definitions in the standard library.
 #![cfg_attr(feature = "rustc-dep-of-std", feature(staged_api))]
 #![recursion_limit="128"]
 
@@ -17,7 +18,6 @@
 // rustdoc warnings
 #![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
 #![deny(intra_doc_link_resolution_failure)]
-//rustc-dep-of-std
 
 #[macro_use]
 extern crate sunrise_libutils;
