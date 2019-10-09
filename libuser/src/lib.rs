@@ -85,7 +85,7 @@ pub use ::futures as futures_rs;
 
 /// Global allocator. Every implicit allocation in the rust liballoc library (for
 /// instance for Vecs, Arcs, etc...) are allocated with this allocator.
-#[cfg(any(all(target_os = "sunrise", not(test)), not(rustdoc)))]
+#[cfg(all(target_os = "sunrise", not(test), not(rustdoc)))]
 #[cfg_attr(feature = "lang-items", global_allocator)]
 pub static ALLOCATOR: allocator::Allocator = allocator::Allocator::new();
 
