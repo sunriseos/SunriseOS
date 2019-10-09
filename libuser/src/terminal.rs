@@ -74,9 +74,11 @@ impl Terminal {
         let my_font = font::parse(FONT)
             .expect("Failed parsing provided font");
 
-        let my_ascent        =  my_font.max_ascent(FONT_SIZE).unwrap() as usize;
-        let my_descent       = -my_font.max_descent(FONT_SIZE).unwrap() as usize;
-        let my_advance_width =  my_font.max_advance_width(FONT_SIZE).unwrap() as usize;
+        let v_metrics        = my_font.get_v_metrics(FONT_SIZE).unwrap();
+        let h_metrics        = my_font.get_h_metrics(my_font.lookup_glyph_id('A' as u32).unwrap(), FONT_SIZE).unwrap();
+        let my_ascent        =  v_metrics.ascent as usize;
+        let my_descent       = -v_metrics.descent as usize;
+        let my_advance_width =  h_metrics.advance_width as usize;
 
         let my_linespace = my_descent + my_ascent;
 
