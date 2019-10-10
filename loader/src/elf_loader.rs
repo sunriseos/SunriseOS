@@ -50,7 +50,7 @@ pub fn get_size(elf: &ElfFile<'_>) -> Result<usize, Error> {
                 debug!("VAddr has an offset of {} bytes", vaddr - expected_next);
                 size += vaddr - expected_next;
             } else if expected_next > vaddr {
-                error!("vaddr must be page-aligned");
+                error!("Overlapping segments: Expected segment start {:x}, got {:x}", expected_next, vaddr);
                 return Err(LoaderError::InvalidElf.into());
             }
         }

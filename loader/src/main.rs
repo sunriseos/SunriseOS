@@ -39,7 +39,7 @@ use sunrise_libuser::fs::{DirectoryEntry, DirectoryEntryType, FileSystemPath, IF
 use sunrise_libuser::{kip_header, capabilities};
 use sunrise_libuser::ipc::server::{port_handler};
 use sunrise_libuser::futures::{WaitableManager, WorkQueue};
-use sunrise_libuser::error::{Error, LoaderError, PmError};
+use sunrise_libuser::error::{Error, LoaderError, PmError, KernelError};
 use sunrise_libuser::ldr::ILoaderInterfaceAsync;
 use sunrise_libuser::syscalls::{self, map_process_memory};
 use sunrise_libuser::types::{Pid, Process};
@@ -48,7 +48,7 @@ use sunrise_libkern::MemoryPermissions;
 use sunrise_libuser::mem::{find_free_address, PAGE_SIZE};
 use sunrise_libutils::{align_up, div_ceil};
 
-use futures::future::FutureObj;
+use sunrise_libuser::futures_rs::future::FutureObj;
 use lazy_static::lazy_static;
 
 use spin::Mutex;
@@ -181,7 +181,7 @@ fn boot(fs: &IFileSystemProxy, titlename: &str, args: &[u8]) -> Result<Pid, Erro
     syscalls::set_process_memory_permission(&process, aslr_base + elf_size, args_size, MemoryPermissions::RW)?;
 
     debug!("Starting process.");
-    if let Err(err) = process.start(0, 0, PAGE_SIZE as u32 * 16) {
+    if let Err(err) = process.start(0, 0, PAGE_SIZE as u32 * 32) {
         error!("Failed to start titleid {}: {}", titlename, err);
         return Err(err)
     }
@@ -237,12 +237,16 @@ impl ILoaderInterfaceAsync for LoaderIface {
                 .ok_or(PmError::PidNotFound)?.0).as_ref_static();
             loop {
                 process_wait.wait_async(workqueue.clone()).await?;
-                let lock = PROCESSES.lock();
+                let mut lock = PROCESSES.lock();
                 let process = lock.get(&pid)
                     .ok_or(PmError::PidNotFound)?;
-                process.reset_signal()?;
+                match process.reset_signal() {
+                    Ok(()) | Err(Error::Kernel(KernelError::InvalidState, _)) => (),
+                    Err(err) => return Err(err)
+                };
+
                 if process.state()? == ProcessState::Exited {
-                    PROCESSES.lock().remove(&pid);
+                    lock.remove(&pid);
                     // TODO: Return exit state.
                     return Ok(0);
                 }

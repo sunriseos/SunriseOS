@@ -11,24 +11,6 @@ use crate::window::{Window, Color};
 use crate::error::Error;
 use crate::vi::ViInterfaceProxy;
 
-// TODO: Missing fminf in compiler-builtins for soft-float
-// BODY: See https://github.com/rust-lang/rust/issues/62729.
-// BODY:
-// BODY: As a workaround, we include the functions in libuser for now.
-/// Workaround rust-lang/rust#62729
-#[no_mangle]
-#[doc(hidden)]
-pub extern "C" fn fminf(x: f32, y: f32) -> f32 {
-    libm::fminf(x, y)
-}
-
-/// Workaround rust-lang/rust#62729
-#[no_mangle]
-#[doc(hidden)]
-pub extern "C" fn fmaxf(x: f32, y: f32) -> f32 {
-    libm::fmaxf(x, y)
-}
-
 /// Just an x and a y
 #[derive(Copy, Clone, Debug)]
 #[allow(clippy::missing_docs_in_private_items)]
@@ -92,9 +74,11 @@ impl Terminal {
         let my_font = font::parse(FONT)
             .expect("Failed parsing provided font");
 
-        let my_ascent        =  my_font.max_ascent(FONT_SIZE).unwrap() as usize;
-        let my_descent       = -my_font.max_descent(FONT_SIZE).unwrap() as usize;
-        let my_advance_width =  my_font.max_advance_width(FONT_SIZE).unwrap() as usize;
+        let v_metrics        = my_font.get_v_metrics(FONT_SIZE).unwrap();
+        let h_metrics        = my_font.get_h_metrics(my_font.lookup_glyph_id('A' as u32).unwrap(), FONT_SIZE).unwrap();
+        let my_ascent        =  v_metrics.ascent as usize;
+        let my_descent       = -v_metrics.descent as usize;
+        let my_advance_width =  h_metrics.advance_width as usize;
 
         let my_linespace = my_descent + my_ascent;
 

@@ -41,12 +41,12 @@ use sunrise_libutils::{align_up, cast_mut};
 
 use crate::syscalls::query_memory;
 
-/*
+
 // If we aren't providing the crt0, we should defer to the CRT0's get_argc()/
 // get_argv(). This is especially the case when two versions of the libuser
 // exist in the binary simultaneously (such as one included in libstd and one
 // used as a direct dependency).
-#[cfg(not(feature = "crt0"))]
+#[cfg(feature = "build-for-std-app")]
 extern {
     /// Get the number of arguments in argv.
     #[link_name = "__libuser_get_argc"]
@@ -56,9 +56,9 @@ extern {
     #[link_name = "__libuser_get_argv"]
     pub fn argv() -> *const *const u8;
 }
-*/
+
 /// Get the number of arguments in argv.
-//#[cfg(feature = "crt0")]
+#[cfg(not(feature = "build-for-std-app"))]
 #[export_name = "__libuser_get_argc"]
 pub extern fn argc() -> isize {
     __libuser_get_args().1
@@ -66,7 +66,7 @@ pub extern fn argc() -> isize {
 
 /// Get the argument array. It is guaranteed to have at least `argc()`
 /// elements.
-//#[cfg(feature = "crt0")]
+#[cfg(not(feature = "build-for-std-app"))]
 #[export_name = "__libuser_get_argv"]
 pub extern fn argv() -> *const *const u8 {
     __libuser_get_args().0 as *const *const u8
@@ -77,7 +77,7 @@ pub extern fn argv() -> *const *const u8 {
 /// is safe to call from multiple threads - accesses are synchronized.
 ///
 /// First returned value is the argv, second value is the argc.
-//#[cfg(feature = "crt0")]
+#[cfg(not(feature = "build-for-std-app"))]
 #[allow(clippy::cognitive_complexity)]
 fn __libuser_get_args() -> (usize, isize) {
     use sunrise_libkern::MemoryPermissions;

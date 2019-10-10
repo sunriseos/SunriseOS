@@ -12,6 +12,5 @@ spin = "0.5"
 log = "0.4.6"
 sunrise-libuser = { path = "../libuser" }
 sunrise-libutils = { path = "../libutils" }
-futures-preview = { version = "0.3.0-alpha.16", default-features = false, features = ["nightly", "alloc"] }
 core = { package = "core-futures-tls", version = "0.1" }
 lazy_static = "1.3"

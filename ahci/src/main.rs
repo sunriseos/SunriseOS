@@ -80,7 +80,7 @@ use sunrise_libuser::ipc::server::{port_handler, new_session_wrapper};
 use spin::Mutex;
 use sunrise_libuser::syscalls;
 use sunrise_libuser::ahci::{AhciInterface as IAhciInterface, IDiskProxy, IDisk as _};
-use futures::future::FutureObj;
+use sunrise_libuser::futures_rs::future::FutureObj;
 
 /// Array of discovered disk.
 ///

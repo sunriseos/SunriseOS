@@ -281,6 +281,7 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
     for line in cmd.doc.lines() {
         writeln!(s, "    /// {}", line).unwrap();
     }
+    writeln!(s, "    #[allow(unused, clippy::trivially_copy_pass_by_ref)]").unwrap();
     writeln!(s, "    pub fn {}(&self, {}) -> Result<{}, Error> {{", &cmd.name, format_args(&cmd.args, &cmd.ret, false)?, format_ret_ty(&cmd.ret, false)?).unwrap();
     writeln!(s, "        use self::sunrise_libuser::ipc::Message;").unwrap();
     writeln!(s, "        let mut buf__ = [0; 0x100];").unwrap();
@@ -708,6 +709,7 @@ pub fn generate_trait_async(ifacename: &str, interface: &Interface) -> String {
                 for line in cmd.doc.lines() {
                     writeln!(s, "    /// {}", line).unwrap();
                 }
+                writeln!(s, "    #[allow(clippy::trivially_copy_pass_by_ref)]").unwrap();
                 writeln!(s, "    fn {}(&mut self, work_queue: self::sunrise_libuser::futures::WorkQueue<'static>, {}) -> futures::future::FutureObj<'_, Result<{}, Error>>;", &cmd.name, args, ret).unwrap();
             },
             Err(_) => writeln!(s, "    // fn {}(&mut self) -> FutureObj<'_, Result<(), Error>>;", &cmd.name).unwrap()
@@ -715,6 +717,7 @@ pub fn generate_trait_async(ifacename: &str, interface: &Interface) -> String {
     }
 
     writeln!(s, "    /// Handle an incoming IPC request.").unwrap();
+    writeln!(s, "    #[allow(unused)]").unwrap();
     writeln!(s, "    fn dispatch<'a>(&'a mut self, work_queue: self::sunrise_libuser::futures::WorkQueue<'static>, cmdid: u32, buf: &'a mut [u8]) -> futures::future::FutureObj<'_, Result<(), Error>> {{").unwrap();
     writeln!(s, "        use self::sunrise_libuser::ipc::Message;").unwrap();
     writeln!(s, "        use futures::future::FutureExt;").unwrap();
@@ -759,6 +762,7 @@ pub fn generate_trait(ifacename: &str, interface: &Interface) -> String {
                 for line in cmd.doc.lines() {
                     writeln!(s, "/// {}", line).unwrap();
                 }
+                writeln!(s, "    #[allow(clippy::trivially_copy_pass_by_ref)]").unwrap();
                 writeln!(s, "    fn {}(&mut self, manager: self::sunrise_libuser::futures::WorkQueue<'static>, {}) -> Result<{}, Error>;", &cmd.name, args, ret).unwrap();
             },
             Err(_) => writeln!(s, "    // fn {}(&mut self) -> Result<(), Error>;", &cmd.name).unwrap()
@@ -766,6 +770,7 @@ pub fn generate_trait(ifacename: &str, interface: &Interface) -> String {
     }
 
     writeln!(s, "    /// Handle an incoming IPC request.").unwrap();
+    writeln!(s, "    #[allow(unused)]").unwrap();
     writeln!(s, "    fn dispatch<'a>(&'a mut self, manager: self::sunrise_libuser::futures::WorkQueue<'static>, cmdid: u32, buf: &'a mut [u8]) -> futures::future::FutureObj<'_, Result<(), Error>> {{").unwrap();
     writeln!(s, "        use self::sunrise_libuser::ipc::Message;").unwrap();
     writeln!(s, "        let res = match cmdid {{").unwrap();
@@ -829,6 +834,7 @@ pub fn generate_proxy(ifacename: &str, interface: &Interface) -> String {
             };
 
             writeln!(s, "    /// Creates a new [{}] by connecting to the `{}` service.", struct_name, service).unwrap();
+            writeln!(s, "    #[allow(unused_imports)]").unwrap();
             writeln!(s, "    pub fn raw_new{}() -> Result<{}, Error> {{", name, struct_name).unwrap();
             writeln!(s, "        use self::sunrise_libuser::syscalls;").unwrap();
             writeln!(s, "        use self::sunrise_libuser::error::KernelError;").unwrap();
@@ -846,8 +852,8 @@ pub fn generate_proxy(ifacename: &str, interface: &Interface) -> String {
                 writeln!(s, "        }}").unwrap();
             } else {
                 // This service is a sm-managed port.
-                writeln!(s, "         use self::sunrise_libuser::error::SmError;").unwrap();
-                writeln!(s, "         ").unwrap();
+                writeln!(s, "        use self::sunrise_libuser::error::SmError;").unwrap();
+                writeln!(s).unwrap();
                 writeln!(s, "         loop {{").unwrap();
                 writeln!(s, "              let svcname = unsafe {{").unwrap();
                 let mut service_name = service.to_string();
@@ -872,6 +878,7 @@ pub fn generate_proxy(ifacename: &str, interface: &Interface) -> String {
             // BODY: homebrew, which don't automatically release leaked resources).
             writeln!(s, "    /// Acquires the shared handle to the `{}` service - connecting if it wasn't already.", service).unwrap();
             writeln!(s, "    pub fn new{}() -> Result<&'static {}, Error> {{", name, struct_name).unwrap();
+            writeln!(s, "        /// Handle static session storage").unwrap();
             writeln!(s, "        static HANDLE : spin::Once<{}> = spin::Once::new();", struct_name).unwrap();
             writeln!(s, "        if let Some(s) = HANDLE.r#try() {{").unwrap();
             writeln!(s, "            Ok(s)").unwrap();

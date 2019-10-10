@@ -418,8 +418,8 @@ fn create_calendar_time(time: Time, gmt_offset: i32) -> TimeZoneResult<CalendarT
     let ip = &MON_LENGTHS[utils::is_leap_year(year) as usize];
 
     while day_of_year >= ip[calendar_time.time.month as usize] {
-        calendar_time.time.month += 1;
         day_of_year -= ip[calendar_time.time.month as usize];
+        calendar_time.time.month += 1;
     }
 
     calendar_time.time.day = (day_of_year + 1) as i8;

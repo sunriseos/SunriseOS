@@ -147,6 +147,7 @@ SECTIONS
   __tls_mem_size__  = ALIGN(ADDR(.tbss) + SIZEOF(.tbss) - ADDR(.tdata), __tls_align__);
 
   /* BSS section */
+  . = . + SIZEOF(.tbss);
   . = ALIGN(0x1000);
 
   .bss : {

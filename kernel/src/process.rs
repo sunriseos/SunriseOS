@@ -711,7 +711,7 @@ impl ProcessStruct {
         // We're going to make things a **lot** simpler. We're just
         // going to immediately set ourselves as exiting, kill our
         // threads, and set ourselves as exited.
-        statelock.state = ProcessState::Exiting;
+        statelock.set_state(ProcessState::Exiting);
 
         // kill our baby threads. Those threads have never run, we don't even bother
         // scheduling them so the can free their resources, just drop the hole maternity.
@@ -725,7 +725,7 @@ impl ProcessStruct {
             }
         }
 
-        this.state.lock().state = ProcessState::Exited;
+        this.state.lock().set_state(ProcessState::Exited);
     }
 }
 

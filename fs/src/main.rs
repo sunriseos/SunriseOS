@@ -32,7 +32,7 @@ use sunrise_libuser::error::Error;
 use sunrise_libuser::futures::WaitableManager;
 use sunrise_libuser::fs::IFileSystemService;
 use sunrise_libuser::ipc::server::port_handler;
-use futures::future::FutureObj;
+use sunrise_libuser::futures_rs::future::FutureObj;
 
 use alloc::boxed::Box;
 

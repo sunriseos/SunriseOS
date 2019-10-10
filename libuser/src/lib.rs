@@ -28,15 +28,11 @@ extern crate bitfield;
 
 #[macro_use]
 extern crate sunrise_libutils;
-#[macro_use]
-extern crate failure;
 
 // Marked public for use in the object macro.
 #[macro_use]
 #[doc(hidden)]
 pub extern crate log as __log;
-
-use swipc_gen::gen_ipc;
 
 pub mod argv;
 pub mod caps;
@@ -48,22 +44,24 @@ pub mod threads;
 pub mod thread_local_storage;
 pub mod futures;
 
-#[gen_ipc(path = "../../ipcdefs/sm.id", prefix = "sunrise_libuser")]
-pub mod sm {}
-#[gen_ipc(path = "../../ipcdefs/vi.id", prefix = "sunrise_libuser")]
-pub mod vi {}
-#[gen_ipc(path = "../../ipcdefs/ahci.id", prefix = "sunrise_libuser")]
-pub mod ahci {}
-#[gen_ipc(path = "../../ipcdefs/time.id", prefix = "sunrise_libuser")]
-pub mod time {}
-#[gen_ipc(path = "../../ipcdefs/filesystem.id", prefix = "sunrise_libuser")]
-pub mod fs {}
-#[gen_ipc(path = "../../ipcdefs/keyboard.id", prefix = "sunrise_libuser")]
-pub mod keyboard {}
-#[gen_ipc(path = "../../ipcdefs/loader.id", prefix = "sunrise_libuser")]
-pub mod ldr {}
-#[gen_ipc(path = "../../ipcdefs/example.id", prefix = "sunrise_libuser")]
-pub mod example {}
+//#[gen_ipc(path = "../../ipcdefs/sm.id", prefix = "sunrise_libuser")]
+//pub mod sm {}
+//#[gen_ipc(path = "../../ipcdefs/vi.id", prefix = "sunrise_libuser")]
+//pub mod vi {}
+//#[gen_ipc(path = "../../ipcdefs/ahci.id", prefix = "sunrise_libuser")]
+//pub mod ahci {}
+//#[gen_ipc(path = "../../ipcdefs/time.id", prefix = "sunrise_libuser")]
+//pub mod time {}
+//#[gen_ipc(path = "../../ipcdefs/filesystem.id", prefix = "sunrise_libuser")]
+//pub mod fs {}
+//#[gen_ipc(path = "../../ipcdefs/keyboard.id", prefix = "sunrise_libuser")]
+//pub mod keyboard {}
+//#[gen_ipc(path = "../../ipcdefs/loader.id", prefix = "sunrise_libuser")]
+//pub mod ldr {}
+//#[gen_ipc(path = "../../ipcdefs/example.id", prefix = "sunrise_libuser")]
+//pub mod example {}
+include!(concat!(env!("OUT_DIR"), "/ipc_code.rs"));
+
 
 pub mod error;
 pub mod allocator;
@@ -71,6 +69,8 @@ pub mod terminal;
 pub mod ps2;
 pub mod window;
 pub mod zero_box;
+
+#[cfg(all(target_os = "sunrise", not(feature = "build-for-std-app")))]
 mod crt0;
 mod log_impl;
 pub use sunrise_libutils::loop_future;
@@ -79,11 +79,13 @@ pub use sunrise_libutils::io;
 
 use sunrise_libutils as utils;
 
+pub use ::futures as futures_rs;
+
 /// Global allocator. Every implicit allocation in the rust liballoc library (for
 /// instance for Vecs, Arcs, etc...) are allocated with this allocator.
 #[cfg(all(target_os = "sunrise", not(test), not(rustdoc)))]
-#[global_allocator]
-static ALLOCATOR: allocator::Allocator = allocator::Allocator::new();
+#[cfg_attr(feature = "lang-items", global_allocator)]
+pub static ALLOCATOR: allocator::Allocator = allocator::Allocator::new();
 
 // Runtime functions
 //
@@ -94,12 +96,12 @@ static ALLOCATOR: allocator::Allocator = allocator::Allocator::new();
 /// The exception handling personality function for use in the bootstrap.
 ///
 /// We currently have no userspace exception handling, so make it do nothing.
-#[cfg(all(target_os = "sunrise", not(test), not(rustdoc)))]
+#[cfg(all(target_os = "sunrise", not(test), feature = "lang-items", not(rustdoc)))]
 #[lang = "eh_personality"] #[no_mangle] pub extern fn eh_personality() {}
 
 /// Function called on `panic!` invocation. Prints the panic information to the
 /// kernel debug logger, and exits the process.
-#[cfg(all(target_os = "sunrise", not(test), not(rustdoc)))]
+#[cfg(all(target_os = "sunrise", not(test), feature = "lang-items", not(rustdoc)))]
 #[panic_handler] #[no_mangle]
 pub extern fn panic_fmt(p: &core::panic::PanicInfo<'_>) -> ! {
     let _ = syscalls::output_debug_string(&format!("{}", p), 10, "sunrise_libuser::panic_fmt");
@@ -110,7 +112,7 @@ pub extern fn panic_fmt(p: &core::panic::PanicInfo<'_>) -> ! {
 // BODY: Panicking may allocate, so calling panic in the OOM handler is a
 // BODY: terrible idea.
 /// OOM handler. Causes a panic.
-#[cfg(all(target_os = "sunrise", not(test), not(rustdoc)))]
+#[cfg(all(target_os = "sunrise", not(test), feature = "lang-items", not(rustdoc)))]
 #[lang = "oom"]
 #[no_mangle]
 pub fn rust_oom(_: core::alloc::Layout) -> ! {
@@ -119,7 +121,7 @@ pub fn rust_oom(_: core::alloc::Layout) -> ! {
 
 /// calls logger initialization, main, and finally exits the
 /// process.
-#[cfg(any(all(target_os = "sunrise", not(test)), rustdoc))]
+#[cfg(any(all(target_os = "sunrise", not(test), not(feature = "build-for-std-app")), rustdoc))]
 #[no_mangle]
 pub unsafe extern fn real_start() -> ! {
     extern {
@@ -140,7 +142,7 @@ pub unsafe extern fn real_start() -> ! {
 ///
 /// The default implementations are returning 0 to indicate a successful
 /// execution. In case of a failure, 1 is returned.
-#[cfg(all(target_os = "sunrise", not(test), not(rustdoc)))]
+#[cfg(all(target_os = "sunrise", not(test), feature = "lang-items", not(rustdoc)))]
 #[lang = "termination"]
 trait Termination {
     /// Is called to get the representation of the value as status code.
@@ -148,13 +150,13 @@ trait Termination {
     fn report(self) -> i32;
 }
 
-#[cfg(all(target_os = "sunrise", not(test), not(rustdoc)))]
+#[cfg(all(target_os = "sunrise", not(test), feature = "lang-items", not(rustdoc)))]
 impl Termination for () {
     #[inline]
     fn report(self) -> i32 { 0 }
 }
 
-#[cfg(all(target_os = "sunrise", not(test), not(rustdoc)))]
+#[cfg(all(target_os = "sunrise", not(test), feature = "lang-items", not(rustdoc)))]
 #[lang = "start"]
 #[allow(clippy::unit_arg)]
 fn main<T: Termination>(main: fn(), _argc: isize, _argv: *const *const u8) -> isize {

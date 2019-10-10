@@ -5,6 +5,7 @@ default_to_workspace = false
 
 [env]
 RUST_TARGET_PATH = "${PWD}"
+XARGO_RUST_SRC = "${PWD}/rust/src"
 GDB_PORT = { script = ["echo ${GDB_PORT:-9090}"] }
 VNC_PORT = { script = ["echo ${VNC_PORT:-:0}"] }
 CLIPPY_RULES = """
@@ -142,9 +143,15 @@ dependencies = ["install-xargo"]
 command = "xargo"
 args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-keyboard", "@@split(COMPILER_FLAGS, )"]
 
+[tasks.std_hello_world]
+description = "Compiles std_hello_world"
+dependencies = ["install-xargo"]
+command = "xargo"
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=std_hello_world", "@@split(COMPILER_FLAGS, )"]
+
 [tasks.userspace]
 description = "Compiles userspace apps"
-dependencies = ["shell", "wall-clock", "sm", "vi", "ahci", "time", "fs", "loader", "keyboard"]
+dependencies = ["shell", "wall-clock", "sm", "vi", "ahci", "time", "fs", "loader", "keyboard", "std_hello_world"]
 
 [tasks.iso]
 description = "Creates a bootable ISO containing the kernel and grub."
@@ -175,7 +182,12 @@ mkdir -p external/filesystem/disk_template/bin/wall-clock/flags
 cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-wall-clock     external/filesystem/disk_template/bin/wall-clock/main
 
 # TODO: https://github.com/sagiegurari/shell2batch/issues/9
-#touch external/filesystem/disk_template/bin/wall-clock/flags/boot.flag
+touch external/filesystem/disk_template/bin/wall-clock/flags/boot.flag
+
+mkdir -p external/filesystem/disk_template/bin/std_hello_world/flags
+cp target/i386-unknown-sunrise-user/$PROFILE_NAME/std_hello_world    external/filesystem/disk_template/bin/std_hello_world/main
+touch external/filesystem/disk_template/bin/std_hello_world/flags/boot.flag
+
 cargo run --manifest-path disk-initializer/Cargo.toml -- DISK.img 52428800 external/filesystem/disk_template/
 '''
 ]
@@ -258,6 +270,7 @@ args = ["clippy", "--target=i386-unknown-sunrise-user",
 	"--exclude", "docs",
 	"--exclude", "sunrise-kernel",
 	"--exclude", "sunrise-bootstrap",
+	"--exclude", "std_hello_world",
 	"--",
 	"@@split(CLIPPY_RULES, )",
 	"${@}",

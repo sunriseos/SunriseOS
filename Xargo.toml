@@ -1,10 +1,17 @@
 [dependencies.core]
 stage = 0
 
-[dependencies.compiler_builtins]
-version = "=0.1.16"
-stage = 0
-features = ["core", "mem"]
-
 [dependencies.alloc]
 stage = 0
+features = ['compiler-builtins-mem']
+
+[target.i386-unknown-sunrise-user.dependencies.std]
+stage = 1
+
+[patch.crates-io.libc]
+git = "https://github.com/sunriseos/libc.git"
+branch = "sunrise"
+features = ['align']
+
+[patch."https://github.com/sunriseos/sunriseos.git".sunrise-libuser]
+path = "libuser"

@@ -28,7 +28,7 @@ use alloc::boxed::Box;
 
 use sunrise_libuser::futures::{WaitableManager, WorkQueue};
 use sunrise_libuser::ipc::server::port_handler;
-use futures::future::FutureObj;
+use sunrise_libuser::futures_rs::future::FutureObj;
 use sunrise_libuser::keyboard::StaticService as _;
 use sunrise_libuser::types::*;
 use sunrise_libuser::error::{Error, HidError};
