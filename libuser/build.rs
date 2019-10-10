@@ -1,5 +1,10 @@
 //! Build script in charge of handling swipc-gen job
 
+// TODO: libstd should be able to use proc macros
+// BODY: Because libstd fails when using proc macro, we had to move swipc-gen to a build.rs script, just like in the good ol' days. Thx I hate it.
+// BODY:
+// BODY: We should figure out why proc macros fail when cross-compiling libstd with xargo and fix it.
+
 use std::env;
 use std::fs::{self, File};
 use std::io::Write as _;
