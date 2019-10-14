@@ -551,6 +551,7 @@ impl SharedMemory {
             handle: self,
             addr,
             size,
+            perm
         })
     }
 }
@@ -564,7 +565,8 @@ impl SharedMemory {
 pub struct MappedSharedMemory {
     handle: SharedMemory,
     addr: usize,
-    size: usize
+    size: usize,
+    perm: MemoryPermissions
 }
 
 #[allow(clippy::len_without_is_empty)] // len cannot be zero.
@@ -580,7 +582,8 @@ impl MappedSharedMemory {
     ///
     /// [`as_ptr`]: MappedSharedMemory::as_ptr
     pub unsafe fn get(&self) -> &[u8] {
-        ::core::slice::from_raw_parts(self.addr as *const u8, self.size)
+        assert!(self.perm.contains(MemoryPermissions::READABLE), "Memory isn't readable");
+        core::slice::from_raw_parts(self.addr as *const u8, self.size)
     }
 
     /// Get the underlying shared memory as a mutable byte slice.
@@ -593,8 +596,9 @@ impl MappedSharedMemory {
     /// unless the application has a way to synchronize access.
     ///
     /// [`as_mut_ptr`]: MappedSharedMemory::as_mut_ptr
-    pub unsafe fn get_mut(&mut self) -> &mut [u8] {
-        ::core::slice::from_raw_parts_mut(self.addr as *mut u8, self.size)
+    pub unsafe fn get_mut(&self) -> &mut [u8] {
+        assert!(self.perm.contains(MemoryPermissions::WRITABLE), "Memory is read-only");
+        core::slice::from_raw_parts_mut(self.addr as *mut u8, self.size)
     }
 
     /// Gets a raw pointer to the underlying shared memory.
