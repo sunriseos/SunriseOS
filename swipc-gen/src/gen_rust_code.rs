@@ -210,11 +210,7 @@ fn get_type(output: bool, ty: &Alias, is_server: bool) -> Result<String, Error> 
         Alias::Buffer(underlying, _, _) => panic!("Buffer with underlying type {:?}", underlying),
 
         Alias::Object(name) => {
-            if output {
-                Ok(name.clone() + "Proxy")
-            } else {
-                Ok(format!("impl {}", name))
-            }
+            Ok(name.clone() + "Proxy")
         },
 
         // Unsized bytes
@@ -352,13 +348,13 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
                     _ => panic!("Illegal buffer type: {}", ty)
                 }
             },
-            Alias::Object(_)                          => writeln!(s, "        msg__.push_handle_move({}.into());", argname).unwrap(),
+            Alias::Object(_) => writeln!(s, "        msg__.push_handle_move(sunrise_libuser::types::ClientSession::from({}).into_handle());", argname).unwrap(),
             Alias::Handle(false, ty) if get_handle_type(ty).is_some() =>
-                writeln!(s, "        msg__.push_handle_move({}.0);", argname).unwrap(),
+                writeln!(s, "        msg__.push_handle_move(({}).0);", argname).unwrap(),
             Alias::Handle(false, _) =>
                 writeln!(s, "        msg__.push_handle_move({});", argname).unwrap(),
             Alias::Handle(true, ty) if get_handle_type(ty).is_some() =>
-                writeln!(s, "        msg__.push_handle_copy({}.0.as_ref());", argname).unwrap(),
+                writeln!(s, "        msg__.push_handle_copy(({}).0.as_ref());", argname).unwrap(),
             Alias::Handle(true, _) =>
                 writeln!(s, "        msg__.push_handle_copy({});", argname).unwrap(),
             Alias::Pid                                => writeln!(s, "        msg__.send_pid(None);").unwrap(),
@@ -644,7 +640,7 @@ fn gen_call(cmd: &Func, is_async: bool) -> Result<String, Error> {
         };
         match item {
             Alias::Object(_) => {
-                writeln!(s, "                         msg__.push_handle_move({}.0.into_handle());", ret).unwrap();
+                writeln!(s, "                         msg__.push_handle_move(self::sunrise_libuser::types::ClientSession::from({}).into_handle());", ret).unwrap();
             },
             Alias::Handle(is_copy, ty) => {
                 let (is_ref, handle) = if *is_copy {
