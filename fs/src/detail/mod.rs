@@ -261,7 +261,7 @@ impl<'a> Iterator for PartitionIterator<'a> {
 /// Entry point of the file system interface.
 ///
 /// Allows to interract with various filesytem.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct FileSystemProxy {
 
 }

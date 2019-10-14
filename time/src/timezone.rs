@@ -181,7 +181,7 @@ pub static TZ_MANAGER: Mutex<TimeZoneManager> = Mutex::new(unsafe {
 };
 
 /// TimeZone service object.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct TimeZoneService {
     /// A dummy field present to just avoid having a zero sized type.
     pub dummy: u64

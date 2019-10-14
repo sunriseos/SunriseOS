@@ -83,7 +83,7 @@ capabilities!(CAPABILITIES = Capabilities {
 });
 
 /// Entry point interface.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 struct StaticService;
 
 impl sunrise_libuser::time::StaticService for StaticService {
@@ -193,7 +193,7 @@ impl Default for Rtc {
 static RTC_INSTANCE: Once<Rtc> = Once::new();
 
 /// RTC interface.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 struct RTCManager;
 
 /// Task responsible for updating the RTC_INSTANCE's current time every second.

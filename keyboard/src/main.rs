@@ -113,9 +113,9 @@ impl Keyboard {
     }
 
     /// Get the writeable update event of the Keyboard.
-    /// 
+    ///
     /// # Note:
-    /// 
+    ///
     /// This consume the internal writable_event.q
     pub fn take_writable_event(&mut self) -> Option<WritableEvent> {
         self.writable_event.take()
@@ -157,7 +157,7 @@ impl Keyboard {
 static KEYBOARD_INSTANCE: Once<Mutex<Keyboard>> = Once::new();
 
 /// Entry point interface.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 struct StaticService;
 
 impl sunrise_libuser::keyboard::StaticService for StaticService {

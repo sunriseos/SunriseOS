@@ -65,7 +65,7 @@ use crate::libuser::futures_rs as futures;
 /// or register new services (assuming they have the appropriate capabilities).
 ///
 /// Make sure to call the `IUserInterface::initialize` method before using it.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct UserInterface;
 
 lazy_static! {

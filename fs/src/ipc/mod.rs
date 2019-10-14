@@ -21,7 +21,7 @@ use crate::interface::filesystem::{convert_path, DirectoryOperations, FileOperat
 use alloc::sync::Arc;
 use spin::Mutex;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// This is the ipc interface for a raw device, usually a block device.
 pub struct Storage {
     /// The detail implementation of this ipc interface.
@@ -83,7 +83,7 @@ impl IStorageServer for Storage {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 /// Entry point of the file system interface.
 ///
 /// Allows to interract with various filesytem via IPC.
@@ -122,16 +122,16 @@ impl sunrise_libuser::fs::IFileSystemService for FileSystemService {
 }
 
 /// Represent a file in the IPC.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct File {
     /// The detail implementation of this ipc interface.
-    inner: Box<dyn FileOperations>
+    inner: Arc<Mutex<Box<dyn FileOperations>>>
 }
 
 impl File {
     /// Create a new IFile instance from it's detail.
     pub fn new(inner: Box<dyn FileOperations>) -> Self {
-        File { inner }
+        File { inner: Arc::new(Mutex::new(inner)) }
     }
 }
 
@@ -145,7 +145,7 @@ impl IFile for File {
             return Err(FileSystemError::OutOfRange.into());
         }
 
-        self.inner.read(offset, &mut out_buffer[..length as usize])
+        self.inner.lock().read(offset, &mut out_buffer[..length as usize])
     }
 
     fn write(&mut self, _manager: WorkQueue<'static>, _unknown_0: u32, offset: u64, length: u64, in_buffer: &[u8]) -> Result<(), Error> {
@@ -157,33 +157,33 @@ impl IFile for File {
             return Err(FileSystemError::OutOfRange.into());
         }
 
-        self.inner.write(offset, &in_buffer[..length as usize])
+        self.inner.lock().write(offset, &in_buffer[..length as usize])
     }
 
     fn flush(&mut self, _manager: WorkQueue<'static>) -> Result<(), Error> {
-        self.inner.flush()
+        self.inner.lock().flush()
     }
 
     fn set_size(&mut self, _manager: WorkQueue<'static>, new_size: u64) -> Result<(), Error> {
-        self.inner.set_len(new_size)
+        self.inner.lock().set_len(new_size)
     }
 
     fn get_size(&mut self, _manager: WorkQueue<'static>) -> Result<u64, Error> {
-        self.inner.get_len()
+        self.inner.lock().get_len()
     }
 }
 
 /// Represent a file in the IPC.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Directory {
     /// The detail implementation of this ipc interface.
-    inner: Box<dyn DirectoryOperations>
+    inner: Arc<Mutex<Box<dyn DirectoryOperations>>>
 }
 
 impl Directory {
     /// Create a new IFile instance from it's detail.
     pub fn new(inner: Box<dyn DirectoryOperations>) -> Self {
-        Directory { inner }
+        Directory { inner: Arc::new(Mutex::new(inner)) }
     }
 }
 
@@ -193,16 +193,16 @@ impl sunrise_libuser::fs::IDirectory for Directory {
             return Ok(0)
         }
 
-        self.inner.read(out_buffer)
+        self.inner.lock().read(out_buffer)
     }
 
     fn get_entry_count(&mut self, _manager: WorkQueue<'static>) -> Result<u64, Error> {
-        self.inner.entry_count()
+        self.inner.lock().entry_count()
     }
 }
 
 /// Represent a filesystem in the IPC.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FileSystem {
     /// The detail implementation of this ipc interface.
     inner: Arc<Mutex<Box<dyn FileSystemOperations>>>

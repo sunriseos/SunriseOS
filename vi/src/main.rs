@@ -48,7 +48,7 @@ use libuser::mem::{find_free_address, PAGE_SIZE};
 use crate::libuser::vi::{IBuffer as IBufferInterface, IBufferProxy, ViInterface as IViInterface};
 
 /// Entry point interface.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 struct ViInterface;
 
 impl IViInterface for ViInterface {
@@ -77,7 +77,7 @@ impl IViInterface for ViInterface {
         let wrapper  = new_session_wrapper(manager.clone(), server, buf, IBuffer::dispatch);
         //let future : Box<dyn Send + 'static> = Box::new(wrapper);
         //let future : FutureObj<'static, _> = FutureObj::new(Box::new(wrapper));
-        manager.spawn(  FutureObj::new(Box::new(wrapper)));
+        manager.spawn(FutureObj::new(Box::new(wrapper)));
         Ok(IBufferProxy::from(client))
     }
 
@@ -204,7 +204,7 @@ impl Buffer {
 }
 
 /// IPC Window object
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct IBuffer {
     /// The Buffer linked with this window object instance.
     buffer: Arc<Buffer>,
