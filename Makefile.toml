@@ -28,7 +28,7 @@ CLIPPY_RULES = """
 QEMU_COMMON_FLAGS = """\
     -boot d \
     -cdrom os.iso \
-    -serial stdio \
+    -serial mon:stdio \
     -vnc ${VNC_PORT} \
     -no-reboot \
     -drive id=diskA,file=DISK.img,format=raw,if=none -device ahci,id=ahci \
@@ -51,7 +51,7 @@ QEMU_PROFILE_FLAGS = ""
 PROFILE_NAME = "debug"
 COMPILER_FLAGS = ""
 KERNEL_FLAGS = "-Z package-features --features=panic-on-exception"
-QEMU_EXTRA_FLAGS = "-gdb tcp::${GDB_PORT} -S -d cpu_reset"
+QEMU_EXTRA_FLAGS = "-d cpu_reset"
 
 [env.production]
 PROFILE_NAME = "release"
@@ -198,6 +198,15 @@ dependencies = ["iso", "disk"]
 command = "qemu-system-i386"
 args = [
     "@@split(QEMU_COMMON_FLAGS, )", "@@split(QEMU_EXTRA_FLAGS, )"
+]
+
+[tasks.qemu-gdb]
+description = "Runs the bootable ISO in qemu."
+dependencies = ["iso", "disk"]
+command = "qemu-system-i386"
+args = [
+    "@@split(QEMU_COMMON_FLAGS, )", "@@split(QEMU_EXTRA_FLAGS, )",
+    "-gdb", "tcp::${GDB_PORT}", "-S"
 ]
 
 [tasks.doc]
