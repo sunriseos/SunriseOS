@@ -398,6 +398,7 @@ fn cat<W: Write>(f: &mut W, filesystem: &IFileSystemProxy, file: &str) -> Result
 
 /// List files and folders at the given path, or in the current path is none is
 /// given.
+#[allow(clippy::if_same_then_else)]
 fn ls(mut terminal: &mut Terminal, filesystem: &IFileSystemProxy, orig_path: Option<&str>) -> Result<(), Error> {
     use sunrise_libuser::fs::{DirectoryEntry, DirectoryEntryType};
 
@@ -420,10 +421,10 @@ fn ls(mut terminal: &mut Terminal, filesystem: &IFileSystemProxy, orig_path: Opt
     let directory = match filesystem.open_directory(3, &ipc_path) {
         Ok(d) => d,
         Err(Error::FileSystem(FileSystemError::NotADirectory, _)) => {
-            terminal.print_attr(
+            let _ = writeln!(&mut terminal, "{}", orig_path.unwrap_or(&CURRENT_WORK_DIRECTORY.lock()));
+            /*terminal.print_attr(
                 orig_path.unwrap_or(&CURRENT_WORK_DIRECTORY.lock()),
-                FILE_FG, BG);
-            let _ = writeln!(&mut terminal);
+                FILE_FG, BG);*/
             return Ok(())
         },
         Err(err) => return Err(err)
@@ -452,9 +453,11 @@ fn ls(mut terminal: &mut Terminal, filesystem: &IFileSystemProxy, orig_path: Opt
             let mut s = String::from_utf8_lossy(&entry.path[prefix_len..split_at]).into_owned();
             s.push('\n');
             if entry.directory_entry_type == DirectoryEntryType::File {
-                terminal.print_attr(&s, FILE_FG, BG);
+                let _ = write!(&mut terminal, "{}", s);
+                //terminal.print_attr(&s, FILE_FG, BG);
             } else {
-                terminal.print_attr(&s, DIR_FG, BG);
+                let _ = write!(&mut terminal, "{}", s);
+                //terminal.print_attr(&s, DIR_FG, BG);
             };
         }
     }

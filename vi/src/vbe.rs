@@ -10,10 +10,10 @@ use core::slice;
 #[repr(C)]
 #[allow(clippy::missing_docs_in_private_items)]
 pub struct VBEColor {
-    b: u8,
-    g: u8,
-    r: u8,
-    a: u8, // Unused
+    pub b: u8,
+    pub g: u8,
+    pub r: u8,
+    pub a: u8, // Unused
 }
 
 /// Some colors for the vbe

@@ -29,6 +29,7 @@ extern crate alloc;
 extern crate lazy_static;
 
 mod vbe;
+mod terminal;
 
 use crate::vbe::{VBEColor, FRAMEBUFFER, Framebuffer};
 use core::cmp::{min, max};
@@ -46,6 +47,7 @@ use crate::libuser::syscalls::MemoryPermissions;
 use sunrise_libutils::align_up;
 use libuser::mem::{find_free_address, PAGE_SIZE};
 use crate::libuser::vi::{IBuffer as IBufferInterface, IBufferProxy, ViInterface as IViInterface};
+use sunrise_libuser::twili::IPipeProxy;
 
 /// Entry point interface.
 #[derive(Default, Debug, Clone)]
@@ -87,6 +89,21 @@ impl IViInterface for ViInterface {
     fn get_screen_resolution(&mut self, _manager: WorkQueue<'static>) -> Result<(u32, u32,), Error> {
         let fb = FRAMEBUFFER.lock();
         Ok((fb.width() as _, fb.height() as _))
+    }
+
+    fn get_font_height(&mut self, _manager: WorkQueue<'static>) -> Result<u32, Error> {
+        Ok(terminal::font_height() as u32)
+    }
+
+    fn create_terminal(&mut self, manager: WorkQueue<'static>, sharedmem: SharedMemory, top: i32, left: i32, width: u32, height: u32,) -> Result<IPipeProxy, Error> {
+        use terminal::{TerminalPipe, Terminal};
+        use sunrise_libuser::twili::IPipe;
+
+        let terminal = TerminalPipe::new(Terminal::new(sharedmem, top, left, width, height)?);
+        let (server, client) = syscalls::create_session(false, 0)?;
+        let wrapper = new_session_wrapper(manager.clone(), server, terminal, TerminalPipe::dispatch);
+        manager.spawn(FutureObj::new(Box::new(wrapper)));
+        Ok(IPipeProxy::from(client))
     }
 }
 
@@ -201,6 +218,64 @@ impl Buffer {
     fn get_real_bounds(&self, framebuffer_width: u32, framebuffer_height: u32) -> (u32, u32, u32, u32) {
         get_real_bounds((self.top, self.left, self.width, self.height), framebuffer_width, framebuffer_height)
     }
+
+    /// Get the width of this buffer.
+    fn width(&self) -> u32 {
+        self.width
+    }
+
+    /// Get the height of this buffer.
+    fn height(&self) -> u32 {
+        self.height
+    }
+
+    /// Gets the underlying framebuffer
+    ///
+    /// # Safety
+    ///
+    /// Must guarantee that the underlying buffer won't change from under us.
+    ///
+    /// Note that this is super hard to guarantee since the shared memory is
+    /// shared with another process...
+    pub unsafe fn get_buffer(&self) -> &mut [u8] {
+        self.mem.get_mut()
+    }
+
+    /// Gets the offset in memory of a pixel based on an x and y.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `y >= self.height()` or `x >= self.width()`
+    pub fn get_px_offset(&self, x: usize, y: usize) -> usize {
+        assert!(y < self.height() as usize, "{} {}", y, self.height());
+        assert!(x < self.width() as usize);
+        (y * self.width() as usize + x)
+    }
+
+    /// Blit the buffer to the framebuffer.
+    fn draw(&self) {
+        let (fullscreen_width, fullscreen_height, bpp) = {
+            let fb = FRAMEBUFFER.lock();
+            (fb.width(), fb.height(), fb.bpp())
+        };
+        // create a fake Framebuffer that writes to BACKBUFFER_ARR,
+        // and copy it to actual screen only when we're done composing all layers in it.
+        let mut backbuffer_arr = BACKBUFFER_ARR.lock();
+        let mut framebuffer = Framebuffer::new_buffer(&mut *backbuffer_arr, fullscreen_width, fullscreen_height, bpp);
+        let (dtop, dleft, dwidth, dheight) = self.get_real_bounds(framebuffer.width() as u32, framebuffer.height() as u32);
+        framebuffer.clear_at(dleft as _, dtop as _, dwidth as _, dheight as _);
+        BUFFERS.lock().retain(|buffer| {
+            if let Some(buffer) = buffer.upgrade() {
+                draw(&*buffer, &mut framebuffer, dtop, dleft, dwidth, dheight);
+                true
+            } else {
+                false
+            }
+        });
+        // BACKBUFFER_ARR is often bigger than our screen, take only the first pixels.
+        let screen_in_backbuffer = &mut framebuffer.get_fb()[0..(fullscreen_width * fullscreen_height)];
+        FRAMEBUFFER.lock().get_fb().copy_from_slice(screen_in_backbuffer);
+    }
 }
 
 /// IPC Window object
@@ -246,27 +321,7 @@ impl IBufferInterface for IBuffer {
     /// Blit the buffer to the framebuffer.
     #[inline(never)]
     fn draw(&mut self, _manager: WorkQueue<'static>) -> Result<(), Error> {
-        let (fullscreen_width, fullscreen_height, bpp) = {
-            let fb = FRAMEBUFFER.lock();
-            (fb.width(), fb.height(), fb.bpp())
-        };
-        // create a fake Framebuffer that writes to BACKBUFFER_ARR,
-        // and copy it to actual screen only when we're done composing all layers in it.
-        let mut backbuffer_arr = BACKBUFFER_ARR.lock();
-        let mut framebuffer = Framebuffer::new_buffer(&mut *backbuffer_arr, fullscreen_width, fullscreen_height, bpp);
-        let (dtop, dleft, dwidth, dheight) = self.buffer.get_real_bounds(framebuffer.width() as u32, framebuffer.height() as u32);
-        framebuffer.clear_at(dleft as _, dtop as _, dwidth as _, dheight as _);
-        BUFFERS.lock().retain(|buffer| {
-            if let Some(buffer) = buffer.upgrade() {
-                draw(&*buffer, &mut framebuffer, dtop, dleft, dwidth, dheight);
-                true
-            } else {
-                false
-            }
-        });
-        // BACKBUFFER_ARR is often bigger than our screen, take only the first pixels.
-        let screen_in_backbuffer = &mut framebuffer.get_fb()[0..(fullscreen_width * fullscreen_height)];
-        FRAMEBUFFER.lock().get_fb().copy_from_slice(screen_in_backbuffer);
+        self.buffer.draw();
         Ok(())
     }
 }
