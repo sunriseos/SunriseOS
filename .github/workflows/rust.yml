@@ -1,0 +1,102 @@
+name: Rust
+on: [push, pull_request]
+
+jobs:
+  check:
+    name: Rust project
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macOS-latest, windows-latest]
+    steps:
+      - uses: Thog/action-equals@master
+        id: isUbuntu
+        with:
+          a: ${{ matrix.os }}
+          b: ubuntu-latest
+
+      - uses: Thog/action-equals@master
+        id: isWindows
+        with:
+          a: ${{ matrix.os }}
+          b: windows-latest
+
+      - uses: Thog/action-equals@master
+        id: isMainRepository
+        with:
+          a: ${{ github.repository }}
+          b: sunriseos/SunriseOS
+
+      - uses: Thog/action-equals@master
+        id: isMasterBranch
+        with:
+          a: ${{ github.ref }}
+          b: master
+
+      - uses: actions/checkout@master
+        name: Checkout
+        with:
+          submodules: recursive
+
+      - uses: GenesisSam/get-simple-file-action@v1.0.4
+        name: Determine target toolchain
+        id: targetToolchain
+        with:
+          file-name: ${{ 'rust-toolchain' }}
+
+      - name: Install target version
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: ${{ steps.targetToolchain.outputs.data }}
+            override: true
+        if: steps.isWindows.outputs.result == false
+
+      - name: Install target version (Windows)
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: ${{ steps.targetToolchain.outputs.data }}-x86_64-pc-windows-gnu
+            override: true
+        if: steps.isWindows.outputs.result
+
+      - name: Install target for tests
+        run: rustup target install i686-unknown-linux-gnu && sudo apt-get install -y gcc-multilib
+        if: steps.isUbuntu.outputs.result
+
+      - name: Version
+        run: rustup --version && cargo --version --verbose && rustc --version --verbose
+
+      - name: Install cargo-make
+        run: cargo install cargo-make
+
+      - name: Build develop
+        run: cargo make iso
+
+      - name: Build production
+        run: cargo make --profile production iso
+
+      - name: Create disk image
+        run: cargo make disk
+
+      - name: Test
+        run: cargo make test
+        if: steps.isUbuntu.outputs.result
+
+      - name: Documentation
+        run: cargo make doc-full
+        if: steps.isUbuntu.outputs.result
+
+      - name: Clippy
+        run: cargo make clippy -- -D warnings
+        if: steps.isUbuntu.outputs.result
+
+      - name: Deploy
+        uses: JamesIves/github-pages-deploy-action@2.0.3
+        if: steps.isUbuntu.outputs.result && steps.isMasterBranch.outputs.result && steps.isMainRepository.outputs.result
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # FIXME: This is a bad practice and pretty dangerous, waiting for Github to fix pages deployment with GITHUB_TOKEN.
+          ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+          BASE_BRANCH: master
+          BRANCH: gh-pages
+          FOLDER: deploy/documentation
+          BUILD_SCRIPT: mkdir -p deploy/documentation && mv target/doc deploy/documentation/master

@@ -4,8 +4,8 @@ min_version = "0.22.0"
 default_to_workspace = false
 
 [env]
-RUST_TARGET_PATH = "${PWD}"
-XARGO_RUST_SRC = "${PWD}/rust/src"
+RUST_TARGET_PATH = "${CARGO_MAKE_WORKING_DIRECTORY}"
+XARGO_RUST_SRC = "${CARGO_MAKE_WORKING_DIRECTORY}/rust/src"
 GDB_PORT = { script = ["echo ${GDB_PORT:-9090}"] }
 VNC_PORT = { script = ["echo ${VNC_PORT:-:0}"] }
 CLIPPY_RULES = """
