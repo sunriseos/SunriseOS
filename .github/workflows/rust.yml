@@ -31,7 +31,7 @@ jobs:
         id: isMasterBranch
         with:
           a: ${{ github.ref }}
-          b: master
+          b: refs/heads/master
 
       - uses: actions/checkout@master
         name: Checkout
