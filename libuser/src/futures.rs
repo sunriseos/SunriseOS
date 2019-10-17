@@ -63,6 +63,11 @@ static CURRENT_TASK: Cell<Option<generational_arena::Index>> = Cell::new(None);
 #[derive(Debug, Clone, Default)]
 pub struct WorkQueue<'a>(Arc<Mutex<VecDeque<WorkItem<'a>>>>);
 
+/// A variant of a WorkQueue that can only push WaitHandle/UnregisterHandle/Poll
+/// tasks.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SimpleWorkQueue(Arc<Mutex<VecDeque<WorkItem<'static>>>>);
+
 /// A WorkItem is an element of work that will be executed by a
 /// [WaitableManager]'s run function. By pushing a new WorkItem on a
 /// [WorkQueue], the user can drive the event loop.
@@ -86,6 +91,24 @@ enum WorkItem<'a> {
 }
 
 impl<'a> WorkQueue<'a> {
+    /// Spawn a top-level future on the event loop. The future will be polled once
+    /// on spawn. Once the future is spawned, it will be owned by the [WaitableManager].
+    pub fn spawn(&self, future: FutureObj<'a, ()>) {
+        self.0.lock().push_back(WorkItem::Spawn(future));
+    }
+
+    /// Turn this WorkQueue into a SimpleWorkQueue.
+    pub(crate) fn simple(self) -> SimpleWorkQueue {
+        unsafe {
+            // Safety: We are casting the lifetime away. This is safe because a
+            // SimpleWorkQueue may only *add* new WaitHandle/UnregisterHandle
+            // items.
+            SimpleWorkQueue(core::mem::transmute(self.0))
+        }
+    }
+}
+
+impl SimpleWorkQueue {
     /// Registers the task represented by the given [Context] to be polled when
     /// the given handle is signaled.
     pub(crate) fn wait_for(&self, handle: HandleRef<'_>, ctx: &mut Context) {
@@ -103,12 +126,6 @@ impl<'a> WorkQueue<'a> {
     /// when the given handle is signaled.
     pub(crate) fn unwait_for(&self, handle: HandleRef<'_>, waker: Waker) {
         self.0.lock().push_back(WorkItem::UnregisterHandle(handle.staticify(), waker))
-    }
-
-    /// Spawn a top-level future on the event loop. The future will be polled once
-    /// on spawn. Once the future is spawned, it will be owned by the [WaitableManager].
-    pub fn spawn(&self, future: FutureObj<'a, ()>) {
-        self.0.lock().push_back(WorkItem::Spawn(future));
     }
 }
 
