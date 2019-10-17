@@ -101,7 +101,10 @@ impl core::fmt::Write for Terminal {
     fn write_str(&mut self, s: &str) -> Result<(), core::fmt::Error> {
         self.buffer.extend(s.as_bytes().iter().cloned());
         if s.contains('\n') {
-            self.draw();
+            if let Err(err) = self.draw() {
+                log::error!("{:?}", err);
+                return Err(core::fmt::Error);
+            }
         }
         Ok(())
     }

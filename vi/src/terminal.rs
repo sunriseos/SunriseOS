@@ -18,6 +18,7 @@ use sunrise_libkern::MemoryPermissions;
 use crate::Buffer;
 use crate::VBEColor as Color;
 use core::fmt::Write;
+use core::sync::atomic::Ordering;
 
 /// Just an x and a y
 #[derive(Copy, Clone, Debug)]
@@ -155,18 +156,13 @@ impl Terminal {
         let lastline_top_left_corner = self.framebuffer.get_px_offset(0, self.cursor_pos.y - self.ascent);
         // Copy up from the line under it
         assert!(lastline_top_left_corner + linespace_size_in_framebuffer < self.framebuffer.get_buffer().len(), "Window is drunk: {} + {} < {}", lastline_top_left_corner, linespace_size_in_framebuffer, self.framebuffer.get_buffer().len());
-        unsafe {
-            // memmove in the same slice. Should be safe with the assert above.
-            ::core::ptr::copy(self.framebuffer.get_buffer().as_ptr().add(linespace_size_in_framebuffer),
-                              self.framebuffer.get_buffer().as_mut_ptr(),
-                              lastline_top_left_corner);
+        for i in 0..lastline_top_left_corner {
+            let to_store = self.framebuffer.get_buffer()[i + linespace_size_in_framebuffer].load(Ordering::Relaxed);
+            self.framebuffer.get_buffer()[i].store(to_store, Ordering::Relaxed);
         }
         // Erase last line
-        unsafe {
-            // memset to 0x00. Should be safe with the assert above
-            ::core::ptr::write_bytes(self.framebuffer.get_buffer().as_mut_ptr().add(lastline_top_left_corner),
-                                    0x00,
-                                    self.framebuffer.get_buffer().len() - lastline_top_left_corner);
+        for i in lastline_top_left_corner..self.framebuffer.get_buffer().len() {
+            self.framebuffer.get_buffer()[i].store(0, Ordering::Relaxed);
         }
     }
 
@@ -176,7 +172,7 @@ impl Terminal {
             // Safety: it can't change from under us, we're the only owner.
             let buf = self.framebuffer.get_buffer();
             for i in buf {
-                *i = 0;
+                i.store(0, Ordering::Relaxed);
             }
         }
         self.cursor_pos = Pos { x: 0, y: self.ascent };
@@ -281,14 +277,12 @@ impl Terminal {
 
                 let idx = framebuffer.get_px_offset(
                         (pos.x as i32 + x) as usize,
-                        (pos.y as i32 + y) as usize) * 4;
-                unsafe {
-                    // Safety: We're the only owner of that buffer
-                    framebuffer.get_buffer()[idx + 0] = to_display.b;
-                    framebuffer.get_buffer()[idx + 1] = to_display.g;
-                    framebuffer.get_buffer()[idx + 2] = to_display.r;
-                    framebuffer.get_buffer()[idx + 3] = to_display.a;
-                }
+                        (pos.y as i32 + y) as usize);
+                let color: u32 = unsafe {
+                    // Safety: color should be safe to cast to u32.
+                    core::mem::transmute(to_display)
+                };
+                framebuffer.get_buffer()[idx].store(color, Ordering::Relaxed);
             }
         }
     }
@@ -325,7 +319,6 @@ impl sunrise_libuser::twili::IPipe for TerminalPipe {
         unimplemented!()
     }
     fn write(&mut self, _manager: WorkQueue<'static>, data: &[u8]) -> Result<(), Error> {
-        log::info!("Do we get here?");
         // TODO: Parse data for ANSI codes.
         // BODY: It'd be nice to parse ANSI codes so we can move the cursor
         // BODY: around 'n stuff.

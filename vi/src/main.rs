@@ -33,6 +33,7 @@ mod terminal;
 
 use crate::vbe::{VBEColor, FRAMEBUFFER, Framebuffer};
 use core::cmp::{min, max};
+use core::sync::atomic::{AtomicU32, Ordering};
 use alloc::vec::Vec;
 use alloc::boxed::Box;
 use alloc::sync::{Arc, Weak};
@@ -47,6 +48,7 @@ use crate::libuser::syscalls::MemoryPermissions;
 use sunrise_libutils::align_up;
 use libuser::mem::{find_free_address, PAGE_SIZE};
 use crate::libuser::vi::{IBuffer as IBufferInterface, IBufferProxy, ViInterface as IViInterface};
+use sunrise_libuser::window::Color;
 use sunrise_libuser::twili::IPipeProxy;
 
 /// Entry point interface.
@@ -148,38 +150,45 @@ fn get_intersect((atop, aleft, awidth, aheight): (u32, u32, u32, u32), (btop, bl
 #[allow(clippy::cast_sign_loss)] // Code panics when shit hits the fan
 #[allow(clippy::cast_possible_wrap)]
 fn draw(buf: &Buffer, framebuffer: &mut Framebuffer<'_>, top: u32, left: u32, width: u32, height: u32) {
-    unsafe {
-        // TODO: Safety of the vi::draw IPC method
-        // BODY: When calling vi::draw, vi reads from the shared memory. There is
-        // BODY: no borrow-checking mechanism in place to ensure that the other
-        // BODY: process does not mutate it while this happens. Maybe we should
-        // BODY: have some kind of cross-process mutex? How to implement this
-        // BODY: properly?
-        let data = buf.mem.get();
-        let (dtop, dleft, dwidth, dheight) = buf.get_real_bounds(framebuffer.width() as u32, framebuffer.height() as u32);
-        // Calculate first offset in data
-        if let Some(intersect) = get_intersect((dtop, dleft, dwidth, dheight), (top, left, width, height)) {
-            let (top, left, width, height) = intersect;
-            let mut curtop = top;
-            while curtop < top + height {
-                let mut curleft = left;
-                while curleft < left + width {
-                    // This overflows when buf.width * buf.height * 4 >= sizeof(usize)
-                    let dataidx = (((curtop as i32 - buf.top) as u32 * buf.width + (curleft as i32 - buf.left) as u32) * 4) as usize;
-                    let fbidx = framebuffer.get_px_offset(curleft as usize, curtop as usize) as usize;
-                    // TODO: Vi: Implement alpha blending
-                    // BODY: Vi currently does not do alpha blending at all.
-                    // BODY: In the interest of pretty transparent window, this
-                    // BODY: needs fixing!
-                    framebuffer.get_fb()[fbidx] = VBEColor::rgb(data[dataidx + 2], data[dataidx + 1], data[dataidx + 0]);
-                    curleft += 1;
-                }
-                curtop += 1;
-            }
+    /// Get the AtomicU32 array from a MappedSharedMemory.
+    #[allow(clippy::cast_ptr_alignment)] // See safety comment.
+    fn cast_to_u32(mapped: &MappedSharedMemory) -> &[AtomicU32] {
+        unsafe {
+            // Safety: buf is guaranteed to be valid for len bytes (so len / 4
+            // u32s). The lifetime is tied to the MappedSharedMemory. Buf is
+            // guaranteed to be page-aligned.
+            core::slice::from_raw_parts(mapped.as_ptr() as *const AtomicU32, mapped.len() / 4)
         }
-        // for each line
-        // memcpy
     }
+    let data = cast_to_u32(&buf.mem);
+    let (dtop, dleft, dwidth, dheight) = buf.get_real_bounds(framebuffer.width() as u32, framebuffer.height() as u32);
+    // Calculate first offset in data
+    if let Some(intersect) = get_intersect((dtop, dleft, dwidth, dheight), (top, left, width, height)) {
+        let (top, left, width, height) = intersect;
+        let mut curtop = top;
+        while curtop < top + height {
+            let mut curleft = left;
+            while curleft < left + width {
+                // This overflows when buf.width * buf.height * 4 >= sizeof(usize)
+                let dataidx = ((curtop as i32 - buf.top) as u32 * buf.width + (curleft as i32 - buf.left) as u32) as usize;
+                let fbidx = framebuffer.get_px_offset(curleft as usize, curtop as usize) as usize;
+                // TODO: Vi: Implement alpha blending
+                // BODY: Vi currently does not do alpha blending at all.
+                // BODY: In the interest of pretty transparent window, this
+                // BODY: needs fixing!
+                let color = data[dataidx].load(Ordering::Relaxed);
+                let color: Color = unsafe {
+                    // Safety: Color is a simple POD copy type.
+                    core::mem::transmute(color)
+                };
+                framebuffer.get_fb()[fbidx] = VBEColor::rgb(color.r, color.g, color.b);
+                curleft += 1;
+            }
+            curtop += 1;
+        }
+    }
+    // for each line
+    // memcpy
 }
 
 /// See [Buffer::get_real_bounds].
@@ -230,15 +239,14 @@ impl Buffer {
     }
 
     /// Gets the underlying framebuffer
-    ///
-    /// # Safety
-    ///
-    /// Must guarantee that the underlying buffer won't change from under us.
-    ///
-    /// Note that this is super hard to guarantee since the shared memory is
-    /// shared with another process...
-    pub unsafe fn get_buffer(&self) -> &mut [u8] {
-        self.mem.get_mut()
+    #[allow(clippy::cast_ptr_alignment)] // See safety note.
+    pub fn get_buffer(&self) -> &[AtomicU32] {
+        unsafe {
+            // Safety: buf is guaranteed to be valid for len bytes (so len / 4
+            // u32s). The lifetime is tied to the MappedSharedMemory. Buf is
+            // guaranteed to be page-aligned.
+            core::slice::from_raw_parts(self.mem.as_ptr() as *const AtomicU32, self.mem.len() / 4)
+        }
     }
 
     /// Gets the offset in memory of a pixel based on an x and y.
@@ -254,6 +262,7 @@ impl Buffer {
 
     /// Blit the buffer to the framebuffer.
     fn draw(&self) {
+        core::sync::atomic::fence(Ordering::Acquire);
         let (fullscreen_width, fullscreen_height, bpp) = {
             let fb = FRAMEBUFFER.lock();
             (fb.width(), fb.height(), fb.bpp())
@@ -359,6 +368,8 @@ capabilities!(CAPABILITIES = Capabilities {
         sunrise_libuser::syscalls::nr::ReplyAndReceiveWithUserBuffer,
         sunrise_libuser::syscalls::nr::AcceptSession,
         sunrise_libuser::syscalls::nr::CreateSession,
+
+        sunrise_libuser::syscalls::nr::ClearEvent,
 
         sunrise_libuser::syscalls::nr::ConnectToNamedPort,
         sunrise_libuser::syscalls::nr::SendSyncRequestWithUserBuffer,

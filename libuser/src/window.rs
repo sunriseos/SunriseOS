@@ -9,6 +9,7 @@ use crate::mem::{find_free_address, PAGE_SIZE};
 use sunrise_libutils::align_up;
 use crate::error::Error;
 use core::slice;
+use core::sync::atomic::{AtomicU32, Ordering};
 
 /// A rgb color
 #[derive(Copy, Clone, Debug)]
@@ -73,6 +74,7 @@ impl Window {
 
     /// Ask the compositor to redraw the window.
     pub fn draw(&mut self) -> Result<(), Error> {
+        core::sync::atomic::fence(Ordering::Release);
         self.handle.draw()
     }
 
@@ -116,7 +118,8 @@ impl Window {
     #[inline]
     pub fn write_px(&mut self, offset: usize, color: Color) {
         unsafe {
-            self.get_buffer()[offset] = color;
+            // Safety: Color can safely be cast to an u32.
+            self.get_buffer()[offset].store(core::mem::transmute(color), Ordering::Relaxed);
         }
     }
 
@@ -133,15 +136,19 @@ impl Window {
     }
 
     /// Gets the underlying framebuffer
-    pub fn get_buffer(&mut self) -> &mut [Color] {
+    #[allow(clippy::cast_ptr_alignment)] // See safety note.
+    pub fn get_buffer(&mut self) -> &[AtomicU32] {
         unsafe {
-            slice::from_raw_parts_mut(self.buf.get_mut().as_ptr() as *mut Color, self.buf.len() / 4)
+            // Safety: buf is guaranteed to be valid for len bytes (so len / 4
+            // u32s). The lifetime is tied to the MappedSharedMemory. Buf is
+            // guaranteed to be page-aligned.
+            slice::from_raw_parts(self.buf.as_ptr() as *const AtomicU32, self.buf.len() / 4)
         }
     }
 
     /// Clears the whole window, making it black.
     pub fn clear(&mut self) {
         let fb = self.get_buffer();
-        for i in fb.iter_mut() { *i = Color::rgb(0, 0, 0); }
+        for i in fb.iter() { i.store(0, Ordering::Relaxed); }
     }
 }
