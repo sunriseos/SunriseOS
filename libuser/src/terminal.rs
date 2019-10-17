@@ -95,6 +95,13 @@ impl Terminal {
         }
         Ok(())
     }
+
+    /// Read a line of text. Note that it might return without reading an entire
+    /// line if the buffer is not big enough. The user should check if a \n is
+    /// present in data.
+    pub fn read(&mut self, data: &mut [u8]) -> Result<u64, Error> {
+        self.pipe.read(data)
+    }
 }
 
 impl core::fmt::Write for Terminal {

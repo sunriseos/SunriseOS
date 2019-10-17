@@ -7,19 +7,26 @@ use crate::types::ReadableEvent;
 use crate::keyboard::*;
 use crate::error::Error;
 use crate::syscalls;
+use crate::futures::WorkQueue;
 
+/// Inner state of a managed keyboard.
+#[derive(Debug)]
+pub struct InnerKeyboard {
+    /// The session to kbrd:u
+    ipc_session: StaticServiceProxy,
+
+    /// The queue containing the keyboard state received from IPC.
+    keys_queue: VecDeque<HidKeyboardState>
+}
 
 /// A managed keyboard.
 #[derive(Debug)]
 pub struct Keyboard {
-    /// The session to kbrd:u
-    ipc_session: StaticServiceProxy,
+    /// Inner state
+    inner: InnerKeyboard,
 
     /// An event triggered on keyboard update.
     readable_event: ReadableEvent,
-
-    /// The queue containing the keyboard state received from IPC.
-    keys_queue: VecDeque<HidKeyboardState>
 }
 
 impl Keyboard {
@@ -29,9 +36,11 @@ impl Keyboard {
         let readable_event = ReadableEvent(ipc_session.get_keyboard_event()?);
 
         Ok(Keyboard {
-            ipc_session,
             readable_event,
-            keys_queue: VecDeque::new()
+            inner: InnerKeyboard {
+                ipc_session,
+                keys_queue: VecDeque::new()
+            }
         })
     }
 
@@ -45,9 +54,9 @@ impl Keyboard {
             let handle = self.readable_event.0.as_ref();
             syscalls::wait_synchronization(&[handle], None).expect("wait_synchronization returned an error");
 
-            let res = self.try_read_key();
-
             self.readable_event.clear().expect("Cannot clear readable event");
+
+            let res = self.try_read_key();
 
             if let Some(res) = res {
                 return res;
@@ -55,6 +64,23 @@ impl Keyboard {
         }
     }
 
+    /// Asynchronously waits for a single key press, and return its unicode
+    /// representation.
+    pub fn read_key_async<'a>(&'a mut self, queue: WorkQueue<'_>) -> impl core::future::Future<Output = char> + Unpin + 'a {
+        let Keyboard { ref mut inner, ref mut readable_event } = self;
+        readable_event.wait_async_cb(queue, move || {
+            inner.try_read_key()
+        })
+    }
+
+    /// If a key press is pending, return its unicode representation. This can be
+    /// used to implement poll-based or asynchronous reading from keyboard.
+    pub fn try_read_key(&mut self) -> Option<char> {
+        self.inner.try_read_key()
+    }
+}
+
+impl InnerKeyboard {
     /// Update keys from the keyboard service.
     pub fn update_keys(&mut self) {
         loop {

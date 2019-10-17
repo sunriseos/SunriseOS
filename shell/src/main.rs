@@ -75,11 +75,11 @@ fn login(mut terminal: &mut Terminal, keyboard: &mut Keyboard, filesystem: &IFil
     loop {
         let _ = write!(&mut terminal, "Login: ");
         let _ = terminal.draw();
-        let username = get_next_line(&mut terminal, keyboard, true);
+        let username = get_next_line(&mut terminal);
         let username = username.trim_end_matches('\n');
 
         let _ = writeln!(&mut terminal, "Password: ");
-        let password = get_next_line(&mut terminal, keyboard, false);
+        let password = get_next_line_no_echo(keyboard);
         let password = password.trim_end_matches('\n');
 
         let hash = sha1::Sha1::from(&password).digest().bytes();
@@ -108,7 +108,7 @@ fn login(mut terminal: &mut Terminal, keyboard: &mut Keyboard, filesystem: &IFil
 /// to /etc/passwd.
 fn user_add(mut terminal: &mut Terminal, keyboard: &mut Keyboard, filesystem: &IFileSystemProxy, username: &str) -> Result<(), Error> {
     let _ = writeln!(&mut terminal, "Password: ");
-    let password = get_next_line(&mut terminal, keyboard, false);
+    let password = get_next_line_no_echo(keyboard);
     let password = password.trim_end_matches('\n');
 
     let hash = sha1::Sha1::from(&password).digest().bytes();
@@ -131,21 +131,35 @@ fn user_add(mut terminal: &mut Terminal, keyboard: &mut Keyboard, filesystem: &I
 }
 
 /// Read key presses until a \n is detected, and return the string
-/// (excluding \n).
-pub fn get_next_line(logger: &mut Terminal, keyboard: &mut Keyboard, echo: bool) -> String {
+/// (excluding \n). Don't print the key presses on stdout.
+pub fn get_next_line_no_echo(keyboard: &mut Keyboard) -> String {
     let mut ret = String::from("");
     loop {
         let key = keyboard.read_key();
-        if echo {
-            let _ = write!(logger, "{}", key);
-            logger.draw().unwrap();
-        }
         if key == '\n' {
             return ret;
         } else if key == '\x08' {
             ret.pop();
         } else {
             ret.push(key);
+        }
+    }
+}
+
+/// Read key presses until a \n is detected, and return the string
+/// (excluding \n). The key presses should be written to stdout.
+pub fn get_next_line(logger: &mut Terminal) -> String {
+    let mut bytes = vec![0; 256];
+    let mut read = 0;
+    loop {
+        if bytes.len() - read < 4 {
+            bytes.resize(bytes.len() * 2, 0);
+        }
+        read += logger.read(&mut bytes[read..]).unwrap() as usize;
+        let s = core::str::from_utf8(&bytes[..read]).unwrap();
+        if s.contains('\n') {
+            bytes.resize(read, 0);
+            return String::from_utf8(bytes).unwrap();
         }
     }
 }
@@ -165,7 +179,7 @@ fn main() {
     }
 
     loop {
-        let line = get_next_line(&mut terminal, &mut keyboard, true);
+        let line = get_next_line(&mut terminal);
         let mut arguments = line.split_whitespace();
         let command_opt = arguments.next();
 

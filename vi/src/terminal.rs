@@ -1,11 +1,10 @@
 //! Terminal rendering APIs
 //!
 //! Some simple APIs to handle CLIs.
-//!
-//! Currently only handles printing, but will eventually support reading as well.
 
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use alloc::boxed::Box;
 use font_rs::{font, font::{Font, GlyphBitmap}};
 use hashbrown::HashMap;
 use spin::Mutex;
@@ -19,6 +18,8 @@ use crate::Buffer;
 use crate::VBEColor as Color;
 use core::fmt::Write;
 use core::sync::atomic::Ordering;
+use sunrise_libuser::ps2::Keyboard;
+use crate::libuser::futures_rs::future::FutureObj;
 
 /// Just an x and a y
 #[derive(Copy, Clone, Debug)]
@@ -313,21 +314,66 @@ impl TerminalPipe {
     }
 }
 
-impl sunrise_libuser::twili::IPipe for TerminalPipe {
-    fn read(&mut self, _manager: WorkQueue<'static>, _buf: &mut [u8]) -> Result<u64, Error> {
-        // TODO: Connect to keyboard, read a line.
-        unimplemented!()
+impl sunrise_libuser::twili::IPipeAsync for TerminalPipe {
+    fn read<'a>(&'a mut self, manager: WorkQueue<'static>, buf: &'a mut [u8]) -> FutureObj<'a, Result<u64, Error>> {
+        FutureObj::new(Box::new(async move {
+            // Reads a whole line.
+            let mut keyboard = Keyboard::new().unwrap();
+            let mut i = 0;
+            while buf.len() - i >= 4 {
+                let key = keyboard.read_key_async(manager.clone()).await;
+
+                if key == '\x08' && i == 0 {
+                    // Don't delete further than the first character.
+                    continue;
+                }
+
+                // Write the character to stdout.
+                let mut data = [0u8; 4];
+                let data = key.encode_utf8(&mut data[..]);
+                let mut locked = self.terminal.lock();
+                let err = locked.write_str(data);
+                if err.is_err() {
+                    log::error!("{:?}", err);
+                }
+                locked.draw();
+                core::mem::drop(locked);
+
+                if key == '\x08' {
+                    // Handle deletion.
+                    let mut done = false;
+                    for j in 1..=core::cmp::min(i, 4) {
+                        if core::str::from_utf8(&buf[i - j..i]).is_ok() {
+                            i -= j;
+                            done = true;
+                            break;
+                        }
+                    }
+                    assert!(done, "Data contained invalid utf-8?");
+                } else {
+                    buf[i..i + data.len()].copy_from_slice(data.as_bytes());
+                    i += data.len();
+                    if key == '\n' {
+                        return Ok(i as u64);
+                    }
+                }
+            }
+            Ok(i as u64)
+        }))
     }
-    fn write(&mut self, _manager: WorkQueue<'static>, data: &[u8]) -> Result<(), Error> {
+
+    fn write<'a>(&'a mut self, _manager: WorkQueue<'static>, data: &'a [u8]) -> FutureObj<'a, Result<(), Error>> {
         // TODO: Parse data for ANSI codes.
         // BODY: It'd be nice to parse ANSI codes so we can move the cursor
         // BODY: around 'n stuff.
         // BODY:
         // BODY: Check out https://docs.rs/ansi-parser/
-        let s = core::str::from_utf8(data).or(Err(ViError::InvalidUtf8))?;
-        let mut locked = self.terminal.lock();
-        locked.write_str(s);
-        locked.draw();
-        Ok(())
+        FutureObj::new(Box::new(async move {
+            let s = core::str::from_utf8(data).or(Err(ViError::InvalidUtf8))?;
+            let mut locked = self.terminal.lock();
+            let _ = locked.write_str(s);
+            locked.draw();
+            Ok(())
+        }))
     }
 }

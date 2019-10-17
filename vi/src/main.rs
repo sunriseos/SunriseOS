@@ -4,7 +4,7 @@
 //! In the future, it will also be capable of talking to the GPU to provide an
 //! OpenGL abstraction layer.
 
-#![feature(const_vec_new)]
+#![feature(const_vec_new, async_await)]
 #![no_std]
 
 // rustc warnings
@@ -99,7 +99,7 @@ impl IViInterface for ViInterface {
 
     fn create_terminal(&mut self, manager: WorkQueue<'static>, sharedmem: SharedMemory, top: i32, left: i32, width: u32, height: u32,) -> Result<IPipeProxy, Error> {
         use terminal::{TerminalPipe, Terminal};
-        use sunrise_libuser::twili::IPipe;
+        use sunrise_libuser::twili::IPipeAsync;
 
         let terminal = TerminalPipe::new(Terminal::new(sharedmem, top, left, width, height)?);
         let (server, client) = syscalls::create_session(false, 0)?;
