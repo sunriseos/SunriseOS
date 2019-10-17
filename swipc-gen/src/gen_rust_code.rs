@@ -99,7 +99,7 @@ where
 /// Returns a coma separated list of `name: rust_type`.
 ///
 /// See [get_type] to find the mapping of a SwIPC type to a Rust type.
-fn format_args(args: &[(Alias, Option<String>)], ret: &[(Alias, Option<String>)], server: bool) -> Result<String, Error> {
+fn format_args(args: &[(Alias, Option<String>)], ret: &[(Alias, Option<String>)], server: bool, async_: bool) -> Result<String, Error> {
     let mut arg_list = Vec::new();
     for (idx, (ty, name)) in args.iter().chain(ret.iter().filter(|(ty, _)| {
         match ty { Alias::Array(..) | Alias::Buffer(..) => true, _ => false }
@@ -121,7 +121,7 @@ fn format_args(args: &[(Alias, Option<String>)], ret: &[(Alias, Option<String>)]
             None => s += &format!("unknown_{}", idx)
         }
         s += ": ";
-        s += &get_type(idx >= args.len(), ty, server)?;
+        s += &get_type(idx >= args.len(), ty, server, if async_ { "'a" } else { "" })?;
         arg_list.push(s);
     }
     Ok(arg_list.join(", "))
@@ -144,7 +144,7 @@ fn format_ret_ty(ret: &[(Alias, Option<String>)], server: bool) -> Result<String
     let mut v = Vec::new();
 
     for (ty, _name) in named_iterator(ret, true) {
-        v.push(get_type(true, ty, server)?);
+        v.push(get_type(true, ty, server, "")?);
     }
 
     match v.len() {
@@ -191,21 +191,22 @@ fn format_ret(ret: (&Alias, String)) -> Result<String, Error> {
 /// Get the Rust type of an [Alias]. If output is true, then the type should be
 /// suitable for a return type (or an output IPC buffer argument). If output is
 /// false, then the type should be suitable for an input argument.
-fn get_type(output: bool, ty: &Alias, is_server: bool) -> Result<String, Error> {
+fn get_type(output: bool, ty: &Alias, is_server: bool, out_lifetime: &str) -> Result<String, Error> {
+    let lifetime = if out_lifetime.is_empty() { String::new() } else { format!("{} ", out_lifetime) };
     let is_mut = if output { "mut " } else { "" };
     match ty {
         // actually a special kind of buffer
-        Alias::Array(underlying, _) => Ok(format!("&{}[{}]", is_mut, get_type(output, underlying, is_server)?)),
+        Alias::Array(underlying, _) => Ok(format!("&{}{}[{}]", lifetime, is_mut, get_type(output, underlying, is_server, out_lifetime)?)),
 
         // Blow up if we don't know the size or type
         Alias::Buffer(box Alias::Other(name), _, None) if name == "unknown" => Err(Error::UnsupportedStruct),
         // Treat unknown but sized types as an opaque byte array
-        Alias::Buffer(box Alias::Other(name), _, Some(size)) if name == "unknown" => Ok(format!("&{}[u8; {:#x}]", is_mut, size)),
+        Alias::Buffer(box Alias::Other(name), _, Some(size)) if name == "unknown" => Ok(format!("&{}{}[u8; {:#x}]", lifetime, is_mut, size)),
         // 0-sized buffer means it takes an array
-        Alias::Buffer(inner @ box Alias::Other(_), _, None) => Ok(format!("&{}[{}]", is_mut, get_type(output, inner, is_server)?)),
+        Alias::Buffer(inner @ box Alias::Other(_), _, None) => Ok(format!("&{}{}[{}]", lifetime, is_mut, get_type(output, inner, is_server, out_lifetime)?)),
         // Typed buffers are just references to the underlying raw object
         Alias::Buffer(inner @ box Alias::Bytes(_), _, _) |
-        Alias::Buffer(inner @ box Alias::Other(_), _, _) => Ok(format!("&{}{}", is_mut, get_type(output, inner, is_server)?)),
+        Alias::Buffer(inner @ box Alias::Other(_), _, _) => Ok(format!("&{}{}{}", lifetime, is_mut, get_type(output, inner, is_server, out_lifetime)?)),
         // Panic if we get a buffer with an unsupported underlying type.
         Alias::Buffer(underlying, _, _) => panic!("Buffer with underlying type {:?}", underlying),
 
@@ -243,7 +244,7 @@ fn gen_in_raw(s: &mut String, cmd: &Func) -> Result<&'static str, Error>  {
         writeln!(s, "        #[allow(clippy::missing_docs_in_private_items)]").unwrap();
         writeln!(s, "        struct InRaw {{").unwrap();
         for (argty, argname) in raw_iterator(&cmd.args, false) {
-            writeln!(s, "            {}: {},", argname, get_type(false, argty, false)?).unwrap();
+            writeln!(s, "            {}: {},", argname, get_type(false, argty, false, "")?).unwrap();
         }
         writeln!(s, "        }}").unwrap();
         Ok("InRaw")
@@ -262,7 +263,7 @@ fn gen_out_raw(s: &mut String, cmd: &Func) -> Result<&'static str, Error> {
         writeln!(s, "        #[allow(clippy::missing_docs_in_private_items)]").unwrap();
         writeln!(s, "        struct OutRaw {{").unwrap();
         for (argty, argname) in raw_iterator(&cmd.ret, true) {
-            writeln!(s, "            {}: {},", argname, get_type(true, argty, false)?).unwrap();
+            writeln!(s, "            {}: {},", argname, get_type(true, argty, false, "")?).unwrap();
         }
         writeln!(s, "        }}").unwrap();
         Ok("OutRaw")
@@ -278,7 +279,7 @@ fn format_cmd(cmd: &Func) -> Result<String, Error> {
         writeln!(s, "    /// {}", line).unwrap();
     }
     writeln!(s, "    #[allow(unused, clippy::trivially_copy_pass_by_ref)]").unwrap();
-    writeln!(s, "    pub fn {}(&self, {}) -> Result<{}, Error> {{", &cmd.name, format_args(&cmd.args, &cmd.ret, false)?, format_ret_ty(&cmd.ret, false)?).unwrap();
+    writeln!(s, "    pub fn {}(&self, {}) -> Result<{}, Error> {{", &cmd.name, format_args(&cmd.args, &cmd.ret, false, false)?, format_ret_ty(&cmd.ret, false)?).unwrap();
     writeln!(s, "        use self::sunrise_libuser::ipc::Message;").unwrap();
     writeln!(s, "        let mut buf__ = [0; 0x100];").unwrap();
     writeln!(s).unwrap();
@@ -432,7 +433,7 @@ fn format_type(struct_name: &str, ty: &TypeDef) -> Result<String, Error> {
                     writeln!(s, "    /// {}", line).unwrap();
                 }
                 let tyname = match ty {
-                    Type::Alias(alias) => get_type(false, alias, false)?,
+                    Type::Alias(alias) => get_type(false, alias, false, "")?,
                     _ => unimplemented!()
                 };
                 writeln!(s, "    pub {}: {},", remap_keywords(name), tyname).unwrap();
@@ -473,7 +474,7 @@ fn format_type(struct_name: &str, ty: &TypeDef) -> Result<String, Error> {
         },
         Type::Alias(alias) => {
             // TODO: Prevent alias of buffer/pid/handles
-            writeln!(s, "pub type {} = {};", struct_name, get_type(false, &alias, false)?).unwrap();
+            writeln!(s, "pub type {} = {};", struct_name, get_type(false, &alias, false, "")?).unwrap();
         },
     }
     Ok(s)
@@ -570,7 +571,7 @@ fn gen_call(cmd: &Func, is_async: bool) -> Result<String, Error> {
                     (0b10, 0b10) => ("mut", "out", "pointer"),
                     _ => panic!("Invalid bufty")
                 };
-                let realty = get_type(false, underlying_ty, false)?;
+                let realty = get_type(false, underlying_ty, false, "")?;
                 if let Alias::Array(..) = item {
                     // TODO: Make pop_out_buffer and co safe to call.
                     // BODY: Currently, pop_out_buffer (and other functions of
@@ -700,15 +701,15 @@ pub fn generate_trait_async(ifacename: &str, interface: &Interface) -> String {
     }
     writeln!(s, "pub trait {} {{", trait_name).unwrap();
     for cmd in &interface.funcs {
-        match format_args(&cmd.args, &cmd.ret, true).and_then(|v| format_ret_ty(&cmd.ret, true).map(|u| (v, u))) {
+        match format_args(&cmd.args, &cmd.ret, true, true).and_then(|v| format_ret_ty(&cmd.ret, true).map(|u| (v, u))) {
             Ok((args, ret)) => {
                 for line in cmd.doc.lines() {
                     writeln!(s, "    /// {}", line).unwrap();
                 }
                 writeln!(s, "    #[allow(clippy::trivially_copy_pass_by_ref)]").unwrap();
-                writeln!(s, "    fn {}(&mut self, work_queue: self::sunrise_libuser::futures::WorkQueue<'static>, {}) -> futures::future::FutureObj<'_, Result<{}, Error>>;", &cmd.name, args, ret).unwrap();
+                writeln!(s, "    fn {}<'a>(&'a mut self, work_queue: self::sunrise_libuser::futures::WorkQueue<'static>, {}) -> futures::future::FutureObj<'a, Result<{}, Error>>;", &cmd.name, args, ret).unwrap();
             },
-            Err(_) => writeln!(s, "    // fn {}(&mut self) -> FutureObj<'_, Result<(), Error>>;", &cmd.name).unwrap()
+            Err(_) => writeln!(s, "    // fn {}<'a>(&'a mut self) -> FutureObj<'a, Result<(), Error>>;", &cmd.name).unwrap()
         }
     }
 
@@ -753,7 +754,7 @@ pub fn generate_trait(ifacename: &str, interface: &Interface) -> String {
     }
     writeln!(s, "pub trait {} {{", trait_name).unwrap();
     for cmd in &interface.funcs {
-        match format_args(&cmd.args, &cmd.ret, true).and_then(|v| format_ret_ty(&cmd.ret, true).map(|u| (v, u))) {
+        match format_args(&cmd.args, &cmd.ret, true, false).and_then(|v| format_ret_ty(&cmd.ret, true).map(|u| (v, u))) {
             Ok((args, ret)) => {
                 for line in cmd.doc.lines() {
                     writeln!(s, "/// {}", line).unwrap();
