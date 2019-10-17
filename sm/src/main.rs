@@ -170,7 +170,8 @@ impl IUserInterfaceAsync for UserInterface {
             } else {
                 debug!("Service {} not currently registered. Sleeping.", servicename);
                 SERVICES_EVENT.1.wait_async_cb(work_queue.clone(), move || {
-                    SERVICES.lock().contains_key(&servicename)
+                    if SERVICES.lock().contains_key(&servicename) { Some(()) }
+                    else { None }
                 })
                     .map(|_| {
                         Loop::Continue(work_queue)

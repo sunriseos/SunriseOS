@@ -180,9 +180,9 @@ impl ReadableEvent {
     /// Panics if used from outside the context of a Future spawned on a libuser
     /// future executor. Please make sure you only call this function from a
     /// future spawned on a WaitableManager.
-    pub fn wait_async_cb<F>(&self, queue: crate::futures::WorkQueue<'_>, f: F) -> impl core::future::Future<Output = ()> + Unpin
+    pub fn wait_async_cb<F, T>(&self, queue: crate::futures::WorkQueue<'_>, f: F) -> impl core::future::Future<Output = T> + Unpin
     where
-        F: Fn() -> bool + Unpin
+        F: FnMut() -> Option<T> + Unpin,
     {
         #[allow(missing_docs, clippy::missing_docs_in_private_items)]
         struct MyFuture<F> {
@@ -191,15 +191,25 @@ impl ReadableEvent {
             registered_on: Option<core::task::Waker>,
             f: F
         }
-        impl<F> core::future::Future for MyFuture<F> where F: Fn() -> bool + Unpin {
-            type Output = ();
-            fn poll(mut self: core::pin::Pin<&mut Self>, cx: &mut core::task::Context) -> core::task::Poll<()> {
-                if (self.f)() {
-                    core::task::Poll::Ready(())
+
+        impl<F, T> core::future::Future for MyFuture<F>
+        where
+            F: FnMut() -> Option<T> + Unpin
+        {
+            type Output = T;
+            fn poll(mut self: core::pin::Pin<&mut Self>, cx: &mut core::task::Context) -> core::task::Poll<T> {
+                // TODO: Remove wait_async_cb workaround rust-lang/rust#65489
+                // BODY: Rust seems to have a bit of a weird bug around the
+                // BODY: interaction of DerefMut, Pin and FnMut. See
+                // BODY: https://github.com/rust-lang/rust/issues/65489.
+                let this = &mut *self;
+
+                if let Some(s) = (this.f)() {
+                    core::task::Poll::Ready(s)
                 } else {
-                    let _ = syscalls::clear_event(self.handle);
-                    self.registered_on = Some(cx.waker().clone());
-                    self.queue.wait_for(self.handle, cx);
+                    let _ = syscalls::clear_event(this.handle);
+                    this.registered_on = Some(cx.waker().clone());
+                    this.queue.wait_for(this.handle, cx);
                     core::task::Poll::Pending
                 }
             }

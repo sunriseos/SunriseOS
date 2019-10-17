@@ -122,14 +122,14 @@ impl Keyboard {
     }
 
     /// Handle a PS2 IRQ and push a new key state to the internal queue if needed.
-    pub fn handle_ps2_irq(&mut self) -> bool {
+    pub fn handle_ps2_irq(&mut self) -> Option<()> {
         let res = ps2::try_read_keyboard_state();
 
         if let Some(res) = res {
             self.keys_queue.push_back(res);
         }
 
-        res.is_some()
+        res.map(|_| ())
     }
 
     /// Get the last key states on the internal queue.

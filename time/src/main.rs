@@ -208,7 +208,7 @@ async fn update_rtc(work_queue: WorkQueue<'_>) {
             irq_event.wait_async_cb(work_queue.clone(), move || {
                 let intkind = rtc.read_interrupt_kind();
                 debug!("Checking intkind: {}", intkind);
-                intkind & (1 << 4) != 0
+                if intkind & (1 << 4) != 0 { Some(()) } else { None }
             }).await;
         } else {
             panic!("RTC irq event cannot be uninialized");
