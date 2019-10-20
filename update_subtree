@@ -1,0 +1,10 @@
+#!/bin/sh
+remote=rust_sunrise
+branch=sunrise-squashed
+prefix=rust/
+
+git fetch "$remote" &&
+git rm -r --ignore-unmatch "$prefix" &&
+git read-tree --prefix="$prefix" "${remote}/${branch}" &&
+git checkout -- "$prefix" &&
+git commit -m "update $prefix from $remote $branch"
