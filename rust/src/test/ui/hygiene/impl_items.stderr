@@ -1,0 +1,11 @@
+error: type `for<'r> fn(&'r foo::S) {foo::S::f}` is private
+  --> $DIR/impl_items.rs:12:23
+   |
+LL |         let _: () = S.f();
+   |                       ^
+...
+LL |     foo::m!();
+   |     ---------- in this macro invocation
+
+error: aborting due to previous error
+

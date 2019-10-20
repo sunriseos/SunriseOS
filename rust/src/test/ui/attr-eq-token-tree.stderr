@@ -1,0 +1,8 @@
+error: unexpected token: `!`
+  --> $DIR/attr-eq-token-tree.rs:1:13
+   |
+LL | #[my_attr = !]
+   |             ^
+
+error: aborting due to previous error
+

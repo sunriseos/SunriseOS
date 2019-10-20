@@ -1,0 +1,20 @@
+error: expected one of `)`, `,`, or `::`, found `(`
+  --> $DIR/malformed-derive-entry.rs:1:14
+   |
+LL | #[derive(Copy(Bad))]
+   |              ^ expected one of `)`, `,`, or `::` here
+
+error: expected one of `)`, `,`, or `::`, found `=`
+  --> $DIR/malformed-derive-entry.rs:4:14
+   |
+LL | #[derive(Copy="bad")]
+   |              ^ expected one of `)`, `,`, or `::` here
+
+error: malformed `derive` attribute input
+  --> $DIR/malformed-derive-entry.rs:7:1
+   |
+LL | #[derive]
+   | ^^^^^^^^^ help: missing traits to be derived: `#[derive(Trait1, Trait2, ...)]`
+
+error: aborting due to 3 previous errors
+

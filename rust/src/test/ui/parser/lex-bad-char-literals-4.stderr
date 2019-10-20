@@ -1,0 +1,8 @@
+error: unterminated character literal
+  --> $DIR/lex-bad-char-literals-4.rs:4:5
+   |
+LL |     '●
+   |     ^^^^
+
+error: aborting due to previous error
+

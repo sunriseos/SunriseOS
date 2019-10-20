@@ -1,0 +1,23 @@
+error[E0072]: recursive type `MList` has infinite size
+  --> $DIR/infinite-tag-type-recursion.rs:1:1
+   |
+LL | enum MList { Cons(isize, MList), Nil }
+   | ^^^^^^^^^^               ----- recursive without indirection
+   | |
+   | recursive type has infinite size
+   |
+   = help: insert indirection (e.g., a `Box`, `Rc`, or `&`) at some point to make `MList` representable
+
+error[E0391]: cycle detected when processing `MList`
+  --> $DIR/infinite-tag-type-recursion.rs:1:1
+   |
+LL | enum MList { Cons(isize, MList), Nil }
+   | ^^^^^^^^^^
+   |
+   = note: ...which again requires processing `MList`, completing the cycle
+   = note: cycle used when computing dropck types for `Canonical { max_universe: U0, variables: [], value: ParamEnvAnd { param_env: ParamEnv { caller_bounds: [], reveal: UserFacing, def_id: None }, value: MList } }`
+
+error: aborting due to 2 previous errors
+
+Some errors have detailed explanations: E0072, E0391.
+For more information about an error, try `rustc --explain E0072`.

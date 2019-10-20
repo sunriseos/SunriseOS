@@ -1,0 +1,25 @@
+[package]
+authors = ["The Rust Project Developers"]
+name = "rustc_metadata"
+version = "0.0.0"
+edition = "2018"
+
+[lib]
+name = "rustc_metadata"
+path = "lib.rs"
+doctest = false
+
+[dependencies]
+flate2 = "1.0"
+log = "0.4"
+memmap = "0.6"
+smallvec = { version = "0.6.7", features = ["union", "may_dangle"] }
+rustc = { path = "../librustc" }
+rustc_data_structures = { path = "../librustc_data_structures" }
+errors = { path = "../librustc_errors", package = "rustc_errors" }
+rustc_target = { path = "../librustc_target" }
+serialize = { path = "../libserialize" }
+stable_deref_trait = "1.0.0"
+syntax = { path = "../libsyntax" }
+syntax_ext = { path = "../libsyntax_ext" }
+syntax_pos = { path = "../libsyntax_pos" }

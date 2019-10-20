@@ -1,0 +1,2 @@
+// ignore-license
+void bar() {}

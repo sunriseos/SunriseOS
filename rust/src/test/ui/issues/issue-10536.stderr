@@ -1,0 +1,14 @@
+error: expected open delimiter
+  --> $DIR/issue-10536.rs:14:19
+   |
+LL |     assert!({one! two()});
+   |                   ^^^ expected open delimiter
+
+error: expected open delimiter
+  --> $DIR/issue-10536.rs:18:19
+   |
+LL |     assert!({one! two});
+   |                   ^^^ expected open delimiter
+
+error: aborting due to 2 previous errors
+

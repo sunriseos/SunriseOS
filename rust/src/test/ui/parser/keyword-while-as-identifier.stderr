@@ -1,0 +1,8 @@
+error: expected pattern, found keyword `while`
+  --> $DIR/keyword-while-as-identifier.rs:4:9
+   |
+LL |     let while = "foo";
+   |         ^^^^^ expected pattern
+
+error: aborting due to previous error
+

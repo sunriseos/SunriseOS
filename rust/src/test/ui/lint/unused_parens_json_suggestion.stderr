@@ -1,0 +1,106 @@
+{
+  "message": "unnecessary parentheses around assigned value",
+  "code": {
+    "code": "unused_parens",
+    "explanation": null
+  },
+  "level": "warning",
+  "spans": [
+    {
+      "file_name": "$DIR/unused_parens_json_suggestion.rs",
+      "byte_start": 611,
+      "byte_end": 624,
+      "line_start": 15,
+      "line_end": 15,
+      "column_start": 14,
+      "column_end": 27,
+      "is_primary": true,
+      "text": [
+        {
+          "text": "    let _a = (1 / (2 + 3));",
+          "highlight_start": 14,
+          "highlight_end": 27
+        }
+      ],
+      "label": null,
+      "suggested_replacement": null,
+      "suggestion_applicability": null,
+      "expansion": null
+    }
+  ],
+  "children": [
+    {
+      "message": "lint level defined here",
+      "code": null,
+      "level": "note",
+      "spans": [
+        {
+          "file_name": "$DIR/unused_parens_json_suggestion.rs",
+          "byte_start": 457,
+          "byte_end": 470,
+          "line_start": 10,
+          "line_end": 10,
+          "column_start": 9,
+          "column_end": 22,
+          "is_primary": true,
+          "text": [
+            {
+              "text": "#![warn(unused_parens)]",
+              "highlight_start": 9,
+              "highlight_end": 22
+            }
+          ],
+          "label": null,
+          "suggested_replacement": null,
+          "suggestion_applicability": null,
+          "expansion": null
+        }
+      ],
+      "children": [],
+      "rendered": null
+    },
+    {
+      "message": "remove these parentheses",
+      "code": null,
+      "level": "help",
+      "spans": [
+        {
+          "file_name": "$DIR/unused_parens_json_suggestion.rs",
+          "byte_start": 611,
+          "byte_end": 624,
+          "line_start": 15,
+          "line_end": 15,
+          "column_start": 14,
+          "column_end": 27,
+          "is_primary": true,
+          "text": [
+            {
+              "text": "    let _a = (1 / (2 + 3));",
+              "highlight_start": 14,
+              "highlight_end": 27
+            }
+          ],
+          "label": null,
+          "suggested_replacement": "1 / (2 + 3)",
+          "suggestion_applicability": "MachineApplicable",
+          "expansion": null
+        }
+      ],
+      "children": [],
+      "rendered": null
+    }
+  ],
+  "rendered": "warning: unnecessary parentheses around assigned value
+  --> $DIR/unused_parens_json_suggestion.rs:15:14
+   |
+LL |     let _a = (1 / (2 + 3));
+   |              ^^^^^^^^^^^^^ help: remove these parentheses
+   |
+note: lint level defined here
+  --> $DIR/unused_parens_json_suggestion.rs:10:9
+   |
+LL | #![warn(unused_parens)]
+   |         ^^^^^^^^^^^^^
+
+"
+}

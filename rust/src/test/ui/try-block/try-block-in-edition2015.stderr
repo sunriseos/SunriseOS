@@ -1,0 +1,23 @@
+error: expected identifier, found keyword `let`
+  --> $DIR/try-block-in-edition2015.rs:6:9
+   |
+LL |     let try_result: Option<_> = try {
+   |                                 --- while parsing this struct
+LL |
+LL |         let x = 5;
+   |         ^^^ expected identifier, found keyword
+help: you can escape reserved keywords to use them as identifiers
+   |
+LL |         r#let x = 5;
+   |         ^^^^^
+
+error[E0574]: expected struct, variant or union type, found macro `try`
+  --> $DIR/try-block-in-edition2015.rs:4:33
+   |
+LL |     let try_result: Option<_> = try {
+   |                                 ^^^ help: use `!` to invoke the macro: `try!`
+   |
+   = note: if you want the `try` keyword, you need to be in the 2018 edition
+
+error: aborting due to 2 previous errors
+

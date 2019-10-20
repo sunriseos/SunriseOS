@@ -1,0 +1,17 @@
+error: expected `}`, found `,`
+  --> $DIR/issue-54379.rs:9:22
+   |
+LL |         MyStruct { .., Some(_) } => {},
+   |                    --^
+   |                    | |
+   |                    | expected `}`
+   |                    `..` must be at the end and cannot have a trailing comma
+
+error: expected `,`
+  --> $DIR/issue-54379.rs:9:24
+   |
+LL |         MyStruct { .., Some(_) } => {},
+   |                        ^^^^
+
+error: aborting due to 2 previous errors
+

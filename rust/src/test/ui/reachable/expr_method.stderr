@@ -1,0 +1,20 @@
+error: unreachable expression
+  --> $DIR/expr_method.rs:16:21
+   |
+LL |     Foo.foo(return, 22);
+   |                     ^^
+   |
+note: lint level defined here
+  --> $DIR/expr_method.rs:5:9
+   |
+LL | #![deny(unreachable_code)]
+   |         ^^^^^^^^^^^^^^^^
+
+error: unreachable expression
+  --> $DIR/expr_method.rs:21:5
+   |
+LL |     Foo.bar(return);
+   |     ^^^^^^^^^^^^^^^
+
+error: aborting due to 2 previous errors
+

@@ -1,0 +1,10 @@
+error: expected `{`, found `<-`
+  --> $DIR/placement-syntax.rs:3:9
+   |
+LL |     if x<-1 {
+   |     --  ^^ expected `{`
+   |     |
+   |     this `if` statement has a condition, but no block
+
+error: aborting due to previous error
+

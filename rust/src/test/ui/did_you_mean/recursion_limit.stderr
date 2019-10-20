@@ -1,0 +1,25 @@
+error[E0275]: overflow evaluating the requirement `J: std::marker::Send`
+  --> $DIR/recursion_limit.rs:34:5
+   |
+LL |     is_send::<A>();
+   |     ^^^^^^^^^^^^
+   |
+   = help: consider adding a `#![recursion_limit="20"]` attribute to your crate
+   = note: required because it appears within the type `I`
+   = note: required because it appears within the type `H`
+   = note: required because it appears within the type `G`
+   = note: required because it appears within the type `F`
+   = note: required because it appears within the type `E`
+   = note: required because it appears within the type `D`
+   = note: required because it appears within the type `C`
+   = note: required because it appears within the type `B`
+   = note: required because it appears within the type `A`
+note: required by `is_send`
+  --> $DIR/recursion_limit.rs:31:1
+   |
+LL | fn is_send<T:Send>() { }
+   | ^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to previous error
+
+For more information about this error, try `rustc --explain E0275`.

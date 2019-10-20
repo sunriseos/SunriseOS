@@ -1,0 +1,14 @@
+error: unreachable expression
+  --> $DIR/expr_type.rs:9:13
+   |
+LL |     let x = {return}: !;
+   |             ^^^^^^^^^^^
+   |
+note: lint level defined here
+  --> $DIR/expr_type.rs:4:9
+   |
+LL | #![deny(unreachable_code)]
+   |         ^^^^^^^^^^^^^^^^
+
+error: aborting due to previous error
+

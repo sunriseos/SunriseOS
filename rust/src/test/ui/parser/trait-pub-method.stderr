@@ -1,0 +1,8 @@
+error: unnecessary visibility qualifier
+  --> $DIR/trait-pub-method.rs:2:5
+   |
+LL |     pub fn foo();
+   |     ^^^ `pub` not permitted here
+
+error: aborting due to previous error
+

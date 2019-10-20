@@ -1,0 +1,8 @@
+error: unnecessary visibility qualifier
+  --> $DIR/trait-pub-assoc-ty.rs:2:5
+   |
+LL |     pub type Foo;
+   |     ^^^ `pub` not permitted here
+
+error: aborting due to previous error
+

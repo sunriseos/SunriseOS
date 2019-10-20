@@ -1,0 +1,15 @@
+error[E0053]: method `b` has an incompatible type for trait
+  --> $DIR/reordered-type-param.rs:16:30
+   |
+LL |   fn b<C:Clone,D>(&self, x: C) -> C;
+   |                             - type in trait
+...
+LL |   fn b<F:Clone,G>(&self, _x: G) -> G { panic!() }
+   |                              ^ expected type parameter, found a different type parameter
+   |
+   = note: expected type `fn(&E, F) -> F`
+              found type `fn(&E, G) -> G`
+
+error: aborting due to previous error
+
+For more information about this error, try `rustc --explain E0053`.
