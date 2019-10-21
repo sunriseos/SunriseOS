@@ -149,9 +149,15 @@ dependencies = ["install-xargo"]
 command = "xargo"
 args = ["build", "--target=i386-unknown-sunrise-user", "--package=std_hello_world", "@@split(COMPILER_FLAGS, )"]
 
+[tasks.uutils]
+description = "Compiles uutils (coreutils)"
+dependencies = ["install-xargo"]
+command = "xargo"
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=uutils", "-Z", "package-features", "--features=sunrise", "--no-default-features", "@@split(COMPILER_FLAGS, )"]
+
 [tasks.userspace]
 description = "Compiles userspace apps"
-dependencies = ["shell", "wall-clock", "sm", "vi", "ahci", "time", "fs", "loader", "keyboard", "std_hello_world"]
+dependencies = ["shell", "wall-clock", "sm", "vi", "ahci", "time", "fs", "loader", "keyboard", "std_hello_world", "uutils"]
 
 [tasks.iso]
 description = "Creates a bootable ISO containing the kernel and grub."
@@ -187,6 +193,9 @@ touch external/filesystem/disk_template/bin/wall-clock/flags/boot.flag
 mkdir -p external/filesystem/disk_template/bin/std_hello_world/flags
 cp target/i386-unknown-sunrise-user/$PROFILE_NAME/std_hello_world    external/filesystem/disk_template/bin/std_hello_world/main
 touch external/filesystem/disk_template/bin/std_hello_world/flags/boot.flag
+
+mkdir -p external/filesystem/disk_template/bin/uutils
+cp target/i386-unknown-sunrise-user/$PROFILE_NAME/uutils     external/filesystem/disk_template/bin/uutils/main
 
 cargo run --manifest-path disk-initializer/Cargo.toml -- DISK.img 52428800 external/filesystem/disk_template/
 '''
@@ -274,12 +283,19 @@ dependencies = ["install-xargo", "refresh-crates"]
 install_crate = { rustup_component_name = "clippy" }
 command = "xargo"
 args = ["clippy", "--target=i386-unknown-sunrise-user",
-	"--all", "--exclude", "swipc-gen", "--exclude", "swipc-parser",
-	"--exclude", "disk-initializer",
-	"--exclude", "docs",
-	"--exclude", "sunrise-kernel",
-	"--exclude", "sunrise-bootstrap",
-	"--exclude", "std_hello_world",
+    "-p", "sunrise-shell",
+    "-p", "sunrise-time",
+    "-p", "sunrise-libuser",
+    "-p", "sunrise-wall-clock",
+    "-p", "sunrise-sm",
+    "-p", "sunrise-vi",
+    "-p", "sunrise-ahci",
+    "-p", "sunrise-fs",
+    "-p", "sunrise-libutils",
+    "-p", "sunrise-libkern",
+    "-p", "sunrise-libtimezone",
+    "-p", "sunrise-loader",
+    "-p", "sunrise-keyboard",
 	"--",
 	"@@split(CLIPPY_RULES, )",
 	"${@}",

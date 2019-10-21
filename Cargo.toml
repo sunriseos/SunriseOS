@@ -1,8 +1,37 @@
 [workspace]
-members = ["kernel", "bootstrap", "shell", "time", "libuser", "wall-clock", "sm", "vi", "ahci", "fs", "libutils", "libkern", "swipc-gen", "swipc-parser", "docs", "libtimezone", "disk-initializer", "loader", "keyboard", "std_hello_world"]
+members = ["kernel", "bootstrap", "shell", "time", "libuser", "wall-clock", "sm", "vi", "ahci", "fs", "libutils", "libkern", "swipc-gen", "swipc-parser", "docs", "libtimezone", "disk-initializer", "loader", "keyboard", "std_hello_world", "coreutils"]
 
-[profile.release]
-debug = true
+[patch.crates-io.libc]
+git = "https://github.com/sunriseos/libc.git"
+branch = "sunrise"
+
+[patch.crates-io.uucore]
+git = "https://github.com/sunriseos/uucore.git"
+branch = "master"
+
+[patch.crates-io.atty]
+git = "https://github.com/sunriseos/atty.git"
+branch = "master"
+
+[patch.crates-io.clap]
+git = "https://github.com/sunriseos/clap.git"
+branch = "master"
+
+[patch.crates-io.filetime]
+git = "https://github.com/sunriseos/filetime.git"
+branch = "master"
+
+[patch.crates-io.platform-info]
+git = "https://github.com/sunriseos/platform-info.git"
+branch = "master"
+
+[patch.crates-io.time]
+git = "https://github.com/sunriseos/time.git"
+branch = "v0.1"
+
+[patch.crates-io.termsize]
+git = "https://github.com/sunriseos/termsize.git"
+branch = "master"
 
 [profile.test]
 debug = true
