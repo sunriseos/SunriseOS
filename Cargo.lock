@@ -2466,11 +2466,10 @@ dependencies = [
 [[package]]
 name = "uucore"
 version = "0.0.1"
-source = "git+https://github.com/sunriseos/uucore.git#4278610b7f83b95110e0a7ea52b17d7fa44b6a16"
+source = "git+https://github.com/sunriseos/uucore.git#0bf822ef6c4d29a27fe4e1d9571c02953898d430"
 dependencies = [
  "data-encoding 2.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "failure_derive 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "getopts 0.2.21 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.64 (git+https://github.com/sunriseos/libc.git?branch=sunrise)",
