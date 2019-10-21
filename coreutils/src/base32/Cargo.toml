@@ -12,10 +12,6 @@ path = "base32.rs"
 version = "0.0.1"
 features = ["encoding"]
 
-[dependencies.clippy]
-version = "0.0.212"
-optional = true
-
 [[bin]]
 name = "base32"
 path = "../../uumain.rs"

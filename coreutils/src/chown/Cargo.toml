@@ -16,10 +16,6 @@ walkdir = "2.2"
 version = "0.0.1"
 features = ["entries", "fs"]
 
-[dependencies.clippy]
-version = "0.0.212"
-optional = true
-
 [[bin]]
 name = "chown"
 path = "../../uumain.rs"
