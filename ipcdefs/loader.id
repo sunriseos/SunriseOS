@@ -2,9 +2,12 @@
 #
 # Responsible for creating, loading, starting and waiting on processes.
 interface sunrise_libuser::ldr::ILoaderInterface is ldr:shel {
-    # Create, load and start the process `title_name` with the given args.
-    # Returns the process' pid.
-    [0] launch_title(array<u8, 9> title_name, array<u8, 9> args) -> u64 pid;
+    # Create and load the process `title_name` with the given args.
+    # Returns the process' pid. The process will not be started yet, use
+    # `launch_title` to start it.
+    [0] create_title(array<u8, 9> title_name, array<u8, 9> args) -> u64 pid;
+    # Starts a process created with create_title.
+    [2] launch_title(u64 pid);
     # Wait for the process with the given pid, returning the exit status.
     [1] wait(u64 pid) -> u32 exit_status;
 }
