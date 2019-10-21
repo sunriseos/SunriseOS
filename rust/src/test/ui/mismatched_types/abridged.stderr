@@ -1,0 +1,71 @@
+error[E0308]: mismatched types
+  --> $DIR/abridged.rs:16:5
+   |
+LL | fn a() -> Foo {
+   |           --- expected `Foo` because of return type
+LL |     Some(Foo { bar: 1 })
+   |     ^^^^^^^^^^^^^^^^^^^^ expected struct `Foo`, found enum `std::option::Option`
+   |
+   = note: expected type `Foo`
+              found type `std::option::Option<Foo>`
+
+error[E0308]: mismatched types
+  --> $DIR/abridged.rs:20:5
+   |
+LL | fn a2() -> Foo {
+   |            --- expected `Foo` because of return type
+LL |     Ok(Foo { bar: 1})
+   |     ^^^^^^^^^^^^^^^^^ expected struct `Foo`, found enum `std::result::Result`
+   |
+   = note: expected type `Foo`
+              found type `std::result::Result<Foo, _>`
+
+error[E0308]: mismatched types
+  --> $DIR/abridged.rs:24:5
+   |
+LL | fn b() -> Option<Foo> {
+   |           ----------- expected `std::option::Option<Foo>` because of return type
+LL |     Foo { bar: 1 }
+   |     ^^^^^^^^^^^^^^ expected enum `std::option::Option`, found struct `Foo`
+   |
+   = note: expected type `std::option::Option<Foo>`
+              found type `Foo`
+
+error[E0308]: mismatched types
+  --> $DIR/abridged.rs:28:5
+   |
+LL | fn c() -> Result<Foo, Bar> {
+   |           ---------------- expected `std::result::Result<Foo, Bar>` because of return type
+LL |     Foo { bar: 1 }
+   |     ^^^^^^^^^^^^^^ expected enum `std::result::Result`, found struct `Foo`
+   |
+   = note: expected type `std::result::Result<Foo, Bar>`
+              found type `Foo`
+
+error[E0308]: mismatched types
+  --> $DIR/abridged.rs:39:5
+   |
+LL | fn d() -> X<X<String, String>, String> {
+   |           ---------------------------- expected `X<X<std::string::String, std::string::String>, std::string::String>` because of return type
+...
+LL |     x
+   |     ^ expected struct `std::string::String`, found integer
+   |
+   = note: expected type `X<X<_, std::string::String>, std::string::String>`
+              found type `X<X<_, {integer}>, {integer}>`
+
+error[E0308]: mismatched types
+  --> $DIR/abridged.rs:50:5
+   |
+LL | fn e() -> X<X<String, String>, String> {
+   |           ---------------------------- expected `X<X<std::string::String, std::string::String>, std::string::String>` because of return type
+...
+LL |     x
+   |     ^ expected struct `std::string::String`, found integer
+   |
+   = note: expected type `X<X<_, std::string::String>, _>`
+              found type `X<X<_, {integer}>, _>`
+
+error: aborting due to 6 previous errors
+
+For more information about this error, try `rustc --explain E0308`.

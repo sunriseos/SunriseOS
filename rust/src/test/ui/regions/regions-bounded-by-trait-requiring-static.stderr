@@ -1,0 +1,50 @@
+error[E0477]: the type `&'a isize` does not fulfill the required lifetime
+  --> $DIR/regions-bounded-by-trait-requiring-static.rs:22:5
+   |
+LL |     assert_send::<&'a isize>();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: type must satisfy the static lifetime
+
+error[E0477]: the type `&'a str` does not fulfill the required lifetime
+  --> $DIR/regions-bounded-by-trait-requiring-static.rs:26:5
+   |
+LL |     assert_send::<&'a str>();
+   |     ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: type must satisfy the static lifetime
+
+error[E0477]: the type `&'a [isize]` does not fulfill the required lifetime
+  --> $DIR/regions-bounded-by-trait-requiring-static.rs:30:5
+   |
+LL |     assert_send::<&'a [isize]>();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: type must satisfy the static lifetime
+
+error[E0477]: the type `std::boxed::Box<&'a isize>` does not fulfill the required lifetime
+  --> $DIR/regions-bounded-by-trait-requiring-static.rs:44:5
+   |
+LL |     assert_send::<Box<&'a isize>>();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: type must satisfy the static lifetime
+
+error[E0477]: the type `*const &'a isize` does not fulfill the required lifetime
+  --> $DIR/regions-bounded-by-trait-requiring-static.rs:55:5
+   |
+LL |     assert_send::<*const &'a isize>();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: type must satisfy the static lifetime
+
+error[E0477]: the type `*mut &'a isize` does not fulfill the required lifetime
+  --> $DIR/regions-bounded-by-trait-requiring-static.rs:59:5
+   |
+LL |     assert_send::<*mut &'a isize>();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: type must satisfy the static lifetime
+
+error: aborting due to 6 previous errors
+

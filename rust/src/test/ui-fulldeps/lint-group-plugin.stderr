@@ -1,0 +1,16 @@
+warning: item is named 'lintme'
+  --> $DIR/lint-group-plugin.rs:9:1
+   |
+LL | fn lintme() { }
+   | ^^^^^^^^^^^^^^^
+   |
+   = note: #[warn(test_lint)] on by default
+
+warning: item is named 'pleaselintme'
+  --> $DIR/lint-group-plugin.rs:10:1
+   |
+LL | fn pleaselintme() { }
+   | ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: #[warn(please_lint)] on by default
+

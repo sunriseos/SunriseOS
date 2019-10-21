@@ -1,0 +1,30 @@
+[package]
+authors = ["The Rust Project Developers"]
+name = "rustc_data_structures"
+version = "0.0.0"
+edition = "2018"
+
+[lib]
+name = "rustc_data_structures"
+path = "lib.rs"
+doctest = false
+
+[dependencies]
+ena = "0.13"
+indexmap = "1"
+log = "0.4"
+jobserver_crate = { version = "0.1.13", package = "jobserver" }
+lazy_static = "1"
+serialize = { path = "../libserialize" }
+graphviz = { path = "../libgraphviz" }
+cfg-if = "0.1.2"
+crossbeam-utils = { version = "0.6.5", features = ["nightly"] }
+stable_deref_trait = "1.0.0"
+rayon = { version = "0.2.0", package = "rustc-rayon" }
+rayon-core = { version = "0.2.0", package = "rustc-rayon-core" }
+rustc-hash = "1.0.1"
+smallvec = { version = "0.6.7", features = ["union", "may_dangle"] }
+
+[dependencies.parking_lot]
+version = "0.7"
+features = ["nightly"]

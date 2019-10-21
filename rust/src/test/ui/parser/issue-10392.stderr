@@ -1,0 +1,8 @@
+error: expected identifier, found `,`
+  --> $DIR/issue-10392.rs:6:13
+   |
+LL |     let A { , } = a();
+   |             ^ expected identifier
+
+error: aborting due to previous error
+

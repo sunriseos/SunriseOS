@@ -1,0 +1,2 @@
+#[inline(always)]
+fn main() {}

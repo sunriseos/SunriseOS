@@ -1,0 +1,8 @@
+error: unnecessary visibility qualifier
+  --> $DIR/trait-pub-assoc-const.rs:2:5
+   |
+LL |     pub const Foo: u32;
+   |     ^^^ `pub` not permitted here
+
+error: aborting due to previous error
+

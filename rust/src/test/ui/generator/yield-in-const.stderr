@@ -1,0 +1,8 @@
+error[E0627]: yield statement outside of generator literal
+  --> $DIR/yield-in-const.rs:3:17
+   |
+LL | const A: u8 = { yield 3u8; 3u8};
+   |                 ^^^^^^^^^
+
+error: aborting due to previous error
+

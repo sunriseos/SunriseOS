@@ -1,0 +1,9 @@
+clone_depth: 1
+build: false
+
+test_script:
+  - echo AppVeyor is not used anymore
+
+branches:
+  only:
+    - auto

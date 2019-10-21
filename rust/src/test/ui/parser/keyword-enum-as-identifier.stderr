@@ -1,0 +1,8 @@
+error: expected pattern, found keyword `enum`
+  --> $DIR/keyword-enum-as-identifier.rs:4:9
+   |
+LL |     let enum = "foo";
+   |         ^^^^ expected pattern
+
+error: aborting due to previous error
+

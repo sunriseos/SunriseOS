@@ -1,0 +1,8 @@
+error: lifetime arguments must be declared prior to type arguments
+  --> $DIR/issue-14303-fncall.rs:13:29
+   |
+LL |         .collect::<Vec<S<_, 'a>>>();
+   |                             ^^
+
+error: aborting due to previous error
+

@@ -1,0 +1,8 @@
+warning: item is named 'lintme'
+  --> $DIR/lint-plugin-cmdline-load.rs:8:1
+   |
+LL | fn lintme() { }
+   | ^^^^^^^^^^^^^^^
+   |
+   = note: #[warn(test_lint)] on by default
+

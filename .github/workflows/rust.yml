@@ -68,6 +68,9 @@ jobs:
       - name: Install cargo-make
         run: cargo install cargo-make
 
+      - name: Install xargo (from master branch)
+        run: cargo install --git https://github.com/japaric/xargo.git
+
       - name: Build develop
         run: cargo make iso
 

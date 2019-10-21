@@ -1,0 +1,12 @@
+error: rustc_outlives
+  --> $DIR/explicit-union.rs:6:1
+   |
+LL | / union Foo<'b, U> {
+LL | |     bar: Bar<'b, U>
+LL | | }
+   | |_^
+   |
+   = note: U : 'b
+
+error: aborting due to previous error
+
