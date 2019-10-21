@@ -724,7 +724,7 @@ pub(crate) fn reset_signal(event: HandleRef) -> Result<(), KernelError> {
 ///   - The given handle is invalid or not a process.
 pub fn get_process_id(process_handle: &Process) -> Result<u64, KernelError> {
     unsafe {
-        let (pid, ..) = syscall(nr::GetProcessInfo, (process_handle.0).0.get() as usize, 0, 0, 0, 0, 0)?;
+        let (pid, ..) = syscall(nr::GetProcessId, (process_handle.0).0.get() as usize, 0, 0, 0, 0, 0)?;
         Ok(pid as _)
     }
 }
