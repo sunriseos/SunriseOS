@@ -96,6 +96,11 @@ impl Terminal {
         Ok(())
     }
 
+    /// Clone this terminal's pipe.
+    pub fn clone_pipe(&self) -> Result<crate::twili::IPipeProxy, Error> {
+        self.pipe.clone_current_object()
+    }
+
     /// Read a line of text. Note that it might return without reading an entire
     /// line if the buffer is not big enough. The user should check if a \n is
     /// present in data.
