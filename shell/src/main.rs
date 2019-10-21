@@ -34,6 +34,7 @@ use crate::libuser::threads::{self, Thread};
 use crate::libuser::error::{Error, LoaderError, FileSystemError};
 use crate::libuser::syscalls;
 use crate::libuser::ps2::Keyboard;
+use crate::libuser::twili::ITwiliManagerServiceProxy;
 
 use core::fmt::Write;
 use alloc::string::String;
@@ -167,6 +168,7 @@ pub fn get_next_line(logger: &mut Terminal) -> String {
 fn main() {
     let mut terminal = Terminal::new(WindowSize::FontLines(-1, false)).unwrap();
     let mut keyboard = Keyboard::new().unwrap();
+    let mut twili = ITwiliManagerServiceProxy::new().unwrap();
     let loader = ILoaderInterfaceProxy::raw_new().unwrap();
 
     let fs_proxy = IFileSystemServiceProxy::raw_new().unwrap();
@@ -271,6 +273,10 @@ fn main() {
                 // Try to run it as an external binary.
                 let res = (|| {
                     let pid = loader.create_title(name.as_bytes(), line.as_bytes())?;
+                    let stdin = terminal.clone_pipe()?;
+                    let stdout = terminal.clone_pipe()?;
+                    let stderr = terminal.clone_pipe()?;
+                    twili.register_pipes(pid, stdin, stdout, stderr)?;
                     loader.launch_title(pid)?;
                     loader.wait(pid)
                 })();

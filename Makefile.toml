@@ -143,6 +143,12 @@ dependencies = ["install-xargo"]
 command = "xargo"
 args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-keyboard", "@@split(COMPILER_FLAGS, )"]
 
+[tasks.twili]
+description = "Compiles sunrise-twili"
+dependencies = ["install-xargo"]
+command = "xargo"
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-twili", "@@split(COMPILER_FLAGS, )"]
+
 [tasks.std_hello_world]
 description = "Compiles std_hello_world"
 dependencies = ["install-xargo"]
@@ -157,7 +163,7 @@ args = ["build", "--target=i386-unknown-sunrise-user", "--package=uutils", "-Z",
 
 [tasks.userspace]
 description = "Compiles userspace apps"
-dependencies = ["shell", "wall-clock", "sm", "vi", "ahci", "time", "fs", "loader", "keyboard", "std_hello_world", "uutils"]
+dependencies = ["shell", "wall-clock", "sm", "vi", "ahci", "time", "fs", "loader", "keyboard", "twili", "std_hello_world", "uutils"]
 
 [tasks.iso]
 description = "Creates a bootable ISO containing the kernel and grub."
@@ -192,7 +198,10 @@ touch external/filesystem/disk_template/bin/wall-clock/flags/boot.flag
 
 mkdir -p external/filesystem/disk_template/bin/std_hello_world/flags
 cp target/i386-unknown-sunrise-user/$PROFILE_NAME/std_hello_world    external/filesystem/disk_template/bin/std_hello_world/main
-touch external/filesystem/disk_template/bin/std_hello_world/flags/boot.flag
+
+mkdir -p external/filesystem/disk_template/bin/twili/flags
+cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-twili external/filesystem/disk_template/bin/twili/main
+touch external/filesystem/disk_template/bin/twili/flags/boot.flag
 
 mkdir -p external/filesystem/disk_template/bin/uutils
 cp target/i386-unknown-sunrise-user/$PROFILE_NAME/uutils     external/filesystem/disk_template/bin/uutils/main
@@ -321,7 +330,7 @@ args = ["-c", "kernel/src/main.rs", "bootstrap/src/main.rs",
 	"sm/src/main.rs", "vi/src/main.rs", "ahci/src/main.rs",
 	"libutils/src/lib.rs", "libkern/src/lib.rs", "swipc-gen/src/lib.rs",
 	"swipc-parser/src/lib.rs", "time/src/main.rs", "libtimezone/src/lib.rs",
-	"loader/src/main.rs", "keyboard/src/main.rs"
+	"loader/src/main.rs", "keyboard/src/main.rs", "twili/src/main.rs"
 ]
 
 [tasks.clippy-sunrise-kernel-target]
