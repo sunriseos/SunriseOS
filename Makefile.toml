@@ -197,7 +197,7 @@ touch external/filesystem/disk_template/bin/std_hello_world/flags/boot.flag
 mkdir -p external/filesystem/disk_template/bin/uutils
 cp target/i386-unknown-sunrise-user/$PROFILE_NAME/uutils     external/filesystem/disk_template/bin/uutils/main
 
-cargo run --manifest-path disk-initializer/Cargo.toml -- DISK.img 52428800 external/filesystem/disk_template/
+cargo run --manifest-path disk-initializer/Cargo.toml -- DISK.img 157286400 external/filesystem/disk_template/
 '''
 ]
 
