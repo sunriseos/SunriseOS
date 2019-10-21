@@ -161,9 +161,19 @@ dependencies = ["install-xargo"]
 command = "xargo"
 args = ["build", "--target=i386-unknown-sunrise-user", "--package=uutils", "-Z", "package-features", "--features=sunrise", "--no-default-features", "@@split(COMPILER_FLAGS, )"]
 
+[tasks.userspace-nostd]
+internal = true
+command = "xargo"
+args = ["build", "--target=i386-unknown-sunrise-user", "@@split(COMPILER_FLAGS, )",
+    "-p", "sunrise-shell", "-p", "sunrise-wall-clock", "-p", "sunrise-sm",
+    "-p", "sunrise-vi", "-p", "sunrise-ahci", "-p", "sunrise-time",
+    "-p", "sunrise-fs", "-p", "sunrise-loader", "-p", "sunrise-keyboard",
+    "-p", "sunrise-twili"
+]
+
 [tasks.userspace]
 description = "Compiles userspace apps"
-dependencies = ["shell", "wall-clock", "sm", "vi", "ahci", "time", "fs", "loader", "keyboard", "twili", "std_hello_world", "uutils"]
+dependencies = ["userspace-nostd", "std_hello_world", "uutils"]
 
 [tasks.iso]
 description = "Creates a bootable ISO containing the kernel and grub."
