@@ -1,0 +1,20 @@
+[package]
+name = "kill"
+version = "0.0.1"
+authors = []
+build = "../../mkmain.rs"
+
+[lib]
+name = "uu_kill"
+path = "kill.rs"
+
+[dependencies]
+libc = "0.2.42"
+
+[dependencies.uucore]
+version = "0.0.1"
+features = ["signals"]
+
+[[bin]]
+name = "kill"
+path = "../../uumain.rs"

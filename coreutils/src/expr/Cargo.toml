@@ -1,0 +1,18 @@
+[package]
+name = "expr"
+version = "0.0.1"
+authors = []
+build = "../../mkmain.rs"
+
+[lib]
+name = "uu_expr"
+path = "expr.rs"
+
+[dependencies]
+libc = "0.2.42"
+onig = "~4.3.2"
+uucore = "0.0.1"
+
+[[bin]]
+name = "expr"
+path = "../../uumain.rs"

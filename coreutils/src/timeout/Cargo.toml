@@ -1,0 +1,22 @@
+[package]
+name = "timeout"
+version = "0.0.1"
+authors = []
+build = "../../mkmain.rs"
+
+[lib]
+name = "uu_timeout"
+path = "timeout.rs"
+
+[dependencies]
+getopts = "0.2.18"
+libc = "0.2.42"
+time = "0.1.40"
+
+[dependencies.uucore]
+version = "0.0.1"
+features = ["parse_time", "process"]
+
+[[bin]]
+name = "timeout"
+path = "../../uumain.rs"

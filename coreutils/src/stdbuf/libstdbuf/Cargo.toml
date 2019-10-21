@@ -1,0 +1,18 @@
+[package]
+name = "libstdbuf"
+version = "0.0.1"
+authors = []
+
+[lib]
+name = "libstdbuf"
+path = "libstdbuf.rs"
+# XXX: the rlib is just to prevent Cargo from spitting out a warning
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+uucore = "0.0.1"
+libc = "0.2"
+cpp = "0.4"
+
+[build-dependencies]
+cpp_build = "0.4"

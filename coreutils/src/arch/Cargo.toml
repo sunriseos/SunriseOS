@@ -1,0 +1,17 @@
+[package]
+name = "arch"
+version = "0.0.1"
+authors = []
+build = "../../mkmain.rs"
+
+[lib]
+name = "uu_arch"
+path = "arch.rs"
+
+[dependencies]
+platform-info = "0.0.1"
+uucore = "0.0.1"
+
+[[bin]]
+name = "arch"
+path = "../../uumain.rs"
