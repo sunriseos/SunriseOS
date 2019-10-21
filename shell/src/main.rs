@@ -269,8 +269,11 @@ fn main() {
             },
             name => {
                 // Try to run it as an external binary.
-                let res = loader.launch_title(name.as_bytes(), line.as_bytes())
-                    .and_then(|pid| loader.wait(pid));
+                let res = (|| {
+                    let pid = loader.create_title(name.as_bytes(), line.as_bytes())?;
+                    loader.launch_title(pid)?;
+                    loader.wait(pid)
+                })();
 
                 match res {
                     Err(Error::Loader(LoaderError::ProgramNotFound, _)) => {
