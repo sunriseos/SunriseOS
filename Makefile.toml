@@ -228,7 +228,27 @@ args = ["doc", "--no-deps"]
 description = "Generate the project's documentation, including private items"
 env = { "RUSTDOCFLAGS" = "-Z unstable-options --enable-index-page" }
 command = "cargo"
-args = ["doc", "--no-deps", "--document-private-items"]
+args = ["doc", "--no-deps", "--document-private-items",
+    "-p", "docs",
+    "-p", "sunrise-bootstrap",
+    "-p", "sunrise-kernel",
+    "-p", "sunrise-shell",
+    "-p", "sunrise-time",
+    "-p", "sunrise-libuser",
+    "-p", "sunrise-wall-clock",
+    "-p", "sunrise-sm",
+    "-p", "sunrise-vi",
+    "-p", "sunrise-ahci",
+    "-p", "sunrise-fs",
+    "-p", "sunrise-libutils",
+    "-p", "sunrise-libkern",
+    "-p", "sunrise-libtimezone",
+    "-p", "sunrise-loader",
+    "-p", "sunrise-keyboard",
+    "-p", "swipc-gen",
+    "-p", "swipc-parser",
+    "-p", "disk-initializer",
+]
 
 [tasks.deploy-doc]
 install_crate = { crate_name = "cargo-travis", binary = "cargo", test_arg = ["doc-upload", "--help"] }
