@@ -43,7 +43,7 @@
 //!
 //! /// Every time the port accepts a connection and a session is created, it
 //! /// will spawn a HelloInterface.
-//! #[derive(Debug, Default)]
+//! #[derive(Debug, Default, Clone)]
 //! struct HelloInterface;
 //!
 //! impl IExample1 for HelloInterface {}
@@ -105,7 +105,7 @@
 //! use sunrise_libuser::error::Error;
 //! use log::*;
 //!
-//! #[derive(Debug, Default)]
+//! #[derive(Debug, Default, Clone)]
 //! struct HelloInterface;
 //!
 //! impl IExample2 for HelloInterface {
@@ -168,7 +168,7 @@
 //! use sunrise_libuser::error::Error;
 //! use sunrise_libuser::ipc::server::new_session_wrapper;
 //!
-//! #[derive(Debug, Default)]
+//! #[derive(Debug, Default, Clone)]
 //! struct HelloInterface;
 //!
 //! impl IExample3 for HelloInterface {
@@ -180,6 +180,7 @@
 //!     }
 //! }
 //!
+//! #[derive(Debug, Clone)]
 //! struct Subsession;
 //!
 //! impl IExample3Subsession for Subsession {}
@@ -222,7 +223,7 @@
 //! use sunrise_libuser::types::SharedMemory;
 //! use sunrise_libuser::error::{Error, KernelError};
 //!
-//! #[derive(Debug, Default)]
+//! #[derive(Debug, Default, Clone)]
 //! struct HelloInterface;
 //!
 //! fn do_async_stuff() -> impl Future<Output=()> + Send {
