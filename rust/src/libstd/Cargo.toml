@@ -60,6 +60,8 @@ fortanix-sgx-abi = { version = "0.3.2", features = ['rustc-dep-of-std'] }
 # Need #SunriseOS/SunriseOS#402 to actually build
 sunrise-libuser = { git = "https://github.com/sunriseos/sunriseos.git", default-features = false, features = ['rustc-dep-of-std'] }
 lazy_static = { version = "1.3", features = ['spin_no_std'] }
+log = "0.4"
+spin = "0.5"
 
 [build-dependencies]
 cc = "1.0"

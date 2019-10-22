@@ -37,6 +37,11 @@ pub mod thread_local;
 
 #[cfg(not(test))]
 pub fn init() {
+    use core::intrinsics::abort;
+    if let Err(err) = stdio::init() {
+        log::error!("Error initializing stdio! {:?}", err);
+        unsafe { abort(); }
+    }
     fs::init();
 }
 
