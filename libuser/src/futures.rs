@@ -52,7 +52,7 @@ static CURRENT_TASK: Cell<Option<generational_arena::Index>> = Cell::new(None);
 
 /// A WorkQueue represents a handle to a [WaitableManager] on which you can spawn
 /// new Futures with [WorkQueue::spawn()] or put the current future to sleep until
-/// a handle is signaled through [WorkQueue::wait_for()].
+/// a handle is signaled through [HandleRef::wait_async()].
 ///
 /// This handle may be cloned - it will still point to the same [WaitableManager].
 /// It may be shared with other threads, sent to other event loops, etc... in order

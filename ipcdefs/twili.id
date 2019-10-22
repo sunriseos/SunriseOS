@@ -1,6 +1,8 @@
 # The Twili Service is responsible for providing the stdin/stdout/stderr pipes
-# to the various subprocesses. It is freely taken from the [twili] switch
-# process.
+# to the various subprocesses. It is freely inspired by the [twili] switch
+# sysmodule.
+#
+# [twili]: https://github.com/misson20000/twili
 interface sunrise_libuser::twili::ITwiliService is twili {
     # Recover the stdin/stdout/stderr pipes for the current process.
     #
