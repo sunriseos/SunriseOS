@@ -201,7 +201,7 @@ lazy_static! {
 }
 
 /// Struct implementing the ldr:shel service.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct LoaderIface;
 
 impl ILoaderInterfaceAsync for LoaderIface {

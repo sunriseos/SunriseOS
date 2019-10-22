@@ -100,14 +100,14 @@ impl<'a> HandleRef<'a> {
     /// Panics if used from outside the context of a Future spawned on a libuser
     /// future executor. Please make sure you only call this function from a
     /// future spawned on a WaitableManager.
-    pub fn wait_async<'b>(self, queue: WorkQueue<'b>)-> impl core::future::Future<Output = Result<(), Error>> + Unpin +'b {
+    pub fn wait_async(self, queue: WorkQueue<'_>)-> impl core::future::Future<Output = Result<(), Error>> + Unpin {
         #[allow(missing_docs, clippy::missing_docs_in_private_items)]
-        struct MyFuture<'a> {
-            queue: crate::futures::WorkQueue<'a>,
+        struct MyFuture {
+            queue: crate::futures::SimpleWorkQueue,
             handle: HandleRef<'static>,
             registered_on: Option<core::task::Waker>
         }
-        impl<'a> core::future::Future for MyFuture<'a> {
+        impl core::future::Future for MyFuture {
             type Output = Result<(), Error>;
             fn poll(mut self: core::pin::Pin<&mut Self>, cx: &mut core::task::Context) -> core::task::Poll<Result<(), Error>> {
                 match syscalls::wait_synchronization(&[self.handle], Some(0)) {
@@ -121,7 +121,7 @@ impl<'a> HandleRef<'a> {
                 }
             }
         }
-        impl Drop for MyFuture<'_> {
+        impl Drop for MyFuture {
             fn drop(&mut self) {
                 if let Some(waker) = &self.registered_on {
                     self.queue.unwait_for(self.handle, waker.clone());
@@ -130,7 +130,7 @@ impl<'a> HandleRef<'a> {
         }
 
         MyFuture {
-            queue, handle: self.staticify(), registered_on: None
+            queue: queue.simple(), handle: self.staticify(), registered_on: None
         }
     }
 }
@@ -165,7 +165,7 @@ impl ReadableEvent {
     /// Panics if used from outside the context of a Future spawned on a libuser
     /// future executor. Please make sure you only call this function from a
     /// future spawned on a WaitableManager.
-    pub fn wait_async<'a>(&self, queue: crate::futures::WorkQueue<'a>) -> impl core::future::Future<Output = Result<(), Error>> + Unpin + 'a {
+    pub fn wait_async(&self, queue: crate::futures::WorkQueue<'_>) -> impl core::future::Future<Output = Result<(), Error>> + Unpin {
         self.0.as_ref().wait_async(queue)
     }
 
@@ -180,31 +180,41 @@ impl ReadableEvent {
     /// Panics if used from outside the context of a Future spawned on a libuser
     /// future executor. Please make sure you only call this function from a
     /// future spawned on a WaitableManager.
-    pub fn wait_async_cb<'a, F>(&self, queue: crate::futures::WorkQueue<'a>, f: F) -> impl core::future::Future<Output = ()> + Unpin + 'a
+    pub fn wait_async_cb<F, T>(&self, queue: crate::futures::WorkQueue<'_>, f: F) -> impl core::future::Future<Output = T> + Unpin
     where
-        F: Fn() -> bool + Unpin + 'a
+        F: FnMut() -> Option<T> + Unpin,
     {
         #[allow(missing_docs, clippy::missing_docs_in_private_items)]
-        struct MyFuture<'a, F> {
-            queue: crate::futures::WorkQueue<'a>,
+        struct MyFuture<F> {
+            queue: crate::futures::SimpleWorkQueue,
             handle: HandleRef<'static>,
             registered_on: Option<core::task::Waker>,
             f: F
         }
-        impl<'a, F> core::future::Future for MyFuture<'a, F> where F: Fn() -> bool + Unpin {
-            type Output = ();
-            fn poll(mut self: core::pin::Pin<&mut Self>, cx: &mut core::task::Context) -> core::task::Poll<()> {
-                if (self.f)() {
-                    core::task::Poll::Ready(())
+
+        impl<F, T> core::future::Future for MyFuture<F>
+        where
+            F: FnMut() -> Option<T> + Unpin
+        {
+            type Output = T;
+            fn poll(mut self: core::pin::Pin<&mut Self>, cx: &mut core::task::Context) -> core::task::Poll<T> {
+                // TODO: Remove wait_async_cb workaround rust-lang/rust#65489
+                // BODY: Rust seems to have a bit of a weird bug around the
+                // BODY: interaction of DerefMut, Pin and FnMut. See
+                // BODY: https://github.com/rust-lang/rust/issues/65489.
+                let this = &mut *self;
+
+                if let Some(s) = (this.f)() {
+                    core::task::Poll::Ready(s)
                 } else {
-                    let _ = syscalls::clear_event(self.handle);
-                    self.registered_on = Some(cx.waker().clone());
-                    self.queue.wait_for(self.handle, cx);
+                    let _ = syscalls::clear_event(this.handle);
+                    this.registered_on = Some(cx.waker().clone());
+                    this.queue.wait_for(this.handle, cx);
                     core::task::Poll::Pending
                 }
             }
         }
-        impl<F> Drop for MyFuture<'_, F> {
+        impl<F> Drop for MyFuture<F> {
             fn drop(&mut self) {
                 if let Some(waker) = &self.registered_on {
                     self.queue.unwait_for(self.handle, waker.clone());
@@ -213,7 +223,8 @@ impl ReadableEvent {
         }
 
         MyFuture {
-            queue, handle: self.0.as_ref_static(), registered_on: None, f
+            queue: queue.simple(), handle: self.0.as_ref_static(),
+            registered_on: None, f
         }
     }
 }
@@ -343,7 +354,7 @@ impl ServerSession {
     /// Panics if used from outside the context of a Future spawned on a libuser
     /// future executor. Please make sure you only call this function from a
     /// future spawned on a WaitableManager.
-    pub fn wait_async<'a>(&self, queue: crate::futures::WorkQueue<'a>) -> impl core::future::Future<Output = Result<(), Error>> + Unpin + 'a {
+    pub fn wait_async(&self, queue: crate::futures::WorkQueue<'_>) -> impl core::future::Future<Output = Result<(), Error>> + Unpin {
         self.0.as_ref().wait_async(queue)
     }
 }
@@ -406,7 +417,7 @@ impl ServerPort {
     // BODY: something like calling accept straight after wait_async, they might
     // BODY: end up blocking the event loop. This is because two threads might
     // BODY: race for the call to accept after the wait_async.
-    pub fn wait_async<'a>(&self, queue: crate::futures::WorkQueue<'a>) -> impl core::future::Future<Output = Result<(), Error>> + Unpin + 'a {
+    pub fn wait_async(&self, queue: crate::futures::WorkQueue<'_>) -> impl core::future::Future<Output = Result<(), Error>> + Unpin {
         self.0.as_ref().wait_async(queue)
     }
 }
@@ -486,7 +497,7 @@ impl Process {
     /// Panics if used from outside the context of a Future spawned on a libuser
     /// future executor. Please make sure you only call this function from a
     /// future spawned on a WaitableManager.
-    pub fn wait_async<'a>(&self, queue: crate::futures::WorkQueue<'a>) -> impl core::future::Future<Output = Result<(), Error>> + Unpin + 'a {
+    pub fn wait_async(&self, queue: crate::futures::WorkQueue<'_>) -> impl core::future::Future<Output = Result<(), Error>> + Unpin {
         self.0.as_ref().wait_async(queue)
     }
 
@@ -551,6 +562,7 @@ impl SharedMemory {
             handle: self,
             addr,
             size,
+            perm
         })
     }
 }
@@ -564,39 +576,12 @@ impl SharedMemory {
 pub struct MappedSharedMemory {
     handle: SharedMemory,
     addr: usize,
-    size: usize
+    size: usize,
+    perm: MemoryPermissions
 }
 
 #[allow(clippy::len_without_is_empty)] // len cannot be zero.
 impl MappedSharedMemory {
-    /// Get the underlying shared memory as a byte slice.
-    ///
-    /// # Safety
-    ///
-    /// No attempt is made at synchronizing access. This (apparently) read-only
-    /// slice might be modified by another process. It is recommended to use
-    /// [`as_ptr`] and volatile reads to avoid Undefined Behavior,
-    /// unless the application has a way to synchronize access.
-    ///
-    /// [`as_ptr`]: MappedSharedMemory::as_ptr
-    pub unsafe fn get(&self) -> &[u8] {
-        ::core::slice::from_raw_parts(self.addr as *const u8, self.size)
-    }
-
-    /// Get the underlying shared memory as a mutable byte slice.
-    ///
-    /// # Safety
-    ///
-    /// No attempt is made at synchronizing access. This (apparently) read-only
-    /// slice might be modified by another process. It is recommended to use
-    /// [`as_mut_ptr`] and volatile writes to avoid Undefined Behavior,
-    /// unless the application has a way to synchronize access.
-    ///
-    /// [`as_mut_ptr`]: MappedSharedMemory::as_mut_ptr
-    pub unsafe fn get_mut(&mut self) -> &mut [u8] {
-        ::core::slice::from_raw_parts_mut(self.addr as *mut u8, self.size)
-    }
-
     /// Gets a raw pointer to the underlying shared memory.
     ///
     /// The pointer is valid until the MappedSharedMemory instance gets dropped.

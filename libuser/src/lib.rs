@@ -58,10 +58,11 @@ pub mod futures;
 //pub mod keyboard {}
 //#[gen_ipc(path = "../../ipcdefs/loader.id", prefix = "sunrise_libuser")]
 //pub mod ldr {}
+//#[gen_ipc(path = "../../ipcdefs/twili.id", prefix = "sunrise_libuser")]
+//pub mod twili {}
 //#[gen_ipc(path = "../../ipcdefs/example.id", prefix = "sunrise_libuser")]
 //pub mod example {}
 include!(concat!(env!("OUT_DIR"), "/ipc_code.rs"));
-
 
 pub mod error;
 pub mod allocator;

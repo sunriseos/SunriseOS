@@ -125,18 +125,22 @@ fn main() {
     loop {
         // TODO: Use get_rtc_event event handle
         // BODY: We need CreateEvent, SignalEvent and ClearEvent syscalls before using this.
-        syscalls::sleep_thread(1000000000).unwrap();
+        syscalls::sleep_thread(1_000_000_000).unwrap();
         //syscalls::wait_synchronization(&[rtc_event.as_ref()], None).unwrap();
 
         let timestamp = rtc.get_rtc_time().unwrap();
         let res = timezone_service.to_calendar_time_with_my_rule(timestamp).unwrap();
         let res_custom_timezone = timezone_service.to_calendar_time(timestamp, &rule.inner).unwrap();
 
+        // Clear.
         let _ = writeln!(&mut logger);
 
         write_calendar(&mut logger, device_location_trimed, res, true);
         let _ = write!(&mut logger, "                                ");
         write_calendar(&mut logger, custom_location_trimed, res_custom_timezone, false);
+        if let Err(err) = logger.draw() {
+            log::error!("Failed to draw: {:?}", err);
+        }
     }
 }
 

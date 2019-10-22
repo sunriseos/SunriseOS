@@ -10,8 +10,16 @@ interface sunrise_libuser::vi::ViInterface is vi: {
     [0] create_buffer(handle<copy, shared_memory> framebuffer, i32 top, i32 left, u32 width, u32 height) -> object<sunrise_libuser::vi::IBuffer>;
     # Gets the screen resolution.
     [1] get_screen_resolution() -> (u32 width, u32 height);
+    # Gets the height of the font used for rendering a terminal line.
+    [2] get_font_height() -> u32 height;
+    # Create a terminal.
+    #
+    # This creates a terminal at the given coordinates, with the given
+    # height.
+    #
+    # It is allowed to place the framebuffer outside the field of view.
+    [3] create_terminal(handle<copy, shared_memory> framebuffer, i32 top, i32 left, u32 width, u32 height) -> object<sunrise_libuser::twili::IPipe>;
 }
-
 
 # IPC Window object
 interface sunrise_libuser::vi::IBuffer {

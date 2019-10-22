@@ -128,7 +128,7 @@ fn main() {
 ///
 /// As hotplug/remove of a disk is not supported, a disk id remains valid for the whole
 /// lifetime of the ahci driver.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 struct AhciInterface;
 
 impl IAhciInterface for AhciInterface {

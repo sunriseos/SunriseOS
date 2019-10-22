@@ -4,7 +4,7 @@
 //! In the future, it will also be capable of talking to the GPU to provide an
 //! OpenGL abstraction layer.
 
-#![feature(const_vec_new)]
+#![feature(const_vec_new, async_await)]
 #![no_std]
 
 // rustc warnings
@@ -29,9 +29,11 @@ extern crate alloc;
 extern crate lazy_static;
 
 mod vbe;
+mod terminal;
 
 use crate::vbe::{VBEColor, FRAMEBUFFER, Framebuffer};
 use core::cmp::{min, max};
+use core::sync::atomic::{AtomicU32, Ordering};
 use alloc::vec::Vec;
 use alloc::boxed::Box;
 use alloc::sync::{Arc, Weak};
@@ -46,9 +48,11 @@ use crate::libuser::syscalls::MemoryPermissions;
 use sunrise_libutils::align_up;
 use libuser::mem::{find_free_address, PAGE_SIZE};
 use crate::libuser::vi::{IBuffer as IBufferInterface, IBufferProxy, ViInterface as IViInterface};
+use sunrise_libuser::window::Color;
+use sunrise_libuser::twili::IPipeProxy;
 
 /// Entry point interface.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 struct ViInterface;
 
 impl IViInterface for ViInterface {
@@ -77,7 +81,7 @@ impl IViInterface for ViInterface {
         let wrapper  = new_session_wrapper(manager.clone(), server, buf, IBuffer::dispatch);
         //let future : Box<dyn Send + 'static> = Box::new(wrapper);
         //let future : FutureObj<'static, _> = FutureObj::new(Box::new(wrapper));
-        manager.spawn(  FutureObj::new(Box::new(wrapper)));
+        manager.spawn(FutureObj::new(Box::new(wrapper)));
         Ok(IBufferProxy::from(client))
     }
 
@@ -87,6 +91,21 @@ impl IViInterface for ViInterface {
     fn get_screen_resolution(&mut self, _manager: WorkQueue<'static>) -> Result<(u32, u32,), Error> {
         let fb = FRAMEBUFFER.lock();
         Ok((fb.width() as _, fb.height() as _))
+    }
+
+    fn get_font_height(&mut self, _manager: WorkQueue<'static>) -> Result<u32, Error> {
+        Ok(terminal::font_height() as u32)
+    }
+
+    fn create_terminal(&mut self, manager: WorkQueue<'static>, sharedmem: SharedMemory, top: i32, left: i32, width: u32, height: u32,) -> Result<IPipeProxy, Error> {
+        use terminal::{TerminalPipe, Terminal};
+        use sunrise_libuser::twili::IPipeAsync;
+
+        let terminal = TerminalPipe::new(Terminal::new(sharedmem, top, left, width, height)?);
+        let (server, client) = syscalls::create_session(false, 0)?;
+        let wrapper = new_session_wrapper(manager.clone(), server, terminal, TerminalPipe::dispatch);
+        manager.spawn(FutureObj::new(Box::new(wrapper)));
+        Ok(IPipeProxy::from(client))
     }
 }
 
@@ -131,38 +150,45 @@ fn get_intersect((atop, aleft, awidth, aheight): (u32, u32, u32, u32), (btop, bl
 #[allow(clippy::cast_sign_loss)] // Code panics when shit hits the fan
 #[allow(clippy::cast_possible_wrap)]
 fn draw(buf: &Buffer, framebuffer: &mut Framebuffer<'_>, top: u32, left: u32, width: u32, height: u32) {
-    unsafe {
-        // TODO: Safety of the vi::draw IPC method
-        // BODY: When calling vi::draw, vi reads from the shared memory. There is
-        // BODY: no borrow-checking mechanism in place to ensure that the other
-        // BODY: process does not mutate it while this happens. Maybe we should
-        // BODY: have some kind of cross-process mutex? How to implement this
-        // BODY: properly?
-        let data = buf.mem.get();
-        let (dtop, dleft, dwidth, dheight) = buf.get_real_bounds(framebuffer.width() as u32, framebuffer.height() as u32);
-        // Calculate first offset in data
-        if let Some(intersect) = get_intersect((dtop, dleft, dwidth, dheight), (top, left, width, height)) {
-            let (top, left, width, height) = intersect;
-            let mut curtop = top;
-            while curtop < top + height {
-                let mut curleft = left;
-                while curleft < left + width {
-                    // This overflows when buf.width * buf.height * 4 >= sizeof(usize)
-                    let dataidx = (((curtop as i32 - buf.top) as u32 * buf.width + (curleft as i32 - buf.left) as u32) * 4) as usize;
-                    let fbidx = framebuffer.get_px_offset(curleft as usize, curtop as usize) as usize;
-                    // TODO: Vi: Implement alpha blending
-                    // BODY: Vi currently does not do alpha blending at all.
-                    // BODY: In the interest of pretty transparent window, this
-                    // BODY: needs fixing!
-                    framebuffer.get_fb()[fbidx] = VBEColor::rgb(data[dataidx + 2], data[dataidx + 1], data[dataidx + 0]);
-                    curleft += 1;
-                }
-                curtop += 1;
-            }
+    /// Get the AtomicU32 array from a MappedSharedMemory.
+    #[allow(clippy::cast_ptr_alignment)] // See safety comment.
+    fn cast_to_u32(mapped: &MappedSharedMemory) -> &[AtomicU32] {
+        unsafe {
+            // Safety: buf is guaranteed to be valid for len bytes (so len / 4
+            // u32s). The lifetime is tied to the MappedSharedMemory. Buf is
+            // guaranteed to be page-aligned.
+            core::slice::from_raw_parts(mapped.as_ptr() as *const AtomicU32, mapped.len() / 4)
         }
-        // for each line
-        // memcpy
     }
+    let data = cast_to_u32(&buf.mem);
+    let (dtop, dleft, dwidth, dheight) = buf.get_real_bounds(framebuffer.width() as u32, framebuffer.height() as u32);
+    // Calculate first offset in data
+    if let Some(intersect) = get_intersect((dtop, dleft, dwidth, dheight), (top, left, width, height)) {
+        let (top, left, width, height) = intersect;
+        let mut curtop = top;
+        while curtop < top + height {
+            let mut curleft = left;
+            while curleft < left + width {
+                // This overflows when buf.width * buf.height * 4 >= sizeof(usize)
+                let dataidx = ((curtop as i32 - buf.top) as u32 * buf.width + (curleft as i32 - buf.left) as u32) as usize;
+                let fbidx = framebuffer.get_px_offset(curleft as usize, curtop as usize) as usize;
+                // TODO: Vi: Implement alpha blending
+                // BODY: Vi currently does not do alpha blending at all.
+                // BODY: In the interest of pretty transparent window, this
+                // BODY: needs fixing!
+                let color = data[dataidx].load(Ordering::Relaxed);
+                let color: Color = unsafe {
+                    // Safety: Color is a simple POD copy type.
+                    core::mem::transmute(color)
+                };
+                framebuffer.get_fb()[fbidx] = VBEColor::rgb(color.r, color.g, color.b);
+                curleft += 1;
+            }
+            curtop += 1;
+        }
+    }
+    // for each line
+    // memcpy
 }
 
 /// See [Buffer::get_real_bounds].
@@ -201,10 +227,68 @@ impl Buffer {
     fn get_real_bounds(&self, framebuffer_width: u32, framebuffer_height: u32) -> (u32, u32, u32, u32) {
         get_real_bounds((self.top, self.left, self.width, self.height), framebuffer_width, framebuffer_height)
     }
+
+    /// Get the width of this buffer.
+    fn width(&self) -> u32 {
+        self.width
+    }
+
+    /// Get the height of this buffer.
+    fn height(&self) -> u32 {
+        self.height
+    }
+
+    /// Gets the underlying framebuffer
+    #[allow(clippy::cast_ptr_alignment)] // See safety note.
+    pub fn get_buffer(&self) -> &[AtomicU32] {
+        unsafe {
+            // Safety: buf is guaranteed to be valid for len bytes (so len / 4
+            // u32s). The lifetime is tied to the MappedSharedMemory. Buf is
+            // guaranteed to be page-aligned.
+            core::slice::from_raw_parts(self.mem.as_ptr() as *const AtomicU32, self.mem.len() / 4)
+        }
+    }
+
+    /// Gets the offset in memory of a pixel based on an x and y.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `y >= self.height()` or `x >= self.width()`
+    pub fn get_px_offset(&self, x: usize, y: usize) -> usize {
+        assert!(y < self.height() as usize, "{} {}", y, self.height());
+        assert!(x < self.width() as usize);
+        (y * self.width() as usize + x)
+    }
+
+    /// Blit the buffer to the framebuffer.
+    fn draw(&self) {
+        core::sync::atomic::fence(Ordering::Acquire);
+        let (fullscreen_width, fullscreen_height, bpp) = {
+            let fb = FRAMEBUFFER.lock();
+            (fb.width(), fb.height(), fb.bpp())
+        };
+        // create a fake Framebuffer that writes to BACKBUFFER_ARR,
+        // and copy it to actual screen only when we're done composing all layers in it.
+        let mut backbuffer_arr = BACKBUFFER_ARR.lock();
+        let mut framebuffer = Framebuffer::new_buffer(&mut *backbuffer_arr, fullscreen_width, fullscreen_height, bpp);
+        let (dtop, dleft, dwidth, dheight) = self.get_real_bounds(framebuffer.width() as u32, framebuffer.height() as u32);
+        framebuffer.clear_at(dleft as _, dtop as _, dwidth as _, dheight as _);
+        BUFFERS.lock().retain(|buffer| {
+            if let Some(buffer) = buffer.upgrade() {
+                draw(&*buffer, &mut framebuffer, dtop, dleft, dwidth, dheight);
+                true
+            } else {
+                false
+            }
+        });
+        // BACKBUFFER_ARR is often bigger than our screen, take only the first pixels.
+        let screen_in_backbuffer = &mut framebuffer.get_fb()[0..(fullscreen_width * fullscreen_height)];
+        FRAMEBUFFER.lock().get_fb().copy_from_slice(screen_in_backbuffer);
+    }
 }
 
 /// IPC Window object
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct IBuffer {
     /// The Buffer linked with this window object instance.
     buffer: Arc<Buffer>,
@@ -246,27 +330,7 @@ impl IBufferInterface for IBuffer {
     /// Blit the buffer to the framebuffer.
     #[inline(never)]
     fn draw(&mut self, _manager: WorkQueue<'static>) -> Result<(), Error> {
-        let (fullscreen_width, fullscreen_height, bpp) = {
-            let fb = FRAMEBUFFER.lock();
-            (fb.width(), fb.height(), fb.bpp())
-        };
-        // create a fake Framebuffer that writes to BACKBUFFER_ARR,
-        // and copy it to actual screen only when we're done composing all layers in it.
-        let mut backbuffer_arr = BACKBUFFER_ARR.lock();
-        let mut framebuffer = Framebuffer::new_buffer(&mut *backbuffer_arr, fullscreen_width, fullscreen_height, bpp);
-        let (dtop, dleft, dwidth, dheight) = self.buffer.get_real_bounds(framebuffer.width() as u32, framebuffer.height() as u32);
-        framebuffer.clear_at(dleft as _, dtop as _, dwidth as _, dheight as _);
-        BUFFERS.lock().retain(|buffer| {
-            if let Some(buffer) = buffer.upgrade() {
-                draw(&*buffer, &mut framebuffer, dtop, dleft, dwidth, dheight);
-                true
-            } else {
-                false
-            }
-        });
-        // BACKBUFFER_ARR is often bigger than our screen, take only the first pixels.
-        let screen_in_backbuffer = &mut framebuffer.get_fb()[0..(fullscreen_width * fullscreen_height)];
-        FRAMEBUFFER.lock().get_fb().copy_from_slice(screen_in_backbuffer);
+        self.buffer.draw();
         Ok(())
     }
 }
@@ -304,6 +368,8 @@ capabilities!(CAPABILITIES = Capabilities {
         sunrise_libuser::syscalls::nr::ReplyAndReceiveWithUserBuffer,
         sunrise_libuser::syscalls::nr::AcceptSession,
         sunrise_libuser::syscalls::nr::CreateSession,
+
+        sunrise_libuser::syscalls::nr::ClearEvent,
 
         sunrise_libuser::syscalls::nr::ConnectToNamedPort,
         sunrise_libuser::syscalls::nr::SendSyncRequestWithUserBuffer,

@@ -1,0 +1,36 @@
+# The Twili Service is responsible for providing the stdin/stdout/stderr pipes
+# to the various subprocesses. It is freely inspired by the [twili] switch
+# sysmodule.
+#
+# [twili]: https://github.com/misson20000/twili
+interface sunrise_libuser::twili::ITwiliService is twili {
+    # Recover the stdin/stdout/stderr pipes for the current process.
+    #
+    # If none were registered, returns an error.
+    [0] open_pipes(pid) -> (
+        object<sunrise_libuser::twili::IPipe> stdin,
+        object<sunrise_libuser::twili::IPipe> stdout,
+        object<sunrise_libuser::twili::IPipe> stderr);
+}
+
+# The Twili Manager is responsible for registering a process' pipes. The PM
+# should connect to this service and register pipes before starting a process.
+interface sunrise_libuser::twili::ITwiliManagerService is twili:m {
+    # Registers the pipe of a remote process.
+    [0] register_pipes(pid,
+        object<sunrise_libuser::twili::IPipe> stdin,
+        object<sunrise_libuser::twili::IPipe> stdout,
+        object<sunrise_libuser::twili::IPipe> stderr);
+}
+
+# IPC Pipe Object
+interface sunrise_libuser::twili::IPipe {
+    # Reads data from the pipe.
+    #
+    # May block if there isn't enough data to return.
+    [0] read() -> (u64 size_read, array<u8, 0x6> out_buf);
+    # Writes data to the other side of the pipe.
+    #
+    # May block if the other side isn't reading fast enough.
+    [1] write(array<u8, 0x5> out_buf);
+}

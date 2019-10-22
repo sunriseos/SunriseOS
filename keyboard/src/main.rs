@@ -113,23 +113,23 @@ impl Keyboard {
     }
 
     /// Get the writeable update event of the Keyboard.
-    /// 
+    ///
     /// # Note:
-    /// 
+    ///
     /// This consume the internal writable_event.q
     pub fn take_writable_event(&mut self) -> Option<WritableEvent> {
         self.writable_event.take()
     }
 
     /// Handle a PS2 IRQ and push a new key state to the internal queue if needed.
-    pub fn handle_ps2_irq(&mut self) -> bool {
+    pub fn handle_ps2_irq(&mut self) -> Option<()> {
         let res = ps2::try_read_keyboard_state();
 
         if let Some(res) = res {
             self.keys_queue.push_back(res);
         }
 
-        res.is_some()
+        res.map(|_| ())
     }
 
     /// Get the last key states on the internal queue.
@@ -157,7 +157,7 @@ impl Keyboard {
 static KEYBOARD_INSTANCE: Once<Mutex<Keyboard>> = Once::new();
 
 /// Entry point interface.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 struct StaticService;
 
 impl sunrise_libuser::keyboard::StaticService for StaticService {

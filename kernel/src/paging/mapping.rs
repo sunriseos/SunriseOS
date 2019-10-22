@@ -10,6 +10,7 @@ use failure::Backtrace;
 use sunrise_libkern::{MemoryType, MemoryState};
 use crate::sync::{SpinRwLock, SpinRwLockReadGuard};
 use core::ops::Range;
+use core::fmt;
 use core::iter::StepBy;
 use crate::mem::PhysicalAddress;
 
@@ -24,7 +25,6 @@ use crate::mem::PhysicalAddress;
 ///
 /// Getting the last address of this mapping (length - 1 + address) is guaranteed to not overflow.
 /// However we do not make any assumption on address + length, which falls outside of the mapping.
-#[derive(Debug)]
 #[allow(clippy::len_without_is_empty)] // length **cannot** be zero.
 pub struct Mapping {
     /// The first address of this mapping.
@@ -39,6 +39,20 @@ pub struct Mapping {
     offset: usize,
     /// The access rights of this mapping.
     flags: MappingAccessRights,
+}
+
+impl fmt::Debug for Mapping {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Mapping")
+            .field("address", &self.address)
+            .field("length", &self.length)
+            .field("ty", &self.state.ty())
+            .field("state", &self.state)
+            .field("frames", &self.frames)
+            .field("offset", &self.offset)
+            .field("flags", &self.flags)
+            .finish()
+    }
 }
 
 /// Frames associated with a [Mapping].

@@ -65,7 +65,7 @@ use crate::libuser::futures_rs as futures;
 /// or register new services (assuming they have the appropriate capabilities).
 ///
 /// Make sure to call the `IUserInterface::initialize` method before using it.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct UserInterface;
 
 lazy_static! {
@@ -170,7 +170,8 @@ impl IUserInterfaceAsync for UserInterface {
             } else {
                 debug!("Service {} not currently registered. Sleeping.", servicename);
                 SERVICES_EVENT.1.wait_async_cb(work_queue.clone(), move || {
-                    SERVICES.lock().contains_key(&servicename)
+                    if SERVICES.lock().contains_key(&servicename) { Some(()) }
+                    else { None }
                 })
                     .map(|_| {
                         Loop::Continue(work_queue)

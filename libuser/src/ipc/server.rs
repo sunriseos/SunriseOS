@@ -43,7 +43,7 @@
 //!
 //! /// Every time the port accepts a connection and a session is created, it
 //! /// will spawn a HelloInterface.
-//! #[derive(Debug, Default)]
+//! #[derive(Debug, Default, Clone)]
 //! struct HelloInterface;
 //!
 //! impl IExample1 for HelloInterface {}
@@ -105,7 +105,7 @@
 //! use sunrise_libuser::error::Error;
 //! use log::*;
 //!
-//! #[derive(Debug, Default)]
+//! #[derive(Debug, Default, Clone)]
 //! struct HelloInterface;
 //!
 //! impl IExample2 for HelloInterface {
@@ -168,7 +168,7 @@
 //! use sunrise_libuser::error::Error;
 //! use sunrise_libuser::ipc::server::new_session_wrapper;
 //!
-//! #[derive(Debug, Default)]
+//! #[derive(Debug, Default, Clone)]
 //! struct HelloInterface;
 //!
 //! impl IExample3 for HelloInterface {
@@ -180,6 +180,7 @@
 //!     }
 //! }
 //!
+//! #[derive(Debug, Clone)]
 //! struct Subsession;
 //!
 //! impl IExample3Subsession for Subsession {}
@@ -222,7 +223,7 @@
 //! use sunrise_libuser::types::SharedMemory;
 //! use sunrise_libuser::error::{Error, KernelError};
 //!
-//! #[derive(Debug, Default)]
+//! #[derive(Debug, Default, Clone)]
 //! struct HelloInterface;
 //!
 //! fn do_async_stuff() -> impl Future<Output=()> + Send {
@@ -301,7 +302,7 @@ fn common_port_handler<T, DISPATCH>(work_queue: WorkQueue<'static>, port: Server
 where
     DISPATCH: for<'b> hrtb_hack::FutureCallback<(&'b mut T, WorkQueue<'static>, u32, &'b mut [u8]), Result<(), Error>>,
     DISPATCH: Clone + Unpin + Send + 'static,
-    T: Default + Unpin + Send + 'static,
+    T: Default + Clone + Unpin + Send + 'static,
 {
     crate::loop_future::loop_fn((work_queue, dispatch, port), |(work_queue, dispatch, port)| {
         port.wait_async(work_queue.clone())
@@ -331,7 +332,7 @@ pub fn port_handler<T, DISPATCH>(work_queue: WorkQueue<'static>, server_name: &s
 where
     DISPATCH: for<'b> hrtb_hack::FutureCallback<(&'b mut T, WorkQueue<'static>, u32, &'b mut [u8]), Result<(), Error>>,
     DISPATCH: Clone + Unpin + Send + 'static,
-    T: Default + Unpin + Send + 'static,
+    T: Default + Clone + Unpin + Send + 'static,
 {
     use crate::sm::IUserInterfaceProxy;
     // We use `new()` and not `raw_new()` in order to avoid deadlocking when closing the
@@ -349,7 +350,7 @@ pub fn managed_port_handler<T, DISPATCH>(work_queue: WorkQueue<'static>, server_
 where
     DISPATCH: for<'b> hrtb_hack::FutureCallback<(&'b mut T, WorkQueue<'static>, u32, &'b mut [u8]), Result<(), Error>>,
     DISPATCH: Clone + Unpin + Send + 'static,
-    T: Default + Unpin + Send + 'static,
+    T: Default + Clone + Unpin + Send + 'static,
 {
     let port = syscalls::manage_named_port(server_name, 0)?;
     Ok(common_port_handler(work_queue, port, dispatch))
@@ -409,8 +410,8 @@ pub mod hrtb_hack {
 pub fn new_session_wrapper<T, DISPATCH>(work_queue: WorkQueue<'static>, handle: ServerSession, mut object: T, mut dispatch: DISPATCH) -> impl Future<Output = ()> + Send
 where
     DISPATCH: for<'b> hrtb_hack::FutureCallback<(&'b mut T, WorkQueue<'static>, u32, &'b mut [u8]), Result<(), Error>>,
-    DISPATCH: Unpin + Send + 'static,
-    T: Unpin + Send + 'static,
+    DISPATCH: Unpin + Send + Clone + 'static,
+    T: Unpin + Send + Clone + 'static,
 {
     let mut buf = Align16([0; 0x100]);
     let mut pointer_buf = [0; 0x400];
@@ -444,12 +445,14 @@ where
             debug!("Got request for: {:?}", tycmdid);
 
             let close = match tycmdid {
-                // TODO: Handle other types.
                 Some((4, cmdid)) | Some((6, cmdid)) => dispatch.call((&mut object, work_queue.clone(), cmdid, &mut buf[..])).await
                     .map(|_| false)
                     .unwrap_or_else(|err| { error!("Dispatch method errored out: {:?}", err); true }),
                 Some((2, _)) => true,
-                _ => true
+                Some((5, cmdid)) | Some((7, cmdid)) => control_dispatch(&mut object, dispatch.clone(), work_queue.clone(), cmdid, &mut buf[..])
+                    .map(|_| false)
+                    .unwrap_or_else(|err| { error!("Dispatch method errored out: {:?}", err); true }),
+                _ => true,
             };
 
             if close {
@@ -457,6 +460,36 @@ where
             }
 
             handle.reply(&mut buf[..]).unwrap();
+        }
+    }
+}
+
+/// Implement the Control ipc cmd types.
+///
+/// See [switchbrew](https://switchbrew.org/w/index.php?title=IPC_Marshalling#Control)
+fn control_dispatch<T, DISPATCH>(object: &mut T, dispatch: DISPATCH, manager: WorkQueue<'static>, cmdid: u32, buf: &mut [u8]) -> Result<(), Error>
+where
+    DISPATCH: for<'b> hrtb_hack::FutureCallback<(&'b mut T, WorkQueue<'static>, u32, &'b mut [u8]), Result<(), Error>>,
+    DISPATCH: Unpin + Send + Clone + 'static,
+    T: Unpin + Send + Clone + 'static
+{
+    match cmdid {
+        2 | 4 => {
+            let (server, client) = syscalls::create_session(false, 0)?;
+            let new_object = object.clone();
+            let future = new_session_wrapper(manager.clone(), server, new_object, dispatch);
+            manager.spawn(FutureObj::new(Box::new(future)));
+
+            let mut msg__ = Message::<(), [_; 0], [_; 0], [_; 1]>::new_response(None);
+            msg__.push_handle_move(client.into_handle());
+            msg__.pack(buf);
+            Ok(())
+        },
+        _ => {
+            let mut msg__ = Message::<(), [_; 0], [_; 0], [_; 0]>::new_response(None);
+            msg__.set_error(KernelError::PortRemoteDead.make_ret() as u32);
+            msg__.pack(buf);
+            Ok(())
         }
     }
 }

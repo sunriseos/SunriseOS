@@ -52,7 +52,8 @@ pub enum Error {
     Pm(PmError, Backtrace),
     /// Service Manager error.
     Sm(SmError, Backtrace),
-    //Vi(ViError, Backtrace),
+    /// Vi Error
+    Vi(ViError, Backtrace),
     /// Internal Libuser error.
     Libuser(LibuserError, Backtrace),
     /// Ahci driver error.
@@ -99,7 +100,7 @@ impl Error {
             Error::Loader(err, ..) => err.0 << 9 | Module::Loader.0,
             Error::Pm(err, ..) => err.0 << 9 | Module::Pm.0,
             Error::Sm(err, ..) => err.0 << 9 | Module::Sm.0,
-            //Error::Vi(err, ..) => err.0 << 9 | Module::Vi.0,
+            Error::Vi(err, ..) => err.0 << 9 | Module::Vi.0,
             Error::Libuser(err, ..) => err.0 << 9 | Module::Libuser.0,
             Error::Ahci(err, ..) => err.0 << 9 | Module::Ahci.0,
             Error::Time(err, ..) => err.0 << 9 | Module::Time.0,
@@ -364,5 +365,20 @@ enum_with_val! {
 impl From<HidError> for Error {
     fn from(error: HidError) -> Self {
         Error::Hid(error, Backtrace::new())
+    }
+}
+
+enum_with_val! {
+    /// Vi driver errors.
+    #[derive(PartialEq, Eq, Clone, Copy)]
+    pub struct ViError(u32) {
+        /// The given string is not UTF-8.
+        InvalidUtf8 = 1,
+    }
+}
+
+impl From<ViError> for Error {
+    fn from(error: ViError) -> Self {
+        Error::Vi(error, Backtrace::new())
     }
 }

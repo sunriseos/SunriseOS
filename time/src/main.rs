@@ -83,7 +83,7 @@ capabilities!(CAPABILITIES = Capabilities {
 });
 
 /// Entry point interface.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 struct StaticService;
 
 impl sunrise_libuser::time::StaticService for StaticService {
@@ -193,7 +193,7 @@ impl Default for Rtc {
 static RTC_INSTANCE: Once<Rtc> = Once::new();
 
 /// RTC interface.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 struct RTCManager;
 
 /// Task responsible for updating the RTC_INSTANCE's current time every second.
@@ -208,7 +208,7 @@ async fn update_rtc(work_queue: WorkQueue<'_>) {
             irq_event.wait_async_cb(work_queue.clone(), move || {
                 let intkind = rtc.read_interrupt_kind();
                 debug!("Checking intkind: {}", intkind);
-                intkind & (1 << 4) != 0
+                if intkind & (1 << 4) != 0 { Some(()) } else { None }
             }).await;
         } else {
             panic!("RTC irq event cannot be uninialized");
