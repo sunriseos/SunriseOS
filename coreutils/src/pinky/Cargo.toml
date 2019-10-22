@@ -1,0 +1,17 @@
+[package]
+name = "pinky"
+version = "0.0.1"
+authors = []
+build = "../../mkmain.rs"
+
+[lib]
+name = "uu_pinky"
+path = "pinky.rs"
+
+[dependencies.uucore]
+version = "0.0.1"
+features = ["utmpx", "entries"]
+
+[[bin]]
+name = "pinky"
+path = "../../uumain.rs"

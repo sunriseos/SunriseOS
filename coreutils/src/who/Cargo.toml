@@ -1,0 +1,17 @@
+[package]
+name = "who"
+version = "0.0.1"
+authors = []
+build = "../../mkmain.rs"
+
+[lib]
+name = "uu_who"
+path = "who.rs"
+
+[dependencies.uucore]
+version = "0.0.1"
+features = ["utmpx"]
+
+[[bin]]
+name = "who"
+path = "../../uumain.rs"

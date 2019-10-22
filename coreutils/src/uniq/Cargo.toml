@@ -1,0 +1,17 @@
+[package]
+name = "uniq"
+version = "0.0.1"
+authors = []
+build = "../../mkmain.rs"
+
+[lib]
+name = "uu_uniq"
+path = "uniq.rs"
+
+[dependencies]
+getopts = "0.2.18"
+uucore = "0.0.1"
+
+[[bin]]
+name = "uniq"
+path = "../../uumain.rs"

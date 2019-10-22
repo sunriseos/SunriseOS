@@ -1,0 +1,21 @@
+[package]
+name = "nohup"
+version = "0.0.1"
+authors = []
+build = "../../mkmain.rs"
+
+[lib]
+name = "uu_nohup"
+path = "nohup.rs"
+
+[dependencies]
+getopts = "0.2.18"
+libc = "0.2.42"
+
+[dependencies.uucore]
+version = "0.0.1"
+features = ["fs"]
+
+[[bin]]
+name = "nohup"
+path = "../../uumain.rs"

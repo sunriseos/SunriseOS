@@ -1,0 +1,18 @@
+[package]
+name = "date"
+version = "0.0.1"
+authors = []
+build = "../../mkmain.rs"
+
+[lib]
+name = "uu_date"
+path = "date.rs"
+
+[dependencies]
+chrono = "0.4.4"
+clap = "2.32.0"
+uucore = "0.0.1"
+
+[[bin]]
+name = "date"
+path = "../../uumain.rs"

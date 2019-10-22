@@ -1,0 +1,17 @@
+[package]
+name = "hostid"
+version = "0.0.1"
+authors = []
+build = "../../mkmain.rs"
+
+[lib]
+name = "uu_hostid"
+path = "hostid.rs"
+
+[dependencies]
+libc = "0.2.42"
+uucore = "0.0.1"
+
+[[bin]]
+name = "hostid"
+path = "../../uumain.rs"

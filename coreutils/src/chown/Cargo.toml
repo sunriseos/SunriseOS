@@ -1,0 +1,21 @@
+[package]
+name = "chown"
+version = "0.0.1"
+authors = []
+build = "../../mkmain.rs"
+
+[lib]
+name = "uu_chown"
+path = "chown.rs"
+
+[dependencies]
+glob = "0.3.0"
+walkdir = "2.2"
+
+[dependencies.uucore]
+version = "0.0.1"
+features = ["entries", "fs"]
+
+[[bin]]
+name = "chown"
+path = "../../uumain.rs"

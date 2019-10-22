@@ -1,0 +1,17 @@
+[package]
+name = "base32"
+version = "0.0.1"
+authors = []
+build = "../../mkmain.rs"
+
+[lib]
+name = "uu_base32"
+path = "base32.rs"
+
+[dependencies.uucore]
+version = "0.0.1"
+features = ["encoding"]
+
+[[bin]]
+name = "base32"
+path = "../../uumain.rs"

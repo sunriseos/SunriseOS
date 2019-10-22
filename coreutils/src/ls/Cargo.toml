@@ -1,0 +1,26 @@
+[package]
+name = "ls"
+version = "0.0.1"
+authors = ["Jeremiah Peschka <jeremiah.peschka@gmail.com>"]
+build = "../../mkmain.rs"
+
+[lib]
+name = "uu_ls"
+path = "ls.rs"
+
+[dependencies]
+getopts = "0.2.18"
+number_prefix = "0.2.8"
+term_grid = "0.1.5"
+termsize = "0.1.6"
+time = "0.1.40"
+lazy_static = "1.0.1"
+unicode-width = "0.1.5"
+
+[dependencies.uucore]
+version = "0.0.1"
+features = ["entries", "fs"]
+
+[[bin]]
+name = "ls"
+path = "../../uumain.rs"

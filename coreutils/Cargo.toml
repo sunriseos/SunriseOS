@@ -1,0 +1,358 @@
+[package]
+name = "uutils"
+version = "0.0.1"
+authors = []
+build = "build.rs"
+autotests = false
+
+[features]
+unix = [
+  "chgrp",
+  "chmod",
+  "chown",
+  "chroot",
+  "du",
+  "groups",
+  "hostid",
+  "id",
+  "install",
+  "kill",
+  "logname",
+  "mkfifo",
+  "mknod",
+  "nice",
+  "numfmt",
+  "nohup",
+  "pathchk",
+  "pinky",
+  "stat",
+  "stdbuf",
+  "timeout",
+  "touch",
+  "tty",
+  "uname",
+  "unlink",
+  "uptime",
+  "users",
+  "who",
+
+  "generic"
+]
+windows = ["generic"]
+# Feature "fuchsia" contains the exclusive list of utilities
+# that can be compiled and run on Fuchsia. Should be built
+# with --no-default-features when selecting this feature.
+# TODO: merge with "unix" to avoid duplication once we support
+# all utilities in that feature.
+fuchsia = [
+  # unix utilities
+  "chgrp",
+  "chmod",
+  "chown",
+  "du",
+  "groups",
+  "hostid",
+  "install",
+  "logname",
+  "mkfifo",
+  "mknod",
+  "nice",
+  "pathchk",
+  "stdbuf",
+  "tty",
+  "uname",
+  "unlink",
+
+  # All generic utilities
+  "generic"
+]
+generic = [
+  "arch",
+  "hostname",
+  "nproc",
+  "sync",
+  "touch",
+  "whoami",
+  "redox_generic"
+]
+# Feature "redox"/"redox_generic" contains the exclusive list of utilities
+# that can be compiled and run on redox. Should be built
+# with --no-default-features when selecting this feature.
+# TODO: merge with "generic" to avoid duplication once we support
+# all utilities in that feature.
+redox_generic = [
+
+  # And maybe all generic utilities
+  "base32",
+  "base64",
+  "basename",
+  "cat",
+  "cksum",
+  "comm",
+  "cp",
+  "cut",
+  "date",
+  "dircolors",
+  "dirname",
+  "echo",
+  "env",
+  "expand",
+  "expr",
+  "factor",
+  "false",
+  "fmt",
+  "fold",
+  "hashsum",
+  "head",
+  "join",
+  "link",
+  "ln",
+  "ls",
+  "mkdir",
+  "mktemp",
+  "more",
+  "mv",
+  "nl",
+  "od",
+  "paste",
+  "printenv",
+  "printf",
+  "ptx",
+  "pwd",
+  "readlink",
+  "realpath",
+  "relpath",
+  "rm",
+  "rmdir",
+  "seq",
+  "shred",
+  "shuf",
+  "sleep",
+  "sort",
+  "split",
+  "sum",
+  "tac",
+  "tail",
+  "tee",
+  "test",
+  "tr",
+  "true",
+  "truncate",
+  "tsort",
+  "unexpand",
+  "uniq",
+  "wc",
+  "yes",
+]
+redox = [
+  "uname",
+  "chmod",
+  "install",
+  "redox_generic"
+]
+
+# Feature "sunrise" contains the exclusive list of utilities
+# that can be compiled and run on Sunrise. Should be built
+# with --no-default-features when selecting this feature.
+sunrise = [
+  # Base generic
+  "uname",
+  #"chmod",
+  "arch",
+  #"hostname",
+  "nproc",
+  #"sync",
+  "touch",
+  #"whoami",
+
+  "install",
+
+  # Most other generic supported by sunrise
+  "sunrise_generic"
+]
+
+sunrise_generic = [
+
+  # And maybe all generic utilities
+  "base32",
+  "base64",
+  "basename",
+  "cat",
+  "cksum",
+  "comm",
+  "cp",
+  "cut",
+  "date",
+  #"dircolors",
+  "dirname",
+  "echo",
+  "env",
+  "expand",
+  #"expr",
+  "factor",
+  "false",
+  "fmt",
+  "fold",
+  "hashsum",
+  "head",
+  "join",
+  #"link",
+  #"ln",
+  "ls",
+  "mkdir",
+  #"mktemp",
+  "more",
+  "mv",
+  "nl",
+  "od",
+  "paste",
+  "printenv",
+  "printf",
+  "ptx",
+  "pwd",
+  #"readlink",
+  "realpath",
+  "relpath",
+  "rm",
+  "rmdir",
+  "seq",
+  "shred",
+  "shuf",
+  "sleep",
+  "sort",
+  "split",
+  "sum",
+  "tac",
+  "tail",
+  "tee",
+  "test",
+  "tr",
+  "true",
+  "truncate",
+  "tsort",
+  "unexpand",
+  "uniq",
+  "wc",
+  #"yes",
+]
+
+test_unimplemented = []
+nightly = []
+
+[dependencies]
+uucore   = "0.0.1"
+arch     = { optional=true, path="src/arch" }
+base32   = { optional=true, path="src/base32" }
+base64   = { optional=true, path="src/base64" }
+basename = { optional=true, path="src/basename" }
+cat      = { optional=true, path="src/cat" }
+chgrp    = { optional=true, path="src/chgrp" }
+chmod    = { optional=true, path="src/chmod" }
+chown    = { optional=true, path="src/chown" }
+chroot   = { optional=true, path="src/chroot" }
+cksum    = { optional=true, path="src/cksum" }
+comm     = { optional=true, path="src/comm" }
+cp       = { optional=true, path="src/cp" }
+cut      = { optional=true, path="src/cut" }
+date     = { optional=true, path="src/date" }
+dircolors= { optional=true, path="src/dircolors" }
+dirname  = { optional=true, path="src/dirname" }
+du       = { optional=true, path="src/du" }
+echo     = { optional=true, path="src/echo" }
+env      = { optional=true, path="src/env" }
+expand   = { optional=true, path="src/expand" }
+expr     = { optional=true, path="src/expr" }
+factor   = { optional=true, path="src/factor" }
+false    = { optional=true, path="src/false" }
+fmt      = { optional=true, path="src/fmt" }
+fold     = { optional=true, path="src/fold" }
+groups   = { optional=true, path="src/groups" }
+hashsum  = { optional=true, path="src/hashsum" }
+head     = { optional=true, path="src/head" }
+hostid   = { optional=true, path="src/hostid" }
+hostname = { optional=true, path="src/hostname" }
+id       = { optional=true, path="src/id" }
+install  = { optional=true, path="src/install" }
+join     = { optional=true, path="src/join" }
+kill     = { optional=true, path="src/kill" }
+link     = { optional=true, path="src/link" }
+ln       = { optional=true, path="src/ln" }
+ls       = { optional=true, path="src/ls" }
+logname  = { optional=true, path="src/logname" }
+mkdir    = { optional=true, path="src/mkdir" }
+mkfifo   = { optional=true, path="src/mkfifo" }
+mknod    = { optional=true, path="src/mknod" }
+mktemp   = { optional=true, path="src/mktemp" }
+more     = { optional=true, path="src/more" }
+mv       = { optional=true, path="src/mv" }
+nice     = { optional=true, path="src/nice" }
+nl       = { optional=true, path="src/nl" }
+nohup    = { optional=true, path="src/nohup" }
+nproc    = { optional=true, path="src/nproc" }
+numfmt   = { optional=true, path="src/numfmt" }
+od       = { optional=true, path="src/od" }
+paste    = { optional=true, path="src/paste" }
+pathchk  = { optional=true, path="src/pathchk" }
+pinky    = { optional=true, path="src/pinky" }
+printenv = { optional=true, path="src/printenv" }
+printf   = { optional=true, path="src/printf" }
+ptx      = { optional=true, path="src/ptx" }
+pwd      = { optional=true, path="src/pwd" }
+readlink = { optional=true, path="src/readlink" }
+realpath = { optional=true, path="src/realpath" }
+relpath  = { optional=true, path="src/relpath" }
+rm       = { optional=true, path="src/rm" }
+rmdir    = { optional=true, path="src/rmdir" }
+seq      = { optional=true, path="src/seq" }
+shred    = { optional=true, path="src/shred" }
+shuf     = { optional=true, path="src/shuf" }
+sleep    = { optional=true, path="src/sleep" }
+sort     = { optional=true, path="src/sort" }
+split    = { optional=true, path="src/split" }
+stat     = { optional=true, path="src/stat" }
+stdbuf   = { optional=true, path="src/stdbuf" }
+sum      = { optional=true, path="src/sum" }
+sync     = { optional=true, path="src/sync" }
+tac      = { optional=true, path="src/tac" }
+tail     = { optional=true, path="src/tail" }
+tee      = { optional=true, path="src/tee" }
+test     = { optional=true, path="src/test" }
+timeout  = { optional=true, path="src/timeout" }
+touch    = { optional=true, path="src/touch" }
+tr       = { optional=true, path="src/tr" }
+true     = { optional=true, path="src/true" }
+truncate = { optional=true, path="src/truncate" }
+tsort    = { optional=true, path="src/tsort" }
+tty      = { optional=true, path="src/tty" }
+uname    = { optional=true, path="src/uname" }
+unexpand = { optional=true, path="src/unexpand" }
+uniq     = { optional=true, path="src/uniq" }
+unlink   = { optional=true, path="src/unlink" }
+uptime   = { optional=true, path="src/uptime" }
+users    = { optional=true, path="src/users" }
+wc       = { optional=true, path="src/wc" }
+who      = { optional=true, path="src/who" }
+whoami   = { optional=true, path="src/whoami" }
+yes      = { optional=true, path="src/yes" }
+
+[dev-dependencies]
+time = "0.1.42"
+filetime = "0.2.5"
+libc = "0.2.62"
+regex = "1.0.3"
+rand = "0.6.5"
+tempdir = "0.3.7"
+unindent = "0.1.3"
+lazy_static = "1.3.0"
+
+[target.'cfg(unix)'.dev-dependencies]
+# FIXME: this should use the normal users crate, but it conflicts with the users utility
+rust-users = { git = "https://github.com/uutils/rust-users" }
+unix_socket = "0.5.0"
+
+[[bin]]
+name = "uutils"
+path = "src/uutils/uutils.rs"
+
+[[test]]
+name = "tests"

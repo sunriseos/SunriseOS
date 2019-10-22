@@ -1,0 +1,17 @@
+[package]
+name = "printenv"
+version = "0.0.1"
+authors = []
+build = "../../mkmain.rs"
+
+[lib]
+name = "uu_printenv"
+path = "printenv.rs"
+
+[dependencies]
+getopts = "0.2.18"
+uucore = "0.0.1"
+
+[[bin]]
+name = "printenv"
+path = "../../uumain.rs"

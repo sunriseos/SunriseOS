@@ -1,0 +1,21 @@
+[package]
+name = "uptime"
+version = "0.0.1"
+authors = []
+build = "../../mkmain.rs"
+
+[lib]
+name = "uu_uptime"
+path = "uptime.rs"
+
+[dependencies]
+getopts = "0.2.18"
+time = "0.1.40"
+
+[dependencies.uucore]
+version = "0.0.1"
+features = ["utmpx"]
+
+[[bin]]
+name = "uptime"
+path = "../../uumain.rs"

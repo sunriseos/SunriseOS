@@ -1,0 +1,18 @@
+[package]
+name = "fmt"
+version = "0.0.1"
+authors = []
+build = "../../mkmain.rs"
+
+[lib]
+name = "uu_fmt"
+path = "fmt.rs"
+
+[dependencies]
+libc = "0.2.42"
+unicode-width = "0.1.5"
+uucore = "0.0.1"
+
+[[bin]]
+name = "fmt"
+path = "../../uumain.rs"

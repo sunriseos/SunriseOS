@@ -1,0 +1,16 @@
+[package]
+name = "factor"
+version = "0.0.1"
+authors = []
+
+[lib]
+name = "uu_factor"
+path = "factor.rs"
+
+[dependencies]
+rand = "0.5"
+uucore = "0.0.1"
+
+[[bin]]
+name = "factor"
+path = "../../uumain.rs"
