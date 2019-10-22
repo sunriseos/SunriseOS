@@ -17,7 +17,7 @@ core = { package = "core-futures-tls", version = "0.1" }
 
 [dependencies.hashbrown]
 features = ["nightly"]
-version = "0.5.0"
+version = "0.6.1"
 
 [dependencies.lazy_static]
 features = ["spin_no_std"]
