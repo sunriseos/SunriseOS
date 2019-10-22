@@ -435,16 +435,8 @@ impl PS2 {
     /// presses a key, it will be kept in a buffer until read_key is called.
     fn read_key(&self) -> char {
         loop {
-            let status = self.status_port.read();
-            if status & 0x01 != 0 {
-                let key = KeyEvent::read_key_event(self.data_port);
-                match key {
-                    KeyEvent {key: Key::Letter(l),  state: State::Pressed  } => { return self.key_to_letter(l) },
-                    KeyEvent {key: Key::Letter(_),  state: State::Released } => { /* ignore released letters */ },
-                    KeyEvent {key: Key::Control(_), ..                     } => { /* ignore legacy keys */ },
-                    KeyEvent {key: Key::Unknown,      ..                     } => { /* ignore unknown keys */ },
-                    KeyEvent {key: Key::Scancode(k), state: s              } => { self.handle_control_key(k, s); },
-                }
+            if let Some(letter) = try_read_key() {
+                return letter
             } else {
                 let _ = syscalls::wait_synchronization(&[self.event.0.as_ref()], None);
             }
@@ -459,9 +451,11 @@ impl PS2 {
             if status & 0x01 != 0 {
                 let key = KeyEvent::read_key_event(self.data_port);
                 match key {
-                    KeyEvent {key: Key::Scancode(k), state: s              } => self.handle_control_key(k, s),
-                    KeyEvent {key: Key::Letter(l),  state: State::Pressed  } => return Some(self.key_to_letter(l)),
-                    _ => ()
+                    KeyEvent {key: Key::Letter(l),  state: State::Pressed  } => { return Some(self.key_to_letter(l)) },
+                    KeyEvent {key: Key::Letter(_),  state: State::Released } => { /* ignore released letters */ },
+                    KeyEvent {key: Key::Control(_), ..                     } => { /* ignore legacy keys */ },
+                    KeyEvent {key: Key::Unknown,      ..                     } => { /* ignore unknown keys */ },
+                    KeyEvent {key: Key::Scancode(k), state: s              } => { self.handle_control_key(k, s); },
                 }
             } else {
                 return None;
