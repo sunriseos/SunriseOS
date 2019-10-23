@@ -890,6 +890,12 @@ pub fn generate_proxy(ifacename: &str, interface: &Interface) -> String {
     }
 
     writeln!(s, "impl {} {{", struct_name).unwrap();
+    writeln!(s, "    /// Clones the current object, returning a new handle.").unwrap();
+    writeln!(s, "    /// The returned handle has its own IPC buffer - it may be used concurrently with the original.").unwrap();
+    writeln!(s, "    pub fn clone_current_object(&self) -> Result<Self, Error> {{").unwrap();
+    writeln!(s, "        Ok({}::from(self.0.try_clone()?))", struct_name).unwrap();
+    writeln!(s, "    }}").unwrap();
+
     for cmd in &interface.funcs {
         match format_cmd(&cmd) {
             Ok(out) => write!(s, "{}", out).unwrap(),

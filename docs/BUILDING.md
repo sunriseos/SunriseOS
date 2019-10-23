@@ -43,6 +43,15 @@ server on VNC port 5900 (overridable by setting the `VNC_PORT` environment
 variable) through which the user can interact. Logs going over serial port will be
 printed on stdout.
 
+## Secure Boot
+
+It's possible to build a secureboot-secured image. For this, you'll need to
+install OpenSSL and GnuPG (See the [version sections](#versions)). Secure Boot
+currently only works by generating a FAT disk image that can be flashed on a
+hard drive to boot from. In order to generate such a disk, run
+`cargo make disk-secure`. In order to run the image in qemu with secure boot
+enabled, run `cargo make qemu-secure`.
+
 ## Versions
 
 - rust: `nightly-2019-15-07`
@@ -51,5 +60,7 @@ printed on stdout.
 - cargo-make: `0.22.0`
 - xargo: `0.3.16 (21e4808)`
 - mkisofs-rs: `0.1.1`
-- qemu-system-i386: `4.0.50`
-- cargo-travis: `https://github.com/roblabla/cargo-travis` branch `doc-upload-target`
+- qemu-system-i386 (for qemu only): `4.0.50`
+- cargo-travis (for CI only): `https://github.com/roblabla/cargo-travis` branch `doc-upload-target`
+- OpenSSL (for secure boot only): `1.1.1c`
+- GnuPG (for secure boot only): `2.2.17`

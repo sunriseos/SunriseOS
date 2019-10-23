@@ -81,6 +81,10 @@ jobs:
       - name: Create disk image
         run: cargo make disk
 
+      - name: Create secure disk image (Linux-only)
+        run: cargo make disk-secure
+        if: steps.isUbuntu.outputs.result
+
       - name: Test
         run: cargo make test
         if: steps.isUbuntu.outputs.result

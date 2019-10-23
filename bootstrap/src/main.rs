@@ -66,7 +66,7 @@ pub mod bootstrap_stack;
 
 use crate::bootstrap_logging::Serial;
 use crate::frame_alloc::FrameAllocator;
-use crate::paging::{PageTablesSet, KernelLand};
+use crate::paging::{PageTablesSet, KernelLand, EntryFlags, PAGE_SIZE};
 use crate::bootstrap_stack::BootstrapStack;
 
 /// 4 pages, PAGE_SIZE aligned.
@@ -149,10 +149,11 @@ pub extern "C" fn do_bootstrap(multiboot_info_addr: usize) -> ! {
 
     // Move the multiboot_header to a single page in kernel space. This simplifies some
     // things in the kernel.
-    let multiboot_info_page = page_tables.get_page::<KernelLand>();
+    let multiboot_page_nb = sunrise_libutils::div_ceil(boot_info.total_size(), PAGE_SIZE);
+    let multiboot_info_page = page_tables.find_available_virtual_space::<KernelLand>(multiboot_page_nb).unwrap();
+    page_tables.map_range_allocate(multiboot_info_page, multiboot_page_nb, EntryFlags::WRITABLE);
     let multiboot_phys_page = page_tables.get_phys(multiboot_info_page).unwrap();
     let total_size = boot_info.total_size();
-    assert!(total_size <= paging::PAGE_SIZE, "Expected multiboot info to fit in a page");
     unsafe {
         // Safety: We just allocated this page. What could go wrong?
         core::ptr::copy(multiboot_info_addr as *const u8,

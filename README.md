@@ -21,3 +21,5 @@ License (Version 2.0), at the user's choice.
 See [LICENSE-APACHE](LICENSE-APACHE) and [LICENSE-MIT](LICENSE-MIT).
 
 GRUB2 is distributed under the terms of the GPL v3 license.
+
+OVMF is distributed under the terms of the BSD-2-Clause-Patent license.

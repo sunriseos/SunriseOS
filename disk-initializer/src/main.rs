@@ -18,7 +18,7 @@ use storage_device::storage_device::{StorageDevice, StorageBlockDevice};
 use libfat;
 use libfat::FatFileSystemResult;
 use libfat::filesystem::FatFileSystem;
-use libfat::FatFsType;
+use libfat::{FatError, FatFsType};
 use libfat::directory::File as FatFile;
 
 mod gpt;
@@ -62,12 +62,24 @@ fn write_tempate_to_filesystem<S>(filesystem: &FatFileSystem<S>, dir: &Path, fil
 
             let filesystem_entry_path_str = filesystem_entry_path.to_str().unwrap();
             if path.is_dir() {
-                filesystem.create_directory(filesystem_entry_path_str).expect("Cannot create directory in the filesystem");
+                let err = filesystem.create_directory(filesystem_entry_path_str);
+                match err {
+                    Ok(()) | Err(FatError::FileExists) => (),
+                    Err(err) => Err(err).expect("Cannot create directory in the filesystem")
+                }
                 write_tempate_to_filesystem(filesystem, &path, &mut filesystem_entry_path)?;
             } else {
-                filesystem.create_file(filesystem_entry_path_str).expect("Cannot create file in the filesystem");
-                let file = filesystem.open_file(filesystem_entry_path_str).expect("Cannot open file in the filesystem");
-                write_file_to_filesystem(filesystem, file, path.to_str().unwrap()).expect("Cannot write file to filesystem");
+                match filesystem.create_file(filesystem_entry_path_str) {
+                    Ok(()) => {
+                        let file = filesystem.open_file(filesystem_entry_path_str).expect("Cannot open file in the filesystem");
+                        write_file_to_filesystem(filesystem, file, path.to_str().unwrap()).expect("Cannot write file to filesystem");
+                    },
+                    Err(FatError::FileExists) => {
+                        println!("{} was already handled previously. Ignoring.", path.display());
+                        continue;
+                    },
+                    Err(err) => Err(err).expect("Cannot create file in the filesystem")
+                }
             }
         }
     }
@@ -84,7 +96,6 @@ fn main() {
 
     let file_name = env::args().nth(1).expect("File name is expected");
     let file_size = env::args().nth(2).expect("Disk size is expected");
-    let template_path = env::args().nth(3).expect("Template path is expected");
 
     let file_size = u64::from_str_radix(file_size.as_str(), 10).expect("Cannot parse file size");
     let file =  OpenOptions::new().create(true).read(true).write(true).open(file_name.clone()).expect("Cannot create file");
@@ -126,5 +137,7 @@ fn main() {
     let mut filesystem_path = PathBuf::new();
     filesystem_path.push("/");
 
-    write_tempate_to_filesystem(&filesystem, Path::new(&template_path), &mut filesystem_path).expect("Failed to write template to filesystem");
+    for template_path in env::args().skip(3) {
+        write_tempate_to_filesystem(&filesystem, Path::new(&template_path), &mut filesystem_path).expect("Failed to write template to filesystem");
+    }
 }

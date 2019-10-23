@@ -284,6 +284,20 @@ impl ClientSession {
         mem::forget(self);
         handle
     }
+
+    /// Clones the current object, returning a new handle. The returned handle
+    /// has its own IPC buffer - it may be used concurrently with the original.
+    pub fn try_clone(&self) -> Result<ClientSession, Error> {
+        let mut buf = [0; 0x100];
+        let mut msg = Message::<(), [_; 0], [_; 0], [_; 0]>::new_request(None, 2);
+        msg.set_ty(MessageTy::Control);
+        msg.pack(&mut buf[..]);
+        self.send_sync_request_with_user_buffer(&mut buf[..])?;
+        let mut res: Message<'_, (), [_; 0], [_; 0], [_; 1]> = Message::unpack(&buf[..]);
+        res.error()?;
+        let handle = res.pop_handle_move()?;
+        Ok(ClientSession(handle))
+    }
 }
 
 impl Drop for ClientSession {
