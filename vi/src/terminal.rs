@@ -9,6 +9,7 @@ use font_rs::{font, font::{Font, GlyphBitmap}};
 use hashbrown::HashMap;
 use spin::Mutex;
 use sunrise_libuser::error::{ViError, Error};
+use sunrise_libuser::keyboard::HidKeyboardStateType;
 use sunrise_libuser::futures::WorkQueue;
 use sunrise_libuser::mem::{find_free_address, PAGE_SIZE};
 use sunrise_libuser::types::SharedMemory;
@@ -20,6 +21,7 @@ use core::fmt::Write;
 use core::sync::atomic::Ordering;
 use sunrise_libuser::ps2::Keyboard;
 use crate::libuser::futures_rs::future::FutureObj;
+use bit_field::BitField;
 
 /// Just an x and a y
 #[derive(Copy, Clone, Debug)]
@@ -321,7 +323,35 @@ impl sunrise_libuser::twili::IPipeAsync for TerminalPipe {
             let mut keyboard = Keyboard::new().unwrap();
             let mut i = 0;
             while buf.len() - i >= 4 {
-                let key = keyboard.read_key_async(manager.clone()).await;
+                let state = keyboard.read_keystate_async(manager.clone()).await;
+
+                let key = if let HidKeyboardStateType::Ascii = state.state_type {
+                    let lower_case = char::from(state.data);
+                    let upper_case = char::from(state.additional_data);
+                    let is_upper = state.modifiers.get_bit(0) || state.modifiers.get_bit(1) || state.modifiers.get_bit(2);
+                    let is_pressed = state.modifiers.get_bit(7);
+
+                    if is_pressed {
+                        if is_upper {
+                            upper_case
+                        } else {
+                            lower_case
+                        }
+                    } else {
+                        // We aren't pressed, so skip this entry.
+                        continue;
+                    }
+                } else {
+                    continue;
+                };
+
+                let is_ctrl = state.modifiers.get_bit(3) || state.modifiers.get_bit(4);
+
+                log::info!("{:?}", state);
+                if is_ctrl && key == 'd' {
+                    // Ctrl-d pressed, early return.
+                    return Ok(i as u64);
+                }
 
                 if key == '\x08' && i == 0 {
                     // Don't delete further than the first character.

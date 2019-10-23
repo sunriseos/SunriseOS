@@ -13,6 +13,7 @@ spin = "0.5"
 futures-preview = { version = "0.3.0-alpha.16", default-features = false, features = ["nightly", "alloc"] }
 font-rs = { git = "https://github.com/SunriseOS/font-rs", default-features = false }
 log = "0.4"
+bit_field = "0.10"
 core = { package = "core-futures-tls", version = "0.1" }
 
 [dependencies.hashbrown]
