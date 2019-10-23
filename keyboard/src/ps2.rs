@@ -331,6 +331,18 @@ impl PS2 {
                     Released => { self.is_right_shift.store(false, SeqCst); }
                 }
             }
+            HidKeyboardScancode::LeftCtrl => {
+                match state {
+                    Pressed  => { self.is_left_ctrl.store(true,  SeqCst); }
+                    Released => { self.is_left_ctrl.store(false, SeqCst); }
+                }
+            }
+            HidKeyboardScancode::RightCtrl => {
+                match state {
+                    Pressed  => { self.is_right_ctrl.store(true,  SeqCst); }
+                    Released => { self.is_right_ctrl.store(false, SeqCst); }
+                }
+            }
             _ => { debug!("Keyboard: {} {:?}", match state { Pressed => "pressed ", Released => "released" }, key); }
         }
     }
@@ -342,7 +354,7 @@ impl PS2 {
             true  => char::from(key.upper_case)
         }
     }
-    
+
     /// Get a bitfield representing the modifiers of this keyboard
     fn encode_modifiers(&self, state: State) -> u8 {
         let caps_locked = self.is_capslocked.load(SeqCst) as u8;

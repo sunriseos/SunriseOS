@@ -64,6 +64,15 @@ impl Keyboard {
         }
     }
 
+    /// Asynchronously waits for a single keystate change, and return the raw
+    /// change.
+    pub fn read_keystate_async<'a>(&'a mut self, queue: WorkQueue<'_>) -> impl core::future::Future<Output = HidKeyboardState> + Unpin + 'a {
+        let Keyboard { ref mut inner, ref mut readable_event } = self;
+        readable_event.wait_async_cb(queue, move || {
+            inner.try_read_keystate()
+        })
+    }
+
     /// Asynchronously waits for a single key press, and return its unicode
     /// representation.
     pub fn read_key_async<'a>(&'a mut self, queue: WorkQueue<'_>) -> impl core::future::Future<Output = char> + Unpin + 'a {
@@ -77,6 +86,12 @@ impl Keyboard {
     /// used to implement poll-based or asynchronous reading from keyboard.
     pub fn try_read_key(&mut self) -> Option<char> {
         self.inner.try_read_key()
+    }
+
+    /// If a keystate change is pending, return the raw keystate. This can be
+    /// used to implement poll-based or asynchronous reading from keyboard.
+    pub fn try_read_keystate(&mut self) -> Option<HidKeyboardState> {
+        self.inner.try_read_keystate()
     }
 }
 
@@ -138,6 +153,20 @@ impl InnerKeyboard {
             None => {
                 self.update_keys();
                 self.try_read_cached_key()
+            }
+            res => res
+        }
+    }
+
+    /// If a keystate change is pending, return the raw keystate. This can be
+    /// used to implement poll-based or asynchronous reading from keyboard.
+    pub fn try_read_keystate(&mut self) -> Option<HidKeyboardState> {
+        // Try to read a key from the cache
+        match self.keys_queue.pop_front() {
+            // In the case we don't find anything, we force an IPC update and retry to read in the cache.
+            None => {
+                self.update_keys();
+                self.keys_queue.pop_front()
             }
             res => res
         }
