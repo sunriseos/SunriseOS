@@ -168,7 +168,7 @@ pub fn get_next_line(logger: &mut Terminal) -> String {
 fn main() {
     let mut terminal = Terminal::new(WindowSize::FontLines(-1, false)).unwrap();
     let mut keyboard = Keyboard::new().unwrap();
-    let mut twili = ITwiliManagerServiceProxy::new().unwrap();
+    let twili = ITwiliManagerServiceProxy::new().unwrap();
     let loader = ILoaderInterfaceProxy::raw_new().unwrap();
 
     let fs_proxy = IFileSystemServiceProxy::raw_new().unwrap();
