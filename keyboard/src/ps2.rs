@@ -16,6 +16,7 @@
 
 use sunrise_libuser::io::{Io, Pio};
 use core::sync::atomic::{AtomicBool, Ordering::SeqCst};
+use spin::RwLock;
 use sunrise_libuser::syscalls;
 use sunrise_libuser::types::ReadableEvent;
 
@@ -23,6 +24,7 @@ use sunrise_libuser::keyboard::HidKeyboardState;
 use sunrise_libuser::keyboard::HidKeyboardStateType;
 use sunrise_libuser::keyboard::HidKeyboardScancode;
 use lazy_static::lazy_static;
+use arrayvec::ArrayVec;
 use log::{debug, warn};
 
 /// PS2 keyboard state.
@@ -50,7 +52,9 @@ struct PS2 {
     /// Set to true if the user is currently holding the left alt key.
     is_left_alt:    AtomicBool,
     /// Set to true if the user is currently holding the right alt key.
-    is_right_alt:    AtomicBool
+    is_right_alt:    AtomicBool,
+    /// Holds input until sequence has been completed.
+    partial_input: RwLock<ArrayVec<[u8; 6]>>
 }
 
 /// A non-control key
@@ -115,34 +119,33 @@ struct KeyEvent {
 
 impl KeyEvent {
 
-    /// Reads one or more bytes from the port until it matches a known scancode sequence
+    /// Reads one or more bytes from an input buffer until it matches a known scancode sequence
     #[allow(clippy::cognitive_complexity)] // sorry clippy, but you don't know how terrible ps2 scancodes are.
-    fn read_key_event(port: Pio<u8>) -> KeyEvent {
-        let scancode = port.read();
+    fn read_key_event(input: &[u8]) -> Option<KeyEvent> {
         let mut state = Pressed;
 
-        let key = match scancode {
+        let key = match input.get(0).expect("How did this get called with 0 scancodes?") {
 
             // multibyte scancodes
             0xe0 => {
-                match port.read() {
+                match input.get(1)? {
                     // The print screen pressed sequence, 0xe0 0x2a 0xe0 0x37
-                    0x2A => { match port.read() {
-                           0xe0 => { match port.read() {
-                                   0x37 => { state = Pressed; Key::scancode(HidKeyboardScancode::SysRQ) },
-                                   unknown => { warn!("Unknown sequence 0xe0, 0x2a, 0xe0, {:#04x}", unknown); Key::Unknown }
-                           }},
-                           unknown => { warn!("Unknown sequence 0xe0, 0x2a, {:#04x}", unknown); Key::Unknown }
+                    0x2A => { match input.get(2)? {
+                            0xe0 => { match input.get(3)? {
+                                    0x37 => { state = Pressed; Key::scancode(HidKeyboardScancode::SysRQ) },
+                                    unknown => { warn!("Unknown sequence 0xe0, 0x2a, 0xe0, {:#04x}", unknown); Key::Unknown }
+                            }},
+                            unknown => { warn!("Unknown sequence 0xe0, 0x2a, {:#04x}", unknown); Key::Unknown }
                     }},
 
                     // The print screen released sequence, 0xe0 0xb7 0xe0 0xaa
                     // 0xb7 & 0x7F = 0x37
-                    0x37 => { match port.read() {
-                            0xe0 => { match port.read() {
-                                   0xaa => { state = Released; Key::scancode(HidKeyboardScancode::SysRQ) },
-                                   unknown => { warn!("Unknown sequence 0xe0, 0x37, 0xe0, {:#04x}", unknown); Key::Unknown }
-                           }},
-                           unknown => { warn!("Unknown sequence 0xe0, 0x37, {:#04x}", unknown); Key::Unknown }
+                    0x37 => { match input.get(2)? {
+                            0xe0 => { match input.get(3)? {
+                                    0xaa => { state = Released; Key::scancode(HidKeyboardScancode::SysRQ) },
+                                    unknown => { warn!("Unknown sequence 0xe0, 0x37, 0xe0, {:#04x}", unknown); Key::Unknown }
+                            }},
+                            unknown => { warn!("Unknown sequence 0xe0, 0x37, {:#04x}", unknown); Key::Unknown }
                     }},
 
                     // regular multibytes scancodes
@@ -201,11 +204,11 @@ impl KeyEvent {
 
 
             // The pause sequence, 0xe1 0x1d 0x45 0xe1 0x9d 0xc5 (fuck)
-            0xe1 => { match port.read() {
-                0x1d => { match port.read() {
-                    0x45 => { match port.read() {
-                        0xe1 => { match port.read() {
-                            0x9d => { match port.read() {
+            0xe1 => { match input.get(1)? {
+                0x1d => { match input.get(2)? {
+                    0x45 => { match input.get(3)? {
+                        0xe1 => { match input.get(4)? {
+                            0x9d => { match input.get(5)? {
                                 0xc5 => { state = Pressed; Key::ctrl("Pause") },
                                 unknown => { warn!("Unknown sequence 0xe1, 0x1d, 0x45, 0xe1, 0x9d {:#04x}", unknown); Key::Unknown }
                             }},
@@ -294,7 +297,7 @@ impl KeyEvent {
             } // end single-byte scancodes
         };
 
-        KeyEvent { key, state }
+        Some(KeyEvent { key, state })
     }
 }
 
@@ -381,51 +384,65 @@ impl PS2 {
             status & 0x01 != 0
     }
 
+    /// Tries to read a KeyEvent, grabs more bytes from the port if input is incomplete.
+    ///
+    /// Core function used by both try_read_keyboard_state and try_read_key
+    fn try_read_key_event(&self) -> Option<KeyEvent> {
+        let mut input = self.partial_input.write();
+        loop {
+            if self.has_read_key_event() {
+                input.push(self.data_port.read());
+                if let Some(event) = KeyEvent::read_key_event(&input) {
+                    input.clear();
+                    return Some(event);
+                }
+            } else {
+                return None;
+            }
+        }
+    }
+
     /// Return a representation of a single key press if any updates is availaible.
     ///
     /// Key presses are bufferized: if nobody is calling read_key when the user
     /// presses a key, it will be kept in a buffer until read_key is called.
     fn try_read_keyboard_state(&self) -> Option<HidKeyboardState> {
-        if self.has_read_key_event() {
-            let key = KeyEvent::read_key_event(self.data_port);
-            match key {
-                KeyEvent {key: Key::Scancode(k), state: s} => {
-                    self.handle_control_key(k, s);
+        let key = self.try_read_key_event()?;
+        match key {
+            KeyEvent {key: Key::Scancode(k), state: s} => {
+                self.handle_control_key(k, s);
 
-                    Some(HidKeyboardState {
-                        data: k.0,
-                        additional_data: 0,
-                        state_type: HidKeyboardStateType::Scancode,
-                        modifiers: self.encode_modifiers(s)
-                    })
-                },
-                KeyEvent {key: Key::Letter(l), state: s} => {
-                    Some(HidKeyboardState {
-                        data: l.lower_case,
-                        additional_data: l.upper_case,
-                        state_type: HidKeyboardStateType::Ascii,
-                        modifiers: self.encode_modifiers(s)
-                    })
-                },
-                KeyEvent {key: Key::Control(_), state: s} => {
-                    Some(HidKeyboardState {
-                        data: 0,
-                        additional_data: 0,
-                        state_type: HidKeyboardStateType::Control,
-                        modifiers: self.encode_modifiers(s)
-                    })
-                },
-                KeyEvent {key: Key::Unknown, state: s} => {
-                    Some(HidKeyboardState {
-                        data: 0,
-                        additional_data: 0,
-                        state_type: HidKeyboardStateType::Unknown,
-                        modifiers: self.encode_modifiers(s)
-                    })
-                },
-            }
-        } else {
-            None
+                Some(HidKeyboardState {
+                    data: k.0,
+                    additional_data: 0,
+                    state_type: HidKeyboardStateType::Scancode,
+                    modifiers: self.encode_modifiers(s)
+                })
+            },
+            KeyEvent {key: Key::Letter(l), state: s} => {
+                Some(HidKeyboardState {
+                    data: l.lower_case,
+                    additional_data: l.upper_case,
+                    state_type: HidKeyboardStateType::Ascii,
+                    modifiers: self.encode_modifiers(s)
+                })
+            },
+            KeyEvent {key: Key::Control(_), state: s} => {
+                Some(HidKeyboardState {
+                    data: 0,
+                    additional_data: 0,
+                    state_type: HidKeyboardStateType::Control,
+                    modifiers: self.encode_modifiers(s)
+                })
+            },
+            KeyEvent {key: Key::Unknown, state: s} => {
+                Some(HidKeyboardState {
+                    data: 0,
+                    additional_data: 0,
+                    state_type: HidKeyboardStateType::Unknown,
+                    modifiers: self.encode_modifiers(s)
+                })
+            },
         }
     }
 
@@ -435,7 +452,7 @@ impl PS2 {
     /// presses a key, it will be kept in a buffer until read_key is called.
     fn read_key(&self) -> char {
         loop {
-            if let Some(letter) = try_read_key() {
+            if let Some(letter) = self.try_read_key() {
                 return letter
             } else {
                 let _ = syscalls::wait_synchronization(&[self.event.0.as_ref()], None);
@@ -447,18 +464,14 @@ impl PS2 {
     /// used to implement poll-based or asynchronous reading from keyboard.
     fn try_read_key(&self) -> Option<char> {
         loop {
-            let status = self.status_port.read();
-            if status & 0x01 != 0 {
-                let key = KeyEvent::read_key_event(self.data_port);
-                match key {
-                    KeyEvent {key: Key::Letter(l),  state: State::Pressed  } => { return Some(self.key_to_letter(l)) },
-                    KeyEvent {key: Key::Letter(_),  state: State::Released } => { /* ignore released letters */ },
-                    KeyEvent {key: Key::Control(_), ..                     } => { /* ignore legacy keys */ },
-                    KeyEvent {key: Key::Unknown,      ..                     } => { /* ignore unknown keys */ },
-                    KeyEvent {key: Key::Scancode(k), state: s              } => { self.handle_control_key(k, s); },
-                }
-            } else {
-                return None;
+            let key = self.try_read_key_event()?;
+
+            match key {
+                KeyEvent {key: Key::Letter(l),  state: State::Pressed  } => { return Some(self.key_to_letter(l)) },
+                KeyEvent {key: Key::Letter(_),  state: State::Released } => { /* ignore released letters */ },
+                KeyEvent {key: Key::Control(_), ..                     } => { /* ignore legacy keys */ },
+                KeyEvent {key: Key::Unknown,      ..                     } => { /* ignore unknown keys */ },
+                KeyEvent {key: Key::Scancode(k), state: s              } => { self.handle_control_key(k, s); },
             }
         }
     }
@@ -484,6 +497,7 @@ lazy_static! {
         is_right_ctrl: AtomicBool::new(false),
         is_left_alt: AtomicBool::new(false),
         is_right_alt: AtomicBool::new(false),
+        partial_input: RwLock::new(ArrayVec::new())
     };
 }
 
