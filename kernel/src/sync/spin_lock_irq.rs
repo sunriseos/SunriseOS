@@ -5,7 +5,7 @@
 //! [sync]: crate::sync
 
 use crate::i386::instructions::interrupts;
-use super::{SpinLock, SpinLockGuard};
+pub use spin::{Mutex as SpinLock, MutexGuard as SpinLockGuard};
 use core::fmt;
 use core::mem::ManuallyDrop;
 use core::ops::{Deref, DerefMut};
