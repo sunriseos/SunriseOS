@@ -121,7 +121,12 @@ impl<T: ?Sized> SpinLock<T> {
     /// ```
     pub fn lock(&self) -> SpinLockGuard<T> {
         use core::sync::atomic::Ordering;
-        assert_eq!(crate::i386::interrupt_service_routines::INSIDE_INTERRUPT_COUNT.load(Ordering::SeqCst), 0);
+        if crate::i386::interrupt_service_routines::INSIDE_INTERRUPT_COUNT.load(Ordering::SeqCst) != 0 {
+            panic!("\
+                You have attempted to lock a spinlock in interrupt context. \
+                This is most likely a design flaw. \
+                See documentation of the sync module.");
+        }
         self.0.lock()
     }
 
@@ -139,6 +144,13 @@ impl<T: ?Sized> SpinLock<T> {
     /// Tries to lock the spinlock. If it is already locked, it will return None. Otherwise it returns
     /// a guard within Some.
     pub fn try_lock(&self) -> Option<SpinLockGuard<T>> {
+        use core::sync::atomic::Ordering;
+        if crate::i386::interrupt_service_routines::INSIDE_INTERRUPT_COUNT.load(Ordering::SeqCst) != 0 {
+            panic!("\
+                You have attempted to lock a spinlock in interrupt context. \
+                This is most likely a design flaw. \
+                See documentation of the sync module.");
+        }
         self.0.try_lock()
     }
 }
