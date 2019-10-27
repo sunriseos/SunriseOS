@@ -52,6 +52,7 @@ use sunrise_libkern::{nr, SYSCALL_NAMES};
 /// Contains the number of interrupts we are currently inside.
 ///
 /// When this is 0, we are not inside an interrupt context.
+#[thread_local]
 pub static INSIDE_INTERRUPT_COUNT: AtomicU8 = AtomicU8::new(0);
 
 /// Checks if our thread was killed, in which case unschedule ourselves.
