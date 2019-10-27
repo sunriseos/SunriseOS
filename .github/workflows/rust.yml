@@ -65,6 +65,7 @@ jobs:
 
       - name: Version
         run: rustup --version && cargo --version --verbose && rustc --version --verbose
+        shell: bash
 
       - name: Install cargo-make
         run: cargo install cargo-make
