@@ -177,7 +177,19 @@ pub struct ThreadStruct {
     /// Thread state event
     ///
     /// This is used when signaling that this thread as exited.
-    state_event: ThreadStateEvent
+    state_event: ThreadStateEvent,
+
+    /// Interrupt disable counter.
+    ///
+    /// # Description
+    ///
+    /// Allows recursively disabling interrupts while keeping a sane behavior.
+    /// Should only be manipulated through sync::enable_interrupts and
+    /// sync::disable_interrupts.
+    ///
+    /// Used by the SpinLockIRQ to implement recursive irqsave logic.
+    pub int_disable_counter: AtomicUsize,
+
 }
 
 /// A handle to a userspace-accessible resource.
@@ -793,6 +805,7 @@ impl ThreadStruct {
                 state,
                 kstack,
                 hwcontext : empty_hwcontext,
+                int_disable_counter: AtomicUsize::new(0),
                 process: Arc::clone(belonging_process),
                 tls_region: tls,
                 tls_elf: SpinLock::new(VirtualAddress(0x00000000)),
@@ -891,6 +904,7 @@ impl ThreadStruct {
                 state,
                 kstack,
                 hwcontext,
+                int_disable_counter: AtomicUsize::new(0),
                 process: Arc::clone(&process),
                 tls_region: tls,
                 tls_elf: SpinLock::new(VirtualAddress(0x00000000)),
