@@ -35,7 +35,7 @@ use crate::i386::PrivilegeLevel;
 use crate::scheduler::{get_current_thread, get_current_process};
 use crate::process::{ProcessStruct, ThreadState};
 use crate::sync::{SpinLock, SpinLockIRQ};
-use core::sync::atomic::Ordering;
+use core::sync::atomic::{AtomicU8, Ordering};
 
 use crate::scheduler;
 use crate::i386::gdt::GdtIndex;
@@ -48,6 +48,11 @@ use crate::error::UserspaceError;
 use crate::syscalls::*;
 use bit_field::BitArray;
 use sunrise_libkern::{nr, SYSCALL_NAMES};
+
+/// Contains the number of interrupts we are currently inside.
+///
+/// When this is 0, we are not inside an interrupt context.
+pub static INSIDE_INTERRUPT_COUNT: AtomicU8 = AtomicU8::new(0);
 
 /// Checks if our thread was killed, in which case unschedule ourselves.
 ///
@@ -536,7 +541,11 @@ macro_rules! generate_trap_gate_handler {
         extern "C" fn $wrapper_rust_fnname(userspace_context: &mut UserspaceHardwareContext) {
 
             use crate::i386::structures::gdt::SegmentSelector;
+            use crate::i386::interrupt_service_routines::INSIDE_INTERRUPT_COUNT;
+            use core::sync::atomic::Ordering;
 
+
+            let _ = INSIDE_INTERRUPT_COUNT.fetch_add(1, Ordering::SeqCst);
 
             if let PrivilegeLevel::Ring0 = SegmentSelector(userspace_context.cs as u16).rpl() {
                 generate_trap_gate_handler!(__gen kernel_fault; name: $exception_name, userspace_context, errcode: $has_errcode, strategy: $kernel_fault_strategy);
@@ -554,6 +563,8 @@ macro_rules! generate_trap_gate_handler {
 
             // call the handler
             generate_trap_gate_handler!(__gen handler; name: $exception_name, userspace_context, errcode: $has_errcode, strategy: $handler_strategy);
+
+            let _ = INSIDE_INTERRUPT_COUNT.fetch_sub(1, Ordering::SeqCst);
 
             // if we're returning to userspace, check we haven't been killed
             if let PrivilegeLevel::Ring3 = SegmentSelector(userspace_context.cs as u16).rpl() {
