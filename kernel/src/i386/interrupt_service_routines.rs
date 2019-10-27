@@ -567,10 +567,12 @@ macro_rules! generate_trap_gate_handler {
 
             use crate::i386::structures::gdt::SegmentSelector;
             use crate::i386::interrupt_service_routines::INSIDE_INTERRUPT_COUNT;
+            use crate::sync::spin_lock_irq::{disable_interrupts, decrement_lock_count};
             use core::sync::atomic::Ordering;
 
             if $interrupt_context {
                 let _ = INSIDE_INTERRUPT_COUNT.fetch_add(1, Ordering::SeqCst);
+                disable_interrupts();
             }
 
             if let PrivilegeLevel::Ring0 = SegmentSelector(userspace_context.cs as u16).rpl() {
@@ -592,6 +594,7 @@ macro_rules! generate_trap_gate_handler {
 
             if $interrupt_context {
                 let _ = INSIDE_INTERRUPT_COUNT.fetch_sub(1, Ordering::SeqCst);
+                unsafe { decrement_lock_count(); }
             }
 
             // if we're returning to userspace, check we haven't been killed

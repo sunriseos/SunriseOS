@@ -9,42 +9,49 @@ use spin::{Mutex as SpinLock, MutexGuard as SpinLockGuard};
 use core::fmt;
 use core::mem::ManuallyDrop;
 use core::ops::{Deref, DerefMut};
-use core::sync::atomic::Ordering;
+use core::sync::atomic::{AtomicU8, Ordering};
 use super::INTERRUPT_DISARM;
-use crate::scheduler;
 
+/// Interrupt disable counter.
+///
+/// # Description
+///
+/// Allows recursively disabling interrupts while keeping a sane behavior.
+/// Should only be manipulated through sync::enable_interrupts and
+/// sync::disable_interrupts.
+///
+/// Used by the SpinLockIRQ to implement recursive irqsave logic.
+#[thread_local]
+static INTERRUPT_DISABLE_COUNTER: AtomicU8 = AtomicU8::new(0);
 
 /// Decrement the interrupt disable counter.
 ///
 /// Look at documentation for ProcessStruct::pint_disable_counter to know more.
-fn enable_interrupts() {
-    use crate::i386::interrupt_service_routines::INSIDE_INTERRUPT_COUNT;
+pub fn enable_interrupts() {
     if !INTERRUPT_DISARM.load(Ordering::SeqCst) {
-        if let Some(thread) = scheduler::try_get_current_thread() {
-            if thread.int_disable_counter.fetch_sub(1, Ordering::SeqCst) == 1 {
-                if INSIDE_INTERRUPT_COUNT.load(Ordering::SeqCst) == 0 {
-                    unsafe { interrupts::sti() }
-                }
-            }
-        } else {
-            // TODO: Safety???
-            // don't do anything.
+        if INTERRUPT_DISABLE_COUNTER.fetch_sub(1, Ordering::SeqCst) == 1 {
+            unsafe { interrupts::sti() }
         }
+    }
+}
+
+/// Decrement the interrupt disable counter without possibly re-enabling interrupts.
+///
+/// Used to decrement counter while keeping interrupts disabled inside an interrupt.
+/// Look at documentation for INTERRUPT_DISABLE_COUNTER to know more.
+pub unsafe fn decrement_lock_count() {
+    if !INTERRUPT_DISARM.load(Ordering::SeqCst) {
+        let _ = INTERRUPT_DISABLE_COUNTER.fetch_sub(1, Ordering::SeqCst);
     }
 }
 
 /// Increment the interrupt disable counter.
 ///
 /// Look at documentation for INTERRUPT_DISABLE_COUNTER to know more.
-fn disable_interrupts() {
+pub fn disable_interrupts() {
     if !INTERRUPT_DISARM.load(Ordering::SeqCst) {
-        if let Some(thread) = scheduler::try_get_current_thread() {
-            if thread.int_disable_counter.fetch_add(1, Ordering::SeqCst) == 0 {
-                unsafe { interrupts::cli() }
-            }
-        } else {
-            // TODO: Safety???
-            // don't do anything.
+        if INTERRUPT_DISABLE_COUNTER.fetch_add(1, Ordering::SeqCst) == 0 {
+            unsafe { interrupts::cli() }
         }
     }
 }
