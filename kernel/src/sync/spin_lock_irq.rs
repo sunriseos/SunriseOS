@@ -18,10 +18,13 @@ use crate::scheduler;
 ///
 /// Look at documentation for ProcessStruct::pint_disable_counter to know more.
 fn enable_interrupts() {
+    use crate::i386::interrupt_service_routines::INSIDE_INTERRUPT_COUNT;
     if !INTERRUPT_DISARM.load(Ordering::SeqCst) {
         if let Some(thread) = scheduler::try_get_current_thread() {
             if thread.int_disable_counter.fetch_sub(1, Ordering::SeqCst) == 1 {
-                unsafe { interrupts::sti() }
+                if INSIDE_INTERRUPT_COUNT.load(Ordering::SeqCst) == 0 {
+                    unsafe { interrupts::sti() }
+                }
             }
         } else {
             // TODO: Safety???
