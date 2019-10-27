@@ -102,7 +102,8 @@ impl Command {
         };
 
         // TODO(Sunrise): Remap error codes
-        let pid = interface.launch_title(self.program.as_bytes(), command_line.as_bytes()).unwrap();
+        let pid = interface.create_title(self.program.as_bytes(), command_line.as_bytes()).unwrap();
+        interface.launch_title(pid).unwrap();
 
         let child = Process {
             pid,

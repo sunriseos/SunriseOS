@@ -2095,9 +2095,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "sunrise-twili"
+version = "0.1.0"
+dependencies = [
+ "core-futures-tls 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spin 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sunrise-libuser 0.1.0",
+]
+
+[[package]]
 name = "sunrise-vi"
 version = "0.1.0"
 dependencies = [
+ "bit_field 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "core-futures-tls 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "font-rs 0.1.3 (git+https://github.com/SunriseOS/font-rs)",
  "futures-preview 0.3.0-alpha.16 (registry+https://github.com/rust-lang/crates.io-index)",

@@ -65,7 +65,7 @@ lazy_static! {
 }
 
 /// Start the given titleid by loading its content from the provided filesystem.
-fn boot(fs: &IFileSystemProxy, titlename: &str, args: &[u8]) -> Result<Pid, Error> {
+fn boot(fs: &IFileSystemProxy, titlename: &str, args: &[u8], start: bool) -> Result<Pid, Error> {
     info!("Booting titleid {}", titlename);
 
     let val = format!("/bin/{}/main", titlename);
@@ -180,10 +180,12 @@ fn boot(fs: &IFileSystemProxy, titlename: &str, args: &[u8]) -> Result<Pid, Erro
 
     syscalls::set_process_memory_permission(&process, aslr_base + elf_size, args_size, MemoryPermissions::RW)?;
 
-    debug!("Starting process.");
-    if let Err(err) = process.start(0, 0, PAGE_SIZE as u32 * 32) {
-        error!("Failed to start titleid {}: {}", titlename, err);
-        return Err(err)
+    if start {
+        debug!("Starting process.");
+        if let Err(err) = process.start(0, 0, PAGE_SIZE as u32 * 32) {
+            error!("Failed to start titleid {}: {}", titlename, err);
+            return Err(err)
+        }
     }
 
     let pid = process.pid()?;
@@ -205,11 +207,28 @@ lazy_static! {
 struct LoaderIface;
 
 impl ILoaderInterfaceAsync for LoaderIface {
-    fn launch_title(&mut self, _workqueue: WorkQueue<'static>, title_name: &[u8], args: &[u8]) -> FutureObj<'_, Result<u64, Error>> {
+    fn create_title(&mut self, _workqueue: WorkQueue<'static>, title_name: &[u8], args: &[u8]) -> FutureObj<'_, Result<u64, Error>> {
         let res = (|| -> Result<u64, Error> {
             let title_name = str::from_utf8(title_name).or(Err(LoaderError::ProgramNotFound))?;
-            let Pid(pid) = boot(&*BOOT_FROM_FS, title_name, args)?;
+            let Pid(pid) = boot(&*BOOT_FROM_FS, title_name, args, false)?;
             Ok(pid)
+        })();
+        FutureObj::new(Box::new(async move {
+            res
+        }))
+    }
+
+    fn launch_title(&mut self, _workqueue: WorkQueue<'static>, pid: u64) -> FutureObj<'_, Result<(), Error>> {
+        let res = (|| -> Result<(), Error> {
+            let lock = PROCESSES.lock();
+            let process = lock.get(&pid)
+                .ok_or(PmError::PidNotFound)?;
+            debug!("Starting process.");
+            if let Err(err) = process.start(0, 0, PAGE_SIZE as u32 * 32) {
+                error!("Failed to start pid {}: {}", pid, err);
+                return Err(err)
+            }
+            Ok(())
         })();
         FutureObj::new(Box::new(async move {
             res
@@ -292,7 +311,7 @@ fn main() {
                         .find(|(_, v)| **v == b'/' || **v == b'\0')
                         .map(|(idx, _)| idx).unwrap_or_else(|| entry.path.len());
                     if let Ok(titleid) = str::from_utf8(&entry.path[5..endpos]) {
-                        let _ = boot(&fs, titleid, &[]);
+                        let _ = boot(&fs, titleid, &[], true);
                     } else {
                         error!("Non-ASCII titleid found in /boot.");
                         continue;

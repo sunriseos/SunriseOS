@@ -11,13 +11,16 @@ interface sunrise_libuser::twili::ITwiliService is twili {
         object<sunrise_libuser::twili::IPipe> stdin,
         object<sunrise_libuser::twili::IPipe> stdout,
         object<sunrise_libuser::twili::IPipe> stderr);
+
+    # Creates a pipe whose read side gets sent to the write side.
+    [1] create_pipe() -> object<sunrise_libuser::twili::IPipe>;
 }
 
 # The Twili Manager is responsible for registering a process' pipes. The PM
 # should connect to this service and register pipes before starting a process.
 interface sunrise_libuser::twili::ITwiliManagerService is twili:m {
     # Registers the pipe of a remote process.
-    [0] register_pipes(pid,
+    [0] register_pipes(u64 pid,
         object<sunrise_libuser::twili::IPipe> stdin,
         object<sunrise_libuser::twili::IPipe> stdout,
         object<sunrise_libuser::twili::IPipe> stderr);
