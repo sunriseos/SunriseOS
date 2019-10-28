@@ -32,7 +32,7 @@
 //! try to access it in regular context. This would be useful on multi-core systems to arbitrate
 //! access to a resource when two IRQs are run concurrently.
 //! But we highly discourage it, as we see no use case for a resource that would be accessed *only*
-//! in interrupt context.
+//! in interrupt context. So, our implementation panics when locked in interrupt context.
 //!
 //! # SpinLockIRQ
 //!
@@ -84,15 +84,25 @@
 //! [Mutex]: crate::sync::mutex::Mutex
 
 // export spin::Mutex as less ambiguous "SpinLock".
-pub use spin::{Mutex as SpinLock, MutexGuard as SpinLockGuard,
-               RwLock as SpinRwLock, RwLockReadGuard as SpinRwLockReadGuard, RwLockWriteGuard as SpinRwLockWriteGuard,
+pub use spin::{RwLock as SpinRwLock, RwLockReadGuard as SpinRwLockReadGuard, RwLockWriteGuard as SpinRwLockWriteGuard,
                Once };
 
 pub mod spin_lock_irq;
 pub use self::spin_lock_irq::{SpinLockIRQ, SpinLockIRQGuard};
 
+pub mod spin_lock;
+pub use self::spin_lock::{SpinLock, SpinLockGuard};
+
 pub mod mutex;
 pub use self::mutex::{Mutex, MutexGuard};
+
+/// Boolean to [spin_lock_irq::permanently_disable_interrupts].
+///
+/// If this bool is set, all attempts to enable interrupts through a SpinLockIRQ
+/// are ignored, leaving the system in an unrecoverable state.
+///
+/// This is used by kernel panic handlers.
+static INTERRUPT_DISARM: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
 
 /// Abstraction around various kind of locks.
 ///

@@ -35,7 +35,7 @@ use crate::i386::PrivilegeLevel;
 use crate::scheduler::{get_current_thread, get_current_process};
 use crate::process::{ProcessStruct, ThreadState};
 use crate::sync::{SpinLock, SpinLockIRQ};
-use core::sync::atomic::Ordering;
+use core::sync::atomic::{AtomicU8, Ordering};
 
 use crate::scheduler;
 use crate::i386::gdt::GdtIndex;
@@ -48,6 +48,12 @@ use crate::error::UserspaceError;
 use crate::syscalls::*;
 use bit_field::BitArray;
 use sunrise_libkern::{nr, SYSCALL_NAMES};
+
+/// Contains the number of interrupts we are currently inside.
+///
+/// When this is 0, we are not inside an interrupt context.
+#[thread_local]
+pub static INSIDE_INTERRUPT_COUNT: AtomicU8 = AtomicU8::new(0);
 
 /// Checks if our thread was killed, in which case unschedule ourselves.
 ///
@@ -326,7 +332,8 @@ macro_rules! trap_gate_asm {
 ///                wrapper_rust_fnname: bound_range_exceeded_exception_rust_wrapper,    // name for the high-level rust handler this macro will generate.
 ///                kernel_fault_strategy: panic,                                        // what to do if we were in kernelspace when this interruption happened.
 ///                user_fault_strategy: panic,                                          // what to do if we were in userspace when this interruption happened, and feature "panic-on-exception" is enabled.
-///                handler_strategy: kill                                               // what to for this interrupt otherwise
+///                handler_strategy: kill,                                              // what to for this interrupt otherwise
+///                interrupt_context: true                                              // OPTIONAL: basically: are IRQs disabled. True by default, false used for syscalls.
 ///);
 /// ```
 ///
@@ -517,6 +524,28 @@ macro_rules! generate_trap_gate_handler {
         }
     };
 
+    // handle optional argument interrupt_context.
+    (
+    name: $exception_name:literal,
+    has_errcode: $has_errcode:ident,
+    wrapper_asm_fnname: $wrapper_asm_fnname:ident,
+    wrapper_rust_fnname: $wrapper_rust_fnname:ident,
+    kernel_fault_strategy: $kernel_fault_strategy:ident,
+    user_fault_strategy: $user_fault_strategy:ident,
+    handler_strategy: $handler_strategy:ident
+    ) => {
+        generate_trap_gate_handler!(
+            name: $exception_name,
+            has_errcode: $has_errcode,
+            wrapper_asm_fnname: $wrapper_asm_fnname,
+            wrapper_rust_fnname: $wrapper_rust_fnname,
+            kernel_fault_strategy: $kernel_fault_strategy,
+            user_fault_strategy: $user_fault_strategy,
+            handler_strategy: $handler_strategy,
+            interrupt_context: true
+        );
+    };
+
     /* The full wrapper */
 
     // The rule called to generate an exception handler.
@@ -527,7 +556,8 @@ macro_rules! generate_trap_gate_handler {
     wrapper_rust_fnname: $wrapper_rust_fnname:ident,
     kernel_fault_strategy: $kernel_fault_strategy:ident,
     user_fault_strategy: $user_fault_strategy:ident,
-    handler_strategy: $handler_strategy:ident
+    handler_strategy: $handler_strategy:ident,
+    interrupt_context: $interrupt_context:literal
     ) => {
 
         generate_trap_gate_handler!(__gen asm_wrapper; $wrapper_asm_fnname, $wrapper_rust_fnname, $has_errcode);
@@ -536,7 +566,12 @@ macro_rules! generate_trap_gate_handler {
         extern "C" fn $wrapper_rust_fnname(userspace_context: &mut UserspaceHardwareContext) {
 
             use crate::i386::structures::gdt::SegmentSelector;
+            use crate::i386::interrupt_service_routines::INSIDE_INTERRUPT_COUNT;
+            use core::sync::atomic::Ordering;
 
+            if $interrupt_context {
+                let _ = INSIDE_INTERRUPT_COUNT.fetch_add(1, Ordering::SeqCst);
+            }
 
             if let PrivilegeLevel::Ring0 = SegmentSelector(userspace_context.cs as u16).rpl() {
                 generate_trap_gate_handler!(__gen kernel_fault; name: $exception_name, userspace_context, errcode: $has_errcode, strategy: $kernel_fault_strategy);
@@ -554,6 +589,10 @@ macro_rules! generate_trap_gate_handler {
 
             // call the handler
             generate_trap_gate_handler!(__gen handler; name: $exception_name, userspace_context, errcode: $has_errcode, strategy: $handler_strategy);
+
+            if $interrupt_context {
+                let _ = INSIDE_INTERRUPT_COUNT.fetch_sub(1, Ordering::SeqCst);
+            }
 
             // if we're returning to userspace, check we haven't been killed
             if let PrivilegeLevel::Ring3 = SegmentSelector(userspace_context.cs as u16).rpl() {
@@ -787,7 +826,8 @@ generate_trap_gate_handler!(name: "Syscall Interrupt",
                 wrapper_rust_fnname: syscall_interrupt_rust_wrapper,
                 kernel_fault_strategy: panic, // you aren't expected to syscall from the kernel
                 user_fault_strategy: ignore, // don't worry it's fine ;)
-                handler_strategy: syscall_interrupt_dispatcher
+                handler_strategy: syscall_interrupt_dispatcher,
+                interrupt_context: false
 );
 
 impl UserspaceHardwareContext {
