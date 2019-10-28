@@ -7,3 +7,5 @@ edition = "2018"
 [dependencies]
 tar = "0.4"
 flate2 = { version = "1.0", features = ["rust_backend"] }
+
+[workspace]
