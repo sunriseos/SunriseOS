@@ -1,7 +1,6 @@
 .bochsrc
 target
 **/*.rs.bk
-Cargo.lock
 isofiles/boot/sunrise-*
 os.iso
 DISK.img
