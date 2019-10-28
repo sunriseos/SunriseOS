@@ -9,15 +9,8 @@ use spin::{Mutex as SpinLock, MutexGuard as SpinLockGuard};
 use core::fmt;
 use core::mem::ManuallyDrop;
 use core::ops::{Deref, DerefMut};
-use core::sync::atomic::{AtomicBool, Ordering};
-
-/// Boolean to [permanently_disable_interrupts].
-///
-/// If this bool is set, all attempts to enable interrupts through a SpinLockIRQ
-/// are ignored, leaving the system in an unrecoverable state.
-///
-/// This is used by kernel panic handlers.
-static INTERRUPT_DISARM: AtomicBool = AtomicBool::new(false);
+use core::sync::atomic::Ordering;
+use super::INTERRUPT_DISARM;
 
 /// Permanently disables the interrupts. Forever.
 ///

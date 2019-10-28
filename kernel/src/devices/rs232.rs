@@ -1,7 +1,7 @@
 //! RS-232 serial port driver
 
 use core::fmt::{Display, Write, Error, Formatter};
-use crate::sync::{Once, SpinLock};
+use crate::sync::{Once, SpinLockIRQ};
 use crate::io::Io;
 use crate::i386::pio::Pio;
 
@@ -98,7 +98,7 @@ impl Display for SerialAttributes {
 /// Initialized on first use.
 ///
 /// Log functions will access the [SerialInternal] it wraps, and send text to it.
-static G_SERIAL: Once<SpinLock<SerialInternal<Pio<u8>>>> = Once::new();
+static G_SERIAL: Once<SpinLockIRQ<SerialInternal<Pio<u8>>>> = Once::new();
 
 /// A COM output. Wraps the IO ports of this COM, and provides function for writing to it.
 struct SerialInternal<T> {
@@ -168,7 +168,7 @@ impl SerialLogger {
     ///
     /// This function should only be used when panicking.
     pub unsafe fn force_unlock(&mut self) {
-        G_SERIAL.call_once(|| SpinLock::new(SerialInternal::<Pio<u8>>::new(COM1))).force_unlock();
+        G_SERIAL.call_once(|| SpinLockIRQ::new(SerialInternal::<Pio<u8>>::new(COM1))).force_unlock();
     }
 }
 
@@ -176,7 +176,7 @@ impl Write for SerialLogger {
     /// Writes a string to COM1.
     #[cfg(not(test))]
     fn write_str(&mut self, s: &str) -> Result<(), ::core::fmt::Error> {
-        let mut internal = G_SERIAL.call_once(|| SpinLock::new(SerialInternal::<Pio<u8>>::new(COM1))).lock();
+        let mut internal = G_SERIAL.call_once(|| SpinLockIRQ::new(SerialInternal::<Pio<u8>>::new(COM1))).lock();
         internal.send_string(s);
         Ok(())
     }

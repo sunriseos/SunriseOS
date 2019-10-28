@@ -172,7 +172,7 @@ pub struct ThreadStruct {
     /// Userspace hardware context of this thread.
     ///
     /// Registers are backed up every time we enter the kernel via a syscall/exception, for debug purposes.
-    pub userspace_hwcontext: SpinLock<UserspaceHardwareContext>,
+    pub userspace_hwcontext: SpinLockIRQ<UserspaceHardwareContext>,
 
     /// Thread state event
     ///
@@ -796,7 +796,7 @@ impl ThreadStruct {
                 process: Arc::clone(belonging_process),
                 tls_region: tls,
                 tls_elf: SpinLock::new(VirtualAddress(0x00000000)),
-                userspace_hwcontext: SpinLock::new(UserspaceHardwareContext::default()),
+                userspace_hwcontext: SpinLockIRQ::new(UserspaceHardwareContext::default()),
                 state_event: ThreadStateEvent {
                     waiting_threads: SpinLock::new(Vec::new())
                 },
@@ -894,7 +894,7 @@ impl ThreadStruct {
                 process: Arc::clone(&process),
                 tls_region: tls,
                 tls_elf: SpinLock::new(VirtualAddress(0x00000000)),
-                userspace_hwcontext: SpinLock::new(UserspaceHardwareContext::default()),
+                userspace_hwcontext: SpinLockIRQ::new(UserspaceHardwareContext::default()),
                 state_event: ThreadStateEvent {
                     waiting_threads: SpinLock::new(Vec::new())
                 },
@@ -984,4 +984,3 @@ impl Drop for ThreadStruct {
         info!("💀 Dropped a thread : {}", self.process.name)
     }
 }
-

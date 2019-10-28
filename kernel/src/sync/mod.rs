@@ -96,6 +96,14 @@ pub use self::spin_lock::{SpinLock, SpinLockGuard};
 pub mod mutex;
 pub use self::mutex::{Mutex, MutexGuard};
 
+/// Boolean to [spin_lock_irq::permanently_disable_interrupts].
+///
+/// If this bool is set, all attempts to enable interrupts through a SpinLockIRQ
+/// are ignored, leaving the system in an unrecoverable state.
+///
+/// This is used by kernel panic handlers.
+static INTERRUPT_DISARM: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+
 /// Abstraction around various kind of locks.
 ///
 /// Some functions need to take a Lock and/or a LockGuard as argument, but don't

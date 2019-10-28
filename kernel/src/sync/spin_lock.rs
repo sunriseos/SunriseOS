@@ -121,7 +121,10 @@ impl<T: ?Sized> SpinLock<T> {
     /// ```
     pub fn lock(&self) -> SpinLockGuard<T> {
         use core::sync::atomic::Ordering;
-        if crate::i386::interrupt_service_routines::INSIDE_INTERRUPT_COUNT.load(Ordering::SeqCst) != 0 {
+        use crate::cpu_locals::ARE_CPU_LOCALS_INITIALIZED_YET;
+        use crate::i386::interrupt_service_routines::INSIDE_INTERRUPT_COUNT;
+        use super::INTERRUPT_DISARM;
+        if !INTERRUPT_DISARM.load(Ordering::SeqCst) && ARE_CPU_LOCALS_INITIALIZED_YET.load(Ordering::SeqCst) && INSIDE_INTERRUPT_COUNT.load(Ordering::SeqCst) != 0 {
             panic!("\
                 You have attempted to lock a spinlock in interrupt context. \
                 This is most likely a design flaw. \
