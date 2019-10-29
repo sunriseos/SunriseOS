@@ -11,6 +11,7 @@ use core::mem::ManuallyDrop;
 use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicU8, Ordering};
 use super::INTERRUPT_DISARM;
+use crate::cpu_locals::ARE_CPU_LOCALS_INITIALIZED_YET;
 
 /// Interrupt disable counter.
 ///
@@ -28,7 +29,7 @@ static INTERRUPT_DISABLE_COUNTER: AtomicU8 = AtomicU8::new(0);
 ///
 /// Look at documentation for ProcessStruct::pint_disable_counter to know more.
 pub fn enable_interrupts() {
-    if !INTERRUPT_DISARM.load(Ordering::SeqCst) {
+    if !INTERRUPT_DISARM.load(Ordering::SeqCst) && ARE_CPU_LOCALS_INITIALIZED_YET.load(Ordering::SeqCst) {
         if INTERRUPT_DISABLE_COUNTER.fetch_sub(1, Ordering::SeqCst) == 1 {
             unsafe { interrupts::sti() }
         }
@@ -40,7 +41,7 @@ pub fn enable_interrupts() {
 /// Used to decrement counter while keeping interrupts disabled inside an interrupt.
 /// Look at documentation for INTERRUPT_DISABLE_COUNTER to know more.
 pub unsafe fn decrement_lock_count() {
-    if !INTERRUPT_DISARM.load(Ordering::SeqCst) {
+    if !INTERRUPT_DISARM.load(Ordering::SeqCst) && ARE_CPU_LOCALS_INITIALIZED_YET.load(Ordering::SeqCst) {
         let _ = INTERRUPT_DISABLE_COUNTER.fetch_sub(1, Ordering::SeqCst);
     }
 }
@@ -49,7 +50,7 @@ pub unsafe fn decrement_lock_count() {
 ///
 /// Look at documentation for INTERRUPT_DISABLE_COUNTER to know more.
 pub fn disable_interrupts() {
-    if !INTERRUPT_DISARM.load(Ordering::SeqCst) {
+    if !INTERRUPT_DISARM.load(Ordering::SeqCst) && ARE_CPU_LOCALS_INITIALIZED_YET.load(Ordering::SeqCst) {
         if INTERRUPT_DISABLE_COUNTER.fetch_add(1, Ordering::SeqCst) == 0 {
             unsafe { interrupts::cli() }
         }

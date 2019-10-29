@@ -1137,5 +1137,5 @@ pub unsafe fn init() {
         (*idt).load();
     }
 
-    sti();
+    crate::sync::spin_lock_irq::enable_interrupts();
 }
