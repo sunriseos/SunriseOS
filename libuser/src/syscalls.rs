@@ -728,3 +728,16 @@ pub fn get_process_id(process_handle: &Process) -> Result<u64, KernelError> {
         Ok(pid as _)
     }
 }
+
+/// Fills the provided array with the pids of currently living processes. A
+/// process "lives" so long as it is currently running or a handle to it still
+/// exists.
+///
+/// It returns the total number of processes currently alive. If this number is
+/// bigger than the size of PidBuffer, the user won't have all the pids.
+pub fn get_process_list(list: &mut [u64]) -> Result<usize, KernelError> {
+    unsafe {
+        let (read, ..) = syscall(nr::GetProcessList, list.as_ptr() as usize, list.len(), 0, 0, 0, 0)?;
+        Ok(read)
+    }
+}
