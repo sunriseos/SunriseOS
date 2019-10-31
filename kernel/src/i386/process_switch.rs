@@ -347,7 +347,13 @@ fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize, arg1: usize, arg2: 
     const_assert_eq!((GdtIndex::UTlsRegion as u16) << 3 | 0b11, 0x3B);
     const_assert_eq!((GdtIndex::UTlsElf as u16) << 3 | 0b11, 0x43);
     const_assert_eq!((GdtIndex::UStack as u16) << 3 | 0b11, 0x4B);
-    // We're about to enable interrupts by doing an iret.
+
+
+    // Safety: This is paired with an undropped SpinLockIrq (interrupt_manager) in scheduler::internal_schedule.
+    // (Normally, this SpinLockIrq evens out with an identical one in the same function in the new process,
+    // however, when a new process starts this object is not present, therefore we must manually decrement
+    // the counter.)
+    // Additionally, an iret occurs later in this function, enabling interrupts.
     unsafe { crate::sync::spin_lock_irq::decrement_lock_count(); }
     unsafe {
         asm!("

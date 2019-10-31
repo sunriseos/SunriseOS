@@ -18,8 +18,8 @@ use crate::cpu_locals::ARE_CPU_LOCALS_INITIALIZED_YET;
 /// # Description
 ///
 /// Allows recursively disabling interrupts while keeping a sane behavior.
-/// Should only be manipulated through sync::enable_interrupts and
-/// sync::disable_interrupts.
+/// Should only be manipulated through [enable_interrupts],
+/// [disable_interrupts], and [decrement_lock_count].
 ///
 /// Used by the SpinLockIRQ to implement recursive irqsave logic.
 #[thread_local]
@@ -27,19 +27,30 @@ static INTERRUPT_DISABLE_COUNTER: AtomicU8 = AtomicU8::new(0);
 
 /// Decrement the interrupt disable counter.
 ///
-/// Look at documentation for ProcessStruct::pint_disable_counter to know more.
-pub fn enable_interrupts() {
-    if !INTERRUPT_DISARM.load(Ordering::SeqCst) && ARE_CPU_LOCALS_INITIALIZED_YET.load(Ordering::SeqCst) {
-        if INTERRUPT_DISABLE_COUNTER.fetch_sub(1, Ordering::SeqCst) == 1 {
-            unsafe { interrupts::sti() }
-        }
+/// Look at documentation for [INTERRUPT_DISABLE_COUNTER] to know more.
+///
+/// # Unsafety:
+///
+/// Should be called in pairs with [disable_iterrupts] or [decrement_lock_count],
+/// otherwise the counter will get out of sync and deadlocks will likely occur.
+pub unsafe fn enable_interrupts() {
+    if !INTERRUPT_DISARM.load(Ordering::SeqCst) && ARE_CPU_LOCALS_INITIALIZED_YET.load(Ordering::SeqCst) && INTERRUPT_DISABLE_COUNTER.fetch_sub(1, Ordering::SeqCst) == 1 {
+        unsafe { interrupts::sti() }
     }
 }
 
-/// Decrement the interrupt disable counter without possibly re-enabling interrupts.
+/// Decrement the interrupt disable counter without re-enabling interrupts.
 ///
-/// Used to decrement counter while keeping interrupts disabled inside an interrupt.
-/// Look at documentation for INTERRUPT_DISABLE_COUNTER to know more.
+/// Used to decrement counter while keeping interrupts disabled before an iret.
+/// Look at documentation for [INTERRUPT_DISABLE_COUNTER] to know more.
+///
+/// # Unsafety:
+///
+/// Should be called in pairs with [enable_iterrupts],
+/// otherwise the counter will get out of sync and deadlocks will likely occur.
+///
+/// Additionally, this should only be used when interrupts are about to be enabled anyway,
+/// such as by an iret to userspace.
 pub unsafe fn decrement_lock_count() {
     if !INTERRUPT_DISARM.load(Ordering::SeqCst) && ARE_CPU_LOCALS_INITIALIZED_YET.load(Ordering::SeqCst) {
         let _ = INTERRUPT_DISABLE_COUNTER.fetch_sub(1, Ordering::SeqCst);
@@ -48,12 +59,15 @@ pub unsafe fn decrement_lock_count() {
 
 /// Increment the interrupt disable counter.
 ///
-/// Look at documentation for INTERRUPT_DISABLE_COUNTER to know more.
-pub fn disable_interrupts() {
-    if !INTERRUPT_DISARM.load(Ordering::SeqCst) && ARE_CPU_LOCALS_INITIALIZED_YET.load(Ordering::SeqCst) {
-        if INTERRUPT_DISABLE_COUNTER.fetch_add(1, Ordering::SeqCst) == 0 {
-            unsafe { interrupts::cli() }
-        }
+/// Look at documentation for [INTERRUPT_DISABLE_COUNTER] to know more.
+///
+/// # Unsafety:
+///
+/// Should be called in pairs with [enable_iterrupts],
+/// otherwise the counter will get out of sync and deadlocks will likely occur.
+pub unsafe fn disable_interrupts() {
+    if !INTERRUPT_DISARM.load(Ordering::SeqCst) && ARE_CPU_LOCALS_INITIALIZED_YET.load(Ordering::SeqCst) && INTERRUPT_DISABLE_COUNTER.fetch_add(1, Ordering::SeqCst) == 0 {
+        unsafe { interrupts::cli() }
     }
 }
 
@@ -82,7 +96,7 @@ pub unsafe fn permanently_disable_interrupts() {
 /// have been dropped.
 ///
 /// Note that it is allowed to lock/unlock the locks in a different order. It uses
-/// a global counter to disable/enable interrupts. View INTERRUPT_DISABLE_COUNTER
+/// a global counter to disable/enable interrupts. View [INTERRUPT_DISABLE_COUNTER]
 /// documentation for more information.
 pub struct SpinLockIRQ<T: ?Sized> {
     /// SpinLock we wrap.
@@ -106,7 +120,7 @@ impl<T> SpinLockIRQ<T> {
 impl<T: ?Sized> SpinLockIRQ<T> {
     /// Disables interrupts and locks the mutex.
     pub fn lock(&self) -> SpinLockIRQGuard<'_, T> {
-        // Disable irqs
+        // Safety: Paired with enable_interrupts in the impl of Drop for SpinLockIrqGuard.
         unsafe { disable_interrupts(); }
 
         // TODO: Disable preemption.
@@ -119,7 +133,8 @@ impl<T: ?Sized> SpinLockIRQ<T> {
 
     /// Disables interrupts and locks the mutex.
     pub fn try_lock(&self) -> Option<SpinLockIRQGuard<'_, T>> {
-        // Disable irqs
+        // Safety: Paired with enable_interrupts in the impl of Drop for SpinLockIrq,
+        // or in case a guard is not created, later in this function.
         unsafe { disable_interrupts(); }
 
         // TODO: Disable preemption.
@@ -130,6 +145,7 @@ impl<T: ?Sized> SpinLockIRQ<T> {
             Some(internalguard) => Some(SpinLockIRQGuard(ManuallyDrop::new(internalguard))),
             None => {
                 // We couldn't lock. Restore irqs and return None
+                // Safety: Paired with disable_interrupts above in the case that a guard is not created.
                 unsafe { enable_interrupts(); }
                 None
             }
@@ -165,7 +181,8 @@ impl<'a, T: ?Sized + 'a> Drop for SpinLockIRQGuard<'a, T> {
         // unlock
         unsafe { ManuallyDrop::drop(&mut self.0); }
 
-        // Restore irq
+        // Safety: paired with disable_interrupts in SpinLockIRQ::{lock, try_lock}, which returns
+        // this guard to re-enable interrupts when it is dropped.
         unsafe { enable_interrupts(); }
 
         // TODO: Enable preempt

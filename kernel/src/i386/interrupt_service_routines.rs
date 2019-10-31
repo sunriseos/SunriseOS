@@ -28,7 +28,6 @@
 //! [syscall_interrupt_dispatcher]: self::interrupt_service_routines::syscall_interrupt_dispatcher
 
 use crate::i386::structures::idt::{PageFaultErrorCode, Idt};
-use crate::i386::instructions::interrupts::sti;
 use crate::mem::VirtualAddress;
 use crate::paging::kernel_memory::get_kernel_memory;
 use crate::i386::PrivilegeLevel;
@@ -65,6 +64,10 @@ pub fn check_thread_killed() {
     if scheduler::get_current_thread().state.load(Ordering::SeqCst) == ThreadState::TerminationPending {
         let lock = SpinLockIRQ::new(());
         loop { // in case of spurious wakeups
+            // TODO: Is it valid for interrupts to be active here?
+            // BODY: The interrupt wrappers call decrement_lock_count before calling this function,
+            // BODY: because it has the possibility to never return.
+            // BODY: Upon a spurious wake up, interrupts will end up being enabled.
             let _ = scheduler::unschedule(&lock, lock.lock());
         }
     }
@@ -572,7 +575,9 @@ macro_rules! generate_trap_gate_handler {
 
             if $interrupt_context {
                 let _ = INSIDE_INTERRUPT_COUNT.fetch_add(1, Ordering::SeqCst);
-                disable_interrupts();
+                // Lets SpinLockIrq know that we are an interrupt; interrupts should not be re-enabled.
+                // Safety: Paired with decrement_lock_count, which is called before exiting the interrupt.
+                unsafe { disable_interrupts(); }
             }
 
             if let PrivilegeLevel::Ring0 = SegmentSelector(userspace_context.cs as u16).rpl() {
@@ -594,6 +599,8 @@ macro_rules! generate_trap_gate_handler {
 
             if $interrupt_context {
                 let _ = INSIDE_INTERRUPT_COUNT.fetch_sub(1, Ordering::SeqCst);
+                // Safety: Paired with disable_interrupts, which was called earlier in this wrapper function.
+                // Additionally, this is called shortly before an iret occurs, inside the asm wrapper.
                 unsafe { decrement_lock_count(); }
             }
 
@@ -1137,5 +1144,6 @@ pub unsafe fn init() {
         (*idt).load();
     }
 
+    // Paired with disable_interrupts in kernel common_start.
     crate::sync::spin_lock_irq::enable_interrupts();
 }

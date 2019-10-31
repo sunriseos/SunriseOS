@@ -257,6 +257,12 @@ where
     // TODO: Ensure the global counter is <= 1
 
     let interrupt_manager = SpinLockIRQ::new(());
+
+    // This is complicated: interrupt_lock is needed to disable interrupts while
+    // performing a process switch: however, it is not dropped until after a process_switch
+    // *back* to this process. Usually it is paired with the SpinLockIrq being dropped in
+    // 'process_b', but in the case of a brand new process, it is paired with a manual decrement
+    // before performing an iret to userspace.
     let mut interrupt_lock = interrupt_manager.lock();
 
     loop {
