@@ -274,6 +274,16 @@ impl ILoaderInterfaceAsync for LoaderIface {
         }))
     }
 
+    fn kill(&mut self, _workqueue: WorkQueue<'static>, pid: u64) -> FutureObj<'_, Result<(), Error>> {
+        FutureObj::new(Box::new(async move {
+            let processes = PROCESSES.lock();
+            let process = &processes.get(&pid)
+                .ok_or(PmError::PidNotFound)?.0;
+            syscalls::terminate_process(process)?;
+            Ok(())
+        }))
+    }
+
     fn get_name<'a>(&mut self, _workqueue: WorkQueue<'static>, pid: u64, name: &'a mut [u8]) -> FutureObj<'a, Result<u64, Error>> {
         FutureObj::new(Box::new(async move {
             let processes = PROCESSES.lock();
@@ -381,6 +391,7 @@ capabilities!(CAPABILITIES = Capabilities {
         sunrise_libuser::syscalls::nr::GetProcessInfo,
         sunrise_libuser::syscalls::nr::GetProcessId,
         sunrise_libuser::syscalls::nr::ResetSignal,
+        sunrise_libuser::syscalls::nr::TerminateProcess,
     ],
     raw_caps: [sunrise_libuser::caps::ioport(0x60), sunrise_libuser::caps::ioport(0x64), sunrise_libuser::caps::irq_pair(1, 0x3FF)]
 });
