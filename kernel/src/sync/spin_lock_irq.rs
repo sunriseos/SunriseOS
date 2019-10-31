@@ -31,7 +31,7 @@ static INTERRUPT_DISABLE_COUNTER: AtomicU8 = AtomicU8::new(0);
 ///
 /// # Unsafety:
 ///
-/// Should be called in pairs with [disable_iterrupts] or [decrement_lock_count],
+/// Should be called in pairs with [disable_interrupts] or [decrement_lock_count],
 /// otherwise the counter will get out of sync and deadlocks will likely occur.
 pub unsafe fn enable_interrupts() {
     if !INTERRUPT_DISARM.load(Ordering::SeqCst) && ARE_CPU_LOCALS_INITIALIZED_YET.load(Ordering::SeqCst) && INTERRUPT_DISABLE_COUNTER.fetch_sub(1, Ordering::SeqCst) == 1 {
@@ -46,7 +46,7 @@ pub unsafe fn enable_interrupts() {
 ///
 /// # Unsafety:
 ///
-/// Should be called in pairs with [enable_iterrupts],
+/// Should be called in pairs with [enable_interrupts],
 /// otherwise the counter will get out of sync and deadlocks will likely occur.
 ///
 /// Additionally, this should only be used when interrupts are about to be enabled anyway,
@@ -63,7 +63,7 @@ pub unsafe fn decrement_lock_count() {
 ///
 /// # Unsafety:
 ///
-/// Should be called in pairs with [enable_iterrupts],
+/// Should be called in pairs with [enable_interrupts],
 /// otherwise the counter will get out of sync and deadlocks will likely occur.
 pub unsafe fn disable_interrupts() {
     if !INTERRUPT_DISARM.load(Ordering::SeqCst) && ARE_CPU_LOCALS_INITIALIZED_YET.load(Ordering::SeqCst) && INTERRUPT_DISABLE_COUNTER.fetch_add(1, Ordering::SeqCst) == 0 {
