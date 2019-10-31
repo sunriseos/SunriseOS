@@ -186,11 +186,17 @@ impl FileSystemOperations for FatFileSystem {
     }
 
     fn get_free_space_size(&self, _path: &str) -> LibUserResult<u64> {
-        unimplemented!()
+        self.inner
+            .lock()
+            .get_free_space_size()
+            .map_err(from_driver)
     }
 
     fn get_total_space_size(&self, _path: &str) -> LibUserResult<u64> {
-        unimplemented!()
+        self.inner
+            .lock()
+            .get_total_space_size()
+            .map_err(from_driver)
     }
 
     fn get_file_timestamp_raw(&self, path: &str) -> LibUserResult<FileTimeStampRaw> {

@@ -91,6 +91,11 @@ impl DriverManager {
         self.drives.get(&disk_id).ok_or_else(|| FileSystemError::DiskNotFound.into()).map(|arc| arc.clone())
     }
 
+    /// Get the count of disks availaible.
+    pub fn get_disks_count(&mut self) -> u32 {
+        self.drives.len() as u32
+    }
+
     /// Open an instance of a filesystem.
     pub fn construct_filesystem_from_disk_partition(&mut self, disk_id: DiskId, partition_id: PartitionId, mut storage: PartitionStorage) -> LibUserResult<Arc<Mutex<Box<dyn FileSystemOperations>>>> {
         let disk_hashmap_opt  = self.partitions.get_mut(&disk_id);

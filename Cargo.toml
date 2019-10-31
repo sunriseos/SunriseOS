@@ -2,7 +2,7 @@
 members = ["kernel", "bootstrap", "shell", "time", "libuser", "wall-clock",
     "sm", "vi", "ahci", "fs", "libutils", "libkern", "swipc-gen",
     "swipc-parser", "docs", "libtimezone", "disk-initializer", "loader",
-    "keyboard", "std_hello_world", "twili", "coreutils"]
+    "keyboard", "std_hello_world", "twili", "coreutils", "df"]
 
 [patch.crates-io.libc]
 git = "https://github.com/sunriseos/libc.git"
