@@ -729,6 +729,22 @@ pub fn get_process_id(process_handle: &Process) -> Result<u64, KernelError> {
     }
 }
 
+/// Kills the given process, terminating the execution of all of its thread and
+/// putting its state to Exiting/Exited.
+///
+/// Returns an error if used on a process that wasn't started.
+///
+/// # Errors
+///
+/// - `InvalidState`
+///   - The process wasn't started (it is in Created or CreatedAttached state).
+pub fn terminate_process(process_handle: &Process) -> Result<(), KernelError> {
+    unsafe {
+        syscall(nr::TerminateProcess, (process_handle.0).0.get() as usize, 0, 0, 0, 0, 0)?;
+        Ok(())
+    }
+}
+
 /// Fills the provided array with the pids of currently living processes. A
 /// process "lives" so long as it is currently running or a handle to it still
 /// exists.

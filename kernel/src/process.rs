@@ -738,6 +738,42 @@ impl ProcessStruct {
 
         self.state.lock().set_state(ProcessState::Exited);
     }
+
+    /// Kills the given process, terminating the execution of all of its thread and
+    /// putting its state to Exiting/Exited.
+    ///
+    /// Returns an error if used on a process that wasn't started.
+    ///
+    /// # Errors
+    ///
+    /// - `InvalidState`
+    ///   - The process wasn't started (it is in Created or CreatedAttached state).
+    pub fn terminate(&self) -> Result<(), KernelError> {
+        let statelock = self.state.lock();
+        match statelock.state {
+            ProcessState::Created | ProcessState::CreatedAttached => {
+                return Err(KernelError::InvalidState { backtrace: Backtrace::new() })
+            },
+            ProcessState::Started | ProcessState::StartedAttached |
+            ProcessState::Crashed | ProcessState::DebugSuspended => {
+                // We're supposed to do this:
+                // KProcess::MaskThreads0x70Until(self, curthread)
+                // Destroy handle table.
+                // KProcess::SignalExitToDebugExited(self)
+                // KProcess::SignalExit(self)
+
+                // Let's do the simple thing:
+                self.kill_subthreads(statelock);
+            },
+            ProcessState::Exiting | ProcessState::Exited => {
+                // Already exiting, do nothing.
+            }
+            _ => {
+
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Waitable for Arc<ProcessStruct> {

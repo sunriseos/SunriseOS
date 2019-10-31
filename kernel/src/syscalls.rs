@@ -1195,6 +1195,29 @@ pub fn get_process_id(hnd: u32) -> Result<usize, UserspaceError> {
     Ok(process.pid)
 }
 
+/// Kills the given process, terminating the execution of all of its thread and
+/// putting its state to Exiting/Exited.
+///
+/// Returns an error if used on a process that wasn't started.
+///
+/// # Errors
+///
+/// - `InvalidState`
+///   - The process wasn't started (it is in Created or CreatedAttached state).
+/// - `InvalidHandle`
+///   - The given handle is invalid or not a process.
+pub fn terminate_process(hnd: u32) -> Result<(), UserspaceError> {
+    let process = scheduler::get_current_process().phandles.lock()
+        .get_handle(hnd)?.as_process()?;
+
+    if Arc::ptr_eq(&scheduler::get_current_process(), &process) {
+        ProcessStruct::kill_current_process();
+    }
+
+    process.terminate()?;
+    Ok(())
+}
+
 /// Fills the provided array with the pids of currently living processes. A
 /// process "lives" so long as it is currently running or a handle to it still
 /// exists.
