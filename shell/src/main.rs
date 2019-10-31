@@ -252,6 +252,23 @@ fn main() {
             "ps" => if let Err(err) = ps(&mut terminal, &loader) {
                 let _ = writeln!(&mut terminal, "ps: {}", err);
             },
+            "kill" => {
+                match arguments.nth(0) {
+                    None => {
+                        let _ = writeln!(&mut terminal, "usage: kill <pid>");
+                    }
+                    Some(pid) => {
+                        match str::parse(pid) {
+                            Ok(pid) => if let Err(error) = kill(&loader, pid) {
+                                let _ = writeln!(&mut terminal, "kill: {}", error);
+                            },
+                            Err(_) => {
+                                let _ = writeln!(&mut terminal, "usage: kill <pid>");
+                            }
+                        }
+                    }
+                }
+            }
             //"stackdump" => unsafe { stack::KernelStack::dump_current_stack() },
             "help" => {
                 let _ = writeln!(&mut terminal, "COMMANDS:");
@@ -261,6 +278,7 @@ fn main() {
                 let _ = writeln!(&mut terminal, "cd <directory>: change the working directory");
                 let _ = writeln!(&mut terminal, "ls [directory]: List directory contents. Defaults to the current directory.");
                 let _ = writeln!(&mut terminal, "pwd: Print name of the current/working directory");
+                let _ = writeln!(&mut terminal, "kill <pid>: Kill the given process");
                 let _ = writeln!(&mut terminal, "ps: List running processes");
                 let _ = writeln!(&mut terminal, "meme1: Display the KFS-1 meme");
                 let _ = writeln!(&mut terminal, "meme2: Display the KFS-2 meme");
@@ -489,6 +507,13 @@ fn ls(mut terminal: &mut Terminal, filesystem: &IFileSystemProxy, orig_path: Opt
         }
     }
 
+    Ok(())
+}
+
+/// Kill the process associated with the provided pid.
+fn kill(loader: &ILoaderInterfaceProxy, pid: u64) -> Result<(), Error> {
+    loader.kill(pid)?;
+    let _ = loader.wait(pid);
     Ok(())
 }
 
