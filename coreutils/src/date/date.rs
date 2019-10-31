@@ -185,13 +185,13 @@ fn parse_cli(args: Vec<String>) -> Settings {
               "like --date; once for each line of DATEFILE"))
 
             (@group format =>
-             (@arg iso_8601: -I --("iso-8601") <FMT>
+             (@arg iso_8601: -I --("iso-8601") [FMT]
               possible_value[date hours minutes seconds ns]
               #{0, 1}
               ISO_8601_HELP_STRING)
              (@arg rfc_2822: -R --("rfc-2822")
               RFC_2822_HELP_STRING)
-             (@arg rfc_3339: --("rfc-3339") <FMT>
+             (@arg rfc_3339: --("rfc-3339") [FMT]
               possible_value[date seconds ns]
               RFC_3339_HELP_STRING)
              (@arg custom_format: +takes_value {
