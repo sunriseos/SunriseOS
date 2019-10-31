@@ -10,4 +10,6 @@ interface sunrise_libuser::ldr::ILoaderInterface is ldr:shel {
     [2] launch_title(u64 pid);
     # Wait for the process with the given pid, returning the exit status.
     [1] wait(u64 pid) -> u32 exit_status;
+    # Get process name.
+    [3] get_name(u64 pid) -> (u64 written, array<u8, 6> title_name);
 }
