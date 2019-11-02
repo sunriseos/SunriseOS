@@ -71,7 +71,7 @@ pub fn get_current_process() -> Arc<ProcessStruct> {
 /// The passed function will be executed after setting the CURRENT_THREAD, but before
 /// setting it back to the RUNNING state.
 ///
-/// # Unsafety
+/// # Safety
 ///
 /// Interrupts must be disabled when calling this function. It will mutably borrow [`CURRENT_THREAD`],
 /// so we can't have interrupts on top of that which try to access it while it is borrowed mutably by us,
@@ -339,7 +339,7 @@ where
 /// The passed function should take care to change the protection level, and ensure it cleans up all
 /// the registers before calling the EIP, in order to avoid leaking information to userspace.
 ///
-/// # Unsafety:
+/// # Safety:
 ///
 /// Interrupts must be off when calling this function. It will set [`CURRENT_THREAD`], and then
 /// turn them on, as we are running a new thread, no SpinLockIRQ is held.

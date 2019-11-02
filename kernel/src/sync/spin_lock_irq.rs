@@ -29,7 +29,7 @@ static INTERRUPT_DISABLE_COUNTER: AtomicU8 = AtomicU8::new(0);
 ///
 /// Look at documentation for [INTERRUPT_DISABLE_COUNTER] to know more.
 ///
-/// # Unsafety:
+/// # Safety
 ///
 /// Should be called in pairs with [disable_interrupts] or [decrement_lock_count],
 /// otherwise the counter will get out of sync and deadlocks will likely occur.
@@ -44,7 +44,7 @@ pub unsafe fn enable_interrupts() {
 /// Used to decrement counter while keeping interrupts disabled before an iret.
 /// Look at documentation for [INTERRUPT_DISABLE_COUNTER] to know more.
 ///
-/// # Unsafety:
+/// # Safety
 ///
 /// Should be called in pairs with [enable_interrupts],
 /// otherwise the counter will get out of sync and deadlocks will likely occur.
@@ -61,7 +61,7 @@ pub unsafe fn decrement_lock_count() {
 ///
 /// Look at documentation for [INTERRUPT_DISABLE_COUNTER] to know more.
 ///
-/// # Unsafety:
+/// # Safety
 ///
 /// Should be called in pairs with [enable_interrupts],
 /// otherwise the counter will get out of sync and deadlocks will likely occur.

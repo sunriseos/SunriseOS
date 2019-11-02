@@ -584,7 +584,7 @@ impl<F> IdtEntry<F> {
 
     /// Set a task gate for the IDT entry and sets the present bit.
     ///
-    /// # Unsafety
+    /// # Safety
     ///
     /// `tss_selector` must point to a valid TSS, which will remain present.
     /// The TSS' `eip` should point to the handler function.
