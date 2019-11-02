@@ -576,8 +576,10 @@ macro_rules! generate_trap_gate_handler {
             if $interrupt_context {
                 let _ = INSIDE_INTERRUPT_COUNT.fetch_add(1, Ordering::SeqCst);
                 // Lets SpinLockIrq know that we are an interrupt; interrupts should not be re-enabled.
-                // Safety: Paired with decrement_lock_count, which is called before exiting the interrupt.
-                unsafe { disable_interrupts(); }
+                unsafe {
+                    // Safety: Paired with decrement_lock_count, which is called before exiting the interrupt.
+                    disable_interrupts();
+                }
             }
 
             if let PrivilegeLevel::Ring0 = SegmentSelector(userspace_context.cs as u16).rpl() {
@@ -599,9 +601,11 @@ macro_rules! generate_trap_gate_handler {
 
             if $interrupt_context {
                 let _ = INSIDE_INTERRUPT_COUNT.fetch_sub(1, Ordering::SeqCst);
-                // Safety: Paired with disable_interrupts, which was called earlier in this wrapper function.
-                // Additionally, this is called shortly before an iret occurs, inside the asm wrapper.
-                unsafe { decrement_lock_count(); }
+                unsafe {
+                    // Safety: Paired with disable_interrupts, which was called earlier in this wrapper function.
+                    // Additionally, this is called shortly before an iret occurs, inside the asm wrapper.
+                    decrement_lock_count();
+                }
             }
 
             // if we're returning to userspace, check we haven't been killed

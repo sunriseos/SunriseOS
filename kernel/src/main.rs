@@ -252,8 +252,10 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     init_cpu_locals(1);
     // Now that cpu_locals are present, ensure that SpinLockIRQs
     // are aware that interrupts are disabled.
-    // Safety: paired with enable_interrupts in interrupt_service_routines::init
-    unsafe { sync::spin_lock_irq::disable_interrupts(); }
+    unsafe {
+        // Safety: paired with enable_interrupts in interrupt_service_routines::init
+        sync::spin_lock_irq::disable_interrupts();
+    }
 
     info!("Enabling interrupts");
     unsafe { i386::interrupt_service_routines::init(); }

@@ -120,8 +120,10 @@ impl<T> SpinLockIRQ<T> {
 impl<T: ?Sized> SpinLockIRQ<T> {
     /// Disables interrupts and locks the mutex.
     pub fn lock(&self) -> SpinLockIRQGuard<'_, T> {
-        // Safety: Paired with enable_interrupts in the impl of Drop for SpinLockIrqGuard.
-        unsafe { disable_interrupts(); }
+        unsafe {
+            // Safety: Paired with enable_interrupts in the impl of Drop for SpinLockIrqGuard.
+            disable_interrupts();
+        }
 
         // TODO: Disable preemption.
         // TODO: Spin acquire
@@ -133,9 +135,11 @@ impl<T: ?Sized> SpinLockIRQ<T> {
 
     /// Disables interrupts and locks the mutex.
     pub fn try_lock(&self) -> Option<SpinLockIRQGuard<'_, T>> {
-        // Safety: Paired with enable_interrupts in the impl of Drop for SpinLockIrq,
-        // or in case a guard is not created, later in this function.
-        unsafe { disable_interrupts(); }
+        unsafe {
+            // Safety: Paired with enable_interrupts in the impl of Drop for SpinLockIrq,
+            // or in case a guard is not created, later in this function.
+            disable_interrupts();
+        }
 
         // TODO: Disable preemption.
         // TODO: Spin acquire
@@ -145,8 +149,10 @@ impl<T: ?Sized> SpinLockIRQ<T> {
             Some(internalguard) => Some(SpinLockIRQGuard(ManuallyDrop::new(internalguard))),
             None => {
                 // We couldn't lock. Restore irqs and return None
-                // Safety: Paired with disable_interrupts above in the case that a guard is not created.
-                unsafe { enable_interrupts(); }
+                unsafe {
+                    // Safety: Paired with disable_interrupts above in the case that a guard is not created.
+                    enable_interrupts();
+                }
                 None
             }
         }
@@ -181,9 +187,11 @@ impl<'a, T: ?Sized + 'a> Drop for SpinLockIRQGuard<'a, T> {
         // unlock
         unsafe { ManuallyDrop::drop(&mut self.0); }
 
-        // Safety: paired with disable_interrupts in SpinLockIRQ::{lock, try_lock}, which returns
-        // this guard to re-enable interrupts when it is dropped.
-        unsafe { enable_interrupts(); }
+        unsafe {
+            // Safety: paired with disable_interrupts in SpinLockIRQ::{lock, try_lock}, which returns
+            // this guard to re-enable interrupts when it is dropped.
+            enable_interrupts();
+        }
 
         // TODO: Enable preempt
     }
