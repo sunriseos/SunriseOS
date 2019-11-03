@@ -333,7 +333,7 @@ macro_rules! trap_gate_asm {
 ///                kernel_fault_strategy: panic,                                        // what to do if we were in kernelspace when this interruption happened.
 ///                user_fault_strategy: panic,                                          // what to do if we were in userspace when this interruption happened, and feature "panic-on-exception" is enabled.
 ///                handler_strategy: kill,                                              // what to for this interrupt otherwise
-///                interrupt_context: true                                              // OPTIONAL: basically: are IRQs disabled. True by default, false used for syscalls.
+///                interrupt_context: false                                             // OPTIONAL: basically: are IRQs disabled. False by default, true used for IRQs.
 ///);
 /// ```
 ///
@@ -542,7 +542,7 @@ macro_rules! generate_trap_gate_handler {
             kernel_fault_strategy: $kernel_fault_strategy,
             user_fault_strategy: $user_fault_strategy,
             handler_strategy: $handler_strategy,
-            interrupt_context: true
+            interrupt_context: false
         );
     };
 
@@ -826,8 +826,7 @@ generate_trap_gate_handler!(name: "Syscall Interrupt",
                 wrapper_rust_fnname: syscall_interrupt_rust_wrapper,
                 kernel_fault_strategy: panic, // you aren't expected to syscall from the kernel
                 user_fault_strategy: ignore, // don't worry it's fine ;)
-                handler_strategy: syscall_interrupt_dispatcher,
-                interrupt_context: false
+                handler_strategy: syscall_interrupt_dispatcher
 );
 
 impl UserspaceHardwareContext {
@@ -1043,7 +1042,8 @@ macro_rules! irq_handler {
                     wrapper_rust_fnname: $rust_wrapper_name,
                     kernel_fault_strategy: ignore, // irqs can happen while we're in kernel mode, don't worry, it's fine ;)
                     user_fault_strategy: ignore, // don't worry it's fine ;)
-                    handler_strategy: $handler_name
+                    handler_strategy: $handler_name,
+                    interrupt_context: true
             );
         )*
 
