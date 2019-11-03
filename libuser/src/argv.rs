@@ -268,7 +268,7 @@ fn __libuser_get_args() -> (usize, isize) {
 
         if let Some(arg_start_idx) = arg_start {
             // Handle last argument.
-            if __system_argc < max_argv {
+            if __system_argc < max_argv && arg_len != 0 {
                 argstorage[argstorage_idx..argstorage_idx + arg_len]
                     .copy_from_slice(&args[arg_start_idx..arg_start_idx + arg_len]);
                 argstorage[argstorage_idx + arg_len] = 0;
