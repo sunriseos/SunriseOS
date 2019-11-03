@@ -121,3 +121,13 @@ impl core::fmt::Write for Terminal {
         Ok(())
     }
 }
+
+impl core::fmt::Write for crate::twili::IPipeProxy {
+    fn write_str(&mut self, s: &str) -> Result<(), core::fmt::Error> {
+        if let Err(err) = self.write(s.as_bytes()) {
+            log::error!("{:?}", err);
+            return Err(core::fmt::Error);
+        }
+        Ok(())
+    }
+}
