@@ -336,7 +336,7 @@ macro_rules! trap_gate_asm {
 ///                kernel_fault_strategy: panic,                                        // what to do if we were in kernelspace when this interruption happened.
 ///                user_fault_strategy: panic,                                          // what to do if we were in userspace when this interruption happened, and feature "panic-on-exception" is enabled.
 ///                handler_strategy: kill,                                              // what to for this interrupt otherwise
-///                interrupt_context: true                                              // OPTIONAL: basically: are IRQs disabled. True by default, false used for syscalls.
+///                interrupts_disabled: true                                            // OPTIONAL: are IRQs disabled. True by default, false used for syscalls.
 ///);
 /// ```
 ///
@@ -527,7 +527,7 @@ macro_rules! generate_trap_gate_handler {
         }
     };
 
-    // handle optional argument interrupt_context.
+    // handle optional argument interrupts_disabled.
     (
     name: $exception_name:literal,
     has_errcode: $has_errcode:ident,
@@ -545,7 +545,7 @@ macro_rules! generate_trap_gate_handler {
             kernel_fault_strategy: $kernel_fault_strategy,
             user_fault_strategy: $user_fault_strategy,
             handler_strategy: $handler_strategy,
-            interrupt_context: true
+            interrupts_disabled: true
         );
     };
 
@@ -560,7 +560,7 @@ macro_rules! generate_trap_gate_handler {
     kernel_fault_strategy: $kernel_fault_strategy:ident,
     user_fault_strategy: $user_fault_strategy:ident,
     handler_strategy: $handler_strategy:ident,
-    interrupt_context: $interrupt_context:literal
+    interrupts_disabled: $interrupts_disabled:literal
     ) => {
 
         generate_trap_gate_handler!(__gen asm_wrapper; $wrapper_asm_fnname, $wrapper_rust_fnname, $has_errcode);
@@ -573,8 +573,7 @@ macro_rules! generate_trap_gate_handler {
             use crate::sync::spin_lock_irq::{disable_interrupts, decrement_lock_count};
             use core::sync::atomic::Ordering;
 
-            if $interrupt_context {
-                let _ = INSIDE_INTERRUPT_COUNT.fetch_add(1, Ordering::SeqCst);
+            if $interrupts_disabled {
                 // Lets SpinLockIrq know that we are an interrupt; interrupts should not be re-enabled.
                 unsafe {
                     // Safety: Paired with decrement_lock_count, which is called before exiting the interrupt.
@@ -583,6 +582,7 @@ macro_rules! generate_trap_gate_handler {
             }
 
             if let PrivilegeLevel::Ring0 = SegmentSelector(userspace_context.cs as u16).rpl() {
+                let _ = INSIDE_INTERRUPT_COUNT.fetch_add(1, Ordering::SeqCst);
                 generate_trap_gate_handler!(__gen kernel_fault; name: $exception_name, userspace_context, errcode: $has_errcode, strategy: $kernel_fault_strategy);
             } else {
                 // we come from userspace, backup the hardware context in the thread struct
@@ -599,8 +599,7 @@ macro_rules! generate_trap_gate_handler {
             // call the handler
             generate_trap_gate_handler!(__gen handler; name: $exception_name, userspace_context, errcode: $has_errcode, strategy: $handler_strategy);
 
-            if $interrupt_context {
-                let _ = INSIDE_INTERRUPT_COUNT.fetch_sub(1, Ordering::SeqCst);
+            if $interrupts_disabled {
                 unsafe {
                     // Safety: Paired with disable_interrupts, which was called earlier in this wrapper function.
                     // Additionally, this is called shortly before an iret occurs, inside the asm wrapper.
@@ -609,8 +608,9 @@ macro_rules! generate_trap_gate_handler {
             }
 
             // if we're returning to userspace, check we haven't been killed
-            if let PrivilegeLevel::Ring3 = SegmentSelector(userspace_context.cs as u16).rpl() {
-                check_thread_killed();
+            match SegmentSelector(userspace_context.cs as u16).rpl() {
+                PrivilegeLevel::Ring3 => check_thread_killed(),
+                PrivilegeLevel::Ring0 => INSIDE_INTERRUPT_COUNT.fetch_sub(1, Ordering::SeqCst)
             }
         }
     };
@@ -841,7 +841,7 @@ generate_trap_gate_handler!(name: "Syscall Interrupt",
                 kernel_fault_strategy: panic, // you aren't expected to syscall from the kernel
                 user_fault_strategy: ignore, // don't worry it's fine ;)
                 handler_strategy: syscall_interrupt_dispatcher,
-                interrupt_context: false
+                interrupts_disabled: false
 );
 
 impl UserspaceHardwareContext {
