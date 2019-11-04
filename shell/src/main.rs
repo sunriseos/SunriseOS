@@ -249,6 +249,26 @@ fn main() {
                 let _ = writeln!(&mut terminal, "Got handle {:?}", handle);
             },
             "exit" => return,
+            "ps" => if let Err(err) = ps(&mut terminal, &loader) {
+                let _ = writeln!(&mut terminal, "ps: {}", err);
+            },
+            "kill" => {
+                match arguments.nth(0) {
+                    None => {
+                        let _ = writeln!(&mut terminal, "usage: kill <pid>");
+                    }
+                    Some(pid) => {
+                        match str::parse(pid) {
+                            Ok(pid) => if let Err(error) = kill(&loader, pid) {
+                                let _ = writeln!(&mut terminal, "kill: {}", error);
+                            },
+                            Err(_) => {
+                                let _ = writeln!(&mut terminal, "usage: kill <pid>");
+                            }
+                        }
+                    }
+                }
+            }
             //"stackdump" => unsafe { stack::KernelStack::dump_current_stack() },
             "help" => {
                 let _ = writeln!(&mut terminal, "COMMANDS:");
@@ -258,6 +278,8 @@ fn main() {
                 let _ = writeln!(&mut terminal, "cd <directory>: change the working directory");
                 let _ = writeln!(&mut terminal, "ls [directory]: List directory contents. Defaults to the current directory.");
                 let _ = writeln!(&mut terminal, "pwd: Print name of the current/working directory");
+                let _ = writeln!(&mut terminal, "kill <pid>: Kill the given process");
+                let _ = writeln!(&mut terminal, "ps: List running processes");
                 let _ = writeln!(&mut terminal, "meme1: Display the KFS-1 meme");
                 let _ = writeln!(&mut terminal, "meme2: Display the KFS-2 meme");
                 let _ = writeln!(&mut terminal, "meme3: Display the KFS-3 meme");
@@ -488,6 +510,31 @@ fn ls(mut terminal: &mut Terminal, filesystem: &IFileSystemProxy, orig_path: Opt
     Ok(())
 }
 
+/// Kill the process associated with the provided pid.
+fn kill(loader: &ILoaderInterfaceProxy, pid: u64) -> Result<(), Error> {
+    loader.kill(pid)?;
+    let _ = loader.wait(pid);
+    Ok(())
+}
+
+/// Get the pid and names of processes currently running.
+fn ps(terminal: &mut Terminal, loader: &ILoaderInterfaceProxy) -> Result<(), Error> {
+    let mut pids = [0; 256];
+    let pid_read = syscalls::get_process_list(&mut pids)?;
+    for pid in &pids[..pid_read] {
+        let mut name = [0; 32];
+        let name = match loader.get_name(*pid, &mut name) {
+            Ok(copied_len) => String::from_utf8_lossy(&name[..copied_len as usize]).into_owned(),
+            Err(err) => {
+                log::debug!("Error: {:?}", err);
+                String::from("<Unknown>")
+            }
+        };
+        let _ = writeln!(terminal, "{}: {}", pid, name);
+    }
+    Ok(())
+}
+
 /// Shows a GIF in a new window, blocking the caller. When a key is pressed, the
 /// window is closed and control is given back to the caller.
 fn show_gif(keyboard: &mut Keyboard, louis: &[u8]) {
@@ -645,5 +692,6 @@ capabilities!(CAPABILITIES = Capabilities {
         libuser::syscalls::nr::SendSyncRequestWithUserBuffer,
         libuser::syscalls::nr::CreateSharedMemory,
         libuser::syscalls::nr::CreateInterruptEvent,
+        libuser::syscalls::nr::GetProcessList,
     ]
 });

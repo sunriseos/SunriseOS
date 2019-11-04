@@ -29,6 +29,9 @@ use crate::i386::interrupt_service_routines::UserspaceHardwareContext;
 use sunrise_libkern::process::{ProcessState, ProcInfo};
 use sunrise_libkern::MemoryType;
 
+/// List of processes currently running on the system.
+pub static PROCESS_LIST: Mutex<Vec<Weak<ProcessStruct>>> = Mutex::new(Vec::new());
+
 /// Data related to the (user-visible) state the current process is in. The
 /// maternity is stored here to ensure there is no race condition between
 /// setting the state to Exited and adding threads to the maternity.
@@ -525,6 +528,8 @@ impl ProcessStruct {
             }
         );
 
+        PROCESS_LIST.lock().push(Arc::downgrade(&p));
+
         Ok(p)
     }
 
@@ -678,7 +683,7 @@ impl ProcessStruct {
     /// another thread that would want to spawn a thread after we killed all ours.
     pub fn kill_current_process() {
         let this = scheduler::get_current_process();
-        let mut statelock = this.state.lock();
+        let statelock = this.state.lock();
 
         // Enter critical section.
         if ![ProcessState::Started, ProcessState::StartedAttached, ProcessState::DebugSuspended]
@@ -708,6 +713,12 @@ impl ProcessStruct {
         // KProcess::SignalExitToDebugExited()
         // KProcess::SignalExit()
 
+        // We'll simply kill our subthreads for now.
+        this.kill_subthreads(statelock);
+    }
+
+    /// Kill all the subthreads of this process, and set the state to exited.
+    fn kill_subthreads(&self, mut statelock: crate::sync::mutex::MutexGuard<ProcessStateData>) {
         // We're going to make things a **lot** simpler. We're just
         // going to immediately set ourselves as exiting, kill our
         // threads, and set ourselves as exited.
@@ -719,13 +730,49 @@ impl ProcessStruct {
         drop(statelock);
 
         // kill all other regular threads
-        for weak_thread in this.threads.lock().iter() {
+        for weak_thread in self.threads.lock().iter() {
             if let Some(t) = Weak::upgrade(weak_thread) {
                 ThreadStruct::exit(t);
             }
         }
 
-        this.state.lock().set_state(ProcessState::Exited);
+        self.state.lock().set_state(ProcessState::Exited);
+    }
+
+    /// Kills the given process, terminating the execution of all of its thread and
+    /// putting its state to Exiting/Exited.
+    ///
+    /// Returns an error if used on a process that wasn't started.
+    ///
+    /// # Errors
+    ///
+    /// - `InvalidState`
+    ///   - The process wasn't started (it is in Created or CreatedAttached state).
+    pub fn terminate(&self) -> Result<(), KernelError> {
+        let statelock = self.state.lock();
+        match statelock.state {
+            ProcessState::Created | ProcessState::CreatedAttached => {
+                return Err(KernelError::InvalidState { backtrace: Backtrace::new() })
+            },
+            ProcessState::Started | ProcessState::StartedAttached |
+            ProcessState::Crashed | ProcessState::DebugSuspended => {
+                // We're supposed to do this:
+                // KProcess::MaskThreads0x70Until(self, curthread)
+                // Destroy handle table.
+                // KProcess::SignalExitToDebugExited(self)
+                // KProcess::SignalExit(self)
+
+                // Let's do the simple thing:
+                self.kill_subthreads(statelock);
+            },
+            ProcessState::Exiting | ProcessState::Exited => {
+                // Already exiting, do nothing.
+            }
+            _ => {
+
+            }
+        }
+        Ok(())
     }
 }
 
@@ -741,6 +788,7 @@ impl Waitable for Arc<ProcessStruct> {
 impl Drop for ProcessStruct {
     fn drop(&mut self) {
         // todo this should be a debug !
+        PROCESS_LIST.lock().retain(|elem| elem.upgrade().is_some());
         info!("☠️ Dropped a process : {}", self.name)
     }
 }

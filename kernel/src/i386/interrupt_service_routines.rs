@@ -977,6 +977,7 @@ fn syscall_interrupt_dispatcher(_exception_name: &'static str, hwcontext: &mut U
         (true, nr::CreateSharedMemory) => hwcontext.apply1(create_shared_memory(x0 as _, x1 as _, x2 as _)),
         (true, nr::CreateInterruptEvent) => hwcontext.apply1(create_interrupt_event(x0, x1 as u32)),
         (true, nr::QueryPhysicalAddress) => hwcontext.apply3(query_physical_address(x0 as _)),
+        (true, nr::GetProcessList) => hwcontext.apply1(get_process_list(x0 as _, x1 as _)),
         (true, nr::CreatePort) => hwcontext.apply2(create_port(x0 as _, x1 != 0, UserSpacePtr(x2 as _))),
         (true, nr::ManageNamedPort) => hwcontext.apply1(manage_named_port(UserSpacePtr(x0 as _), x1 as _)),
         (true, nr::ConnectToPort) => hwcontext.apply1(connect_to_port(x0 as _)),
@@ -985,6 +986,7 @@ fn syscall_interrupt_dispatcher(_exception_name: &'static str, hwcontext: &mut U
         (true, nr::UnmapProcessMemory) => hwcontext.apply0(unmap_process_memory(x0 as _, x1 as _, x2 as _, x3 as _)),
         (true, nr::CreateProcess) => hwcontext.apply1(create_process(UserSpacePtr(x0 as _), UserSpacePtr::from_raw_parts(x1 as _, x2 * 4))),
         (true, nr::StartProcess) => hwcontext.apply0(start_process(x0 as _, x1 as _, x2 as _, x3 as _)),
+        (true, nr::TerminateProcess) => hwcontext.apply0(terminate_process(x0 as _)),
         (true, nr::GetProcessInfo) => hwcontext.apply1(get_process_info(x0 as _, x1 as _)),
 
         // sunrise extensions

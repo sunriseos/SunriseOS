@@ -55,5 +55,7 @@ fn main() {
         writeln!(generated_mod, "const _: &[u8] = include_bytes!({:?});", module_complete_path.to_str().unwrap()).unwrap();
 
         f.write_all(generated_mod.as_bytes()).unwrap();
+
+        println!("cargo:rerun-if-changed={}", module_complete_path.to_str().unwrap());
     }
 }

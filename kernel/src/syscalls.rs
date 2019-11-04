@@ -26,7 +26,7 @@ use sunrise_libkern::{MemoryInfo, MemoryAttributes, MemoryPermissions, MemoryTyp
 use sunrise_libkern::process::*;
 use bit_field::BitArray;
 use crate::i386::gdt::{GDT, GdtIndex};
-use core::convert::TryFrom;
+use core::convert::{TryFrom, TryInto};
 
 /// Resize the heap of a process, just like a brk.
 /// It can both expand, and shrink the heap.
@@ -1193,4 +1193,55 @@ pub fn get_process_id(hnd: u32) -> Result<usize, UserspaceError> {
         .get_handle_no_alias(hnd)?.as_process()?;
 
     Ok(process.pid)
+}
+
+/// Kills the given process, terminating the execution of all of its thread and
+/// putting its state to Exiting/Exited.
+///
+/// Returns an error if used on a process that wasn't started.
+///
+/// # Errors
+///
+/// - `InvalidState`
+///   - The process wasn't started (it is in Created or CreatedAttached state).
+/// - `InvalidHandle`
+///   - The given handle is invalid or not a process.
+pub fn terminate_process(hnd: u32) -> Result<(), UserspaceError> {
+    let process = scheduler::get_current_process().phandles.lock()
+        .get_handle(hnd)?.as_process()?;
+
+    if Arc::ptr_eq(&scheduler::get_current_process(), &process) {
+        ProcessStruct::kill_current_process();
+    }
+
+    process.terminate()?;
+    Ok(())
+}
+
+/// Fills the provided array with the pids of currently living processes. A
+/// process "lives" so long as it is currently running or a handle to it still
+/// exists.
+///
+/// It returns the total number of processes currently alive. If this number is
+/// bigger than the size of PidBuffer, the user won't have all the pids.
+pub fn get_process_list(out_pids: u64, max_pids: u64) -> Result<usize, UserspaceError> {
+    // The official code goes through the KProcess slab, iterating over the live
+    // object pool.
+    //
+    // We don't have a slab allocator or anything else, so we have a separate
+    // array for this.
+
+    let process_list = crate::process::PROCESS_LIST.lock();
+    let iter = process_list.iter()
+        .take(max_pids.try_into().unwrap_or(usize::max_value()))
+        .enumerate();
+    let out_len = iter.len();
+    for (idx, item) in iter {
+        if let Some(item) = item.upgrade() {
+            unsafe {
+                *UserSpacePtrMut((out_pids as *mut u64).add(idx)) = item.pid as u64;
+            }
+        }
+    }
+    Ok(out_len)
 }

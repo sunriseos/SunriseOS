@@ -33,6 +33,7 @@ use core::str;
 use core::slice;
 use core::mem::size_of;
 use alloc::boxed::Box;
+use alloc::string::{String, ToString};
 use alloc::collections::BTreeMap;
 
 use sunrise_libuser::fs::{DirectoryEntry, DirectoryEntryType, FileSystemPath, IFileSystemProxy, IFileSystemServiceProxy};
@@ -61,7 +62,7 @@ mod elf_loader;
 const MAX_ELF_SIZE: u64 = 128 * 1024 * 1024;
 
 lazy_static! {
-    static ref PROCESSES: Mutex<BTreeMap<u64, Process>> = Mutex::new(BTreeMap::new());
+    static ref PROCESSES: Mutex<BTreeMap<u64, (Process, String)>> = Mutex::new(BTreeMap::new());
 }
 
 /// Start the given titleid by loading its content from the provided filesystem.
@@ -189,7 +190,7 @@ fn boot(fs: &IFileSystemProxy, titlename: &str, args: &[u8], start: bool) -> Res
     }
 
     let pid = process.pid()?;
-    PROCESSES.lock().insert(pid.0, process);
+    PROCESSES.lock().insert(pid.0, (process, titlename.to_string()));
 
     Ok(pid)
 }
@@ -224,7 +225,7 @@ impl ILoaderInterfaceAsync for LoaderIface {
             let process = lock.get(&pid)
                 .ok_or(PmError::PidNotFound)?;
             debug!("Starting process.");
-            if let Err(err) = process.start(0, 0, PAGE_SIZE as u32 * 32) {
+            if let Err(err) = process.0.start(0, 0, PAGE_SIZE as u32 * 32) {
                 error!("Failed to start pid {}: {}", pid, err);
                 return Err(err)
             }
@@ -252,13 +253,13 @@ impl ILoaderInterfaceAsync for LoaderIface {
             // BODY: generic types would be an internal implementation details
             // BODY: and we'd just expose "Process" and "ProcessBorrowed" types
             // BODY: through typedef/newtypes. Needs a lot of thought.
-            let process_wait = (PROCESSES.lock().get(&pid)
-                .ok_or(PmError::PidNotFound)?.0).as_ref_static();
+            let process_wait = ((PROCESSES.lock().get(&pid)
+                .ok_or(PmError::PidNotFound)?.0).0).as_ref_static();
             loop {
                 process_wait.wait_async(workqueue.clone()).await?;
                 let mut lock = PROCESSES.lock();
-                let process = lock.get(&pid)
-                    .ok_or(PmError::PidNotFound)?;
+                let process = &lock.get(&pid)
+                    .ok_or(PmError::PidNotFound)?.0;
                 match process.reset_signal() {
                     Ok(()) | Err(Error::Kernel(KernelError::InvalidState, _)) => (),
                     Err(err) => return Err(err)
@@ -270,6 +271,27 @@ impl ILoaderInterfaceAsync for LoaderIface {
                     return Ok(0);
                 }
             }
+        }))
+    }
+
+    fn kill(&mut self, _workqueue: WorkQueue<'static>, pid: u64) -> FutureObj<'_, Result<(), Error>> {
+        FutureObj::new(Box::new(async move {
+            let processes = PROCESSES.lock();
+            let process = &processes.get(&pid)
+                .ok_or(PmError::PidNotFound)?.0;
+            syscalls::terminate_process(process)?;
+            Ok(())
+        }))
+    }
+
+    fn get_name<'a>(&mut self, _workqueue: WorkQueue<'static>, pid: u64, name: &'a mut [u8]) -> FutureObj<'a, Result<u64, Error>> {
+        FutureObj::new(Box::new(async move {
+            let processes = PROCESSES.lock();
+            let process_name = &processes.get(&pid)
+                .ok_or(PmError::PidNotFound)?.1;
+            let copied_len = core::cmp::min(name.len(), process_name.len());
+            name[..copied_len].copy_from_slice(&process_name.as_bytes()[..copied_len]);
+            Ok(copied_len as u64)
         }))
     }
 }
@@ -369,6 +391,7 @@ capabilities!(CAPABILITIES = Capabilities {
         sunrise_libuser::syscalls::nr::GetProcessInfo,
         sunrise_libuser::syscalls::nr::GetProcessId,
         sunrise_libuser::syscalls::nr::ResetSignal,
+        sunrise_libuser::syscalls::nr::TerminateProcess,
     ],
     raw_caps: [sunrise_libuser::caps::ioport(0x60), sunrise_libuser::caps::ioport(0x64), sunrise_libuser::caps::irq_pair(1, 0x3FF)]
 });
