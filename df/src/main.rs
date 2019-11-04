@@ -1,5 +1,19 @@
+//! Disk Reporting utilitary
+//!
+//! Report file system disk space usage.
+
+#![warn(unused)]
+#![warn(missing_debug_implementations)]
+#![allow(unused_unsafe)]
+#![allow(unreachable_code)]
+#![allow(dead_code)]
+#![cfg_attr(test, allow(unused_imports))]
+// rustdoc warnings
+#![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
+#![deny(intra_doc_link_resolution_failure)]
+
 use std::os::sunrise::prelude::*;
-use sunrise_libuser::fs::{DirectoryEntry, DirectoryEntryType, FileSystemPath, IFileSystemProxy, IFileSystemServiceProxy, FileSystemType};
+use sunrise_libuser::fs::{IFileSystemProxy, IFileSystemServiceProxy, FileSystemType};
 
 fn get_filesystem_type(filesystem_type: FileSystemType) -> &'static str {
     match filesystem_type {
