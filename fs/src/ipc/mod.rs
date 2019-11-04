@@ -112,6 +112,10 @@ impl sunrise_libuser::fs::IFileSystemService for FileSystemService {
         })
     }
 
+    fn get_disks_count(&mut self, _manager: WorkQueue<'static>) -> Result<u32, Error> {
+        self.inner.get_disks_count()
+    }
+
     fn format_disk_partition(&mut self, _manager: WorkQueue<'static>, disk_id: DiskId, partition_id: PartitionId, filesystem_type: FileSystemType) -> Result<(), Error> {
         self.inner.format_disk_partition(disk_id, partition_id, filesystem_type)
     }

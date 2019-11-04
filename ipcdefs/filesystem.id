@@ -71,6 +71,9 @@ interface sunrise_libuser::fs::IFileSystemService is fsp-srv {
     # This may fail if no partition table is found.
     [5001] open_disk_storage(sunrise_libuser::fs::DiskId disk_id) -> object<sunrise_libuser::fs::IStorage>;
 
+    # Get the count of disks availaible.
+    [5002] get_disks_count() -> u32 disks_count;
+
     # Format a disk partition to the given filesystem type.
     [5100] format_disk_partition(sunrise_libuser::fs::DiskId disk_id, sunrise_libuser::fs::PartitionId partition_id, sunrise_libuser::fs::FileSystemType filesystem_type);
 

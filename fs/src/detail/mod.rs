@@ -293,6 +293,11 @@ impl FileSystemProxy {
         DRIVER_MANAGER.lock().open_disk_storage(disk_id)
     }
 
+    /// Get the count of disks availaible.
+    pub fn get_disks_count(&mut self) -> LibUserResult<u32> {
+        Ok(DRIVER_MANAGER.lock().get_disks_count())
+    }
+
     /// Format a disk partition to the given filesystem type.
     pub fn format_disk_partition(&mut self, disk_id: DiskId, partition_id: PartitionId, filesytem_type: FileSystemType) -> LibUserResult<()> {
         let storage = self.open_disk_storage(disk_id)?;

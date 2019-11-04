@@ -155,6 +155,12 @@ dependencies = ["install-xargo"]
 command = "xargo"
 args = ["build", "--target=i386-unknown-sunrise-user", "--package=std_hello_world", "@@split(COMPILER_FLAGS, )"]
 
+[tasks.df]
+description = "Compiles df"
+dependencies = ["install-xargo"]
+command = "xargo"
+args = ["build", "--target=i386-unknown-sunrise-user", "--package=df", "@@split(COMPILER_FLAGS, )"]
+
 [tasks.uutils]
 description = "Compiles uutils (coreutils)"
 dependencies = ["install-xargo"]
@@ -173,7 +179,7 @@ args = ["build", "--target=i386-unknown-sunrise-user", "@@split(COMPILER_FLAGS, 
 
 [tasks.userspace]
 description = "Compiles userspace apps"
-dependencies = ["userspace-nostd", "std_hello_world", "uutils"]
+dependencies = ["userspace-nostd", "std_hello_world", "uutils", "df"]
 
 [tasks.iso]
 description = "Creates a bootable ISO containing the kernel and grub."
@@ -201,20 +207,23 @@ description = "Creates an empty disk image."
 script = [
 '''
 mkdir -p external/filesystem/disk_template/bin/wall-clock/flags
-cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-wall-clock     external/filesystem/disk_template/bin/wall-clock/main
+cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-wall-clock external/filesystem/disk_template/bin/wall-clock/main
 
 # TODO: https://github.com/sagiegurari/shell2batch/issues/9
 touch external/filesystem/disk_template/bin/wall-clock/flags/boot.flag
 
 mkdir -p external/filesystem/disk_template/bin/std_hello_world/flags
-cp target/i386-unknown-sunrise-user/$PROFILE_NAME/std_hello_world    external/filesystem/disk_template/bin/std_hello_world/main
+cp target/i386-unknown-sunrise-user/$PROFILE_NAME/std_hello_world external/filesystem/disk_template/bin/std_hello_world/main
 
 mkdir -p external/filesystem/disk_template/bin/twili/flags
 cp target/i386-unknown-sunrise-user/$PROFILE_NAME/sunrise-twili external/filesystem/disk_template/bin/twili/main
 touch external/filesystem/disk_template/bin/twili/flags/boot.flag
 
 mkdir -p external/filesystem/disk_template/bin/uutils
-cp target/i386-unknown-sunrise-user/$PROFILE_NAME/uutils     external/filesystem/disk_template/bin/uutils/main
+cp target/i386-unknown-sunrise-user/$PROFILE_NAME/uutils external/filesystem/disk_template/bin/uutils/main
+
+mkdir -p external/filesystem/disk_template/bin/df
+cp target/i386-unknown-sunrise-user/$PROFILE_NAME/df external/filesystem/disk_template/bin/df/main
 
 cargo run --manifest-path disk-initializer/Cargo.toml -- DISK.img 157286400 external/filesystem/disk_template/
 '''
@@ -356,8 +365,8 @@ args = ["clippy", "--target=i386-unknown-none",
 	"${@}",
 	]
 
-[tasks.clippy-sunrise-userspace-target]
-description = "Run clippy on sunrise userspace"
+[tasks.clippy-sunrise-userspace-target-nostd]
+description = "Run clippy on sunrise userspace (no std)"
 dependencies = ["install-xargo", "refresh-crates"]
 install_crate = { rustup_component_name = "clippy" }
 command = "xargo"
@@ -380,6 +389,19 @@ args = ["clippy", "--target=i386-unknown-sunrise-user",
 	"${@}",
 	]
 
+[tasks.clippy-sunrise-userspace-target-std]
+description = "Run clippy on sunrise userspace (std)"
+dependencies = ["install-xargo", "refresh-crates"]
+install_crate = { rustup_component_name = "clippy" }
+command = "xargo"
+args = ["clippy", "--target=i386-unknown-sunrise-user",
+    "-p", "std_hello_world",
+    "-p", "df",
+	"--",
+	"@@split(CLIPPY_RULES, )",
+	"${@}",
+	]
+
 [tasks.clippy-host-target]
 description = "Run clippy on host components (relying on std)"
 dependencies = ["refresh-crates"]
@@ -393,7 +415,7 @@ args = ["clippy",
 	]
 
 [tasks.clippy]
-dependencies = ["clippy-host-target", "clippy-sunrise-kernel-target", "clippy-sunrise-userspace-target"]
+dependencies = ["clippy-host-target", "clippy-sunrise-kernel-target", "clippy-sunrise-userspace-target-nostd", "clippy-sunrise-userspace-target-std"]
 
 [tasks.swipc-gen]
 description = "Get the output of running gen_ipc on an ipcdef file"
