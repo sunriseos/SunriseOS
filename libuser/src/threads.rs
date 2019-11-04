@@ -56,7 +56,11 @@
 //! [`Thread`]: self::threads::Thread
 //! [`thread_trampoline`]: self::threads::thread_trampoline
 
-use crate::types::{Thread as ThreadHandle, Handle};
+use crate::types::{Thread as ThreadHandle};
+
+#[cfg(not(feature = "build-for-std-app"))]
+use crate::types::Handle;
+
 use crate::syscalls;
 use crate::error::Error;
 use crate::error::KernelError;

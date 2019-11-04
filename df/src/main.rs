@@ -15,6 +15,7 @@
 use std::os::sunrise::prelude::*;
 use sunrise_libuser::fs::{IFileSystemProxy, IFileSystemServiceProxy, FileSystemType};
 
+/// Translate a FileSystemType into a str.
 fn get_filesystem_type(filesystem_type: FileSystemType) -> &'static str {
     match filesystem_type {
         FileSystemType::FAT12 => "fat12fs",
@@ -25,6 +26,7 @@ fn get_filesystem_type(filesystem_type: FileSystemType) -> &'static str {
     }
 }
 
+/// Print the information of a filesystem.
 fn print_filesystem(filesystem : &IFileSystemProxy, disk_id: u32, partition_id: u32) {
     let unknown_info = String::from("???");
     let fs_type = filesystem.get_filesystem_type();
@@ -53,6 +55,7 @@ fn print_filesystem(filesystem : &IFileSystemProxy, disk_id: u32, partition_id: 
     println!("{}\t{}\t{}\t{}\t{}\t{}", fs_type_str, block_size_str, total_space_size_str, free_space_size_str, disk_id, partition_id);
 }
 
+/// The entry point of the program.
 fn main() {
     let fs_proxy = IFileSystemServiceProxy::raw_new().unwrap();
 
@@ -61,14 +64,9 @@ fn main() {
     println!("Filesystem\t512B-block\tUsed\tAvailable\tDisk Id\tPartition Id");
     for disk_id in 0..disk_count {
         let mut partition_id = 0;
-        loop {
-            match fs_proxy.open_disk_partition(disk_id, partition_id) {
-                Ok(filesystem) => {
-                    print_filesystem(&filesystem, disk_id, partition_id);
-                    partition_id += 1
-                },
-                _ => break
-            }
+        while let Ok(filesystem) = fs_proxy.open_disk_partition(disk_id, partition_id) {
+            print_filesystem(&filesystem, disk_id, partition_id);
+            partition_id += 1
         }
 
         // The disk doesn't seems valid if we return here wihtout partition being incremneted

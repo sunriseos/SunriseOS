@@ -1,3 +1,5 @@
+//! Simple program used to test Sunrise's libstd
+
 #[macro_use]
 extern crate sunrise_libuser as libuser;
 
@@ -16,7 +18,7 @@ use std::env;
 
 use std::process::Command;
 
-// one possible implementation of walking a directory only visiting files
+/// One possible implementation of walking a directory only visiting files.
 fn visit_dirs(dir: &Path, cb: &dyn Fn(&DirEntry)) -> io::Result<()> {
     if dir.is_dir() {
         for entry in fs::read_dir(dir)? {
@@ -32,12 +34,12 @@ fn visit_dirs(dir: &Path, cb: &dyn Fn(&DirEntry)) -> io::Result<()> {
     Ok(())
 }
 
+/// Callback used in visit_dirs to print directory entries.
 fn print_entry(entry: &DirEntry) {
     println!("{:?}", entry);
 }
 
-
-
+/// The entry point of the program.
 fn main() {
     println!("Hello from main");
 
@@ -55,7 +57,7 @@ fn main() {
 
     match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
         Ok(n) => println!("1970-01-01 00:00:00 UTC was {} seconds ago!", n.as_secs()),
-        Err(_) => panic!("SystemTime before UNIX EPOCH!"),
+        _ => panic!("SystemTime before UNIX EPOCH!"),
     }
 
     println!("{:?}", fs::metadata(Path::new("system:/etc")).map(|m| m.is_dir()));

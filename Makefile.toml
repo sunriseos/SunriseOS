@@ -365,8 +365,8 @@ args = ["clippy", "--target=i386-unknown-none",
 	"${@}",
 	]
 
-[tasks.clippy-sunrise-userspace-target]
-description = "Run clippy on sunrise userspace"
+[tasks.clippy-sunrise-userspace-target-nostd]
+description = "Run clippy on sunrise userspace (no std)"
 dependencies = ["install-xargo", "refresh-crates"]
 install_crate = { rustup_component_name = "clippy" }
 command = "xargo"
@@ -389,6 +389,19 @@ args = ["clippy", "--target=i386-unknown-sunrise-user",
 	"${@}",
 	]
 
+[tasks.clippy-sunrise-userspace-target-std]
+description = "Run clippy on sunrise userspace (std)"
+dependencies = ["install-xargo", "refresh-crates"]
+install_crate = { rustup_component_name = "clippy" }
+command = "xargo"
+args = ["clippy", "--target=i386-unknown-sunrise-user",
+    "-p", "std_hello_world",
+    "-p", "df",
+	"--",
+	"@@split(CLIPPY_RULES, )",
+	"${@}",
+	]
+
 [tasks.clippy-host-target]
 description = "Run clippy on host components (relying on std)"
 dependencies = ["refresh-crates"]
@@ -402,7 +415,7 @@ args = ["clippy",
 	]
 
 [tasks.clippy]
-dependencies = ["clippy-host-target", "clippy-sunrise-kernel-target", "clippy-sunrise-userspace-target"]
+dependencies = ["clippy-host-target", "clippy-sunrise-kernel-target", "clippy-sunrise-userspace-target-nostd", "clippy-sunrise-userspace-target-std"]
 
 [tasks.swipc-gen]
 description = "Get the output of running gen_ipc on an ipcdef file"

@@ -34,11 +34,16 @@
 //!    +------------------------+ < allocated_size
 //! ```
 
+#[cfg(not(feature = "build-for-std-app"))]
 use core::mem::{size_of, align_of};
 
+#[cfg(not(feature = "build-for-std-app"))]
 use spin::Once;
+
+#[cfg(not(feature = "build-for-std-app"))]
 use sunrise_libutils::{align_up, cast_mut};
 
+#[cfg(not(feature = "build-for-std-app"))]
 use crate::syscalls::query_memory;
 
 
