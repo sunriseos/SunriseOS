@@ -350,8 +350,8 @@ macro_rules! trap_gate_asm {
 ///     * `kill`: kills the process in which this interrupt originated.
 ///     * `my_handler_func`: calls `my_handler_func` to handle this interrupt. Useful if you want to override a standard strategy.
 /// * The possible values for `type` are:
-///     * `syscall`: interrupts and usage of regular SpinLocks are allowed.
-///     * `exception`: interrupts are disabled, but regular SpinLocks can be accessed if coming from userspace.
+///     * `syscall`: interrupts are enabled, and usage of regular SpinLocks are allowed.
+///     * `exception`: interrupts are disabled, but regular SpinLocks can be accessed if the exception comes from userspace.
 ///     * `interrupt`: interrupts and usage of regular SpinLocks are disabled.
 ///
 /// When providing a custom function as strategy, the function must be of signature:
