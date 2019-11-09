@@ -181,6 +181,7 @@ pub struct ThreadStruct {
     ///
     /// This is used when signaling that this thread as exited.
     state_event: ThreadStateEvent
+
 }
 
 /// A handle to a userspace-accessible resource.

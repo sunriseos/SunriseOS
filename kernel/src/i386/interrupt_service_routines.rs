@@ -28,7 +28,6 @@
 //! [syscall_interrupt_dispatcher]: self::interrupt_service_routines::syscall_interrupt_dispatcher
 
 use crate::i386::structures::idt::{PageFaultErrorCode, Idt};
-use crate::i386::instructions::interrupts::sti;
 use crate::mem::VirtualAddress;
 use crate::paging::kernel_memory::get_kernel_memory;
 use crate::i386::PrivilegeLevel;
@@ -65,6 +64,10 @@ pub fn check_thread_killed() {
     if scheduler::get_current_thread().state.load(Ordering::SeqCst) == ThreadState::TerminationPending {
         let lock = SpinLockIRQ::new(());
         loop { // in case of spurious wakeups
+            // TODO: Is it valid for interrupts to be active here?
+            // BODY: The interrupt wrappers call decrement_lock_count before calling this function,
+            // BODY: because it has the possibility to never return.
+            // BODY: Upon a spurious wake up, interrupts will end up being enabled.
             let _ = scheduler::unschedule(&lock, lock.lock());
         }
     }
@@ -333,7 +336,7 @@ macro_rules! trap_gate_asm {
 ///                kernel_fault_strategy: panic,                                        // what to do if we were in kernelspace when this interruption happened.
 ///                user_fault_strategy: panic,                                          // what to do if we were in userspace when this interruption happened, and feature "panic-on-exception" is enabled.
 ///                handler_strategy: kill,                                              // what to for this interrupt otherwise
-///                interrupt_context: true                                              // OPTIONAL: basically: are IRQs disabled. True by default, false used for syscalls.
+///                type: exception                                                      // what "type" of interrupt this is
 ///);
 /// ```
 ///
@@ -346,6 +349,10 @@ macro_rules! trap_gate_asm {
 ///     * `ignore`: don't do anything for this interrupt.
 ///     * `kill`: kills the process in which this interrupt originated.
 ///     * `my_handler_func`: calls `my_handler_func` to handle this interrupt. Useful if you want to override a standard strategy.
+/// * The possible values for `type` are:
+///     * `syscall`: interrupts are enabled, and usage of regular SpinLocks are allowed.
+///     * `exception`: interrupts are disabled, but regular SpinLocks can be accessed if the exception comes from userspace.
+///     * `interrupt`: interrupts and usage of regular SpinLocks are disabled.
 ///
 /// When providing a custom function as strategy, the function must be of signature:
 ///
@@ -370,6 +377,12 @@ macro_rules! trap_gate_asm {
 /// }
 ///
 /// extern "C" fn $wrapper_rust_fnname(userspace_context: &mut UserspaceHardwareContext) {
+///
+///     disable_interrupts()                                                         //
+///                                                                                  // type
+///     if coming from Ring == 0 {                                                   // (here: exception)
+///         disable_spinlocks()                                                      //
+///     }                                                                            //
 ///
 ///     if coming from Ring == 0 {
 ///
@@ -406,6 +419,12 @@ macro_rules! trap_gate_asm {
 ///             $exception_name, $hwcontext.errcode, thread);                        // (here: kill)
 ///         ProcessStruct::kill_current_process();                                   //
 ///     }
+///
+///     enable_interrupts()                                                          //
+///                                                                                  // type
+///     if coming from Ring == 0 {                                                   // (here: exception)
+///         enable_spinlocks()                                                       //
+///     }                                                                            //
 ///
 ///     // if we're returning to userspace, check we haven't been killed
 ///     if comming from Ring == 3 {
@@ -524,26 +543,53 @@ macro_rules! generate_trap_gate_handler {
         }
     };
 
-    // handle optional argument interrupt_context.
-    (
-    name: $exception_name:literal,
-    has_errcode: $has_errcode:ident,
-    wrapper_asm_fnname: $wrapper_asm_fnname:ident,
-    wrapper_rust_fnname: $wrapper_rust_fnname:ident,
-    kernel_fault_strategy: $kernel_fault_strategy:ident,
-    user_fault_strategy: $user_fault_strategy:ident,
-    handler_strategy: $handler_strategy:ident
-    ) => {
-        generate_trap_gate_handler!(
-            name: $exception_name,
-            has_errcode: $has_errcode,
-            wrapper_asm_fnname: $wrapper_asm_fnname,
-            wrapper_rust_fnname: $wrapper_rust_fnname,
-            kernel_fault_strategy: $kernel_fault_strategy,
-            user_fault_strategy: $user_fault_strategy,
-            handler_strategy: $handler_strategy,
-            interrupt_context: true
-        );
+    /* Counter manipulation */
+
+    // syscall
+    (__gen increment syscall; $_privlvl:path) => {
+        /* ignored -- interrupts are enabled, spinlocks are enabled */
+    };
+    (__gen decrement syscall; $_privlvl:path) => {
+        /* ignored -- interrupts are enabled, spinlocks are enabled */
+    };
+
+    // exception
+    (__gen increment exception; $privlvl:path) => {
+        unsafe {
+            // Safety: Paired with decrement_lock_count in (__gen decrement exception; _)
+            crate::sync::spin_lock_irq::disable_interrupts();
+        }
+        if $privlvl == PrivilegeLevel::Ring0 {
+            crate::i386::interrupt_service_routines::INSIDE_INTERRUPT_COUNT.fetch_add(1, core::sync::atomic::Ordering::SeqCst);
+        }
+
+    };
+    (__gen decrement exception; $privlvl:path) => {
+        unsafe {
+            // Safety: Paired with disable_interrupts in (__gen increment exception; _)
+            // Additionally, this is called shortly before an iret occurs, inside the asm wrapper.
+            crate::sync::spin_lock_irq::decrement_lock_count();
+        }
+        if $privlvl == PrivilegeLevel::Ring0 {
+            crate::i386::interrupt_service_routines::INSIDE_INTERRUPT_COUNT.fetch_sub(1, core::sync::atomic::Ordering::SeqCst);
+        }
+    };
+
+    // interrupt
+    (__gen increment interrupt; $_privlvl:path) => {
+        unsafe {
+            // Safety: Paired with decrement_lock_count in (__gen decrement interrupt; _)
+            crate::sync::spin_lock_irq::disable_interrupts();
+        }
+        crate::i386::interrupt_service_routines::INSIDE_INTERRUPT_COUNT.fetch_add(1, core::sync::atomic::Ordering::SeqCst);
+    };
+    (__gen decrement interrupt; $_privlvl:path) => {
+        unsafe {
+            // Safety: Paired with disable_interrupts in (__gen increment interrupt; _)
+            // Additionally, this is called shortly before an iret occurs, inside the asm wrapper.
+            crate::sync::spin_lock_irq::decrement_lock_count();
+        }
+        crate::i386::interrupt_service_routines::INSIDE_INTERRUPT_COUNT.fetch_sub(1, core::sync::atomic::Ordering::SeqCst);
     };
 
     /* The full wrapper */
@@ -557,23 +603,21 @@ macro_rules! generate_trap_gate_handler {
     kernel_fault_strategy: $kernel_fault_strategy:ident,
     user_fault_strategy: $user_fault_strategy:ident,
     handler_strategy: $handler_strategy:ident,
-    interrupt_context: $interrupt_context:literal
+    type: $type:ident
     ) => {
 
         generate_trap_gate_handler!(__gen asm_wrapper; $wrapper_asm_fnname, $wrapper_rust_fnname, $has_errcode);
 
         /// Auto generated function. See [generate_trap_gate_handler].
         extern "C" fn $wrapper_rust_fnname(userspace_context: &mut UserspaceHardwareContext) {
-
             use crate::i386::structures::gdt::SegmentSelector;
-            use crate::i386::interrupt_service_routines::INSIDE_INTERRUPT_COUNT;
-            use core::sync::atomic::Ordering;
 
-            if $interrupt_context {
-                let _ = INSIDE_INTERRUPT_COUNT.fetch_add(1, Ordering::SeqCst);
-            }
+            let privilege_level = SegmentSelector(userspace_context.cs as u16).rpl();
 
-            if let PrivilegeLevel::Ring0 = SegmentSelector(userspace_context.cs as u16).rpl() {
+            // mark interrupts and spinlocks disabled as apporpriate
+            generate_trap_gate_handler!(__gen increment $type; privilege_level);
+
+            if let PrivilegeLevel::Ring0 = privilege_level {
                 generate_trap_gate_handler!(__gen kernel_fault; name: $exception_name, userspace_context, errcode: $has_errcode, strategy: $kernel_fault_strategy);
             } else {
                 // we come from userspace, backup the hardware context in the thread struct
@@ -590,13 +634,12 @@ macro_rules! generate_trap_gate_handler {
             // call the handler
             generate_trap_gate_handler!(__gen handler; name: $exception_name, userspace_context, errcode: $has_errcode, strategy: $handler_strategy);
 
-            if $interrupt_context {
-                let _ = INSIDE_INTERRUPT_COUNT.fetch_sub(1, Ordering::SeqCst);
-            }
+            // re-enable interrupts and spinlocks as appropriate
+            generate_trap_gate_handler!(__gen decrement $type; privilege_level);
 
             // if we're returning to userspace, check we haven't been killed
             if let PrivilegeLevel::Ring3 = SegmentSelector(userspace_context.cs as u16).rpl() {
-                check_thread_killed();
+                check_thread_killed()
             }
         }
     };
@@ -612,7 +655,8 @@ generate_trap_gate_handler!(name: "Divide Error Exception",
                 wrapper_rust_fnname: divide_by_zero_exception_rust_wrapper,
                 kernel_fault_strategy: panic,
                 user_fault_strategy: panic,
-                handler_strategy: kill
+                handler_strategy: kill,
+                type: exception
 );
 
 generate_trap_gate_handler!(name: "Debug Exception",
@@ -621,7 +665,8 @@ generate_trap_gate_handler!(name: "Debug Exception",
                 wrapper_rust_fnname: debug_exception_rust_wrapper,
                 kernel_fault_strategy: panic,
                 user_fault_strategy: panic,
-                handler_strategy: panic
+                handler_strategy: panic,
+                type: exception
 );
 
 generate_trap_gate_handler!(name: "An unexpected non-maskable (but still kinda maskable) interrupt occurred",
@@ -630,7 +675,8 @@ generate_trap_gate_handler!(name: "An unexpected non-maskable (but still kinda m
                 wrapper_rust_fnname: nmi_exception_rust_wrapper,
                 kernel_fault_strategy: panic,
                 user_fault_strategy: panic,
-                handler_strategy: panic
+                handler_strategy: panic,
+                type: exception
 );
 
 generate_trap_gate_handler!(name: "Breakpoint Exception",
@@ -639,7 +685,8 @@ generate_trap_gate_handler!(name: "Breakpoint Exception",
                 wrapper_rust_fnname: breakpoint_exception_rust_wrapper,
                 kernel_fault_strategy: ignore,
                 user_fault_strategy: ignore,
-                handler_strategy: panic
+                handler_strategy: panic,
+                type: exception
 );
 
 generate_trap_gate_handler!(name: "Overflow Exception",
@@ -648,7 +695,8 @@ generate_trap_gate_handler!(name: "Overflow Exception",
                 wrapper_rust_fnname: overflow_exception_rust_wrapper,
                 kernel_fault_strategy: panic,
                 user_fault_strategy: panic,
-                handler_strategy: kill
+                handler_strategy: kill,
+                type: exception
 );
 
 generate_trap_gate_handler!(name: "BOUND Range Exceeded Exception",
@@ -657,7 +705,8 @@ generate_trap_gate_handler!(name: "BOUND Range Exceeded Exception",
                 wrapper_rust_fnname: bound_range_exceeded_exception_rust_wrapper,
                 kernel_fault_strategy: panic,
                 user_fault_strategy: panic,
-                handler_strategy: kill
+                handler_strategy: kill,
+                type: exception
 );
 
 generate_trap_gate_handler!(name: "Invalid opcode Exception",
@@ -666,7 +715,8 @@ generate_trap_gate_handler!(name: "Invalid opcode Exception",
                 wrapper_rust_fnname: invalid_opcode_exception_rust_wrapper,
                 kernel_fault_strategy: panic,
                 user_fault_strategy: panic,
-                handler_strategy: kill
+                handler_strategy: kill,
+                type: exception
 );
 
 generate_trap_gate_handler!(name: "Device Not Available Exception",
@@ -675,7 +725,8 @@ generate_trap_gate_handler!(name: "Device Not Available Exception",
                 wrapper_rust_fnname: device_not_available_exception_rust_wrapper,
                 kernel_fault_strategy: panic,
                 user_fault_strategy: panic,
-                handler_strategy: kill
+                handler_strategy: kill,
+                type: exception
 );
 
 /// Double fault handler. Panics the kernel unconditionally.
@@ -691,7 +742,8 @@ generate_trap_gate_handler!(name: "Invalid TSS Exception",
                 wrapper_rust_fnname: invalid_tss_exception_rust_wrapper,
                 kernel_fault_strategy: panic,
                 user_fault_strategy: panic,
-                handler_strategy: panic
+                handler_strategy: panic,
+                type: exception
 );
 
 generate_trap_gate_handler!(name: "Segment Not Present Exception",
@@ -700,7 +752,8 @@ generate_trap_gate_handler!(name: "Segment Not Present Exception",
                 wrapper_rust_fnname: segment_not_present_exception_rust_wrapper,
                 kernel_fault_strategy: panic,
                 user_fault_strategy: panic,
-                handler_strategy: kill
+                handler_strategy: kill,
+                type: exception
 );
 
 generate_trap_gate_handler!(name: "Stack Fault Exception",
@@ -709,7 +762,8 @@ generate_trap_gate_handler!(name: "Stack Fault Exception",
                 wrapper_rust_fnname: stack_fault_exception_rust_wrapper,
                 kernel_fault_strategy: panic,
                 user_fault_strategy: panic,
-                handler_strategy: kill
+                handler_strategy: kill,
+                type: exception
 );
 
 generate_trap_gate_handler!(name: "General Protection Fault Exception",
@@ -718,7 +772,8 @@ generate_trap_gate_handler!(name: "General Protection Fault Exception",
                 wrapper_rust_fnname: general_protection_fault_exception_rust_wrapper,
                 kernel_fault_strategy: panic,
                 user_fault_strategy: panic,
-                handler_strategy: kill
+                handler_strategy: kill,
+                type: exception
 );
 
 generate_trap_gate_handler!(name: "Page Fault Exception",
@@ -727,7 +782,8 @@ generate_trap_gate_handler!(name: "Page Fault Exception",
                 wrapper_rust_fnname: page_fault_exception_rust_wrapper,
                 kernel_fault_strategy: kernel_page_fault_panic,
                 user_fault_strategy: user_page_fault_panic,
-                handler_strategy: user_page_fault_handler
+                handler_strategy: user_page_fault_handler,
+                type: exception
 );
 
 /// Overriding the default panic strategy so we can display cr2
@@ -772,7 +828,8 @@ generate_trap_gate_handler!(name: "x87 FPU floating-point error",
                 wrapper_rust_fnname: x87_floating_point_exception_rust_wrapper,
                 kernel_fault_strategy: panic,
                 user_fault_strategy: panic,
-                handler_strategy: kill
+                handler_strategy: kill,
+                type: exception
 );
 
 generate_trap_gate_handler!(name: "Alignment Check Exception",
@@ -781,7 +838,8 @@ generate_trap_gate_handler!(name: "Alignment Check Exception",
                 wrapper_rust_fnname: alignment_check_exception_rust_wrapper,
                 kernel_fault_strategy: panic,
                 user_fault_strategy: panic,
-                handler_strategy: kill
+                handler_strategy: kill,
+                type: exception
 );
 
 generate_trap_gate_handler!(name: "Machine-Check Exception",
@@ -790,7 +848,8 @@ generate_trap_gate_handler!(name: "Machine-Check Exception",
                 wrapper_rust_fnname: machinee_check_exception_rust_wrapper,
                 kernel_fault_strategy: panic,
                 user_fault_strategy: panic,
-                handler_strategy: panic
+                handler_strategy: panic,
+                type: exception
 );
 
 generate_trap_gate_handler!(name: "SIMD Floating-Point Exception",
@@ -799,7 +858,8 @@ generate_trap_gate_handler!(name: "SIMD Floating-Point Exception",
                 wrapper_rust_fnname: simd_floating_point_exception_rust_wrapper,
                 kernel_fault_strategy: panic,
                 user_fault_strategy: panic,
-                handler_strategy: kill
+                handler_strategy: kill,
+                type: exception
 );
 
 generate_trap_gate_handler!(name: "Virtualization Exception",
@@ -808,7 +868,8 @@ generate_trap_gate_handler!(name: "Virtualization Exception",
                 wrapper_rust_fnname: virtualization_exception_rust_wrapper,
                 kernel_fault_strategy: panic,
                 user_fault_strategy: panic,
-                handler_strategy: kill
+                handler_strategy: kill,
+                type: exception
 );
 
 generate_trap_gate_handler!(name: "Security Exception",
@@ -817,7 +878,8 @@ generate_trap_gate_handler!(name: "Security Exception",
                 wrapper_rust_fnname: security_exception_rust_wrapper,
                 kernel_fault_strategy: panic,
                 user_fault_strategy: panic,
-                handler_strategy: panic
+                handler_strategy: panic,
+                type: exception
 );
 
 generate_trap_gate_handler!(name: "Syscall Interrupt",
@@ -827,7 +889,7 @@ generate_trap_gate_handler!(name: "Syscall Interrupt",
                 kernel_fault_strategy: panic, // you aren't expected to syscall from the kernel
                 user_fault_strategy: ignore, // don't worry it's fine ;)
                 handler_strategy: syscall_interrupt_dispatcher,
-                interrupt_context: false
+                type: syscall
 );
 
 impl UserspaceHardwareContext {
@@ -1043,7 +1105,8 @@ macro_rules! irq_handler {
                     wrapper_rust_fnname: $rust_wrapper_name,
                     kernel_fault_strategy: ignore, // irqs can happen while we're in kernel mode, don't worry, it's fine ;)
                     user_fault_strategy: ignore, // don't worry it's fine ;)
-                    handler_strategy: $handler_name
+                    handler_strategy: $handler_name,
+                    type: interrupt
             );
         )*
 
@@ -1136,5 +1199,6 @@ pub unsafe fn init() {
         (*idt).load();
     }
 
-    sti();
+    // Paired with disable_interrupts in kernel common_start.
+    crate::sync::spin_lock_irq::enable_interrupts();
 }
