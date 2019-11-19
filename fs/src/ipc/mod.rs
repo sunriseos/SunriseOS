@@ -5,6 +5,7 @@ use alloc::prelude::v1::Box;
 
 use sunrise_libuser::fs::{DirectoryEntry, DirectoryEntryType, DiskId, FileSystemType, PartitionId, FileSystemPath, IFileSystem, IFileSystemProxy, IFile, IFileProxy, IDirectory, IDirectoryProxy, IStorageProxy};
 use sunrise_libuser::fs::IStorage as IStorageServer;
+use sunrise_libuser::twili::{IPipe, IPipeProxy};
 use sunrise_libuser::error::Error;
 use sunrise_libuser::error::FileSystemError;
 use sunrise_libuser::syscalls;
@@ -122,6 +123,50 @@ impl sunrise_libuser::fs::IFileSystemService for FileSystemService {
 
     fn initialize_disk(&mut self, _manager: WorkQueue<'static>, disk_id: DiskId) -> Result<(), Error> {
         self.inner.initialize_disk(disk_id)
+    }
+}
+
+/// Represent a file in the IPC.
+#[derive(Debug, Clone)]
+pub struct Pipe {
+    /// The detail implementation of this ipc interface.
+    inner: Arc<Mutex<Box<dyn FileOperations>>>,
+    /// Position from which to read/write in the file. Every read/write will
+    /// automatically increment this cursor by the amount of bytes the operation
+    /// successfully managed to read/write.
+    cursor: u64
+}
+
+impl Pipe {
+    /// Create a new pipe from the given file.
+    pub fn new(inner: Box<dyn FileOperations>) -> Self {
+        Pipe { inner: Arc::new(Mutex::new(inner)), cursor: 0 }
+    }
+}
+
+impl IPipe for Pipe {
+    fn read(&mut self, _manager: WorkQueue<'static>, out_buffer: &mut [u8]) -> Result<u64, Error> {
+        if out_buffer.is_empty() {
+            return Ok(0)
+        }
+
+        let read = self.inner.lock().read(self.cursor, out_buffer)?;
+
+        self.cursor += read;
+
+        Ok(self.cursor)
+    }
+
+    fn write(&mut self, _manager: WorkQueue<'static>, in_buffer: &[u8]) -> Result<(), Error> {
+        if in_buffer.is_empty() {
+            return Ok(())
+        }
+
+        self.inner.lock().write(self.cursor, in_buffer)?;
+
+        self.cursor += in_buffer.len() as u64;
+
+        Ok(())
     }
 }
 
@@ -251,6 +296,16 @@ impl IFileSystem for FileSystem {
             let wrapper = new_session_wrapper(manager.clone(), server, File::new(instance), IFile::dispatch);
             manager.spawn(FutureObj::new(Box::new(wrapper)));
             Ok(IFileProxy::from(client))
+        })
+    }
+
+    fn open_file_as_ipipe(&mut self, manager: WorkQueue<'static>, mode: u32, path: &sunrise_libuser::fs::FileSystemPath) -> Result<sunrise_libuser::twili::IPipeProxy, Error> {
+        let flags_res: LibUserResult<_> = FileModeFlags::from_bits(mode).ok_or_else(|| FileSystemError::InvalidInput.into());
+        FileSystemOperations::open_file(&**self.inner.lock(), convert_path(path)?, flags_res?).and_then(|instance| {
+            let (server, client) = syscalls::create_session(false, 0)?;
+            let wrapper = new_session_wrapper(manager.clone(), server, Pipe::new(instance), IPipe::dispatch);
+            manager.spawn(FutureObj::new(Box::new(wrapper)));
+            Ok(IPipeProxy::from(client))
         })
     }
 
