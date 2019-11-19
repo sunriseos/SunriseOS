@@ -1,6 +1,6 @@
 //! Subcommand to change the CWD.
 //!
-//! Takes a single directory argument. Sets the [`CURRENT_WORK_DIRECTORY`](crate::CURRENT_WORK_DIRECTORY)
+//! Takes a single directory argument. Sets the [`CURRENT_WORK_DIRECTORY`](static@crate::CURRENT_WORK_DIRECTORY)
 //! to the absolute path this directory resolves to - if it exists.
 
 use core::fmt::Write;
