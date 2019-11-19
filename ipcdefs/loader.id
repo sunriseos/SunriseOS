@@ -14,4 +14,8 @@ interface sunrise_libuser::ldr::ILoaderInterface is ldr:shel {
     [3] get_name(u64 pid) -> (u64 written, array<u8, 6> title_name);
     # Wait for the process with the given pid, returning the exit status.
     [4] kill(u64 pid);
+    # Gets the state of the provided pid
+    [5] get_state(u64 pid) -> u8;
+    # Get an event that gets signaled whenever a process changes state.
+    [6] get_process_state_changed_event() -> handle<copy, readable_event> process_state_changed_event;
 }
