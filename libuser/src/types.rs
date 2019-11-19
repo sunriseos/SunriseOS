@@ -23,7 +23,7 @@ use core::mem;
 /// [close_handle]: crate::syscalls::close_handle.
 #[repr(transparent)]
 #[derive(Debug, PartialEq, Eq)]
-pub struct Handle(pub(crate) NonZeroU32);
+pub struct Handle(pub NonZeroU32);
 
 impl Handle {
     /// Creates a new handle from the given number. This number should come from

@@ -167,6 +167,7 @@ fn get_handle_type(ty: &Option<HandleType>) -> Option<&'static str> {
         Some(HandleType::SharedMemory)  => Some("self::sunrise_libuser::types::SharedMemory"),
         Some(HandleType::Process)       => Some("self::sunrise_libuser::types::Process"),
         Some(HandleType::Thread)        => Some("self::sunrise_libuser::types::Thread"),
+        Some(HandleType::ReadableEvent) => Some("self::sunrise_libuser::types::ReadableEvent"),
         _                               => None
     }
 }
@@ -221,10 +222,10 @@ fn get_type(output: bool, ty: &Alias, is_server: bool, out_lifetime: &str) -> Re
         // Deprecated in newer version of SwIPC anyways.
         Alias::Align(_alignment, _underlying) => Err(Error::UnsupportedStruct),
 
-        Alias::Handle(is_copy, ty) => if let Some(s) = get_handle_type(ty) {
-            Ok(format!("{}{}", if *is_copy && !is_server && !output { "&" } else { "" }, s))
-        } else if *is_copy && is_server && output {
+        Alias::Handle(is_copy, ty) => if *is_copy && is_server && output {
             Ok("self::sunrise_libuser::types::HandleRef<'static>".to_string())
+        } else if let Some(s) = get_handle_type(ty) {
+            Ok(format!("{}{}", if *is_copy && !is_server && !output { "&" } else { "" }, s))
         } else {
             Ok(format!("self::sunrise_libuser::types::{}", if *is_copy && !is_server && !output { "HandleRef" } else { "Handle" }))
         },
@@ -644,15 +645,14 @@ fn gen_call(cmd: &Func, is_async: bool) -> Result<String, Error> {
                 writeln!(s, "                         msg__.push_handle_move(self::sunrise_libuser::types::ClientSession::from({}).into_handle());", ret).unwrap();
             },
             Alias::Handle(is_copy, ty) => {
-                let (is_ref, handle) = if *is_copy {
-                    (".as_ref()", "copy")
+                if *is_copy {
+                    writeln!(s, "                         msg__.push_handle_copy({});", ret).unwrap();
                 } else {
-                    ("", "move")
-                };
-                match (get_handle_type(ty), ty) {
-                    (_, Some(HandleType::ClientSession)) => writeln!(s, "                         msg__.push_handle_{}(({}).into_handle(){});", handle, ret, is_ref).unwrap(),
-                    (Some(_), _) => writeln!(s, "                         msg__.push_handle_{}(({}).0{});", handle, ret, is_ref).unwrap(),
-                    _ => writeln!(s, "                         msg__.push_handle_{}({});", handle, ret).unwrap(),
+                    match (get_handle_type(ty), ty) {
+                        (_, Some(HandleType::ClientSession)) => writeln!(s, "                         msg__.push_handle_move(({}).into_handle());", ret).unwrap(),
+                        (Some(_), _) => writeln!(s, "                         msg__.push_handle_move(({}).0);", ret).unwrap(),
+                        _ => writeln!(s, "                         msg__.push_handle_move({});", ret).unwrap(),
+                    };
                 };
             },
             Alias::Pid => {
