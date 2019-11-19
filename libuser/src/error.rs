@@ -64,6 +64,8 @@ pub enum Error {
     FileSystem(FileSystemError, Backtrace),
     /// HID errors
     Hid(HidError, Backtrace),
+    /// Twili Pipe errors
+    Twili(TwiliError, Backtrace),
     /// An unknown error type. Either someone returned a custom error, or this
     /// version of libuser is outdated.
     Unknown(u32, Backtrace)
@@ -105,6 +107,7 @@ impl Error {
             Error::Ahci(err, ..) => err.0 << 9 | Module::Ahci.0,
             Error::Time(err, ..) => err.0 << 9 | Module::Time.0,
             Error::Hid(err, ..) => err.0 << 9 | Module::Hid.0,
+            Error::Twili(err, ..) => err.0 << 9 | Module::Twili.0,
             Error::Unknown(err, ..) => err,
         }
     }
@@ -123,6 +126,7 @@ enum_with_val! {
         Hid = 202,
         Libuser = 415,
         Ahci = 416,
+        Twili = 417,
     }
 }
 
@@ -380,5 +384,21 @@ enum_with_val! {
 impl From<ViError> for Error {
     fn from(error: ViError) -> Self {
         Error::Vi(error, Backtrace::new())
+    }
+}
+
+enum_with_val! {
+    /// Twili Pipe errors.
+    #[derive(PartialEq, Eq, Clone, Copy)]
+    pub struct TwiliError(u32) {
+        /// Attempted to read on the write-side, or write on the read-side, of
+        /// a pipe.
+        OperationUnsupported = 1
+    }
+}
+
+impl From<TwiliError> for Error {
+    fn from(error: TwiliError) -> Self {
+        Error::Twili(error, Backtrace::new())
     }
 }
