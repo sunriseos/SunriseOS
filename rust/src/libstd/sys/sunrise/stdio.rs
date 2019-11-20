@@ -2,18 +2,39 @@ use crate::io;
 
 use sunrise_libuser::error::Error;
 use sunrise_libuser::twili::{ITwiliServiceProxy, IPipeProxy};
-use spin::Once;
+use crate::sync::{LockResult, RwLock};
+use lazy_static::lazy_static;
 
 pub struct Stdin;
 pub struct Stdout;
 pub struct Stderr;
 
-pub static PIPES: Once<(IPipeProxy, IPipeProxy, IPipeProxy)> =
-    Once::new();
+lazy_static! {
+    static ref PIPE_STDIN: RwLock<Option<IPipeProxy>> = RwLock::new(None);
+    static ref PIPE_STDOUT: RwLock<Option<IPipeProxy>> = RwLock::new(None);
+    static ref PIPE_STDERR: RwLock<Option<IPipeProxy>> = RwLock::new(None);
+}
 
 pub fn init() -> Result<(), Error> {
-    let pipes = ITwiliServiceProxy::new()?.open_pipes()?;
-    PIPES.call_once(|| pipes);
+    let (stdin, stdout, stderr) = ITwiliServiceProxy::new()?.open_pipes()?;
+    *get_poison_inner(PIPE_STDIN.write()) = Some(stdin);
+    *get_poison_inner(PIPE_STDOUT.write()) = Some(stdout);
+    *get_poison_inner(PIPE_STDERR.write()) = Some(stderr);
+
+    fn get_poison_inner<T>(result: LockResult<T>) -> T {
+        match result {
+            Ok(val) => val,
+            Err(err) => err.into_inner()
+        }
+    }
+
+    // Close the pipes on exit
+    crate::sys_common::at_exit(|| {
+        get_poison_inner(PIPE_STDIN.write()).take();
+        get_poison_inner(PIPE_STDOUT.write()).take();
+        get_poison_inner(PIPE_STDERR.write()).take();
+    });
+
     Ok(())
 }
 
@@ -25,9 +46,11 @@ impl Stdin {
 
 impl io::Read for Stdin {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        PIPES.r#try()
+        let lock = PIPE_STDIN.try_read()
+            .or(Err(io::Error::from(io::ErrorKind::NotFound)))?;
+        lock.as_ref()
             .ok_or(io::Error::from(io::ErrorKind::NotFound))
-            .and_then(|v| Ok(v.0.read(buf)? as usize))
+            .and_then(|v| Ok(v.read(buf)? as usize))
     }
 }
 
@@ -39,9 +62,11 @@ impl Stdout {
 
 impl io::Write for Stdout {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        PIPES.r#try()
+        let lock = PIPE_STDOUT.try_read()
+            .or(Err(io::Error::from(io::ErrorKind::NotFound)))?;
+        lock.as_ref()
             .ok_or(io::Error::from(io::ErrorKind::NotFound))
-            .and_then(|v| { v.1.write(buf)?; Ok(buf.len()) })
+            .and_then(|v| { v.write(buf)?; Ok(buf.len()) })
     }
 
     fn flush(&mut self) -> io::Result<()> {
@@ -71,7 +96,7 @@ impl io::Write for Stderr {
     }
 }
 
-pub const STDIN_BUF_SIZE: usize = 0;
+pub const STDIN_BUF_SIZE: usize = 1024; // 1024 bytes should be more than enough.
 
 pub fn is_ebadf(_err: &io::Error) -> bool {
     true
