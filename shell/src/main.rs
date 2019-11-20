@@ -161,7 +161,7 @@ fn main() {
         };
 
         if let Some((f, _)) = subcommands::SUBCOMMANDS.get(command) {
-            if let Err(err) = f(stdin, stdout, stderr, &line.split_whitespace().collect::<Vec<&str>>()) {
+            if let Err(err) = f(stdin, stdout, stderr, line.split_whitespace().map(|v| v.to_string()).collect::<Vec<String>>()) {
                 let _ = writeln!(&mut terminal, "{}: {:?}", command, err);
             }
         } else if command == "exit" {

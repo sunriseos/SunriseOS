@@ -4,16 +4,18 @@
 //! find the currently running processes with the ps command.
 
 use core::fmt::Write;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 use sunrise_libuser::error::Error;
 use sunrise_libuser::twili::IPipeProxy;
 use sunrise_libuser::ldr::ILoaderInterfaceProxy;
 
 /// Help string.
-pub static HELP: &'static str = "kill <pid>: Kill the given process";
+pub static HELP: &str = "kill <pid>: Kill the given process";
 
 /// Kill the process associated with the provided pid.
-pub fn main(_stdin: IPipeProxy, mut stdout: IPipeProxy, _stderr: IPipeProxy, args: &[&str]) -> Result<(), Error> {
+pub fn main(_stdin: IPipeProxy, mut stdout: IPipeProxy, _stderr: IPipeProxy, args: Vec<String>) -> Result<(), Error> {
     let pid = match args.get(1) {
         Some(pid) => pid,
         None => {

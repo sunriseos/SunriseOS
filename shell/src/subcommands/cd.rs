@@ -4,16 +4,18 @@
 //! to the absolute path this directory resolves to - if it exists.
 
 use core::fmt::Write;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 use sunrise_libuser::error::{Error, FileSystemError};
 use sunrise_libuser::fs::IFileSystemServiceProxy;
 use sunrise_libuser::twili::IPipeProxy;
 
 /// Help string.
-pub static HELP: &'static str = "cd <directory>: change the working directory";
+pub static HELP: &str = "cd <directory>: change the working directory";
 
 /// Change the current working directory
-pub fn main(_stdin: IPipeProxy, mut stdout: IPipeProxy, _stderr: IPipeProxy, args: &[&str]) -> Result<(), Error> {
+pub fn main(_stdin: IPipeProxy, mut stdout: IPipeProxy, _stderr: IPipeProxy, args: Vec<String>) -> Result<(), Error> {
     let fs_proxy = IFileSystemServiceProxy::raw_new().unwrap();
     let filesystem = fs_proxy.open_disk_partition(0, 0).unwrap();
 

@@ -5,23 +5,23 @@ use sunrise_libuser::twili::IPipeProxy;
 use sunrise_libuser::fs::IFileSystemServiceProxy;
 use sunrise_libuser::error::Error;
 use core::fmt::Write;
-
+use alloc::vec::Vec;
 use alloc::string::String;
 
 /// Help string.
-pub static HELP: &'static str = "useradd <username>: Adds a new user";
+pub static HELP: &str = "useradd <username>: Adds a new user";
 
 /// Adds a new user to /etc/passwd with the specified username.
 ///
 /// The function takes care of prompting for the password in no-echo mode. If
 /// an error is returned, then it should be assumed that the user was not added
 /// to /etc/passwd.
-pub fn main(_stdin: IPipeProxy, mut stdout: IPipeProxy, _stderr: IPipeProxy, args: &[&str]) -> Result<(), Error> {
+pub fn main(_stdin: IPipeProxy, mut stdout: IPipeProxy, _stderr: IPipeProxy, args: Vec<String>) -> Result<(), Error> {
     let username = if args.len() < 2 {
         let _ = writeln!(&mut stdout, "usage: useradd <username>");
         return Ok(());
     } else {
-        args[1]
+        &args[1]
     };
 
     // Ignore stdin.

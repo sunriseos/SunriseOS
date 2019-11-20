@@ -4,7 +4,7 @@
 //! built-in command by looking if the command name exists within the
 //! `SUBCOMMANDS` global.
 //!
-//! A subcommand is a function of type `fn(IPipeProxy, IPipeProxy, IPipeProxy, &[&str]) -> Result<(), Error>`.
+//! A subcommand is a function of type `fn(IPipeProxy, IPipeProxy, IPipeProxy, Vec<String>) -> Result<(), Error>`.
 //! It is expected to be started in a separate thread from the main shell. This
 //! is necessary because reading on a pipe can potentially block. If they were
 //! spawned on the main thread, it could lead to a blocked main thread.
@@ -28,9 +28,14 @@ use sunrise_libuser::twili::IPipeProxy;
 use lazy_static::lazy_static;
 
 use alloc::collections::BTreeMap;
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+use alloc::string::String;
+use alloc::sync::Arc;
+use spin::Once;
 
 /// Subcommand function. See [module documentation](crate::subcommands).
-type SubcommandFn = fn(IPipeProxy, IPipeProxy, IPipeProxy, &[&str]) -> Result<(), Error>;
+type SubcommandFn = fn(IPipeProxy, IPipeProxy, IPipeProxy, Vec<String>) -> Result<(), Error>;
 
 lazy_static! {
     /// List of subcommands. See [module documentation](crate::subcommands).

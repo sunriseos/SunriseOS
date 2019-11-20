@@ -4,6 +4,7 @@
 //! will get closed when a key is pressed.
 
 use core::fmt::Write;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 use sunrise_libuser::ps2::Keyboard;
@@ -13,11 +14,11 @@ use sunrise_libuser::window::{Color, Window};
 use sunrise_libuser::error::Error;
 
 /// Help string.
-pub static HELP: &'static str = "showgif <path>: Display the provided gif";
+pub static HELP: &str = "showgif <path>: Display the provided gif";
 
 /// Shows a GIF in a new window, blocking the caller. When a key is pressed, the
 /// window is closed and control is given back to the caller.
-pub fn main(_stdin: IPipeProxy, mut stdout: IPipeProxy, _stderr: IPipeProxy, args: &[&str]) -> Result<(), Error> {
+pub fn main(_stdin: IPipeProxy, mut stdout: IPipeProxy, _stderr: IPipeProxy, args: Vec<String>) -> Result<(), Error> {
     let gif_path = match args.get(1) {
         Some(v) => v,
         None => {

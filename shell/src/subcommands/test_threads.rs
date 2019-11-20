@@ -1,6 +1,8 @@
 //! Test function ensuring threads are working properly.
 
 use core::fmt::Write;
+use alloc::string::String;
+use alloc::vec::Vec;
 use alloc::sync::Arc;
 
 use spin::Mutex;
@@ -10,10 +12,10 @@ use sunrise_libuser::error::Error;
 use sunrise_libuser::threads::{self, Thread};
 
 /// Help string.
-pub static HELP: &'static str = "test_threads: Run threads that concurrently print As and Bs";
+pub static HELP: &str = "test_threads: Run threads that concurrently print As and Bs";
 
 /// Test function ensuring threads are working properly.
-pub fn main(_stdin: IPipeProxy, stdout: IPipeProxy, _stderr: IPipeProxy, _args: &[&str]) -> Result<(), Error> {
+pub fn main(_stdin: IPipeProxy, stdout: IPipeProxy, _stderr: IPipeProxy, _args: Vec<String>) -> Result<(), Error> {
     #[doc(hidden)]
     fn thread_a(terminal: usize) {
         let terminal = unsafe {
