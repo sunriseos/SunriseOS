@@ -22,6 +22,7 @@ mod connect;
 mod ps;
 mod kill;
 mod help;
+mod exit;
 
 use sunrise_libuser::error::Error;
 use sunrise_libuser::twili::IPipeProxy;
@@ -41,6 +42,7 @@ lazy_static! {
     /// List of subcommands. See [module documentation](crate::subcommands).
     pub static ref SUBCOMMANDS: BTreeMap<&'static str, (SubcommandFn, &'static str)> = {
         let mut subcommands = BTreeMap::new();
+        subcommands.insert("exit", (exit::main as _, exit::HELP));
         subcommands.insert("useradd", (useradd::main as _, useradd::HELP));
         subcommands.insert("showgif", (showgif::main as _, showgif::HELP));
         subcommands.insert("pwd", (pwd::main as _, pwd::HELP));
@@ -54,4 +56,30 @@ lazy_static! {
         subcommands.insert("help", (help::main as _, help::HELP));
         subcommands
     };
+}
+
+/// The structure sent to the builtin subcommand's trampoline function.
+pub struct RunArgs {
+    /// Stdin pipe to use for this subcommand.
+    pub stdin: IPipeProxy,
+    /// Stdout pipe to use for this subcommand.
+    pub stdout: IPipeProxy,
+    /// Stderr pipe to use for this subcommand.
+    pub stderr: IPipeProxy,
+    /// Args to pass to the subcommand's main.
+    pub args: Vec<String>,
+    /// Return value of this subcommand.
+    pub ret: Arc<Once<Result<(), Error>>>,
+    /// Subcommand's main function.
+    pub f: fn(IPipeProxy, IPipeProxy, IPipeProxy, Vec<String>) -> Result<(), Error>
+}
+
+/// Trampoline function for a subcommand thread. Takes a pointer to a RunArgs
+/// box as an argument.
+pub fn run(arg: usize) {
+    let args: Box<RunArgs> = unsafe { Box::from_raw(arg as *mut RunArgs) };
+    let RunArgs {
+        stdin, stdout, stderr, args, ret, f
+    } = *args;
+    ret.call_once(move || f(stdin, stdout, stderr, args));
 }

@@ -29,17 +29,22 @@ mod subcommands;
 use crate::libuser::fs::{IFileSystemServiceProxy, IFileSystemProxy, IFileProxy};
 use crate::libuser::terminal::{Terminal, WindowSize};
 use crate::libuser::ldr::{ILoaderInterfaceProxy};
-use crate::libuser::error::{Error, LoaderError, FileSystemError};
+use crate::libuser::error::{Error, FileSystemError};
 use crate::libuser::syscalls;
 use crate::libuser::ps2::Keyboard;
 use crate::libuser::twili::ITwiliManagerServiceProxy;
+use crate::libuser::threads::Thread;
+
+use sunrise_libkern::process::ProcessState;
 
 use core::fmt::Write;
-use alloc::string::String;
+use alloc::string::{ToString, String};
 use alloc::vec::Vec;
+use alloc::boxed::Box;
+use alloc::sync::Arc;
 use bstr::ByteSlice;
 use lazy_static::lazy_static;
-use spin::Mutex;
+use spin::{Once, Mutex};
 
 use log::warn;
 use log::error;
@@ -133,6 +138,235 @@ pub fn get_next_line(logger: &mut Terminal) -> String {
     }
 }
 
+/// A command to run as part of a pipeline.
+#[derive(Debug)]
+struct Command<'a> {
+    /// Array of arguments to pass to the subcommand. First argument is the
+    /// command name.
+    args: Vec<&'a str>,
+    /// The filename to take stdin from.
+    redirect_stdin: Option<&'a str>,
+    /// The filename to redirect stdout to.
+    redirect_stdout: Option<&'a str>,
+    /// True if stdout should be piped to the next command in the cmdline.
+    pipe_stdout: bool,
+}
+
+/// Parses a single command from the given string. Returns the command and the
+/// amount of bytes read from the string.
+fn parse_line(args: &str) -> (Command, usize) {
+    let mut data = Vec::new();
+    let mut redirects = [None, None, None];
+
+    let mut arg_start = None;
+    let mut arg_len = 0;
+    let mut quote_flag = false;
+    let mut redirect_flag = None;
+    let mut stop_at = None;
+    for (argi, item) in args.bytes().enumerate() {
+        if arg_start.is_none() && item.is_ascii_whitespace() {
+            // Skip over ascii whitespace
+            continue;
+        }
+
+        if item == b'|' || item == b'&' {
+            // Found a character delimiting
+            stop_at = Some(argi);
+            break;
+        }
+
+        if let Some(arg_start_idx) = arg_start {
+            // We're currently handling an arg.
+            // Check if we have reached the end of an argument.
+            let end_flag = (quote_flag && item == b'"') || item.is_ascii_whitespace();
+
+            // If we didn't, include the character being processed in the
+            // current arg.
+            if !end_flag {
+                arg_len += 1;
+            }
+
+            if end_flag && arg_len != 0 {
+                // If we've reached the end of an argument we copy it to the
+                // args vec.
+                if let Some(idx) = redirect_flag {
+                    redirects[idx] = Some(&args[arg_start_idx..arg_start_idx + arg_len]);
+                } else if arg_len != 0 {
+                    data.push(&args[arg_start_idx..arg_start_idx + arg_len])
+                }
+
+                // Reset all state to and look for the next arg.
+                arg_start = None;
+                quote_flag = false;
+                redirect_flag = None;
+                arg_len = 0;
+            }
+        } else if item == b'"' {
+            // Found a new quoted argument.
+            arg_start = Some(argi + 1);
+            quote_flag = true;
+        } else if (item == b'<' || item == b'>') && redirect_flag.is_some() {
+            // Error!
+            panic!("");
+        } else if item == b'<' {
+            // Found an stdin redirect.
+            redirect_flag = Some(0);
+        } else if item == b'>' {
+            // Found an stdout redirect.
+            redirect_flag = Some(1);
+        } else {
+            // Found a new argument.
+            arg_start = Some(argi);
+            arg_len += 1;
+        }
+    }
+
+    if let Some(arg_start_idx) = arg_start {
+        // Handle last argument.
+        if let Some(idx) = redirect_flag {
+            redirects[idx] = Some(&args[arg_start_idx..arg_start_idx + arg_len]);
+        } else if arg_len != 0 {
+            data.push(&args[arg_start_idx..arg_start_idx + arg_len])
+        }
+    }
+
+    let cmd = Command {
+        args: data, redirect_stdin: redirects[0], redirect_stdout: redirects[1],
+        pipe_stdout: false
+    };
+
+    (cmd, stop_at.unwrap_or_else(|| args.len()))
+}
+
+/// Generate a list of command from a given command line.
+fn generate_cmd(args: &str) -> Vec<Command> {
+    let mut cmds = Vec::new();
+
+    let mut cur = 0;
+    while cur < args.len() {
+        let (mut cmd, stop_at) = parse_line(&args[cur..]);
+        assert_ne!(stop_at, 0, "parse_line failed");
+        cur += stop_at;
+
+        if args.bytes().nth(cur) == Some(b'|') {
+            cmd.pipe_stdout = true;
+            cur += 1;
+        }
+        cmds.push(cmd);
+    }
+
+    cmds
+}
+
+/// Represents a command currently running.
+///
+/// Commands can either be built-in, in which case they are represented by a
+/// thread handle, or a different process which is represented by a pid.
+#[derive(Debug)]
+pub enum Job {
+    /// This job is a builtin running in a separate thread.
+    BuiltIn {
+        /// This job's underlying thread handle.
+        thread: Thread
+    },
+    /// This job is an external binary running in a different process.
+    Process {
+        /// This job's underlying pid.
+        pid: u64
+    },
+}
+
+impl Job {
+    /// Let this job start running.
+    pub fn start(&self, loader: &ILoaderInterfaceProxy) -> Result<(), Error> {
+        match self {
+            Job::BuiltIn { thread } => thread.start(),
+            Job::Process { pid } => loader.launch_title(*pid)
+        }
+    }
+}
+
+/// Generate a vector of [Job] from a command line.
+///
+/// The returned jobs will not be started, it's up to the caller to start them.
+/// The jobs' stdin/stdout/stderr will be properly configured according to the
+/// line - pipes and stdin/stdout redirection are supported. Stderr always
+/// points to the terminal.
+pub fn generate_jobs(mut terminal: &mut Terminal, filesystem: &IFileSystemProxy, twili: &ITwiliManagerServiceProxy, loader: &ILoaderInterfaceProxy, line: &str) -> Result<Vec<Job>, Error> {
+    let mut processes = Vec::new();
+    let mut last_pipe = None;
+
+    for cmd in generate_cmd(&line) {
+        let cmdname = if let Some(val) = cmd.args.get(0) {
+            val
+        } else {
+            let _ = writeln!(&mut terminal, "Invalid command: no cmdname provided");
+            break;
+        };
+
+        let stdin = match (cmd.redirect_stdin, last_pipe) {
+            (Some(_), Some(_)) => {
+                let _ = writeln!(&mut terminal, "Invalid command: {} had both a pipe and an input redirect provided.", cmdname);
+                break;
+            },
+            (Some(path), None) => {
+                let mut ipc_path = [0; 0x300];
+                ipc_path[..path.len()].copy_from_slice(path.as_bytes());
+                filesystem.open_file_as_ipipe(1, &ipc_path).unwrap()
+            },
+            (None, Some(pipe)) => pipe,
+            (None, None) => terminal.clone_pipe().unwrap()
+        };
+
+        last_pipe = None;
+
+        let stdout = match (cmd.redirect_stdout, cmd.pipe_stdout) {
+            (Some(_), true) => {
+                let _ = writeln!(&mut terminal, "Invalid command: {} had both a pipe and an input redirect provided.", cmdname);
+                break;
+            },
+            (Some(path), false) => {
+                let mut ipc_path = [0; 0x300];
+                ipc_path[..path.len()].copy_from_slice(path.as_bytes());
+                let _ = filesystem.create_file(0, 0, &ipc_path);
+                let file = filesystem.open_file(6, &ipc_path)?;
+                file.set_size(0)?;
+                filesystem.open_file(6, &ipc_path).unwrap();
+                filesystem.open_file_as_ipipe(6, &ipc_path).unwrap()
+            },
+            (None, true) => {
+                let (read_pipe, write_pipe) = twili.create_pipe().unwrap();
+                last_pipe = Some(read_pipe);
+                write_pipe
+            },
+            (None, false) => {
+                terminal.clone_pipe().unwrap()
+            },
+        };
+
+        let stderr = terminal.clone_pipe().unwrap();
+
+        let job = if let Some((f, _)) = subcommands::SUBCOMMANDS.get(cmdname) {
+            let thread = Thread::create(subcommands::run, Box::into_raw(Box::new(subcommands::RunArgs {
+                stdin, stdout, stderr, f: *f,
+                args: line.split_whitespace().map(|v| v.to_string()).collect::<Vec<String>>(),
+                ret: Arc::new(Once::new()),
+            })) as usize, 4096 * 4)?;
+            Job::BuiltIn { thread }
+        } else {
+            // Try to run it as an external binary.
+            let args = cmd.args.iter().map(|v| format!("\"{}\" ", v)).collect::<String>();
+            let pid = loader.create_title(cmdname.as_bytes(), args.as_bytes())?;
+            twili.register_pipes(pid, stdin, stdout, stderr)?;
+            Job::Process { pid }
+        };
+
+        processes.push(job)
+    }
+
+    Ok(processes)
+}
+
 fn main() {
     let mut terminal = Terminal::new(WindowSize::FontLines(-1, false)).unwrap();
     let mut keyboard = Keyboard::new().unwrap();
@@ -142,6 +376,8 @@ fn main() {
     let fs_proxy = IFileSystemServiceProxy::raw_new().unwrap();
     let filesystem = fs_proxy.open_disk_partition(0, 0).unwrap();
 
+    let process_state_changed_event = loader.get_process_state_changed_event().unwrap();
+
     cat(&mut terminal, &filesystem, "/etc/motd").unwrap();
 
     if let Err(err) = login(&mut terminal, &mut keyboard, &filesystem) {
@@ -150,40 +386,59 @@ fn main() {
 
     loop {
         let line = get_next_line(&mut terminal);
-
-        let stdin = terminal.clone_pipe().unwrap();
-        let stdout = terminal.clone_pipe().unwrap();
-        let stderr = terminal.clone_pipe().unwrap();
-
-        let command = match line.split_whitespace().next() {
-            Some(cmd) => cmd,
-            None => continue
+        let jobs = match generate_jobs(&mut terminal, &filesystem, &twili, &loader, &line) {
+            Ok(jobs) => jobs,
+            Err(err) => {
+                let _ = writeln!(&mut terminal, "Failed to run line: {:?}", err);
+                continue
+            }
         };
 
-        if let Some((f, _)) = subcommands::SUBCOMMANDS.get(command) {
-            if let Err(err) = f(stdin, stdout, stderr, line.split_whitespace().map(|v| v.to_string()).collect::<Vec<String>>()) {
-                let _ = writeln!(&mut terminal, "{}: {:?}", command, err);
-            }
-        } else if command == "exit" {
-            // Handling it as a built-in is too much work.
-            return;
-        } else {
-            // Try to run it as an external binary.
-            let res = (|| {
-                let pid = loader.create_title(command.as_bytes(), line.as_bytes())?;
-                twili.register_pipes(pid, stdin, stdout, stderr)?;
-                loader.launch_title(pid)?;
-                loader.wait(pid)
-            })();
+        let mut waiters = vec![process_state_changed_event.0.as_ref()];
+        let mut pids = vec![];
 
-            match res {
-                Err(Error::Loader(LoaderError::ProgramNotFound, _)) => {
-                    let _ = writeln!(&mut terminal, "Unknown command");
-                },
+        let mut finished_count = 0;
+        for job in &jobs {
+            if let Err(err) = job.start(&loader) {
+                let _ = writeln!(&mut terminal, "Failed to start process: {:?}", err);
+            }
+            match job {
+                Job::BuiltIn { thread } => waiters.push(thread.as_thread_ref().0.as_ref_static()),
+                Job::Process { pid } => pids.push(pid),
+            }
+        }
+
+        while finished_count != jobs.len() {
+            match syscalls::wait_synchronization(&waiters, None) {
                 Err(err) => {
-                    let _ = writeln!(&mut terminal, "Error: {:?}", err);
+                    error!("{:?}", err);
+                    let _ = writeln!(&mut terminal, "Internal error: {:?}", err);
+                    break;
                 },
-                Ok(_exitstatus) => ()
+                Ok(0) => {
+                    let _ = process_state_changed_event.clear();
+                    // Check all the pids, hopefully one died.
+                    pids.retain(|pid| {
+                        let state = match loader.get_state(**pid) {
+                            Ok(state) => state,
+                            Err(err) => {
+                                finished_count += 1;
+                                error!("{:?}", err);
+                                return false;
+                            }
+                        };
+                        let is_exited = ProcessState(state) == ProcessState::Exited;
+                        if is_exited {
+                            finished_count += 1;
+                        }
+                        !is_exited
+                    })
+                },
+                Ok(idx) => {
+                    // Subprocess died?
+                    finished_count += 1;
+                    waiters.remove(idx);
+                }
             }
         }
     }
