@@ -18,31 +18,33 @@
 #![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
 #![deny(intra_doc_link_resolution_failure)]
 
-use gif;
 #[macro_use]
 extern crate alloc;
 
 #[macro_use]
 extern crate sunrise_libuser as libuser;
 
-use crate::libuser::sm;
+mod subcommands;
+
 use crate::libuser::fs::{IFileSystemServiceProxy, IFileSystemProxy, IFileProxy};
-use crate::libuser::window::{Window, Color};
 use crate::libuser::terminal::{Terminal, WindowSize};
 use crate::libuser::ldr::{ILoaderInterfaceProxy};
-use crate::libuser::threads::{self, Thread};
-use crate::libuser::error::{Error, LoaderError, FileSystemError};
+use crate::libuser::error::{Error, FileSystemError};
 use crate::libuser::syscalls;
 use crate::libuser::ps2::Keyboard;
 use crate::libuser::twili::ITwiliManagerServiceProxy;
+use crate::libuser::threads::Thread;
+
+use sunrise_libkern::process::ProcessState;
 
 use core::fmt::Write;
-use alloc::string::String;
+use alloc::string::{ToString, String};
 use alloc::vec::Vec;
+use alloc::boxed::Box;
 use alloc::sync::Arc;
 use bstr::ByteSlice;
 use lazy_static::lazy_static;
-use spin::Mutex;
+use spin::{Once, Mutex};
 
 use log::warn;
 use log::error;
@@ -102,35 +104,6 @@ fn login(mut terminal: &mut Terminal, keyboard: &mut Keyboard, filesystem: &IFil
     }
 }
 
-/// Adds a new user to /etc/passwd with the specified username.
-///
-/// The function takes care of prompting for the password in no-echo mode. If
-/// an error is returned, then it should be assumed that the user was not added
-/// to /etc/passwd.
-fn user_add(mut terminal: &mut Terminal, keyboard: &mut Keyboard, filesystem: &IFileSystemProxy, username: &str) -> Result<(), Error> {
-    let _ = writeln!(&mut terminal, "Password: ");
-    let password = get_next_line_no_echo(keyboard);
-    let password = password.trim_end_matches('\n');
-
-    let hash = sha1::Sha1::from(&password).digest().bytes();
-
-    let mut ipc_path = [0x0; 0x300];
-    ipc_path[..b"/etc/passwd".len()].copy_from_slice(b"/etc/passwd");
-
-    let _ = filesystem.create_file(0, 0, &ipc_path);
-    let file = filesystem.open_file(0b111, &ipc_path)?;
-    let size = file.get_size()?;
-
-    let mut newline = String::from(username);
-    newline.push(' ');
-    newline += &hex::encode(&hash);
-    newline.push('\n');
-
-    file.write(0, size, newline.len() as _, newline.as_bytes())?;
-
-    Ok(())
-}
-
 /// Read key presses until a \n is detected, and return the string
 /// (excluding \n). Don't print the key presses on stdout.
 pub fn get_next_line_no_echo(keyboard: &mut Keyboard) -> String {
@@ -165,6 +138,235 @@ pub fn get_next_line(logger: &mut Terminal) -> String {
     }
 }
 
+/// A command to run as part of a pipeline.
+#[derive(Debug)]
+struct Command<'a> {
+    /// Array of arguments to pass to the subcommand. First argument is the
+    /// command name.
+    args: Vec<&'a str>,
+    /// The filename to take stdin from.
+    redirect_stdin: Option<&'a str>,
+    /// The filename to redirect stdout to.
+    redirect_stdout: Option<&'a str>,
+    /// True if stdout should be piped to the next command in the cmdline.
+    pipe_stdout: bool,
+}
+
+/// Parses a single command from the given string. Returns the command and the
+/// amount of bytes read from the string.
+fn parse_line(args: &str) -> (Command, usize) {
+    let mut data = Vec::new();
+    let mut redirects = [None, None, None];
+
+    let mut arg_start = None;
+    let mut arg_len = 0;
+    let mut quote_flag = false;
+    let mut redirect_flag = None;
+    let mut stop_at = None;
+    for (argi, item) in args.bytes().enumerate() {
+        if arg_start.is_none() && item.is_ascii_whitespace() {
+            // Skip over ascii whitespace
+            continue;
+        }
+
+        if item == b'|' || item == b'&' {
+            // Found a character delimiting
+            stop_at = Some(argi);
+            break;
+        }
+
+        if let Some(arg_start_idx) = arg_start {
+            // We're currently handling an arg.
+            // Check if we have reached the end of an argument.
+            let end_flag = (quote_flag && item == b'"') || item.is_ascii_whitespace();
+
+            // If we didn't, include the character being processed in the
+            // current arg.
+            if !end_flag {
+                arg_len += 1;
+            }
+
+            if end_flag && arg_len != 0 {
+                // If we've reached the end of an argument we copy it to the
+                // args vec.
+                if let Some(idx) = redirect_flag {
+                    redirects[idx] = Some(&args[arg_start_idx..arg_start_idx + arg_len]);
+                } else if arg_len != 0 {
+                    data.push(&args[arg_start_idx..arg_start_idx + arg_len])
+                }
+
+                // Reset all state to and look for the next arg.
+                arg_start = None;
+                quote_flag = false;
+                redirect_flag = None;
+                arg_len = 0;
+            }
+        } else if item == b'"' {
+            // Found a new quoted argument.
+            arg_start = Some(argi + 1);
+            quote_flag = true;
+        } else if (item == b'<' || item == b'>') && redirect_flag.is_some() {
+            // Error!
+            panic!("");
+        } else if item == b'<' {
+            // Found an stdin redirect.
+            redirect_flag = Some(0);
+        } else if item == b'>' {
+            // Found an stdout redirect.
+            redirect_flag = Some(1);
+        } else {
+            // Found a new argument.
+            arg_start = Some(argi);
+            arg_len += 1;
+        }
+    }
+
+    if let Some(arg_start_idx) = arg_start {
+        // Handle last argument.
+        if let Some(idx) = redirect_flag {
+            redirects[idx] = Some(&args[arg_start_idx..arg_start_idx + arg_len]);
+        } else if arg_len != 0 {
+            data.push(&args[arg_start_idx..arg_start_idx + arg_len])
+        }
+    }
+
+    let cmd = Command {
+        args: data, redirect_stdin: redirects[0], redirect_stdout: redirects[1],
+        pipe_stdout: false
+    };
+
+    (cmd, stop_at.unwrap_or_else(|| args.len()))
+}
+
+/// Generate a list of command from a given command line.
+fn generate_cmd(args: &str) -> Vec<Command> {
+    let mut cmds = Vec::new();
+
+    let mut cur = 0;
+    while cur < args.len() {
+        let (mut cmd, stop_at) = parse_line(&args[cur..]);
+        assert_ne!(stop_at, 0, "parse_line failed");
+        cur += stop_at;
+
+        if args.bytes().nth(cur) == Some(b'|') {
+            cmd.pipe_stdout = true;
+            cur += 1;
+        }
+        cmds.push(cmd);
+    }
+
+    cmds
+}
+
+/// Represents a command currently running.
+///
+/// Commands can either be built-in, in which case they are represented by a
+/// thread handle, or a different process which is represented by a pid.
+#[derive(Debug)]
+pub enum Job {
+    /// This job is a builtin running in a separate thread.
+    BuiltIn {
+        /// This job's underlying thread handle.
+        thread: Thread
+    },
+    /// This job is an external binary running in a different process.
+    Process {
+        /// This job's underlying pid.
+        pid: u64
+    },
+}
+
+impl Job {
+    /// Let this job start running.
+    pub fn start(&self, loader: &ILoaderInterfaceProxy) -> Result<(), Error> {
+        match self {
+            Job::BuiltIn { thread } => thread.start(),
+            Job::Process { pid } => loader.launch_title(*pid)
+        }
+    }
+}
+
+/// Generate a vector of [Job] from a command line.
+///
+/// The returned jobs will not be started, it's up to the caller to start them.
+/// The jobs' stdin/stdout/stderr will be properly configured according to the
+/// line - pipes and stdin/stdout redirection are supported. Stderr always
+/// points to the terminal.
+pub fn generate_jobs(mut terminal: &mut Terminal, filesystem: &IFileSystemProxy, twili: &ITwiliManagerServiceProxy, loader: &ILoaderInterfaceProxy, line: &str) -> Result<Vec<Job>, Error> {
+    let mut processes = Vec::new();
+    let mut last_pipe = None;
+
+    for cmd in generate_cmd(&line) {
+        let cmdname = if let Some(val) = cmd.args.get(0) {
+            val
+        } else {
+            let _ = writeln!(&mut terminal, "Invalid command: no cmdname provided");
+            break;
+        };
+
+        let stdin = match (cmd.redirect_stdin, last_pipe) {
+            (Some(_), Some(_)) => {
+                let _ = writeln!(&mut terminal, "Invalid command: {} had both a pipe and an input redirect provided.", cmdname);
+                break;
+            },
+            (Some(path), None) => {
+                let mut ipc_path = [0; 0x300];
+                ipc_path[..path.len()].copy_from_slice(path.as_bytes());
+                filesystem.open_file_as_ipipe(1, &ipc_path).unwrap()
+            },
+            (None, Some(pipe)) => pipe,
+            (None, None) => terminal.clone_pipe().unwrap()
+        };
+
+        last_pipe = None;
+
+        let stdout = match (cmd.redirect_stdout, cmd.pipe_stdout) {
+            (Some(_), true) => {
+                let _ = writeln!(&mut terminal, "Invalid command: {} had both a pipe and an input redirect provided.", cmdname);
+                break;
+            },
+            (Some(path), false) => {
+                let mut ipc_path = [0; 0x300];
+                ipc_path[..path.len()].copy_from_slice(path.as_bytes());
+                let _ = filesystem.create_file(0, 0, &ipc_path);
+                let file = filesystem.open_file(6, &ipc_path)?;
+                file.set_size(0)?;
+                filesystem.open_file(6, &ipc_path).unwrap();
+                filesystem.open_file_as_ipipe(6, &ipc_path).unwrap()
+            },
+            (None, true) => {
+                let (read_pipe, write_pipe) = twili.create_pipe().unwrap();
+                last_pipe = Some(read_pipe);
+                write_pipe
+            },
+            (None, false) => {
+                terminal.clone_pipe().unwrap()
+            },
+        };
+
+        let stderr = terminal.clone_pipe().unwrap();
+
+        let job = if let Some((f, _)) = subcommands::SUBCOMMANDS.get(cmdname) {
+            let thread = Thread::create(subcommands::run, Box::into_raw(Box::new(subcommands::RunArgs {
+                stdin, stdout, stderr, f: *f,
+                args: line.split_whitespace().map(|v| v.to_string()).collect::<Vec<String>>(),
+                ret: Arc::new(Once::new()),
+            })) as usize, 4096 * 4)?;
+            Job::BuiltIn { thread }
+        } else {
+            // Try to run it as an external binary.
+            let args = cmd.args.iter().map(|v| format!("\"{}\" ", v)).collect::<String>();
+            let pid = loader.create_title(cmdname.as_bytes(), args.as_bytes())?;
+            twili.register_pipes(pid, stdin, stdout, stderr)?;
+            Job::Process { pid }
+        };
+
+        processes.push(job)
+    }
+
+    Ok(processes)
+}
+
 fn main() {
     let mut terminal = Terminal::new(WindowSize::FontLines(-1, false)).unwrap();
     let mut keyboard = Keyboard::new().unwrap();
@@ -174,6 +376,8 @@ fn main() {
     let fs_proxy = IFileSystemServiceProxy::raw_new().unwrap();
     let filesystem = fs_proxy.open_disk_partition(0, 0).unwrap();
 
+    let process_state_changed_event = loader.get_process_state_changed_event().unwrap();
+
     cat(&mut terminal, &filesystem, "/etc/motd").unwrap();
 
     if let Err(err) = login(&mut terminal, &mut keyboard, &filesystem) {
@@ -182,135 +386,58 @@ fn main() {
 
     loop {
         let line = get_next_line(&mut terminal);
-        let mut arguments = line.split_whitespace();
-        let command_opt = arguments.next();
+        let jobs = match generate_jobs(&mut terminal, &filesystem, &twili, &loader, &line) {
+            Ok(jobs) => jobs,
+            Err(err) => {
+                let _ = writeln!(&mut terminal, "Failed to run line: {:?}", err);
+                continue
+            }
+        };
 
-        if command_opt.is_none() {
-            continue;
+        let mut waiters = vec![process_state_changed_event.0.as_ref()];
+        let mut pids = vec![];
+
+        let mut finished_count = 0;
+        for job in &jobs {
+            if let Err(err) = job.start(&loader) {
+                let _ = writeln!(&mut terminal, "Failed to start process: {:?}", err);
+            }
+            match job {
+                Job::BuiltIn { thread } => waiters.push(thread.as_thread_ref().0.as_ref_static()),
+                Job::Process { pid } => pids.push(pid),
+            }
         }
 
-        match command_opt.unwrap() {
-            "useradd" => {
-                match arguments.next() {
-                    None => {
-                        let _ = writeln!(&mut terminal, "usage: useradd <username>");
-                    }
-                    Some(username) => match user_add(&mut terminal, &mut keyboard, &filesystem, username) {
-                        Ok(_) => (),
-                        Err(err) => {
-                            let _ = writeln!(&mut terminal, "Failed to add user: {:?}", err);
-                        }
-                    },
-                }
-            }
-            "meme1" => show_gif(&mut keyboard, &LOUIS1[..]),
-            "meme2" => show_gif(&mut keyboard, &LOUIS2[..]),
-            "meme3" => show_gif(&mut keyboard, &LOUIS3[..]),
-            "meme4" => show_gif(&mut keyboard, &LOUIS4[..]),
-            "meme5" => show_gif(&mut keyboard, &LOUIS5[..]),
-            "meme6" => show_gif(&mut keyboard, &LOUIS6[..]),
-            "memset" => show_gif(&mut keyboard, &LOUIS7[..]),
-            "cat" => {
-                match arguments.nth(0) {
-                    None => {
-                        let _ = writeln!(&mut terminal, "usage: cat <file>");
-                    }
-                    Some(path) => {
-                        if let Err(error) = cat(&mut terminal, &filesystem, path) {
-                            let _ = writeln!(&mut terminal, "cat: {}", error);
-                        }
-                    }
-                }
-
-            }
-            "pwd" => {
-                let _ = writeln!(&mut terminal, "{}", CURRENT_WORK_DIRECTORY.lock().as_str());
-            },
-            "cd" => {
-                match arguments.nth(0) {
-                    None => {
-                        let _ = writeln!(&mut terminal, "usage: cd <directory>");
-                    }
-                    Some(path) => {
-                        if let Err(error) = cd(&filesystem, path) {
-                            let _ = writeln!(&mut terminal, "cd: {}", error);
-                        }
-                    }
-                }
-            }
-            "ls" => if let Err(error) = ls(&mut terminal, &filesystem, arguments.nth(0)) {
-                let _ = writeln!(&mut terminal, "ls: {}", error);
-            },
-            "test_threads" => terminal = test_threads(terminal),
-            "test_divide_by_zero" => test_divide_by_zero(),
-            "test_page_fault" => test_page_fault(),
-            "connect" => {
-                let handle = sm::IUserInterfaceProxy::raw_new().unwrap().get_service(u64::from_le_bytes(*b"vi:\0\0\0\0\0"));
-                let _ = writeln!(&mut terminal, "Got handle {:?}", handle);
-            },
-            "exit" => return,
-            "ps" => if let Err(err) = ps(&mut terminal, &loader) {
-                let _ = writeln!(&mut terminal, "ps: {}", err);
-            },
-            "kill" => {
-                match arguments.nth(0) {
-                    None => {
-                        let _ = writeln!(&mut terminal, "usage: kill <pid>");
-                    }
-                    Some(pid) => {
-                        match str::parse(pid) {
-                            Ok(pid) => if let Err(error) = kill(&loader, pid) {
-                                let _ = writeln!(&mut terminal, "kill: {}", error);
-                            },
-                            Err(_) => {
-                                let _ = writeln!(&mut terminal, "usage: kill <pid>");
+        while finished_count != jobs.len() {
+            match syscalls::wait_synchronization(&waiters, None) {
+                Err(err) => {
+                    error!("{:?}", err);
+                    let _ = writeln!(&mut terminal, "Internal error: {:?}", err);
+                    break;
+                },
+                Ok(0) => {
+                    let _ = process_state_changed_event.clear();
+                    // Check all the pids, hopefully one died.
+                    pids.retain(|pid| {
+                        let state = match loader.get_state(**pid) {
+                            Ok(state) => state,
+                            Err(err) => {
+                                finished_count += 1;
+                                error!("{:?}", err);
+                                return false;
                             }
+                        };
+                        let is_exited = ProcessState(state) == ProcessState::Exited;
+                        if is_exited {
+                            finished_count += 1;
                         }
-                    }
-                }
-            }
-            //"stackdump" => unsafe { stack::KernelStack::dump_current_stack() },
-            "help" => {
-                let _ = writeln!(&mut terminal, "COMMANDS:");
-                let _ = writeln!(&mut terminal, "exit: Exit this process");
-                let _ = writeln!(&mut terminal, "useradd <username>: Adds a new user");
-                let _ = writeln!(&mut terminal, "cat <file>: Print a file on the terminal");
-                let _ = writeln!(&mut terminal, "cd <directory>: change the working directory");
-                let _ = writeln!(&mut terminal, "ls [directory]: List directory contents. Defaults to the current directory.");
-                let _ = writeln!(&mut terminal, "pwd: Print name of the current/working directory");
-                let _ = writeln!(&mut terminal, "kill <pid>: Kill the given process");
-                let _ = writeln!(&mut terminal, "ps: List running processes");
-                let _ = writeln!(&mut terminal, "meme1: Display the KFS-1 meme");
-                let _ = writeln!(&mut terminal, "meme2: Display the KFS-2 meme");
-                let _ = writeln!(&mut terminal, "meme3: Display the KFS-3 meme");
-                let _ = writeln!(&mut terminal, "meme4: Display the KFS-4 meme");
-                let _ = writeln!(&mut terminal, "meme5: Display the KFS-5 meme");
-                let _ = writeln!(&mut terminal, "meme6: Display the KFS-6 meme");
-                let _ = writeln!(&mut terminal, "memset: Display the KFS-7 meme");
-                let _ = writeln!(&mut terminal, "test_threads: Run threads that concurrently print As and Bs");
-                let _ = writeln!(&mut terminal, "test_divide_by_zero: Check exception handling by throwing a divide by zero");
-                let _ = writeln!(&mut terminal, "test_page_fault: Check exception handling by throwing a page_fault");
-            },
-            name => {
-                // Try to run it as an external binary.
-                let res = (|| {
-                    let pid = loader.create_title(name.as_bytes(), line.as_bytes())?;
-                    let stdin = terminal.clone_pipe()?;
-                    let stdout = terminal.clone_pipe()?;
-                    let stderr = terminal.clone_pipe()?;
-                    twili.register_pipes(pid, stdin, stdout, stderr)?;
-                    loader.launch_title(pid)?;
-                    loader.wait(pid)
-                })();
-
-                match res {
-                    Err(Error::Loader(LoaderError::ProgramNotFound, _)) => {
-                        let _ = writeln!(&mut terminal, "Unknown command");
-                    },
-                    Err(err) => {
-                        let _ = writeln!(&mut terminal, "Error: {:?}", err);
-                    },
-                    Ok(_exitstatus) => ()
+                        !is_exited
+                    })
+                },
+                Ok(idx) => {
+                    // Subprocess died?
+                    finished_count += 1;
+                    waiters.remove(idx);
                 }
             }
         }
@@ -393,24 +520,6 @@ fn get_path_relative_to_current_directory(resource: &str) -> String {
     absolute_current_directory
 }
 
-/// Change the current working directory
-fn cd(filesystem: &IFileSystemProxy, directory: &str) -> Result<(), Error> {
-    let absolute_current_directory = get_path_relative_to_current_directory(directory);
-    if absolute_current_directory.len() > 0x300 {
-        return Err(FileSystemError::InvalidInput.into())
-    }
-
-    let mut ipc_path = [0x0; 0x300];
-    ipc_path[..absolute_current_directory.as_bytes().len()].copy_from_slice(absolute_current_directory.as_bytes());
-
-
-    filesystem.open_directory(3, &ipc_path)?;
-
-    let mut current_directory = CURRENT_WORK_DIRECTORY.lock();
-    *current_directory = absolute_current_directory;
-    Ok(())
-}
-
 /// Print a file on the standard output.
 fn cat<W: Write>(f: &mut W, filesystem: &IFileSystemProxy, file: &str) -> Result<(), Error> {
     let absolute_file_directory = get_path_relative_to_current_directory(file);
@@ -440,224 +549,6 @@ fn cat<W: Write>(f: &mut W, filesystem: &IFileSystemProxy, file: &str) -> Result
     }
     Ok(())
 }
-
-/// List files and folders at the given path, or in the current path is none is
-/// given.
-#[allow(clippy::if_same_then_else)]
-fn ls(mut terminal: &mut Terminal, filesystem: &IFileSystemProxy, orig_path: Option<&str>) -> Result<(), Error> {
-    use sunrise_libuser::fs::{DirectoryEntry, DirectoryEntryType};
-
-    #[allow(clippy::missing_docs_in_private_items)]
-    const BG: Color = Color::rgb(0, 0, 0);
-    #[allow(clippy::missing_docs_in_private_items)]
-    const FILE_FG: Color = Color::rgb(0x56, 0xF7, 0x68);
-    #[allow(clippy::missing_docs_in_private_items)]
-    const DIR_FG: Color = Color::rgb(0x68, 0x70, 0xF1);
-
-    let path = orig_path.unwrap_or(".");
-    let path = get_path_relative_to_current_directory(path);
-    if path.len() > 0x300 {
-        return Err(FileSystemError::InvalidInput.into())
-    }
-
-    let mut ipc_path = [0x0; 0x300];
-    ipc_path[..path.as_bytes().len()].copy_from_slice(path.as_bytes());
-
-    let directory = match filesystem.open_directory(3, &ipc_path) {
-        Ok(d) => d,
-        Err(Error::FileSystem(FileSystemError::NotADirectory, _)) => {
-            let _ = writeln!(&mut terminal, "{}", orig_path.unwrap_or(&CURRENT_WORK_DIRECTORY.lock()));
-            /*terminal.print_attr(
-                orig_path.unwrap_or(&CURRENT_WORK_DIRECTORY.lock()),
-                FILE_FG, BG);*/
-            return Ok(())
-        },
-        Err(err) => return Err(err)
-    };
-
-    let mut entries = [DirectoryEntry {
-        path: [0; 0x300], attribute: 0,
-        directory_entry_type: DirectoryEntryType::Directory, file_size: 0
-    }; 6];
-    loop {
-        let count = directory.read(&mut entries)?;
-        if count == 0 {
-            break;
-        }
-        let entries = &entries[..count as usize];
-        for entry in entries {
-            let split_at = entry.path.iter().position(|v| *v == 0).unwrap_or(0x300);
-            let prefix_len = if path == "/" {
-                // The prefix to remove is literally just the leading `/`
-                1
-            } else {
-                // The prefix to remove is the path + the trailing `/`.
-                path.len() + 1
-            };
-
-            let mut s = String::from_utf8_lossy(&entry.path[prefix_len..split_at]).into_owned();
-            s.push('\n');
-            if entry.directory_entry_type == DirectoryEntryType::File {
-                let _ = write!(&mut terminal, "{}", s);
-                //terminal.print_attr(&s, FILE_FG, BG);
-            } else {
-                let _ = write!(&mut terminal, "{}", s);
-                //terminal.print_attr(&s, DIR_FG, BG);
-            };
-        }
-    }
-
-    Ok(())
-}
-
-/// Kill the process associated with the provided pid.
-fn kill(loader: &ILoaderInterfaceProxy, pid: u64) -> Result<(), Error> {
-    loader.kill(pid)?;
-    let _ = loader.wait(pid);
-    Ok(())
-}
-
-/// Get the pid and names of processes currently running.
-fn ps(terminal: &mut Terminal, loader: &ILoaderInterfaceProxy) -> Result<(), Error> {
-    let mut pids = [0; 256];
-    let pid_read = syscalls::get_process_list(&mut pids)?;
-    for pid in &pids[..pid_read] {
-        let mut name = [0; 32];
-        let name = match loader.get_name(*pid, &mut name) {
-            Ok(copied_len) => String::from_utf8_lossy(&name[..copied_len as usize]).into_owned(),
-            Err(err) => {
-                log::debug!("Error: {:?}", err);
-                String::from("<Unknown>")
-            }
-        };
-        let _ = writeln!(terminal, "{}: {}", pid, name);
-    }
-    Ok(())
-}
-
-/// Shows a GIF in a new window, blocking the caller. When a key is pressed, the
-/// window is closed and control is given back to the caller.
-fn show_gif(keyboard: &mut Keyboard, louis: &[u8]) {
-    let mut reader = gif::Decoder::new(&louis[..]).read_info().unwrap();
-    let mut window = Window::new(0, 0, u32::from(reader.width()), u32::from(reader.height())).unwrap();
-    let mut buf = Vec::new();
-
-    loop {
-        {
-            let end = reader.next_frame_info().unwrap().is_none();
-            if end {
-                reader = gif::Decoder::new(&louis[..]).read_info().unwrap();
-                let _ = reader.next_frame_info().unwrap().unwrap();
-            }
-        }
-        buf.resize(reader.buffer_size(), 0);
-        // simulate read into buffer
-        reader.read_into_buffer(&mut buf[..]).unwrap();
-        for y in 0..(reader.height() as usize) {
-            for x in 0..(reader.width() as usize) {
-                let frame_coord = (y * reader.width() as usize + x) * 4;
-                window.write_px_at(x, y, Color::rgb(buf[frame_coord], buf[frame_coord + 1], buf[frame_coord + 2]));
-            }
-        }
-        window.draw().unwrap();
-        if keyboard.try_read_key().is_some() {
-            return
-        }
-    }
-}
-
-/// Test function ensuring threads are working properly.
-fn test_threads(terminal: Terminal) -> Terminal {
-    #[doc(hidden)]
-    fn thread_a(terminal: usize) {
-        let terminal = unsafe {
-            Arc::from_raw(terminal as *const Mutex<Terminal>)
-        };
-        let mut i = 0;
-        while i < 10 {
-            if let Some(mut lock) = terminal.try_lock() {
-                let _ = writeln!(lock, "A");
-                i += 1;
-            }
-            let _ = libuser::syscalls::sleep_thread(0);
-        }
-    }
-
-    #[doc(hidden)]
-    fn thread_b(terminal: usize) {
-        // Wrap in a block to forcibly call Arc destructor before exiting the thread.
-        {
-            let terminal = unsafe {
-                Arc::from_raw(terminal as *const Mutex<Terminal>)
-            };
-            let mut i = 0;
-            while i < 10 {
-                if let Some(mut lock) = terminal.try_lock() {
-                    let _ = writeln!(lock, "B");
-                    i += 1;
-                }
-                let _ = libuser::syscalls::sleep_thread(0);
-            }
-        }
-    }
-
-    let terminal = Arc::new(Mutex::new(terminal));
-
-    let t = Thread::create(thread_b, Arc::into_raw(terminal.clone()) as usize, threads::DEFAULT_STACK_SIZE)
-        .expect("Failed to create thread B");
-    t.start()
-        .expect("Failed to start thread B");
-
-
-    // thread is running b, run a meanwhile
-    thread_a(Arc::into_raw(terminal.clone()) as usize);
-
-    // Wait for thread_b to terminate.
-    t.join().expect("Cannot wait for thread B to finish");
-
-    match Arc::try_unwrap(terminal) {
-        Ok(terminal) => terminal.into_inner(),
-        _ => panic!("Cannot Arc::try_unwrap after the exit of thread b, this is unexpected!")
-    }
-}
-
-/// Test function ensuring divide by zero interruption kills only the current
-/// process.
-fn test_divide_by_zero() {
-    // don't panic, we want to actually divide by zero
-    unsafe {
-        asm!("
-        mov eax, 42
-        mov ecx, 0
-        div ecx" :::: "volatile", "intel")
-    }
-}
-
-/// Test function ensuring pagefaults kills only the current process.
-fn test_page_fault() {
-    // dereference the null pointer.
-    // doing this in rust is so UB, it's optimized out, so we do it in asm.
-    unsafe {
-        asm!("
-        mov al, [0]
-        " ::: "eax" : "volatile", "intel")
-    }
-}
-
-/// Meme for KFS1
-static LOUIS1: &[u8] = include_bytes!("../img/meme1.gif");
-/// Meme for KFS2
-static LOUIS2: &[u8] = include_bytes!("../img/meme2.gif");
-/// Meme for KFS3
-static LOUIS3: &[u8] = include_bytes!("../img/meme3.gif");
-/// Meme for KFS4
-static LOUIS4: &[u8] = include_bytes!("../img/meme4.gif");
-/// Meme for KFS5
-static LOUIS5: &[u8] = include_bytes!("../img/meme5.gif");
-/// Meme for KFS6
-static LOUIS6: &[u8] = include_bytes!("../img/meme6.gif");
-/// Meme for KFS7
-static LOUIS7: &[u8] = include_bytes!("../img/meme7.gif");
 
 kip_header!(HEADER = sunrise_libuser::caps::KipHeader {
     magic: *b"KIP1",

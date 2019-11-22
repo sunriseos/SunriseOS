@@ -214,7 +214,7 @@ impl<T> SizedIPCBuffer for [T] {
     }
 
     fn is_cool(addr: usize, size: usize) -> bool {
-        size % core::mem::size_of::<T>() == 0 && size != 0 &&
+        size % core::mem::size_of::<T>() == 0 &&
            (addr % core::mem::align_of::<T>()) == 0
     }
 

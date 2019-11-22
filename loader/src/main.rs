@@ -43,7 +43,7 @@ use sunrise_libuser::futures::{WaitableManager, WorkQueue};
 use sunrise_libuser::error::{Error, LoaderError, PmError, KernelError};
 use sunrise_libuser::ldr::ILoaderInterfaceAsync;
 use sunrise_libuser::syscalls::{self, map_process_memory};
-use sunrise_libuser::types::{Pid, Process};
+use sunrise_libuser::types::{Pid, Process, ReadableEvent, WritableEvent, HandleRef};
 use sunrise_libkern::process::*;
 use sunrise_libkern::MemoryPermissions;
 use sunrise_libuser::mem::{find_free_address, PAGE_SIZE};
@@ -63,6 +63,10 @@ const MAX_ELF_SIZE: u64 = 128 * 1024 * 1024;
 
 lazy_static! {
     static ref PROCESSES: Mutex<BTreeMap<u64, (Process, String)>> = Mutex::new(BTreeMap::new());
+    /// Public ReadableEvent that gets signaled when a process state changes.
+    /// Other processes can get it by using the get_process_state_changed_event
+    /// command.
+    static ref PROCESS_STATE_CHANGED: (WritableEvent, ReadableEvent) = syscalls::create_event().unwrap();
 }
 
 /// Start the given titleid by loading its content from the provided filesystem.
@@ -219,12 +223,64 @@ impl ILoaderInterfaceAsync for LoaderIface {
         }))
     }
 
-    fn launch_title(&mut self, _workqueue: WorkQueue<'static>, pid: u64) -> FutureObj<'_, Result<(), Error>> {
+    fn launch_title(&mut self, workqueue: WorkQueue<'static>, pid: u64) -> FutureObj<'_, Result<(), Error>> {
         let res = (|| -> Result<(), Error> {
             let lock = PROCESSES.lock();
             let process = lock.get(&pid)
                 .ok_or(PmError::PidNotFound)?;
             debug!("Starting process.");
+
+            let process_static = (process.0).0.as_ref_static();
+
+            // TODO: Move the handling of PROCESS_STATE_CHANGED to a single dedicated task.
+            // BODY: We currently handle PROCESS_STATE_CHANGED signaling in one
+            // BODY: task per launched process. This is a ridiculous amount of
+            // BODY: overhead.
+            workqueue.clone().spawn(FutureObj::new(Box::new(async move {
+                let mut current_state = ProcessState::Created;
+                while current_state != ProcessState::Exited {
+                    if let Err(err) = process_static.wait_async(workqueue.clone()).await {
+                        error!("{:?}", err);
+                        return;
+                    }
+                    let lock = PROCESSES.lock();
+
+                    let process = match lock.get(&pid)
+                        .ok_or(PmError::PidNotFound)
+                    {
+                        Ok(process) => process,
+                        Err(err) => {
+                            error!("{:?}", err);
+                            return;
+                        }
+                    };
+
+                    let old_state = current_state;
+                    let new_state = match process.0.state() {
+                        Ok(state) => state,
+                        Err(err) => {
+                            log::error!("{:?}", err);
+                            break;
+                        }
+                    };
+                    current_state = new_state;
+                    if old_state != new_state {
+                        if let Err(err) = PROCESS_STATE_CHANGED.0.signal() {
+                            error!("{:?}", err);
+                            return;
+                        }
+                    }
+
+                    match process.0.reset_signal() {
+                        Ok(()) | Err(Error::Kernel(KernelError::InvalidState, _)) => (),
+                        Err(err) => {
+                            log::error!("{:?}", err);
+                            break;
+                        }
+                    };
+                }
+            })));
+
             if let Err(err) = process.0.start(0, 0, PAGE_SIZE as u32 * 32) {
                 error!("Failed to start pid {}: {}", pid, err);
                 return Err(err)
@@ -271,6 +327,21 @@ impl ILoaderInterfaceAsync for LoaderIface {
                     return Ok(0);
                 }
             }
+        }))
+    }
+
+    fn get_state(&mut self, _workqueue: WorkQueue<'static>, pid: u64) -> FutureObj<'_, Result<u8, Error>> {
+        FutureObj::new(Box::new(async move {
+            let lock = PROCESSES.lock();
+            let process = &lock.get(&pid)
+                .ok_or(PmError::PidNotFound)?.0;
+            Ok(process.state()?.0)
+        }))
+    }
+
+    fn get_process_state_changed_event(&mut self, _workqueue: WorkQueue<'static>) -> FutureObj<'_, Result<HandleRef<'static>, Error>> {
+        FutureObj::new(Box::new(async move {
+            Ok((PROCESS_STATE_CHANGED.1).0.as_ref_static())
         }))
     }
 
@@ -392,6 +463,9 @@ capabilities!(CAPABILITIES = Capabilities {
         sunrise_libuser::syscalls::nr::GetProcessId,
         sunrise_libuser::syscalls::nr::ResetSignal,
         sunrise_libuser::syscalls::nr::TerminateProcess,
+
+        sunrise_libuser::syscalls::nr::CreateEvent,
+        sunrise_libuser::syscalls::nr::SignalEvent,
     ],
     raw_caps: [sunrise_libuser::caps::ioport(0x60), sunrise_libuser::caps::ioport(0x64), sunrise_libuser::caps::irq_pair(1, 0x3FF)]
 });

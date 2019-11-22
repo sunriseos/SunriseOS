@@ -9,6 +9,7 @@ edition = "2018"
 gif = { git = "https://github.com/SunriseOS/image-gif" }
 log = "0.4.6"
 sunrise-libuser = { path = "../libuser" }
+sunrise-libkern = { path = "../libkern" }
 spin = "0.5"
 bstr = { version = "0.2", default-features = false }
 sha1 = { version = "0.6.0", default-features = false }

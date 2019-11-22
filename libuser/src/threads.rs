@@ -318,6 +318,11 @@ impl Thread {
             }
         }
     }
+
+    /// Get the underlying thread handle.
+    pub fn as_thread_ref(&self) -> &ThreadHandle {
+        &self.0.thread_handle.r#try().unwrap()
+    }
 }
 
 /// Small stub executed by every thread but the main thread when they start.

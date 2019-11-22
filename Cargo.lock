@@ -2073,6 +2073,7 @@ dependencies = [
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "sha1 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "spin 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sunrise-libkern 0.1.0",
  "sunrise-libuser 0.1.0",
 ]
 

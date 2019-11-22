@@ -13,8 +13,7 @@ use spin::Mutex;
 use lazy_static::lazy_static;
 
 use sunrise_libuser::{kip_header, capabilities};
-use sunrise_libuser::error::{Error, PmError};
-use sunrise_libuser::ipc;
+use sunrise_libuser::error::{Error, TwiliError, PmError};
 use sunrise_libuser::ipc::server::{port_handler, new_session_wrapper};
 use sunrise_libuser::futures::{WaitableManager, WorkQueue};
 use sunrise_libuser::futures_rs::future::FutureObj;
@@ -37,6 +36,24 @@ impl ITwiliManagerService for TwiliManIface {
         PIPES.lock().insert(pid, (stdin, stdout, stderr));
         Ok(())
     }
+
+    fn create_pipe(&mut self, manager: WorkQueue<'static>) -> Result<(IPipeProxy, IPipeProxy), Error> {
+        let pipe = Arc::new(Mutex::new(DumbPipe::default()));
+
+        // Read Side
+        let read_side = DumbPipeRead { pipe: pipe.clone() };
+        let (server, client1) = syscalls::create_session(false, 0)?;
+        let wrapper = new_session_wrapper(manager.clone(), server, read_side, DumbPipeRead::dispatch);
+        manager.spawn(FutureObj::new(Box::new(wrapper)));
+
+        // Write Side
+        let write_side = DumbPipeWrite { pipe: pipe.clone() };
+        let (server, client2) = syscalls::create_session(false, 0)?;
+        let wrapper = new_session_wrapper(manager.clone(), server, write_side, DumbPipeWrite::dispatch);
+        manager.spawn(FutureObj::new(Box::new(wrapper)));
+
+        Ok((IPipeProxy::from(client1), IPipeProxy::from(client2)))
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -48,12 +65,22 @@ impl ITwiliService for TwiliIface {
             .ok_or(PmError::PidNotFound.into())
     }
 
-    fn create_pipe(&mut self, manager: WorkQueue<'static>) -> Result<IPipeProxy, Error> {
-        let pipe = DumbPipe(Arc::new(Mutex::new(VecDeque::new())));
-        let (server, client) = syscalls::create_session(false, 0)?;
-        let wrapper = new_session_wrapper(manager.clone(), server, pipe, DumbPipe::dispatch);
+    fn create_pipe(&mut self, manager: WorkQueue<'static>) -> Result<(IPipeProxy, IPipeProxy), Error> {
+        let pipe = Arc::new(Mutex::new(DumbPipe::default()));
+
+        // Read Side
+        let read_side = DumbPipeRead { pipe: pipe.clone() };
+        let (server, client1) = syscalls::create_session(false, 0)?;
+        let wrapper = new_session_wrapper(manager.clone(), server, read_side, DumbPipeRead::dispatch);
         manager.spawn(FutureObj::new(Box::new(wrapper)));
-        Ok(IPipeProxy::from(client))
+
+        // Write Side
+        let write_side = DumbPipeWrite { pipe: pipe.clone() };
+        let (server, client2) = syscalls::create_session(false, 0)?;
+        let wrapper = new_session_wrapper(manager.clone(), server, write_side, DumbPipeWrite::dispatch);
+        manager.spawn(FutureObj::new(Box::new(wrapper)));
+
+        Ok((IPipeProxy::from(client1), IPipeProxy::from(client2)))
     }
 }
 
@@ -65,29 +92,78 @@ lazy_static! {
     };
 }
 
+#[derive(Debug, Default)]
+struct DumbPipe {
+    queue: VecDeque<u8>,
+    is_done: bool,
+}
+
 #[derive(Debug, Clone)]
-struct DumbPipe(Arc<Mutex<VecDeque<u8>>>);
-impl IPipeAsync for DumbPipe {
-    fn read<'a>(&'a mut self, work_queue: WorkQueue<'static>, buf: &'a mut [u8]) -> FutureObj<'a, Result<u64, Error>> {
+struct DumbPipeRead {
+    pipe: Arc<Mutex<DumbPipe>>,
+}
+
+#[derive(Debug, Clone)]
+struct DumbPipeWrite {
+    pipe: Arc<Mutex<DumbPipe>>,
+}
+
+
+impl IPipeAsync for DumbPipeWrite {
+    fn read<'a>(&'a mut self, _work_queue: WorkQueue<'static>, _buf: &'a mut [u8]) -> FutureObj<'a, Result<u64, Error>> {
         FutureObj::new(Box::new(async move {
-            DATA_EVENT.1.wait_async_cb(work_queue.clone(), || {
-                self.0.lock().get(0).map(|_| ())
-            }).await;
-            let mut locked = self.0.lock();
-            let count = min(buf.len(), locked.len());
-            for (idx, item) in locked.drain(..count).enumerate() {
-                buf[idx] = item;
-            }
-            Ok(count as u64)
+            Err(TwiliError::OperationUnsupported.into())
         }))
     }
 
     fn write<'a>(&'a mut self, _manager: WorkQueue<'static>, buf: &'a [u8]) -> FutureObj<'a, Result<(), Error>> {
         FutureObj::new(Box::new(async move {
-            self.0.lock().extend(buf);
+            self.pipe.lock().queue.extend(buf);
             DATA_EVENT.0.signal().unwrap();
             Ok(())
         }))
+    }
+}
+
+impl IPipeAsync for DumbPipeRead {
+    fn read<'a>(&'a mut self, work_queue: WorkQueue<'static>, buf: &'a mut [u8]) -> FutureObj<'a, Result<u64, Error>> {
+        FutureObj::new(Box::new(async move {
+            let mut locked = DATA_EVENT.1.wait_async_cb(work_queue.clone(), || {
+                let locked = self.pipe.lock();
+                if !locked.queue.is_empty() || locked.is_done {
+                    Some(locked)
+                } else {
+                    None
+                }
+            }).await;
+
+            let (s1, s2) = locked.queue.as_slices();
+
+            let counts1 = min(s1.len(), buf.len());
+            buf[..counts1].copy_from_slice(&s1[..counts1]);
+
+            let counts2 = min(s2.len(), buf.len() - counts1);
+            buf[counts1..counts1 + counts2].copy_from_slice(&s2[..counts2]);
+
+            log::info!("Read {} bytes", counts1 + counts2);
+
+            locked.queue.drain(..counts1 + counts2);
+            Ok((counts1 + counts2) as u64)
+        }))
+    }
+
+    fn write<'a>(&'a mut self, _manager: WorkQueue<'static>, _buf: &'a [u8]) -> FutureObj<'a, Result<(), Error>> {
+        FutureObj::new(Box::new(async move {
+            Err(TwiliError::OperationUnsupported.into())
+        }))
+    }
+}
+
+impl Drop for DumbPipeWrite {
+    fn drop(&mut self) {
+        log::info!("Write side of pipe deaded.");
+        self.pipe.lock().is_done = true;
+        DATA_EVENT.0.signal().unwrap();
     }
 }
 
@@ -130,6 +206,11 @@ capabilities!(CAPABILITIES = Capabilities {
 
         sunrise_libuser::syscalls::nr::ReplyAndReceiveWithUserBuffer,
         sunrise_libuser::syscalls::nr::AcceptSession,
+        sunrise_libuser::syscalls::nr::CreateSession,
+
+        sunrise_libuser::syscalls::nr::CreateEvent,
+        sunrise_libuser::syscalls::nr::SignalEvent,
+        sunrise_libuser::syscalls::nr::ClearEvent,
     ],
     raw_caps: [sunrise_libuser::caps::ioport(0x60), sunrise_libuser::caps::ioport(0x64), sunrise_libuser::caps::irq_pair(1, 0x3FF)]
 });

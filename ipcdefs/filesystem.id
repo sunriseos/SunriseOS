@@ -112,6 +112,14 @@ interface sunrise_libuser::fs::IFileSystem {
     # When bit 2 is set, the file is Appendable: unless this bit is set, you will not be able to write beyond the end of a file (such writes will result in an error 0x307202)
     [8] open_file(u32 mode, buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x300> path) -> object<sunrise_libuser::fs::IFile> file;
 
+    # Open a file at the specified ``path`` with the given ``mode`` flags.
+    #
+    # ``mode`` controls how the file is opened, based on which bits are set:
+    # When bit 0 is set, the file is Readable: you can use the Read operation.
+    # When bit 1 is set, the file is Writable: you can use the Write operation.
+    # When bit 2 is set, the file is Appendable: unless this bit is set, you will not be able to write beyond the end of a file (such writes will result in an error 0x307202)
+    [5000] open_file_as_ipipe(u32 mode, buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x300> path) -> object<sunrise_libuser::twili::IPipe> file;
+
     # Open a directory at the specified ``path`` with the given ``filter_flags`` flags.
     [9] open_directory(u32 filter_flags, buffer<sunrise_libuser::fs::FileSystemPath, 0x19, 0x300> path) -> object<sunrise_libuser::fs::IDirectory> directory;
 
@@ -128,7 +136,7 @@ interface sunrise_libuser::fs::IFileSystem {
     [4000] get_filesystem_type() -> sunrise_libuser::fs::FileSystemType;
 }
 
-# This is the interface for a raw device, usually a block device. 
+# This is the interface for a raw device, usually a block device.
 interface sunrise_libuser::fs::IStorage {
     # Read the content of a storage at a given ``offset`` in ``out_buf``.
     [0] read(u64 offset, u64 length) -> array<u8, 0x46> out_buf;
