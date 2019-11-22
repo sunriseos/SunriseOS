@@ -70,7 +70,7 @@ lazy_static! {
 }
 
 /// Start the given titleid by loading its content from the provided filesystem.
-fn boot(fs: &IFileSystemProxy, titlename: &str, args: &[u8], start: bool) -> Result<Pid, Error> {
+fn boot(fs: &IFileSystemProxy, titlename: &str, args: &[u8], env: &[u8], start: bool) -> Result<Pid, Error> {
     info!("Booting titleid {}", titlename);
 
     let val = format!("/bin/{}/main", titlename);
@@ -136,13 +136,26 @@ fn boot(fs: &IFileSystemProxy, titlename: &str, args: &[u8], start: bool) -> Res
     //
     // Like, wtf is this. So we do our own, based on our usage. See
     // libuser::argv for more info.
-    let args_size = args.len() * 2 + 0x20;
-    let args_size = align_up(args_size, size_of::<usize>());
-    // Add a whole page for the vector of ptrs.
-    let args_size = args_size + 0x1000 / size_of::<usize>();
-    let args_size = align_up(args_size, PAGE_SIZE);
 
-    let total_size = elf_size + align_up(args_size, PAGE_SIZE);
+    // Get the size of the args + environ combined
+    let args_size = args.len() + 1 + env.len();
+    // For prealloc size, get the 0x20 byte header
+    let mut prealloc_size = 0x20;
+    // Add the args_size twice, once for the actual args, and one for the
+    // argument storage location.
+    prealloc_size += args_size * 2;
+    // Align the size to the max pointer size supported by the OS (8).
+    prealloc_size = align_up(prealloc_size, 8);
+    // Add a whole page for the vector of ptrs for the System Argv. This allows
+    // 512 args.
+    prealloc_size += 0x1000;
+    // And another page for the vector of ptrs for the System Envp. This allows
+    // 512 environment variables.
+    prealloc_size += 0x1000;
+    // Finally, align the size up to the nearest page.
+    let prealloc_size = align_up(prealloc_size, PAGE_SIZE);
+
+    let total_size = elf_size + prealloc_size;
 
     let process = sunrise_libuser::syscalls::create_process(&ProcInfo {
         name: titlename_bytes,
@@ -159,31 +172,34 @@ fn boot(fs: &IFileSystemProxy, titlename: &str, args: &[u8], start: bool) -> Res
     elf_loader::load_file(&process, &elf, aslr_base)?;
 
     debug!("Handling args");
-    let addr = find_free_address(args_size, 0x1000)?;
-    map_process_memory(addr, &process, aslr_base + elf_size, args_size)?;
+    let addr = find_free_address(prealloc_size, 0x1000)?;
+    map_process_memory(addr, &process, aslr_base + elf_size, prealloc_size)?;
 
     {
         // Copy the ELF data in the remote process.
         let dest_ptr = addr as *mut u8;
         let dest = unsafe {
             // Safety: Guaranteed to be OK if the syscall returns successfully.
-            slice::from_raw_parts_mut(dest_ptr, args_size)
+            slice::from_raw_parts_mut(dest_ptr, prealloc_size)
         };
         // Copy header
-        dest[0..4].copy_from_slice(&args_size.to_le_bytes());
-        dest[4..8].copy_from_slice(&args.len().to_le_bytes());
+        dest[0..4].copy_from_slice(&prealloc_size.to_le_bytes());
+        dest[4..8].copy_from_slice(&args_size.to_le_bytes());
         // Copy raw cmdline.
         dest[0x20..0x20 + args.len()].copy_from_slice(args);
+        // Copy raw env.
+        let curpos = 0x20 + args.len() + 1;
+        dest[curpos..curpos + env.len()].copy_from_slice(env);
     }
 
     // Maybe I should panic if this fails, cuz that'd be really bad.
     unsafe {
         // Safety: this memory was previously mapped and all pointers to it
         // should have been dropped already.
-        syscalls::unmap_process_memory(addr, &process, aslr_base + elf_size, args_size)?;
+        syscalls::unmap_process_memory(addr, &process, aslr_base + elf_size, prealloc_size)?;
     }
 
-    syscalls::set_process_memory_permission(&process, aslr_base + elf_size, args_size, MemoryPermissions::RW)?;
+    syscalls::set_process_memory_permission(&process, aslr_base + elf_size, prealloc_size, MemoryPermissions::RW)?;
 
     if start {
         debug!("Starting process.");
@@ -212,10 +228,10 @@ lazy_static! {
 struct LoaderIface;
 
 impl ILoaderInterfaceAsync for LoaderIface {
-    fn create_title(&mut self, _workqueue: WorkQueue<'static>, title_name: &[u8], args: &[u8]) -> FutureObj<'_, Result<u64, Error>> {
+    fn create_title(&mut self, _workqueue: WorkQueue<'static>, title_name: &[u8], args: &[u8], env: &[u8]) -> FutureObj<'_, Result<u64, Error>> {
         let res = (|| -> Result<u64, Error> {
             let title_name = str::from_utf8(title_name).or(Err(LoaderError::ProgramNotFound))?;
-            let Pid(pid) = boot(&*BOOT_FROM_FS, title_name, args, false)?;
+            let Pid(pid) = boot(&*BOOT_FROM_FS, title_name, args, env, false)?;
             Ok(pid)
         })();
         FutureObj::new(Box::new(async move {
@@ -404,7 +420,9 @@ fn main() {
                         .find(|(_, v)| **v == b'/' || **v == b'\0')
                         .map(|(idx, _)| idx).unwrap_or_else(|| entry.path.len());
                     if let Ok(titleid) = str::from_utf8(&entry.path[5..endpos]) {
-                        let _ = boot(&fs, titleid, &[], true);
+                        if let Err(err) = boot(&fs, titleid, &[], &[], true) {
+                            error!("Failed to boot {}: {:?}.", titleid, err);
+                        }
                     } else {
                         error!("Non-ASCII titleid found in /boot.");
                         continue;

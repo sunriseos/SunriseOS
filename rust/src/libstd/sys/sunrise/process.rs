@@ -89,9 +89,9 @@ impl Command {
                 res
             })
             .collect();
-        
+
         command_line_args.insert(0, self.program.clone());
-        
+
         let command_line = command_line_args.join(" ");
 
         // TODO(Sunrise): Warn about pipes not being implemented
@@ -102,7 +102,16 @@ impl Command {
         };
 
         // TODO(Sunrise): Remap error codes
-        let pid = interface.create_title(self.program.as_bytes(), command_line.as_bytes()).unwrap();
+        let mut env = String::new();
+        for (k, v) in crate::env::vars() {
+            if env.is_empty() {
+                env += "\0";
+            }
+            env += &k;
+            env += "=";
+            env += &v;
+        }
+        let pid = interface.create_title(self.program.as_bytes(), command_line.as_bytes(), env.as_bytes()).unwrap();
         interface.launch_title(pid).unwrap();
 
         let child = Process {
