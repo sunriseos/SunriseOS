@@ -31,7 +31,6 @@ extern crate alloc;
 
 use core::str;
 use core::slice;
-use core::mem::size_of;
 use alloc::boxed::Box;
 use alloc::string::{String, ToString};
 use alloc::collections::BTreeMap;

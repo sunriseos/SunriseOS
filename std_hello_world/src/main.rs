@@ -94,7 +94,6 @@ fn main() {
         println!("Child process is dead!");
     }
 
-
     println!("Job done");
 
 }
