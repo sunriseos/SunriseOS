@@ -356,7 +356,8 @@ pub fn generate_jobs(mut terminal: &mut Terminal, filesystem: &IFileSystemProxy,
         } else {
             // Try to run it as an external binary.
             let args = cmd.args.iter().map(|v| format!("\"{}\" ", v)).collect::<String>();
-            let pid = loader.create_title(cmdname.as_bytes(), args.as_bytes())?;
+            let env = format!("PWD=system:{}\0", &*CURRENT_WORK_DIRECTORY.lock());
+            let pid = loader.create_title(cmdname.as_bytes(), args.as_bytes(), env.as_bytes())?;
             twili.register_pipes(pid, stdin, stdout, stderr)?;
             Job::Process { pid }
         };

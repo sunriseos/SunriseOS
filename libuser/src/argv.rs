@@ -33,6 +33,62 @@
 //!    |    Argument Storage    |
 //!    +------------------------+ < allocated_size
 //! ```
+//!
+//! ## SunriseOS Extension: Envp
+//!
+//! Passing environment variables to a subprogram is necessary for proper
+//! execution of the SunriseOS userspace. For instance, it is necessary to pass
+//! the current working directory to the subprocess so that executing the
+//! following script executes the ls in the right directory.
+//!
+//! ```bash
+//! cd /etc
+//! uutils ls
+//! ```
+//!
+//! To achieve this, the same mechanism to pass arguments is used to pass
+//! environment variables. The environment variables are passed as a string,
+//! after the cmdline, as a `\0`-separated list of VAR_NAME=VAR_VALUE. A
+//! variable name may not have an = or a \0 in its name.
+//!
+//! To separate the cmdline from the environment variables, a `\0` is used. As
+//! such, the region allocated by Loader will look like this:
+//!
+//! ```txt
+//!    +------------------------+ < Always page-aligned.
+//!    |    ProgramArguments    |
+//!    |   u32 allocated_size   |
+//!    |   u32 arguments_size   |
+//!    +------------------------+
+//!    |   0x18 Reserved bytes  |
+//!    +------------------------+
+//!    |      Raw CmdLine       |
+//!    |  arguments_size bytes  |
+//!    |                        |
+//!    | +--------------------+ |
+//!    | |      Arguments     | |
+//!    | +--------------------+ |
+//!    | |         \0         | |
+//!    | +--------------------+ |
+//!    | |  Environment vars  | |
+//!    | +--------------------+ |
+//!    |                        |
+//!    +------------------------+
+//!    |    Argument Storage    |
+//!    |  arguments_size bytes  |
+//!    +------------------------+
+//!    | Alignment bytes. Force |
+//!    | align to size_of(usize)|
+//!    +------------------------+
+//!    |      System Argv       |
+//!    |  Array of pointers to  |
+//!    |    Argument Storage    |
+//!    +------------------------+
+//!    |      System Envp       |
+//!    |  Array of pointers to  |
+//!    |    environment vars    |
+//!    +------------------------+ < allocated_size
+//! ```
 
 #[cfg(not(feature = "build-for-std-app"))]
 use core::mem::{size_of, align_of};
@@ -60,6 +116,9 @@ extern {
     /// elements.
     #[link_name = "__libuser_get_argv"]
     pub fn argv() -> *const *const u8;
+    /// Get the environ array. It is guaranteed to end with a NULL element.
+    #[link_name = "__libuser_get_envp"]
+    pub fn envp() -> *const *const u8;
 }
 
 /// Get the number of arguments in argv.
@@ -77,22 +136,32 @@ pub extern fn argv() -> *const *const u8 {
     __libuser_get_args().0 as *const *const u8
 }
 
-/// Get the arguments. This will parse and setup the arguments the first time it
-/// is called - modifying the __argdata__ section in the process. This function
-/// is safe to call from multiple threads - accesses are synchronized.
+/// Get the environ array. It is guaranteed to end with a NULL element.
+#[cfg(not(feature = "build-for-std-app"))]
+#[export_name = "__libuser_get_envp"]
+pub extern fn envp() -> *const *const u8 {
+    __libuser_get_args().2 as *const *const u8
+}
+
+/// Get the arguments and environment. This will parse and setup the arguments
+/// and environment the first time it is called - modifying the __argdata__
+/// section in the process. This function is safe to call from multiple threads
+/// - accesses are synchronized.
 ///
-/// First returned value is the argv, second value is the argc.
+/// First returned value is the argv, second value is the argc, third value is
+/// the envp.
 #[cfg(not(feature = "build-for-std-app"))]
 #[allow(clippy::cognitive_complexity)]
-fn __libuser_get_args() -> (usize, isize) {
+fn __libuser_get_args() -> (usize, isize, usize) {
     use sunrise_libkern::MemoryPermissions;
 
     /// Once argdata is parsed, this static contains the pointer to the argument
-    /// vector and the size of that vector.
-    static ARGS: Once<(usize, isize)> = Once::new();
+    /// vector, the size of that vector, and a pointer to the environment
+    /// vector.
+    static ARGS: Once<(usize, isize, usize)> = Once::new();
 
     /// Data returned when reading the args fails.
-    const NO_ARGS: (usize, isize) = (0, 0);
+    const NO_ARGS: (usize, isize, usize) = (0, 0, 0);
 
     extern {
         /// Location where the loader will put the argument data. This symbol is
@@ -209,33 +278,33 @@ fn __libuser_get_args() -> (usize, isize) {
         let mut arg_len = 0;
         let mut quote_flag = false;
         let mut argstorage_idx = 0;
+        let mut env_start = None;
 
-        for argi in 0..argdata_strsize {
-            if arg_start.is_none() && args[argi].is_ascii_whitespace() {
-                // Skip over whitespace when we're not currently dealing with an arg.
+        for (argi, item) in args.iter().copied().enumerate() {
+            if arg_start.is_none() && item.is_ascii_whitespace() {
+                // Skip over ascii whitespace
                 continue;
+            }
+
+            if item == 0 {
+                // We found a '\0', time to start handling environment
+                // variables.
+                env_start = Some(argi + 1);
+                break;
             }
 
             if let Some(arg_start_idx) = arg_start {
                 // We're currently handling an arg.
-                let mut end_flag = false;
-
                 // Check if we have reached the end of an argument.
-                if quote_flag {
-                    if args[argi] == b'"' {
-                        end_flag = true;
-                    }
-                } else if args[argi].is_ascii_whitespace() {
-                    end_flag = true;
-                }
+                let end_flag = (quote_flag && item == b'"') || item.is_ascii_whitespace();
 
                 // If we didn't, include the character being processed in the
                 // current arg.
-                if !end_flag && args[argi] != 0 {
+                if !end_flag && item != 0 {
                     arg_len += 1;
                 }
 
-                if (args[argi] == 0 || end_flag) && arg_len != 0 {
+                if (item == 0 || end_flag) && arg_len != 0 {
                     // If we've reached the end of an argument we copy it to the
                     // argstorage region, and put it in argv.
                     argstorage[argstorage_idx..argstorage_idx + arg_len]
@@ -254,15 +323,14 @@ fn __libuser_get_args() -> (usize, isize) {
                         break;
                     }
                 }
+            } else if item == b'"' {
+                // Found a new quoted argument.
+                arg_start = Some(argi + 1);
+                quote_flag = true;
             } else {
                 // Found a new argument.
-                if args[argi] == b'"' {
-                    arg_start = Some(argi + 1);
-                    quote_flag = true;
-                } else if args[argi] != 0 {
-                    arg_start = Some(argi);
-                    arg_len += 1;
-                }
+                arg_start = Some(argi);
+                arg_len += 1;
             }
         }
 
@@ -279,7 +347,26 @@ fn __libuser_get_args() -> (usize, isize) {
 
         __system_argv[__system_argc] = 0;
 
+        let (__system_argv, __system_envp) = __system_argv.split_at_mut(__system_argc + 1);
+        let mut __system_envc = 0;
+
+        if let Some(env_start) = env_start {
+            for split in args[env_start..].split(|&v| v == 0) {
+                if split.contains(&b'=') {
+                    // Handle environment variable.
+                    __system_envp[__system_envc] = split.as_ptr() as usize;
+                    __system_envc += 1;
+                } else {
+                    log::error!("Invalid env variable: Does not contain = sign.");
+                }
+            }
+        } else {
+            log::debug!("No env variables found");
+        }
+
+        __system_envp[__system_envc] = 0;
+
         #[allow(clippy::cast_possible_wrap)]
-        (__system_argv.as_ptr() as usize, __system_argc as isize)
+        (__system_argv.as_ptr() as usize, __system_argc as isize, __system_envp.as_ptr() as usize)
     })
 }

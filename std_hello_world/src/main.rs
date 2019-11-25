@@ -76,6 +76,12 @@ fn main() {
         println!("{}", argument);
     }
 
+    println!("Environment Variables:");
+    // Prints each environment variable on a separate line
+    for (k, v) in env::vars() {
+        println!("{}={}", k, v);
+    }
+
     if env::args().nth(0).is_none() {
         println!("Spawning ourself with some arguments!");
         Command::new("std_hello_world")

@@ -1,7 +1,7 @@
 use crate::os::sunrise::prelude::*;
 
 use crate::error::Error as StdError;
-use crate::ffi::{OsStr, OsString};
+use crate::ffi::{OsStr, OsString, CStr};
 use crate::fmt;
 use crate::iter;
 use crate::io;
@@ -11,7 +11,11 @@ use crate::str;
 use crate::sync::Mutex;
 use crate::vec::Vec;
 use crate::collections::HashMap;
+use crate::ptr;
+use crate::memchr;
 use lazy_static::lazy_static;
+use sunrise_libuser::argv::envp;
+
 pub fn errno() -> i32 {
     0
 }
@@ -21,9 +25,15 @@ pub fn error_string(_errno: i32) -> String {
 }
 
 pub fn getcwd() -> io::Result<PathBuf> {
-    Ok(crate::env::var_os("PWD").map(PathBuf::from).unwrap_or_else(|| {
+    let mut path = crate::env::var_os("PWD").map(PathBuf::from).unwrap_or_else(|| {
         PathBuf::from("system:/")
-    }))
+    });
+
+    if !path.is_absolute() {
+        path = PathBuf::from("system:/").join(path);
+    }
+
+    Ok(path)
 }
 
 pub fn chdir(path: &path::Path) -> io::Result<()> {
@@ -93,7 +103,38 @@ pub fn current_exe() -> io::Result<PathBuf> {
 
 lazy_static! {
     /// Storage of all events of the current process.
-    static ref ENVIRONMENT_STORAGE: Mutex<HashMap<OsString, OsString>> = Mutex::new(HashMap::new());
+    static ref ENVIRONMENT_STORAGE: Mutex<HashMap<OsString, OsString>> = {
+        let mut environ = envp();
+        let mut result = HashMap::new();
+
+        unsafe {
+            // Safety: Envp should return a valid pointer to a null-terminated
+            // array of null-terminated strings.
+            while environ != ptr::null() && *environ != ptr::null() {
+                if let Some((key, value)) = parse(CStr::from_ptr(*environ).to_bytes()) {
+                    result.insert(key, value);
+                }
+                environ = environ.offset(1);
+            }
+        }
+
+        fn parse(input: &[u8]) -> Option<(OsString, OsString)> {
+            // Strategy (copied from glibc): Variable name and value are separated
+            // by an ASCII equals sign '='. Since a variable name must not be
+            // empty, allow variable names starting with an equals sign. Skip all
+            // malformed lines.
+            if input.is_empty() {
+                return None;
+            }
+            let pos = memchr::memchr(b'=', &input[1..]).map(|p| p + 1);
+            pos.map(|p| (
+                OsStringExt::from_vec(input[..p].to_vec()),
+                OsStringExt::from_vec(input[p+1..].to_vec()),
+            ))
+        }
+
+        Mutex::new(result)
+    };
 }
 
 pub struct Env(Vec<(OsString, OsString)>, usize);
