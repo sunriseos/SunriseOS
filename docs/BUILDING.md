@@ -49,7 +49,7 @@ printed on stdout.
   - clippy
   - rust-src
 - cargo-make: `0.22.0`
-- xargo: `0.3.16 (21e4808)`
+- xargo: `0.3.18`
 - mkisofs-rs: `0.1.1`
 - qemu-system-i386: `4.0.50`
 - cargo-travis: `https://github.com/roblabla/cargo-travis` branch `doc-upload-target`
