@@ -205,6 +205,7 @@ pub unsafe fn create_first_process() {
 ///
 /// # Queue politics
 ///
+/// ```txt
 ///                           checking if thread is unlocked
 ///                           and suitable for running
 ///   CURRENT_THREAD          ===============================>
@@ -215,6 +216,7 @@ pub unsafe fn create_first_process() {
 ///        | |               skipped       |                    |
 ///        | +-----------------------------+                    |
 ///        +----------------------------------------------------+
+/// ```
 ///
 /// 1. Tries to lock the next first process. If it fails to acquire its lock,
 ///    it is ignored for now, and we move on to the next one.
@@ -223,8 +225,7 @@ pub unsafe fn create_first_process() {
 /// 3. Pushes the previous current thread at the end of the queue.
 /// 4. Disables interrupts
 /// 5. Performs the process switch
-///  * as new process *
-/// 6. Re-enables interrupts
+/// 6. * as new process * Re-enables interrupts
 pub fn schedule() {
     /// A dummy Lock.
     struct NoopLock;
