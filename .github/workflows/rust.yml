@@ -68,10 +68,10 @@ jobs:
         shell: bash
 
       - name: Install cargo-make
-        run: cargo install cargo-make
+        run: cargo install cargo-make --version 0.22.0 --locked
 
-      - name: Install xargo (from master branch)
-        run: cargo install --git https://github.com/japaric/xargo.git
+      - name: Install xargo
+        run: cargo install xargo --version 0.3.18 --locked
 
       - name: Build develop
         run: cargo make iso
