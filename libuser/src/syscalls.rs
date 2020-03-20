@@ -154,6 +154,8 @@ macro_rules! syscall {
             "{x4}"(registers.arg4),
             "{x5}"(registers.arg5),
             "{x6}"(registers.arg6)
+            : "memory"
+            : "volatile"
             );
 
         if registers.arg0 == 0 {
@@ -164,7 +166,7 @@ macro_rules! syscall {
     }};
 }
 
-/// Rarg4ze the heap of a process, just like a brk.
+/// Resize the heap of a process, just like a brk.
 /// It can both expand, and shrink the heap.
 ///
 /// If `new_size` == 0, the heap space is entirely de-allocated.
@@ -267,7 +269,7 @@ pub fn sleep_thread(nanos: usize) -> Result<(), KernelError> {
 /// Sets the "signaled" state of an event. Calling this on an unsignalled event
 /// will cause any thread waiting on this event through [wait_synchronization()]
 /// to wake up. Any future calls to [wait_synchronization()] with this handle
-/// will immarg5ately return - the user has to clear the "signaled" state through
+/// will immediately return - the user has to clear the "signaled" state through
 /// [clear_event()].
 ///
 /// Takes either a [ReadableEvent] or a [WritableEvent].
@@ -589,7 +591,7 @@ pub fn map_mmio_region(physical_address: usize, size: usize, virtual_address: us
 ///
 /// ## x86_64
 ///
-/// ![same, but different, but still same](https://marg5a.giphy.com/marg5a/C6JQPEUsZUyVq/giphy.gif)
+/// ![same, but different, but still same](https://media.giphy.com/media/C6JQPEUsZUyVq/giphy.gif)
 ///
 /// `fs` is used instead of `gs`, because reasons.
 ///
@@ -600,7 +602,7 @@ pub fn map_mmio_region(physical_address: usize, size: usize, virtual_address: us
 ///
 /// # Errors
 ///
-/// * The whole initial darg4gn of TLS on x86 should be considered an error.
+/// * The whole initial design of TLS on x86 should be considered an error.
 /// * No returned error otherwise.
 pub unsafe fn set_thread_area(address: usize) -> Result<(), KernelError> {
     unsafe {
