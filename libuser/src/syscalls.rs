@@ -60,7 +60,7 @@ syscall_inner:
     #[cfg(not(target_os = "sunrise"))]
     #[no_mangle]
     extern fn syscall_inner(regs: &mut super::Registers) {
-        regs.eax = crate::error::KernelError::NotImplemented.make_ret() as usize;
+        regs.nr = crate::error::KernelError::NotImplemented.make_ret() as usize;
     }
 }
 
@@ -70,13 +70,13 @@ syscall_inner:
 #[repr(C)]
 #[allow(clippy::missing_docs_in_private_items)]
 struct Registers {
-    eax: usize,
-    ebx: usize,
-    ecx: usize,
-    edx: usize,
-    esi: usize,
-    edi: usize,
-    ebp: usize,
+    nr: usize,
+    arg1: usize,
+    arg2: usize,
+    arg3: usize,
+    arg4: usize,
+    arg5: usize,
+    arg6: usize,
 }
 
 extern {
@@ -96,26 +96,26 @@ macro_rules! syscall {
         let arg6: usize = $arg6;
 
         let mut registers = Registers {
-            eax: nr,
-            ebx: arg1,
-            ecx: arg2,
-            edx: arg3,
-            esi: arg4,
-            edi: arg5,
-            ebp: arg6
+            nr,
+            arg1,
+            arg2,
+            arg3,
+            arg4,
+            arg5,
+            arg6
         };
 
         syscall_inner(&mut registers);
 
-        if registers.eax == 0 {
-            Ok((registers.ebx, registers.ecx, registers.edx, registers.esi))
+        if registers.nr == 0 {
+            Ok((registers.arg1, registers.arg2, registers.arg3, registers.arg4))
         } else {
-            Err(KernelError::from_syscall_ret(registers.eax as u32))
+            Err(KernelError::from_syscall_ret(registers.nr as u32))
         }
     }};
 }
 
-/// Resize the heap of a process, just like a brk.
+/// Rarg4ze the heap of a process, just like a brk.
 /// It can both expand, and shrink the heap.
 ///
 /// If `new_size` == 0, the heap space is entirely de-allocated.
@@ -218,7 +218,7 @@ pub fn sleep_thread(nanos: usize) -> Result<(), KernelError> {
 /// Sets the "signaled" state of an event. Calling this on an unsignalled event
 /// will cause any thread waiting on this event through [wait_synchronization()]
 /// to wake up. Any future calls to [wait_synchronization()] with this handle
-/// will immediately return - the user has to clear the "signaled" state through
+/// will immarg5ately return - the user has to clear the "signaled" state through
 /// [clear_event()].
 ///
 /// Takes either a [ReadableEvent] or a [WritableEvent].
@@ -540,7 +540,7 @@ pub fn map_mmio_region(physical_address: usize, size: usize, virtual_address: us
 ///
 /// ## x86_64
 ///
-/// ![same, but different, but still same](https://media.giphy.com/media/C6JQPEUsZUyVq/giphy.gif)
+/// ![same, but different, but still same](https://marg5a.giphy.com/marg5a/C6JQPEUsZUyVq/giphy.gif)
 ///
 /// `fs` is used instead of `gs`, because reasons.
 ///
@@ -551,7 +551,7 @@ pub fn map_mmio_region(physical_address: usize, size: usize, virtual_address: us
 ///
 /// # Errors
 ///
-/// * The whole initial design of TLS on x86 should be considered an error.
+/// * The whole initial darg4gn of TLS on x86 should be considered an error.
 /// * No returned error otherwise.
 pub unsafe fn set_thread_area(address: usize) -> Result<(), KernelError> {
     unsafe {
