@@ -193,7 +193,7 @@ static MAIN_THREAD_CONTEXT: ThreadContext = ThreadContext {
 
 /// Get a pointer to this thread's [TLS] region pointed to by `fs`, translated to the flat-memory model.
 #[inline]
-#[cfg(target_arch = "x86")]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn get_my_tls_region() -> *mut TLS {
     let mut tls: *mut TLS;
     unsafe {
