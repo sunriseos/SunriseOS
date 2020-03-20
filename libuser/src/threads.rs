@@ -204,7 +204,7 @@ fn get_my_tls_region() -> *mut TLS {
     tls
 }
 
-/// Get a pointer to this thread's [TLS] region pointed to by `fs`, translated to the flat-memory model.
+/// Get a pointer to this thread's [TLS] region pointed to by `TPIDRRO_EL0`.
 #[inline]
 #[cfg(target_arch = "aarch64")]
 fn get_my_tls_region() -> *mut TLS {
@@ -391,6 +391,7 @@ extern "fastcall" fn thread_trampoline(thread_context_addr: usize) -> ! {
 /// The routine to call and its argument are expected to be found in this `ThreadContext`.
 #[cfg(not(target_arch = "x86"))]
 extern fn thread_trampoline(thread_context_addr: usize) -> ! {
+    // TODO: figure out aarch64 TLS
     debug!("starting from new thread, context at address {:#010x}", thread_context_addr);
     // first save the address of our context in our TLS region
     unsafe {
