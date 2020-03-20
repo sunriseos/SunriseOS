@@ -60,7 +60,7 @@ syscall_inner:
     #[cfg(not(target_os = "sunrise"))]
     #[no_mangle]
     extern fn syscall_inner(regs: &mut super::Registers) {
-        regs.nr = crate::error::KernelError::NotImplemented.make_ret() as usize;
+        regs.arg0 = crate::error::KernelError::NotImplemented.make_ret() as usize;
     }
 }
 
@@ -70,7 +70,7 @@ syscall_inner:
 #[repr(C)]
 #[allow(clippy::missing_docs_in_private_items)]
 struct Registers {
-    nr: usize,
+    arg0: usize,
     arg1: usize,
     arg2: usize,
     arg3: usize,
@@ -85,6 +85,7 @@ extern {
 
 // unsafe fn syscall(nr: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize, arg5: usize, arg6: usize) -> Result<(usize, usize, usize, usize), KernelError> {
 /// Generic syscall function.
+#[cfg(not(target_arch = "aarch64"))]
 macro_rules! syscall {
     ($nr:expr, $arg1:expr, $arg2:expr, $arg3:expr, $arg4:expr, $arg5:expr, $arg6:expr) => {{
         let nr: usize = $nr;
@@ -96,7 +97,7 @@ macro_rules! syscall {
         let arg6: usize = $arg6;
 
         let mut registers = Registers {
-            nr,
+            arg0: nr,
             arg1,
             arg2,
             arg3,
@@ -105,13 +106,40 @@ macro_rules! syscall {
             arg6
         };
 
-        #[cfg(not(target_arch = "aarch64"))]
         syscall_inner(&mut registers);
 
-        #[cfg(target_arch = "aarch64")]
+        if registers.arg0 == 0 {
+            Ok((registers.arg1, registers.arg2, registers.arg3, registers.arg4))
+        } else {
+            Err(KernelError::from_syscall_ret(registers.arg0 as u32))
+        }
+    }};
+}
+
+/// Generic syscall function.
+#[cfg(target_arch = "aarch64")]
+macro_rules! syscall {
+    ($nr:expr, $arg1:expr, $arg2:expr, $arg3:expr, $arg4:expr, $arg5:expr, $arg6:expr) => {{
+        let arg0: usize = $arg1;
+        let arg1: usize = $arg2;
+        let arg2: usize = $arg3;
+        let arg3: usize = $arg4;
+        let arg4: usize = $arg5;
+        let arg5: usize = $arg6;
+
+        let mut registers = Registers {
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+            arg4,
+            arg5,
+            arg6: 0,
+        };
+
         asm!(
             "svc $7"
-            : "={x0}"(registers.nr),
+            : "={x0}"(registers.arg0),
             "={x1}"(registers.arg1),
             "={x2}"(registers.arg2),
             "={x3}"(registers.arg3),
@@ -119,6 +147,7 @@ macro_rules! syscall {
             "={x5}"(registers.arg5),
             "={x6}"(registers.arg6)
             : "i"($nr),
+            "{x0}"(registers.arg0),
             "{x1}"(registers.arg1),
             "{x2}"(registers.arg2),
             "{x3}"(registers.arg3),
@@ -127,10 +156,10 @@ macro_rules! syscall {
             "{x6}"(registers.arg6)
             );
 
-        if registers.nr == 0 {
+        if registers.arg0 == 0 {
             Ok((registers.arg1, registers.arg2, registers.arg3, registers.arg4))
         } else {
-            Err(KernelError::from_syscall_ret(registers.nr as u32))
+            Err(KernelError::from_syscall_ret(registers.arg0 as u32))
         }
     }};
 }
