@@ -105,7 +105,27 @@ macro_rules! syscall {
             arg6
         };
 
+        #[cfg(not(target_arch = "aarch64"))]
         syscall_inner(&mut registers);
+
+        #[cfg(target_arch = "aarch64")]
+        asm!(
+            "svc $7"
+            : "={x0}"(registers.nr),
+            "={x1}"(registers.arg1),
+            "={x2}"(registers.arg2),
+            "={x3}"(registers.arg3),
+            "={x4}"(registers.arg4),
+            "={x5}"(registers.arg5),
+            "={x6}"(registers.arg6)
+            : "i"($nr),
+            "{x1}"(registers.arg1),
+            "{x2}"(registers.arg2),
+            "{x3}"(registers.arg3),
+            "{x4}"(registers.arg4),
+            "{x5}"(registers.arg5),
+            "{x6}"(registers.arg6)
+            );
 
         if registers.nr == 0 {
             Ok((registers.arg1, registers.arg2, registers.arg3, registers.arg4))
