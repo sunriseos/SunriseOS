@@ -3,7 +3,7 @@
 //! Provides an allocator, various lang items.
 
 #![no_std]
-#![feature(global_asm, llvm_asm, start, lang_items, core_intrinsics, const_fn, box_syntax, untagged_unions, naked_functions, proc_macro_hygiene, doc_cfg, unboxed_closures, fn_traits, thread_local)]
+#![feature(global_asm, llvm_asm, start, lang_items, core_intrinsics, const_fn, box_syntax, untagged_unions, naked_functions, proc_macro_hygiene, unboxed_closures, fn_traits, thread_local)]
 
 #![warn(unused)]
 #![warn(missing_debug_implementations)]
@@ -84,7 +84,7 @@ pub use ::futures as futures_rs;
 
 /// Global allocator. Every implicit allocation in the rust liballoc library (for
 /// instance for Vecs, Arcs, etc...) are allocated with this allocator.
-#[cfg(all(target_os = "sunrise", not(test), not(rustdoc)))]
+#[cfg(all(target_os = "sunrise", not(test), not(doc)))]
 #[cfg_attr(feature = "lang-items", global_allocator)]
 pub static ALLOCATOR: allocator::Allocator = allocator::Allocator::new();
 
@@ -97,12 +97,12 @@ pub static ALLOCATOR: allocator::Allocator = allocator::Allocator::new();
 /// The exception handling personality function for use in the bootstrap.
 ///
 /// We currently have no userspace exception handling, so make it do nothing.
-#[cfg(all(target_os = "sunrise", not(test), feature = "lang-items", not(rustdoc)))]
+#[cfg(all(target_os = "sunrise", not(test), feature = "lang-items", not(doc)))]
 #[lang = "eh_personality"] #[no_mangle] pub extern fn eh_personality() {}
 
 /// Function called on `panic!` invocation. Prints the panic information to the
 /// kernel debug logger, and exits the process.
-#[cfg(all(target_os = "sunrise", not(test), feature = "lang-items", not(rustdoc)))]
+#[cfg(all(target_os = "sunrise", not(test), feature = "lang-items", not(doc)))]
 #[panic_handler] #[no_mangle]
 pub extern fn panic_fmt(p: &core::panic::PanicInfo<'_>) -> ! {
     let _ = syscalls::output_debug_string(&format!("{}", p), 10, "sunrise_libuser::panic_fmt");
@@ -113,7 +113,7 @@ pub extern fn panic_fmt(p: &core::panic::PanicInfo<'_>) -> ! {
 // BODY: Panicking may allocate, so calling panic in the OOM handler is a
 // BODY: terrible idea.
 /// OOM handler. Causes a panic.
-#[cfg(all(target_os = "sunrise", not(test), feature = "lang-items", not(rustdoc)))]
+#[cfg(all(target_os = "sunrise", not(test), feature = "lang-items", not(doc)))]
 #[lang = "oom"]
 #[no_mangle]
 pub fn rust_oom(_: core::alloc::Layout) -> ! {
@@ -122,7 +122,7 @@ pub fn rust_oom(_: core::alloc::Layout) -> ! {
 
 /// calls logger initialization, main, and finally exits the
 /// process.
-#[cfg(any(all(target_os = "sunrise", not(test), not(feature = "build-for-std-app")), rustdoc))]
+#[cfg(any(all(target_os = "sunrise", not(test), not(feature = "build-for-std-app")), doc))]
 #[no_mangle]
 pub unsafe extern fn real_start() -> ! {
     extern {
@@ -143,7 +143,7 @@ pub unsafe extern fn real_start() -> ! {
 ///
 /// The default implementations are returning 0 to indicate a successful
 /// execution. In case of a failure, 1 is returned.
-#[cfg(all(target_os = "sunrise", not(test), feature = "lang-items", not(rustdoc)))]
+#[cfg(all(target_os = "sunrise", not(test), feature = "lang-items", not(doc)))]
 #[lang = "termination"]
 trait Termination {
     /// Is called to get the representation of the value as status code.
@@ -151,13 +151,13 @@ trait Termination {
     fn report(self) -> i32;
 }
 
-#[cfg(all(target_os = "sunrise", not(test), feature = "lang-items", not(rustdoc)))]
+#[cfg(all(target_os = "sunrise", not(test), feature = "lang-items", not(doc)))]
 impl Termination for () {
     #[inline]
     fn report(self) -> i32 { 0 }
 }
 
-#[cfg(all(target_os = "sunrise", not(test), feature = "lang-items", not(rustdoc)))]
+#[cfg(all(target_os = "sunrise", not(test), feature = "lang-items", not(doc)))]
 #[lang = "start"]
 #[allow(clippy::unit_arg)]
 fn main<T: Termination>(main: fn(), _argc: isize, _argv: *const *const u8) -> isize {

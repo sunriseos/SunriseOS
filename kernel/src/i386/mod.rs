@@ -1,7 +1,7 @@
 //! This crate is x86_64's little brother. It provides i386 specific functions
 //! and data structures, and access to various system registers.
 
-#![cfg(any(target_arch = "x86", test, rustdoc))]
+#![cfg(any(target_arch = "x86", test, doc))]
 #![allow(dead_code)]
 
 pub mod acpi;

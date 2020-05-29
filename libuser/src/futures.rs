@@ -1,15 +1,15 @@
 //! # Futures Executor
 //!
-//! A [futures::WaitableManager] is a future executor, which is more or less a
-//! userspace scheduler, taking a list of [futures::Task] and running them to
-//! completion. Occasionally, a [futures::Task] will need to wait on a resource,
-//! usually backed by a [types::Handle]. When this happens, it can use its
+//! A [WaitableManager] is a future executor, which is more or less a
+//! userspace scheduler, taking a list of [Task] and running them to
+//! completion. Occasionally, a [Task] will need to wait on a resource,
+//! usually backed by a [Handle]. When this happens, it can use its
 //! [core::task::Waker] to tell the executor to wake it up once a specified
 //! handled is notified.
 //!
-//! A [futures::WorkQueue] is a handle to the [futures::WaitableManager]. Work
-//! is submitted to the [futures::WaitableManager] by pushing
-//! [futures::WorkItem]s on the [futures::WorkQueue].
+//! A [WorkQueue] is a handle to the [WaitableManager]. Work
+//! is submitted to the [WaitableManager] by pushing
+//! [WorkItem]s on the [WorkQueue].
 //!
 //! The implementation is very liberally taken from the blog post [Building an
 //! Embedded Futures Executor]
@@ -17,6 +17,7 @@
 //! Operating System.
 //!
 //! [Building an Embedded Futures Executor]: https://web.archive.org/web/20190812080700/https://josh.robsonchase.com/embedded-executor/
+//! [Handle]: crate::types::Handle
 
 use core::task::{Context, Waker, Poll};
 use core::cell::Cell;

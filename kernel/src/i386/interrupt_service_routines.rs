@@ -25,7 +25,7 @@
 //! Syscalls are handled as if they were exceptions, but instead of killing the process the handler
 //! calls [syscall_interrupt_dispatcher].
 //!
-//! [syscall_interrupt_dispatcher]: self::interrupt_service_routines::syscall_interrupt_dispatcher
+//! [syscall_interrupt_dispatcher]: syscall_interrupt_dispatcher
 
 use crate::i386::structures::idt::{PageFaultErrorCode, Idt};
 use crate::i386::instructions::interrupts::sti;

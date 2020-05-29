@@ -54,22 +54,22 @@
 //! | MSR                 | `gs`, while in user code               | `&`[`TLS`]`..&`[`TLS`]`+0x200` | user can get the address of its [`TLS`] from this selector        |
 //! | MSR                 | `fs`, while in user code               | User-defined                   | user can set-up elf TLS at this address                           |
 //!
-//! [`GdtIndex::Null`]: gdt::GdtIndex::Null
-//! [`GdtIndex::KCode`]: gdt::GdtIndex::KCode
-//! [`GdtIndex::KData`]: gdt::GdtIndex::KData
-//! [`GdtIndex::KTls`]: gdt::GdtIndex::KTls
-//! [`GdtIndex::KStack`]: gdt::GdtIndex::KStack
-//! [`GdtIndex::UCode`]: gdt::GdtIndex::UCode
-//! [`GdtIndex::UData`]: gdt::GdtIndex::UData
-//! [`GdtIndex::UTlsRegion`]: gdt::GdtIndex::UTlsRegion
-//! [`GdtIndex::UTlsElf`]: gdt::GdtIndex::UTlsElf
-//! [`GdtIndex::UStack`]: gdt::GdtIndex::UStack
-//! [`GdtIndex::LDT`]: gdt::GdtIndex::LDT
-//! [`GdtIndex::TSS`]: gdt::GdtIndex::TSS
-//! [`GdtIndex::FTSS`]: gdt::GdtIndex::FTSS
+//! [`GdtIndex::Null`]: GdtIndex::Null
+//! [`GdtIndex::KCode`]: GdtIndex::KCode
+//! [`GdtIndex::KData`]: GdtIndex::KData
+//! [`GdtIndex::KTls`]: GdtIndex::KTls
+//! [`GdtIndex::KStack`]: GdtIndex::KStack
+//! [`GdtIndex::UCode`]: GdtIndex::UCode
+//! [`GdtIndex::UData`]: GdtIndex::UData
+//! [`GdtIndex::UTlsRegion`]: GdtIndex::UTlsRegion
+//! [`GdtIndex::UTlsElf`]: GdtIndex::UTlsElf
+//! [`GdtIndex::UStack`]: GdtIndex::UStack
+//! [`GdtIndex::LDT`]: GdtIndex::LDT
+//! [`GdtIndex::TSS`]: GdtIndex::TSS
+//! [`GdtIndex::FTSS`]: GdtIndex::FTSS
 //! [`TLS`]: sunrise_libkern::TLS
-//! [`GLOBAL_LDT`]: gdt::GLOBAL_LDT
-//! [`MAIN_TASK`]: gdt::MAIN_TASK
+//! [`GLOBAL_LDT`]: GLOBAL_LDT
+//! [`MAIN_TASK`]: MAIN_TASK
 //! [`svcSetThreadArea`]: crate::syscalls::set_thread_area
 
 #![allow(dead_code)]

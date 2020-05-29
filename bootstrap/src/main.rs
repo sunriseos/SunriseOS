@@ -22,7 +22,7 @@
 //! fancy logging interfaces that the kernel has.
 //!
 
-#![feature(lang_items, start, llvm_asm, global_asm, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, doc_cfg)]
+#![feature(lang_items, start, llvm_asm, global_asm, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt)]
 #![no_std]
 #![cfg_attr(target_os = "none", no_main)]
 
@@ -42,7 +42,7 @@
 // clippy override
 #![allow(clippy::cast_lossless)]
 
-#[cfg(not(any(target_arch = "x86", test, rustdoc)))]
+#[cfg(not(any(target_arch = "x86", test, doc)))]
 compile_error!("WTF");
 
 #[cfg(not(target_os = "none"))]
@@ -98,7 +98,7 @@ pub fn print_stack() {
 /// * bzero the .bss.
 /// * make $esp and $ebp point to [STACK].
 /// * call [do_bootstrap], passing it $ebx.
-#[cfg(any(target_os = "none", rustdoc))]
+#[cfg(any(target_os = "none", doc))]
 #[no_mangle]
 pub unsafe extern fn bootstrap_start() -> ! {
     llvm_asm!("

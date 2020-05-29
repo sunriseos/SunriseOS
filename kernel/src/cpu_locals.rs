@@ -80,8 +80,8 @@
 //! function.
 //!
 //! [`CURRENT_THREAD`]: crate::scheduler::CURRENT_THREAD
-//! [`init_cpu_locals`]: crate::cpu_locals::init_cpu_locals
-//! [`ARE_CPU_LOCALS_INITIALIZED_YET`]: self::cpu_locals::ARE_CPU_LOCALS_INITIALIZED_YET
+//! [`init_cpu_locals`]: init_cpu_locals
+//! [`ARE_CPU_LOCALS_INITIALIZED_YET`]: ARE_CPU_LOCALS_INITIALIZED_YET
 //! [Ulrich Drepper's paper on TLS]: https://web.archive.org/web/20190710135250/https://akkadia.org/drepper/tls.pdf
 //! [`CPU_LOCAL_REGIONS`]: crate::cpu_locals::CPU_LOCAL_REGIONS
 //! [GDT]: crate::i386::gdt

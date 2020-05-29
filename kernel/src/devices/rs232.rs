@@ -10,16 +10,16 @@ use crate::i386::pio::Pio;
 pub struct ComPort(u16);
 
 /// COM1: I/O port 0x3F8, IRQ 4
-#[cfg(any(all(target_arch="x86", not(test)), rustdoc))]
+#[cfg(any(all(target_arch="x86", not(test)), doc))]
 const COM1: ComPort = ComPort(0x3F8);
 /// COM2: I/O port 0x2F8, IRQ 3
-#[cfg(any(all(target_arch="x86", not(test)), rustdoc))]
+#[cfg(any(all(target_arch="x86", not(test)), doc))]
 const COM2: ComPort = ComPort(0x2F8);
 /// COM3: I/O port 0x3E8, IRQ 4
-#[cfg(any(all(target_arch="x86", not(test)), rustdoc))]
+#[cfg(any(all(target_arch="x86", not(test)), doc))]
 const COM3: ComPort = ComPort(0x3E8);
 /// COM4: I/O port 0x2E8, IRQ 3
-#[cfg(any(all(target_arch="x86", not(test)), rustdoc))]
+#[cfg(any(all(target_arch="x86", not(test)), doc))]
 const COM4: ComPort = ComPort(0x2E8);
 
 // TODO: device drivers should be compiled only for i386
