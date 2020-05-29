@@ -5,7 +5,7 @@
 //! Stolen from [Redox OS](https://gitlab.redox-os.org/redox-os/syscall/blob/master/src/io/mmio.rs).
 
 use core::ptr::{read_volatile, write_volatile};
-use core::mem::uninitialized;
+use core::mem::MaybeUninit;
 use core::fmt::{Debug, Formatter, Error};
 
 use super::Io;
@@ -61,7 +61,7 @@ use super::Io;
 #[repr(packed)]
 pub struct Mmio<T> {
     /// The value. Can only be accessed through .read()
-    value: T,
+    value: MaybeUninit<T>,
 }
 
 impl<T> Mmio<T> {
@@ -72,7 +72,7 @@ impl<T> Mmio<T> {
     #[allow(clippy::new_without_default)] // because of Redox.
     pub fn new() -> Self {
         Mmio {
-            value: unsafe { uninitialized() }
+            value: MaybeUninit::uninit(),
         }
     }
 }
@@ -82,12 +82,12 @@ impl<T> Io for Mmio<T> where T: Copy {
 
     /// Performs a volatile read of the value.
     fn read(&self) -> T {
-        unsafe { read_volatile(&self.value) }
+        unsafe { read_volatile(self.value.as_ptr()) }
     }
 
     /// Performs a volatile write of the value.
     fn write(&mut self, value: T) {
-        unsafe { write_volatile(&mut self.value, value) };
+        unsafe { write_volatile(self.value.as_mut_ptr(), value) };
     }
 }
 

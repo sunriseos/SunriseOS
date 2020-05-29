@@ -146,7 +146,7 @@ pub fn init_cpu_locals(cpu_count: usize) {
     CPU_LOCAL_REGIONS.call_once(|| {
         // map our own ELF so that we can access our PT_TLS
         let mapped_kernel_elf = multiboot::try_get_boot_information()
-            .and_then(|info| info.module_tags().nth(0))
+            .and_then(|info| info.module_tags().next())
             .and_then(|module| map_grub_module(module).ok())
             .expect("cpu_locals: cannot get kernel elf");
         let kernel_elf = mapped_kernel_elf.elf.as_ref()

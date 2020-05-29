@@ -56,7 +56,7 @@ pub fn normalize_overflow<T>(
 /// Return true if it's a leap year.
 #[inline]
 pub fn is_leap_year(y: i64) -> bool {
-    (((y) % 4) == 0 && (((y) % 100) != 0 || ((y) % 400) == 0))
+    ((y) % 4) == 0 && (((y) % 100) != 0 || ((y) % 400) == 0)
 }
 
 /// Actual implementation of get_leap_days.

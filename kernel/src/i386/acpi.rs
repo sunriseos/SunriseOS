@@ -4,7 +4,6 @@
 
 #![allow(dead_code)]
 
-use acpi;
 use acpi::Acpi;
 use acpi::AcpiHandler;
 use acpi::PhysicalMapping;
@@ -55,7 +54,7 @@ impl AcpiHandler for MemoryHandler {
 
         let offset = physical_address - physical_address_aligned;
         let aligned_size = utils::align_up(offset + size, PAGE_SIZE);
-    
+
         let physical_mem = unsafe { PhysicalMemRegion::new_unchecked(PhysicalAddress(physical_address_aligned), aligned_size) };
         let virtual_address = paging::kernel_memory::get_kernel_memory().map_phys_region(physical_mem, MappingAccessRights::k_r());
 

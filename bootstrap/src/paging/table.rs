@@ -947,14 +947,14 @@ impl PageDirectoryTrait for PagingOffDirectory {
     /// Simply cast pointed frame as PageTable
     fn get_table(&mut self, index: usize) -> PageState<SmartHierarchicalTable<Self::PageTableType>> {
         self.entries()[index].pointed_frame().map(|addr| {
-            SmartHierarchicalTable::new(unsafe {(addr.addr() as *mut PagingOffTable)})
+            SmartHierarchicalTable::new(unsafe {addr.addr() as *mut PagingOffTable})
         })
     }
     /// Allocates a page table, zero it and add an entry to the directory pointing to it
     fn create_table(&mut self, index: usize) -> SmartHierarchicalTable<Self::PageTableType> {
         let frame = FrameAllocator::alloc_frame();
         let mut table = SmartHierarchicalTable::new(
-            unsafe {(frame.address().addr() as *mut PagingOffTable)}
+            unsafe {frame.address().addr() as *mut PagingOffTable}
         );
         table.zero();
         self.map_nth_entry::<Self::FlusherType>(index, frame, I386EntryFlags::PRESENT | I386EntryFlags::WRITABLE);

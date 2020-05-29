@@ -82,7 +82,7 @@ fn main() {
         println!("{}={}", k, v);
     }
 
-    if env::args().nth(0).is_none() {
+    if env::args().next().is_none() {
         println!("Spawning ourself with some arguments!");
         Command::new("std_hello_world")
                 .arg("Hey")

@@ -58,7 +58,7 @@ pub fn main(_stdin: IPipeProxy, stdout: IPipeProxy, _stderr: IPipeProxy, _args: 
 
 
     // thread is running b, run a meanwhile
-    thread_a(Arc::into_raw(terminal.clone()) as usize);
+    thread_a(Arc::into_raw(terminal) as usize);
 
     // Wait for thread_b to terminate.
     t.join().expect("Cannot wait for thread B to finish");

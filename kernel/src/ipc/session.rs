@@ -93,7 +93,7 @@ impl Drop for ServerSession {
 
             if let Some(request) = internal.active_request.take() {
                 *request.answered.lock() = Some(Err(UserspaceError::PortRemoteDead));
-                scheduler::add_to_schedule_queue(request.sender.clone());
+                scheduler::add_to_schedule_queue(request.sender);
             }
 
             for request in internal.incoming_requests.drain(..) {
@@ -501,7 +501,7 @@ impl ClientSession {
 
         let mut guard = answered.lock();
 
-        while let None = *guard {
+        while guard.is_none() {
             while let Some(item) = self.0.accepters.lock().pop() {
                 if let Some(process) = item.upgrade() {
                     scheduler::add_to_schedule_queue(process);
@@ -637,7 +637,7 @@ impl ServerSession {
 
         *active.answered.lock() = Some(Ok(()));
 
-        scheduler::add_to_schedule_queue(active.sender.clone());
+        scheduler::add_to_schedule_queue(active.sender);
 
         Ok(())
     }

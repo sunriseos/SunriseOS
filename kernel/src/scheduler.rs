@@ -316,7 +316,7 @@ where
                 // is where its drop actually happens
                 unsafe {
                     // safety: interrupts are disabled by the interrupt_lock.
-                    set_current_thread(whoami.clone(), || lock.lock())
+                    set_current_thread(whoami, || lock.lock())
                 }
             }
         };

@@ -257,7 +257,7 @@ impl Buffer {
     pub fn get_px_offset(&self, x: usize, y: usize) -> usize {
         assert!(y < self.height() as usize, "{} {}", y, self.height());
         assert!(x < self.width() as usize);
-        (y * self.width() as usize + x)
+        y * self.width() as usize + x
     }
 
     /// Blit the buffer to the framebuffer.

@@ -10,7 +10,7 @@
 //! - https://github.com/rust-lang-nursery/portability-wg/issues/12
 
 use byteorder::ByteOrder;
-use core::mem::{self, size_of};
+use core::mem::{size_of, MaybeUninit};
 use core::slice;
 
 // TODO: Cursor read_raw/write_raw is totally unsafe.
@@ -154,12 +154,9 @@ impl<'a> CursorRead<'a> {
     /// Reads the given structure from the bytestream.
     pub fn read_raw<T: Copy>(&self) -> T {
         unsafe {
-            let mut v: T = mem::uninitialized();
-            {
-                let arr = slice::from_raw_parts_mut(&mut v as *mut T as *mut u8, size_of::<T>());
-                arr.copy_from_slice(self.skip_read(size_of::<T>()));
-            }
-            v
+            let mut v: MaybeUninit<T> = MaybeUninit::uninit();
+            core::ptr::copy(self.skip_read(size_of::<T>()).as_ptr(), v.as_mut_ptr() as *mut u8, size_of::<T>());
+            v.assume_init()
         }
     }
 }

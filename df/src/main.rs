@@ -49,7 +49,7 @@ fn print_filesystem(filesystem : &IFileSystemProxy, disk_id: u32, partition_id: 
     };
     let fs_type_str = match fs_type {
         Ok(value) => get_filesystem_type(value).to_string(),
-        _ => unknown_info.clone()
+        _ => unknown_info
     };
 
     println!("{}\t{}\t{}\t{}\t{}\t{}", fs_type_str, block_size_str, total_space_size_str, free_space_size_str, disk_id, partition_id);

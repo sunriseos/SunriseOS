@@ -96,7 +96,7 @@ impl<'a> Framebuffer<'a> {
     pub fn get_px_offset(&self, x: usize, y: usize) -> usize {
         assert!(y < self.height());
         assert!(x < self.width());
-        (y * self.width() + x)
+        y * self.width() + x
     }
 
     /// Writes a pixel in the framebuffer respecting the bgr pattern

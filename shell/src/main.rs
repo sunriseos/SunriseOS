@@ -456,7 +456,7 @@ pub fn split_path(path: &str) -> (&str, Option<&str>) {
 
     // unwrap will never fail here
     let comp = path_split.next().unwrap();
-    let rest_opt = path_split.next().and_then(|x| Some(x.trim_matches('/')));
+    let rest_opt = path_split.next().map(|x| x.trim_matches('/'));
 
     (comp, rest_opt)
 }

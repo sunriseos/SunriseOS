@@ -715,6 +715,7 @@ pub fn generate_trait_async(ifacename: &str, interface: &Interface) -> String {
 
     writeln!(s, "    /// Handle an incoming IPC request.").unwrap();
     writeln!(s, "    #[allow(unused)]").unwrap();
+    writeln!(s, "    #[allow(clippy::match_single_binding)]").unwrap();
     writeln!(s, "    fn dispatch<'a>(&'a mut self, work_queue: self::sunrise_libuser::futures::WorkQueue<'static>, cmdid: u32, buf: &'a mut [u8]) -> futures::future::FutureObj<'_, Result<(), Error>> {{").unwrap();
     writeln!(s, "        use self::sunrise_libuser::ipc::Message;").unwrap();
     writeln!(s, "        use futures::future::FutureExt;").unwrap();
@@ -768,6 +769,7 @@ pub fn generate_trait(ifacename: &str, interface: &Interface) -> String {
 
     writeln!(s, "    /// Handle an incoming IPC request.").unwrap();
     writeln!(s, "    #[allow(unused)]").unwrap();
+    writeln!(s, "    #[allow(clippy::match_single_binding)]").unwrap();
     writeln!(s, "    fn dispatch<'a>(&'a mut self, manager: self::sunrise_libuser::futures::WorkQueue<'static>, cmdid: u32, buf: &'a mut [u8]) -> futures::future::FutureObj<'_, Result<(), Error>> {{").unwrap();
     writeln!(s, "        use self::sunrise_libuser::ipc::Message;").unwrap();
     writeln!(s, "        let res = match cmdid {{").unwrap();

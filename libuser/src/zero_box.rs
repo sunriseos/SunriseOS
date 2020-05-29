@@ -4,6 +4,7 @@
 
 use alloc::boxed::Box;
 use core::ops::{Deref, DerefMut};
+use core::mem::ManuallyDrop;
 
 /// A wrapper around a Box that can initialize itself directly on the heap.
 #[repr(transparent)]
@@ -26,11 +27,10 @@ impl<T> ZeroBox<T> {
     where T: ZeroInitialized {
         // Dirty workaround
         #[doc(hidden)]
-        #[allow(unions_with_drop_fields)] // we will have a Box<T> in the end.
         #[repr(C)]
         union ZeroedBuilder<X> {
             empty: (),
-            t: X
+            t: ManuallyDrop<X>
         }
         #[doc(hidden)]
         unsafe fn zeroed<T>() -> Box<T> {

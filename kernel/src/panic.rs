@@ -161,7 +161,7 @@ pub fn kernel_panic(panic_origin: &PanicOrigin) -> ! {
     use crate::elf_loader::MappedGrubModule;
 
     let mapped_kernel_elf = crate::i386::multiboot::try_get_boot_information()
-        .and_then(|info| info.module_tags().nth(0))
+        .and_then(|info| info.module_tags().next())
         .and_then(|module| crate::elf_loader::map_grub_module(module).ok());
 
     /// Gets the symbol table of a mapped module.
