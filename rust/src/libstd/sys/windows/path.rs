@@ -1,6 +1,6 @@
-use crate::path::Prefix;
 use crate::ffi::OsStr;
 use crate::mem;
+use crate::path::{Prefix, PrefixComponent};
 
 fn os_str_as_u8_slice(s: &OsStr) -> &[u8] {
     unsafe { mem::transmute(s) }
@@ -44,8 +44,9 @@ pub fn parse_prefix_simple(path: &OsStr) -> Option<Prefix<'_>> {
                     // \\?\UNC\server\share
                     path = &path[4..];
                     let (server, share) = match parse_two_comps(path, is_verbatim_sep) {
-                        Some((server, share)) =>
-                            (u8_slice_as_os_str(server), u8_slice_as_os_str(share)),
+                        Some((server, share)) => {
+                            (u8_slice_as_os_str(server), u8_slice_as_os_str(share))
+                        }
                         None => (u8_slice_as_os_str(path), u8_slice_as_os_str(&[])),
                     };
                     return Some(VerbatimUNC(server, share));
@@ -76,7 +77,7 @@ pub fn parse_prefix_simple(path: &OsStr) -> Option<Prefix<'_>> {
                 }
                 _ => (),
             }
-        } else if path.get(1) == Some(& b':') {
+        } else if path.get(1) == Some(&b':') {
             // C:
             let c = path[0];
             if c.is_ascii() && (c as char).is_alphabetic() {

@@ -1,6 +1,7 @@
 // ignore-cloudabi
 // ignore-windows
-// compile-flags: --error-format pretty-json -Zunstable-options --json-rendered=termcolor
+// ignore-sgx std::os::fortanix_sgx::usercalls::alloc::Iter changes compiler suggestions
+// compile-flags: --error-format pretty-json --json=diagnostic-rendered-ansi
 
 // The output for humans should just highlight the whole span without showing
 // the suggested replacement, but we also want to test that suggested

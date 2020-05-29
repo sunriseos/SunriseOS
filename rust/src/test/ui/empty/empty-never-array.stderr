@@ -3,6 +3,7 @@ error[E0005]: refutable pattern in local binding: `T(_, _)` not covered
    |
 LL | / enum Helper<T, U> {
 LL | |     T(T, [!; 0]),
+   | |     - not covered
 LL | |     #[allow(dead_code)]
 LL | |     U(U),
 LL | | }
@@ -10,18 +11,15 @@ LL | | }
 ...
 LL |       let Helper::U(u) = Helper::T(t, []);
    |           ^^^^^^^^^^^^ pattern `T(_, _)` not covered
-
-warning[E0381]: use of possibly uninitialized variable: `u`
-  --> $DIR/empty-never-array.rs:12:5
    |
-LL |     u
-   |     ^ use of possibly uninitialized `u`
+   = note: `let` bindings require an "irrefutable pattern", like a `struct` or an `enum` with only one variant
+   = note: for more information, visit https://doc.rust-lang.org/book/ch18-02-refutability.html
+   = note: the matched value is of type `Helper<T, U>`
+help: you might want to use `if let` to ignore the variant that isn't matched
    |
-   = warning: this error has been downgraded to a warning for backwards compatibility with previous releases
-   = warning: this represents potential undefined behavior in your code and this warning will become a hard error in the future
-   = note: for more information, try `rustc --explain E0729`
+LL |     if let Helper::U(u) = Helper::T(t, []) { /* */ }
+   |
 
 error: aborting due to previous error
 
-Some errors have detailed explanations: E0005, E0381.
-For more information about an error, try `rustc --explain E0005`.
+For more information about this error, try `rustc --explain E0005`.

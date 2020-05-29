@@ -1,5 +1,3 @@
-#![allow(deprecated)] // mem::uninitialized
-
 use crate::io::ErrorKind;
 use crate::mem;
 
@@ -53,16 +51,19 @@ pub fn decode_error_kind(errno: i32) -> ErrorKind {
     }
 }
 
-pub unsafe fn abort_internal() -> ! {
-    core::intrinsics::abort();
+pub fn abort_internal() -> ! {
+    #[cfg_attr(not(bootstrap), allow(unused_unsafe))] // remove `unsafe` on bootstrap bump
+    unsafe {
+        core::intrinsics::abort();
+    }
 }
 
 pub use libc::strlen;
 
 pub fn hashmap_random_keys() -> (u64, u64) {
     unsafe {
-        let mut v = mem::uninitialized();
-        libc::arc4random_buf(&mut v as *mut _ as *mut libc::c_void, mem::size_of_val(&v));
-        v
+        let mut v: mem::MaybeUninit<(u64, u64)> = mem::MaybeUninit::uninit();
+        libc::arc4random_buf(v.as_mut_ptr() as *mut libc::c_void, mem::size_of_val(&v));
+        v.assume_init()
     }
 }

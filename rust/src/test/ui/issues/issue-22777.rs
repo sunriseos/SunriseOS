@@ -1,5 +1,5 @@
-// build-pass (FIXME(62277): could be check-pass?)
-// This test is reduced from libsyntax.  It is just checking that we
+// check-pass
+// This test is reduced from librustc_ast.  It is just checking that we
 // can successfully deal with a "deep" structure, which the drop-check
 // was hitting a recursion limit on at one point.
 

@@ -64,24 +64,24 @@ fn check_method() {
 
     // Methods, method call
     // a, b, c are resolved as trait items, their traits need to be in scope
-    S.a(); //~ ERROR no method named `a` found for type `S` in the current scope
-    S.b(); //~ ERROR no method named `b` found for type `S` in the current scope
+    S.a(); //~ ERROR no method named `a` found
+    S.b(); //~ ERROR no method named `b` found
     S.c(); // OK
     // a, b, c are resolved as inherent items, their traits don't need to be in scope
     let c = &S as &dyn C;
-    c.a(); //~ ERROR method `a` is private
+    c.a(); //~ ERROR associated function `a` is private
     c.b(); // OK
     c.c(); // OK
 
     // Methods, UFCS
     // a, b, c are resolved as trait items, their traits need to be in scope
     S::a(&S);
-    //~^ ERROR no function or associated item named `a` found for type `S`
+    //~^ ERROR no function or associated item named `a` found
     S::b(&S);
-    //~^ ERROR no function or associated item named `b` found for type `S`
+    //~^ ERROR no function or associated item named `b` found
     S::c(&S); // OK
     // a, b, c are resolved as inherent items, their traits don't need to be in scope
-    C::a(&S); //~ ERROR method `a` is private
+    C::a(&S); //~ ERROR associated function `a` is private
     C::b(&S); // OK
     C::c(&S); // OK
 }
@@ -94,8 +94,8 @@ fn check_assoc_const() {
 
     // Associated constants
     // A, B, C are resolved as trait items, their traits need to be in scope
-    S::A; //~ ERROR no associated item named `A` found for type `S` in the current scope
-    S::B; //~ ERROR no associated item named `B` found for type `S` in the current scope
+    S::A; //~ ERROR no associated item named `A` found
+    S::B; //~ ERROR no associated item named `B` found
     S::C; // OK
     // A, B, C are resolved as inherent items, their traits don't need to be in scope
     C::A; //~ ERROR associated constant `A` is private

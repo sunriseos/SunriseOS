@@ -4,18 +4,22 @@ use crate::slice;
 pub fn hashmap_random_keys() -> (u64, u64) {
     let mut v = (0, 0);
     unsafe {
-        let view = slice::from_raw_parts_mut(&mut v as *mut _ as *mut u8,
-                                             mem::size_of_val(&v));
+        let view = slice::from_raw_parts_mut(&mut v as *mut _ as *mut u8, mem::size_of_val(&v));
         imp::fill_bytes(view);
     }
-    return v
+    v
 }
 
-#[cfg(all(unix,
-          not(target_os = "ios"),
-          not(target_os = "openbsd"),
-          not(target_os = "freebsd"),
-          not(target_os = "fuchsia")))]
+#[cfg(all(
+    unix,
+    not(target_os = "macos"),
+    not(target_os = "ios"),
+    not(target_os = "openbsd"),
+    not(target_os = "freebsd"),
+    not(target_os = "netbsd"),
+    not(target_os = "fuchsia"),
+    not(target_os = "redox")
+))]
 mod imp {
     use crate::fs::File;
     use crate::io::Read;
@@ -28,7 +32,9 @@ mod imp {
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "android")))]
-    fn getrandom_fill_bytes(_buf: &mut [u8]) -> bool { false }
+    fn getrandom_fill_bytes(_buf: &mut [u8]) -> bool {
+        false
+    }
 
     #[cfg(any(target_os = "linux", target_os = "android"))]
     fn getrandom_fill_bytes(v: &mut [u8]) -> bool {
@@ -87,6 +93,42 @@ mod imp {
     }
 }
 
+#[cfg(target_os = "macos")]
+mod imp {
+    use crate::fs::File;
+    use crate::io::Read;
+    use crate::sys::os::errno;
+    use libc::{c_int, c_void, size_t};
+
+    fn getentropy_fill_bytes(v: &mut [u8]) -> bool {
+        weak!(fn getentropy(*mut c_void, size_t) -> c_int);
+
+        getentropy
+            .get()
+            .map(|f| {
+                // getentropy(2) permits a maximum buffer size of 256 bytes
+                for s in v.chunks_mut(256) {
+                    let ret = unsafe { f(s.as_mut_ptr() as *mut c_void, s.len()) };
+                    if ret == -1 {
+                        panic!("unexpected getentropy error: {}", errno());
+                    }
+                }
+                true
+            })
+            .unwrap_or(false)
+    }
+
+    pub fn fill_bytes(v: &mut [u8]) {
+        if getentropy_fill_bytes(v) {
+            return;
+        }
+
+        // for older macos which doesn't support getentropy
+        let mut file = File::open("/dev/urandom").expect("failed to open /dev/urandom");
+        file.read_exact(v).expect("failed to read /dev/urandom")
+    }
+}
+
 #[cfg(target_os = "openbsd")]
 mod imp {
     use crate::sys::os::errno;
@@ -94,9 +136,7 @@ mod imp {
     pub fn fill_bytes(v: &mut [u8]) {
         // getentropy(2) permits a maximum buffer size of 256 bytes
         for s in v.chunks_mut(256) {
-            let ret = unsafe {
-                libc::getentropy(s.as_mut_ptr() as *mut libc::c_void, s.len())
-            };
+            let ret = unsafe { libc::getentropy(s.as_mut_ptr() as *mut libc::c_void, s.len()) };
             if ret == -1 {
                 panic!("unexpected getentropy error: {}", errno());
             }
@@ -122,26 +162,19 @@ mod imp {
     #[allow(non_upper_case_globals)]
     const kSecRandomDefault: *const SecRandom = ptr::null();
 
-    extern {
-        fn SecRandomCopyBytes(rnd: *const SecRandom,
-                              count: size_t,
-                              bytes: *mut u8) -> c_int;
+    extern "C" {
+        fn SecRandomCopyBytes(rnd: *const SecRandom, count: size_t, bytes: *mut u8) -> c_int;
     }
 
     pub fn fill_bytes(v: &mut [u8]) {
-        let ret = unsafe {
-            SecRandomCopyBytes(kSecRandomDefault,
-                               v.len(),
-                               v.as_mut_ptr())
-        };
+        let ret = unsafe { SecRandomCopyBytes(kSecRandomDefault, v.len(), v.as_mut_ptr()) };
         if ret == -1 {
-            panic!("couldn't generate random bytes: {}",
-                   io::Error::last_os_error());
+            panic!("couldn't generate random bytes: {}", io::Error::last_os_error());
         }
     }
 }
 
-#[cfg(target_os = "freebsd")]
+#[cfg(any(target_os = "freebsd", target_os = "netbsd"))]
 mod imp {
     use crate::ptr;
 
@@ -151,13 +184,22 @@ mod imp {
         for s in v.chunks_mut(256) {
             let mut s_len = s.len();
             let ret = unsafe {
-                libc::sysctl(mib.as_ptr(), mib.len() as libc::c_uint,
-                             s.as_mut_ptr() as *mut _, &mut s_len,
-                             ptr::null(), 0)
+                libc::sysctl(
+                    mib.as_ptr(),
+                    mib.len() as libc::c_uint,
+                    s.as_mut_ptr() as *mut _,
+                    &mut s_len,
+                    ptr::null(),
+                    0,
+                )
             };
             if ret == -1 || s_len != s.len() {
-                panic!("kern.arandom sysctl failed! (returned {}, s.len() {}, oldlenp {})",
-                       ret, s.len(), s_len);
+                panic!(
+                    "kern.arandom sysctl failed! (returned {}, s.len() {}, oldlenp {})",
+                    ret,
+                    s.len(),
+                    s_len
+                );
             }
         }
     }
@@ -166,11 +208,23 @@ mod imp {
 #[cfg(target_os = "fuchsia")]
 mod imp {
     #[link(name = "zircon")]
-    extern {
+    extern "C" {
         fn zx_cprng_draw(buffer: *mut u8, len: usize);
     }
 
     pub fn fill_bytes(v: &mut [u8]) {
         unsafe { zx_cprng_draw(v.as_mut_ptr(), v.len()) }
+    }
+}
+
+#[cfg(target_os = "redox")]
+mod imp {
+    use crate::fs::File;
+    use crate::io::Read;
+
+    pub fn fill_bytes(v: &mut [u8]) {
+        // Open rand:, read from it, and close it again.
+        let mut file = File::open("rand:").expect("failed to open rand:");
+        file.read_exact(v).expect("failed to read rand:")
     }
 }

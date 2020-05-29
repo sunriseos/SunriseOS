@@ -1,7 +1,5 @@
 // edition:2018
 
-#![feature(async_await)]
-
 async fn bar() -> Result<(), ()> {
     Ok(())
 }
@@ -64,6 +62,7 @@ fn foo10() -> Result<(), ()> {
 fn foo11() -> Result<(), ()> {
     let _ = await bar()?; //~ ERROR `await` is only allowed inside `async` functions and blocks
     //~^ ERROR incorrect use of `await`
+    //~| ERROR the `?` operator can only be applied to values that implement `std::ops::Try`
     Ok(())
 }
 fn foo12() -> Result<(), ()> {
@@ -99,6 +98,31 @@ fn foo24() -> Result<(), ()> {
 fn foo25() -> Result<(), ()> {
     let foo = || {
         let _ = bar().await?; //~ ERROR `await` is only allowed inside `async` functions and blocks
+        Ok(())
+    };
+    foo()
+}
+
+async fn foo26() -> Result<(), ()> {
+    let _ = await!(bar()); //~ ERROR incorrect use of `await`
+    Ok(())
+}
+async fn foo27() -> Result<(), ()> {
+    let _ = await!(bar())?; //~ ERROR incorrect use of `await`
+    Ok(())
+}
+fn foo28() -> Result<(), ()> {
+    fn foo() -> Result<(), ()> {
+        let _ = await!(bar())?; //~ ERROR incorrect use of `await`
+        //~^ ERROR `await` is only allowed inside `async` functions
+        Ok(())
+    }
+    foo()
+}
+fn foo29() -> Result<(), ()> {
+    let foo = || {
+        let _ = await!(bar())?; //~ ERROR incorrect use of `await`
+        //~^ ERROR `await` is only allowed inside `async` functions
         Ok(())
     };
     foo()

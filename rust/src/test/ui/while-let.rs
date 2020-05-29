@@ -1,9 +1,12 @@
 // run-pass
 
+#[allow(dead_code)]
 fn macros() {
     macro_rules! foo{
         ($p:pat, $e:expr, $b:block) => {{
             while let $p = $e $b
+            //~^ WARN irrefutable while-let
+            //~| WARN irrefutable while-let
         }}
     }
     macro_rules! bar{
@@ -12,16 +15,16 @@ fn macros() {
         }}
     }
 
-    foo!(a, 1, { //~ WARN irrefutable while-let
+    foo!(_a, 1, {
         println!("irrefutable pattern");
     });
-    bar!(a, 1, { //~ WARN irrefutable while-let
+    bar!(_a, 1, {
         println!("irrefutable pattern");
     });
 }
 
 pub fn main() {
-    while let a = 1 { //~ WARN irrefutable while-let
+    while let _a = 1 { //~ WARN irrefutable while-let
         println!("irrefutable pattern");
         break;
     }

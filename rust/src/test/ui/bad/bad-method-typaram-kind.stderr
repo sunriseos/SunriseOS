@@ -5,7 +5,10 @@ LL |     1.bar::<T>();
    |       ^^^ `T` cannot be sent between threads safely
    |
    = help: the trait `std::marker::Send` is not implemented for `T`
-   = help: consider adding a `where T: std::marker::Send` bound
+help: consider further restricting this bound
+   |
+LL | fn foo<T:'static + std::marker::Send>() {
+   |                  ^^^^^^^^^^^^^^^^^^^
 
 error: aborting due to previous error
 

@@ -1,4 +1,3 @@
-use std::{i16, f64};
 use super::super::*;
 use core::num::flt2dec::strategy::dragon::*;
 use test::Bencher;

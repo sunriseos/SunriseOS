@@ -55,11 +55,14 @@ The script accepts commands, flags, and arguments to determine what to do:
   # run all unit tests
   ./x.py test
 
-  # execute the run-pass test suite
-  ./x.py test src/test/run-pass
+  # execute tool tests
+  ./x.py test tidy
 
-  # execute only some tests in the run-pass test suite
-  ./x.py test src/test/run-pass --test-args substring-of-test-name
+  # execute the UI test suite
+  ./x.py test src/test/ui
+
+  # execute only some tests in the UI test suite
+  ./x.py test src/test/ui --test-args substring-of-test-name
 
   # execute tests in the standard library in stage0
   ./x.py test --stage 0 src/libstd
@@ -215,7 +218,7 @@ build/
 
     # Output for all compiletest-based test suites
     test/
-      run-pass/
+      ui/
       compile-fail/
       debuginfo/
       ...
@@ -328,6 +331,8 @@ are:
   `Config` struct.
 * Adding a sanity check? Take a look at `bootstrap/sanity.rs`.
 
-If you have any questions feel free to reach out on `#rust-infra` on IRC or ask on
-internals.rust-lang.org. When you encounter bugs, please file issues on the
-rust-lang/rust issue tracker.
+If you have any questions feel free to reach out on `#infra` channel in the
+[Rust Discord server][rust-discord] or ask on internals.rust-lang.org. When
+you encounter bugs, please file issues on the rust-lang/rust issue tracker.
+
+[rust-discord]: https://discord.gg/rust-lang

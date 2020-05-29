@@ -1,6 +1,6 @@
 //! This module defines types which are thread safe if cfg!(parallel_compiler) is true.
 //!
-//! `Lrc` is an alias of either Rc or Arc.
+//! `Lrc` is an alias of `Arc` if cfg!(parallel_compiler) is true, `Rc` otherwise.
 //!
 //! `Lock` is a mutex.
 //! It internally uses `parking_lot::Mutex` if cfg!(parallel_compiler) is true,
@@ -12,42 +12,18 @@
 //!
 //! `MTLock` is a mutex which disappears if cfg!(parallel_compiler) is false.
 //!
-//! `MTRef` is a immutable reference if cfg!(parallel_compiler), and an mutable reference otherwise.
+//! `MTRef` is an immutable reference if cfg!(parallel_compiler), and a mutable reference otherwise.
 //!
 //! `rustc_erase_owner!` erases a OwningRef owner into Erased or Erased + Send + Sync
 //! depending on the value of cfg!(parallel_compiler).
 
-use std::collections::HashMap;
-use std::hash::{Hash, BuildHasher};
-use std::marker::PhantomData;
-use std::ops::{Deref, DerefMut};
 use crate::owning_ref::{Erased, OwningRef};
+use std::collections::HashMap;
+use std::hash::{BuildHasher, Hash};
+use std::ops::{Deref, DerefMut};
 
-pub fn serial_join<A, B, RA, RB>(oper_a: A, oper_b: B) -> (RA, RB)
-    where A: FnOnce() -> RA,
-          B: FnOnce() -> RB
-{
-    (oper_a(), oper_b())
-}
-
-pub struct SerialScope;
-
-impl SerialScope {
-    pub fn spawn<F>(&self, f: F)
-        where F: FnOnce(&SerialScope)
-    {
-        f(self)
-    }
-}
-
-pub fn serial_scope<F, R>(f: F) -> R
-    where F: FnOnce(&SerialScope) -> R
-{
-    f(&SerialScope)
-}
-
-pub use std::sync::atomic::Ordering::SeqCst;
 pub use std::sync::atomic::Ordering;
+pub use std::sync::atomic::Ordering::SeqCst;
 
 cfg_if! {
     if #[cfg(not(parallel_compiler))] {
@@ -176,8 +152,28 @@ cfg_if! {
         pub type AtomicU32 = Atomic<u32>;
         pub type AtomicU64 = Atomic<u64>;
 
-        pub use self::serial_join as join;
-        pub use self::serial_scope as scope;
+        pub fn join<A, B, RA, RB>(oper_a: A, oper_b: B) -> (RA, RB)
+            where A: FnOnce() -> RA,
+                  B: FnOnce() -> RB
+        {
+            (oper_a(), oper_b())
+        }
+
+        pub struct SerialScope;
+
+        impl SerialScope {
+            pub fn spawn<F>(&self, f: F)
+                where F: FnOnce(&SerialScope)
+            {
+                f(self)
+            }
+        }
+
+        pub fn scope<F, R>(f: F) -> R
+            where F: FnOnce(&SerialScope) -> R
+        {
+            f(&SerialScope)
+        }
 
         #[macro_export]
         macro_rules! parallel {
@@ -206,11 +202,7 @@ cfg_if! {
             t.into_iter()
         }
 
-        pub fn par_for_each_in<T: IntoIterator>(
-            t: T,
-            for_each:
-                impl Fn(<<T as IntoIterator>::IntoIter as Iterator>::Item) + Sync + Send
-        ) {
+        pub fn par_for_each_in<T: IntoIterator>(t: T, for_each: impl Fn(T::Item) + Sync + Send) {
             // We catch panics here ensuring that all the loop iterations execute.
             // This makes behavior consistent with the parallel compiler.
             let mut panic = None;
@@ -236,6 +228,8 @@ cfg_if! {
         pub use std::cell::RefMut as MappedWriteGuard;
         pub use std::cell::RefMut as LockGuard;
         pub use std::cell::RefMut as MappedLockGuard;
+
+        pub use once_cell::unsync::OnceCell;
 
         use std::cell::RefCell as InnerRwLock;
         use std::cell::RefCell as InnerLock;
@@ -320,6 +314,8 @@ cfg_if! {
         pub use parking_lot::MutexGuard as LockGuard;
         pub use parking_lot::MappedMutexGuard as MappedLockGuard;
 
+        pub use once_cell::sync::OnceCell;
+
         pub use std::sync::atomic::{AtomicBool, AtomicUsize, AtomicU32, AtomicU64};
 
         pub use crossbeam_utils::atomic::AtomicCell;
@@ -400,9 +396,7 @@ cfg_if! {
 
         pub fn par_for_each_in<T: IntoParallelIterator>(
             t: T,
-            for_each: impl Fn(
-                <<T as IntoParallelIterator>::Iter as ParallelIterator>::Item
-            ) + Sync + Send
+            for_each: impl Fn(T::Item) + Sync + Send,
         ) {
             t.into_par_iter().for_each(for_each)
         }
@@ -438,134 +432,6 @@ pub trait HashMapExt<K, V> {
 impl<K: Eq + Hash, V: Eq, S: BuildHasher> HashMapExt<K, V> for HashMap<K, V, S> {
     fn insert_same(&mut self, key: K, value: V) {
         self.entry(key).and_modify(|old| assert!(*old == value)).or_insert(value);
-    }
-}
-
-/// A type whose inner value can be written once and then will stay read-only
-// This contains a PhantomData<T> since this type conceptually owns a T outside the Mutex once
-// initialized. This ensures that Once<T> is Sync only if T is. If we did not have PhantomData<T>
-// we could send a &Once<Cell<bool>> to multiple threads and call `get` on it to get access
-// to &Cell<bool> on those threads.
-pub struct Once<T>(Lock<Option<T>>, PhantomData<T>);
-
-impl<T> Once<T> {
-    /// Creates an Once value which is uninitialized
-    #[inline(always)]
-    pub fn new() -> Self {
-        Once(Lock::new(None), PhantomData)
-    }
-
-    /// Consumes the value and returns Some(T) if it was initialized
-    #[inline(always)]
-    pub fn into_inner(self) -> Option<T> {
-        self.0.into_inner()
-    }
-
-    /// Tries to initialize the inner value to `value`.
-    /// Returns `None` if the inner value was uninitialized and `value` was consumed setting it
-    /// otherwise if the inner value was already set it returns `value` back to the caller
-    #[inline]
-    pub fn try_set(&self, value: T) -> Option<T> {
-        let mut lock = self.0.lock();
-        if lock.is_some() {
-            return Some(value);
-        }
-        *lock = Some(value);
-        None
-    }
-
-    /// Tries to initialize the inner value to `value`.
-    /// Returns `None` if the inner value was uninitialized and `value` was consumed setting it
-    /// otherwise if the inner value was already set it asserts that `value` is equal to the inner
-    /// value and then returns `value` back to the caller
-    #[inline]
-    pub fn try_set_same(&self, value: T) -> Option<T> where T: Eq {
-        let mut lock = self.0.lock();
-        if let Some(ref inner) = *lock {
-            assert!(*inner == value);
-            return Some(value);
-        }
-        *lock = Some(value);
-        None
-    }
-
-    /// Tries to initialize the inner value to `value` and panics if it was already initialized
-    #[inline]
-    pub fn set(&self, value: T) {
-        assert!(self.try_set(value).is_none());
-    }
-
-    /// Tries to initialize the inner value by calling the closure while ensuring that no-one else
-    /// can access the value in the mean time by holding a lock for the duration of the closure.
-    /// If the value was already initialized the closure is not called and `false` is returned,
-    /// otherwise if the value from the closure initializes the inner value, `true` is returned
-    #[inline]
-    pub fn init_locking<F: FnOnce() -> T>(&self, f: F) -> bool {
-        let mut lock = self.0.lock();
-        if lock.is_some() {
-            return false;
-        }
-        *lock = Some(f());
-        true
-    }
-
-    /// Tries to initialize the inner value by calling the closure without ensuring that no-one
-    /// else can access it. This mean when this is called from multiple threads, multiple
-    /// closures may concurrently be computing a value which the inner value should take.
-    /// Only one of these closures are used to actually initialize the value.
-    /// If some other closure already set the value,
-    /// we return the value our closure computed wrapped in a `Option`.
-    /// If our closure set the value, `None` is returned.
-    /// If the value is already initialized, the closure is not called and `None` is returned.
-    #[inline]
-    pub fn init_nonlocking<F: FnOnce() -> T>(&self, f: F) -> Option<T> {
-        if self.0.lock().is_some() {
-            None
-        } else {
-            self.try_set(f())
-        }
-    }
-
-    /// Tries to initialize the inner value by calling the closure without ensuring that no-one
-    /// else can access it. This mean when this is called from multiple threads, multiple
-    /// closures may concurrently be computing a value which the inner value should take.
-    /// Only one of these closures are used to actually initialize the value.
-    /// If some other closure already set the value, we assert that it our closure computed
-    /// a value equal to the value already set and then
-    /// we return the value our closure computed wrapped in a `Option`.
-    /// If our closure set the value, `None` is returned.
-    /// If the value is already initialized, the closure is not called and `None` is returned.
-    #[inline]
-    pub fn init_nonlocking_same<F: FnOnce() -> T>(&self, f: F) -> Option<T> where T: Eq {
-        if self.0.lock().is_some() {
-            None
-        } else {
-            self.try_set_same(f())
-        }
-    }
-
-    /// Tries to get a reference to the inner value, returns `None` if it is not yet initialized
-    #[inline(always)]
-    pub fn try_get(&self) -> Option<&T> {
-        let lock = &*self.0.lock();
-        if let Some(ref inner) = *lock {
-            // This is safe since we won't mutate the inner value
-            unsafe { Some(&*(inner as *const T)) }
-        } else {
-            None
-        }
-    }
-
-    /// Gets reference to the inner value, panics if it is not yet initialized
-    #[inline(always)]
-    pub fn get(&self) -> &T {
-        self.try_get().expect("value was not set")
-    }
-
-    /// Gets reference to the inner value, panics if it is not yet initialized
-    #[inline(always)]
-    pub fn borrow(&self) -> &T {
-        self.get()
     }
 }
 
@@ -741,7 +607,7 @@ impl<T: Clone> Clone for RwLock<T> {
 
 /// A type which only allows its inner value to be used in one thread.
 /// It will panic if it is used on multiple threads.
-#[derive(Copy, Clone, Hash, Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub struct OneThread<T> {
     #[cfg(parallel_compiler)]
     thread: thread::ThreadId,

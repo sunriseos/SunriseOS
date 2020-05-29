@@ -5,7 +5,7 @@ pub fn target() -> TargetResult {
 
     // Most of these settings are copied from the arm_unknown_linux_gnueabihf
     // target.
-    base.features = "+strict-align,+v6,+vfp2".to_string();
+    base.features = "+strict-align,+v6,+vfp2,-d32".to_string();
     base.max_atomic_width = Some(64);
     Ok(Target {
         // It's important we use "gnueabihf" and not "musleabihf" here. LLVM
@@ -24,7 +24,7 @@ pub fn target() -> TargetResult {
         options: TargetOptions {
             abi_blacklist: super::arm_base::abi_blacklist(),
             target_mcount: "\u{1}mcount".to_string(),
-            .. base
+            ..base
         },
     })
 }

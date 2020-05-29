@@ -32,6 +32,28 @@ pre {
 	background-color: #505050;
 }
 
+/* Improve the scrollbar display on firefox */
+* {
+	scrollbar-color: rgb(64, 65, 67) #717171;
+}
+.sidebar {
+	scrollbar-color: rgba(32,34,37,.6) transparent;
+}
+
+/* Improve the scrollbar display on webkit-based browsers */
+::-webkit-scrollbar-track {
+	background-color: #717171;
+}
+::-webkit-scrollbar-thumb {
+	background-color: rgba(32, 34, 37, .6);
+}
+.sidebar::-webkit-scrollbar-track {
+	background-color: #717171;
+}
+.sidebar::-webkit-scrollbar-thumb {
+	background-color: rgba(32, 34, 37, .6);
+}
+
 .sidebar .current {
 	background-color: #333;
 }
@@ -105,6 +127,8 @@ pre {
 .content .highlighted.primitive { background-color: #00708a; }
 .content .highlighted.keyword { background-color: #884719; }
 
+.content .stability::before { color: #ccc; }
+
 .content span.enum, .content a.enum, .block a.current.enum { color: #82b089; }
 .content span.struct, .content a.struct, .block a.current.struct { color: #2dbfb8; }
 .content span.type, .content a.type, .block a.current.type { color: #ff7f00; }
@@ -129,7 +153,7 @@ pre {
 pre.rust .comment { color: #8d8d8b; }
 pre.rust .doccomment { color: #8ca375; }
 
-nav {
+nav:not(.sidebar) {
 	border-bottom-color: #4e4e4e;
 }
 nav.main .current {
@@ -175,6 +199,10 @@ a.test-arrow {
 
 .search-input:focus {
 	border-color: #008dfd;
+}
+
+.search-focus:disabled {
+	background-color: #c5c4c4;
 }
 
 #crate-search + .search-input:focus {
@@ -248,7 +276,7 @@ a.test-arrow:hover{
 }
 
 pre.compile_fail {
-	border-left: 2px solid rgba(255,0,0,.6);
+	border-left: 2px solid rgba(255,0,0,.8);
 }
 
 pre.compile_fail:hover, .information:hover + pre.compile_fail {
@@ -264,7 +292,7 @@ pre.ignore:hover, .information:hover + pre.ignore {
 }
 
 .tooltip.compile_fail {
-	color: rgba(255,0,0,.6);
+	color: rgba(255,0,0,.8);
 }
 
 .information > .compile_fail:hover {
@@ -276,7 +304,7 @@ pre.ignore:hover, .information:hover + pre.ignore {
 }
 
 .information > .ignore:hover {
-	color: rgba(255,142,0,1);
+	color: #ff9200;
 }
 
 .search-failed a {
@@ -284,18 +312,13 @@ pre.ignore:hover, .information:hover + pre.ignore {
 }
 
 .tooltip .tooltiptext {
-	background-color: black;
+	background-color: #000;
 	color: #fff;
+	border-color: #000;
 }
 
 .tooltip .tooltiptext::after {
 	border-color: transparent black transparent transparent;
-}
-
-.important-traits .tooltip .tooltiptext {
-	background-color: white;
-	color: black;
-	border-color: black;
 }
 
 #titles > div:not(.selected) {
@@ -309,33 +332,6 @@ pre.ignore:hover, .information:hover + pre.ignore {
 
 #titles > div > div.count {
 	color: #888;
-}
-
-.modal {
-	background-color: rgba(0,0,0,0.3);
-}
-
-.modal-content {
-	background-color: #272727;
-	border-color: #999;
-}
-
-.modal-content > .close {
-	background-color: #272727;
-	border-color: #999;
-}
-
-.modal-content > .close:hover {
-	background-color: #ff1f1f;
-	color: white;
-}
-
-.modal-content > .whiter {
-	background-color: #272727;
-}
-
-.modal-content > .close:hover + .whiter {
-	background-color: #ff1f1f;
 }
 
 @media (max-width: 700px) {
@@ -424,4 +420,7 @@ div.files > a:hover, div.name:hover {
 }
 div.files > .selected {
 	background-color: #333;
+}
+.setting-line > .title {
+	border-bottom-color: #ddd;
 }

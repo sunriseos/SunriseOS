@@ -1,15 +1,12 @@
-use rustc::hir::itemlikevisit::ItemLikeVisitor;
-use rustc::hir;
-use rustc::middle::cstore::ForeignModule;
-use rustc::ty::TyCtxt;
+use rustc_hir as hir;
+use rustc_hir::itemlikevisit::ItemLikeVisitor;
+use rustc_middle::middle::cstore::ForeignModule;
+use rustc_middle::ty::TyCtxt;
 
-pub fn collect(tcx: TyCtxt<'_>) -> Vec<ForeignModule> {
-    let mut collector = Collector {
-        tcx,
-        modules: Vec::new(),
-    };
+crate fn collect(tcx: TyCtxt<'_>) -> Vec<ForeignModule> {
+    let mut collector = Collector { tcx, modules: Vec::new() };
     tcx.hir().krate().visit_all_item_likes(&mut collector);
-    return collector.modules;
+    collector.modules
 }
 
 struct Collector<'tcx> {
@@ -18,21 +15,20 @@ struct Collector<'tcx> {
 }
 
 impl ItemLikeVisitor<'tcx> for Collector<'tcx> {
-    fn visit_item(&mut self, it: &'tcx hir::Item) {
-        let fm = match it.node {
+    fn visit_item(&mut self, it: &'tcx hir::Item<'tcx>) {
+        let fm = match it.kind {
             hir::ItemKind::ForeignMod(ref fm) => fm,
             _ => return,
         };
 
-        let foreign_items = fm.items.iter()
-            .map(|it| self.tcx.hir().local_def_id(it.hir_id))
-            .collect();
+        let foreign_items =
+            fm.items.iter().map(|it| self.tcx.hir().local_def_id(it.hir_id).to_def_id()).collect();
         self.modules.push(ForeignModule {
             foreign_items,
-            def_id: self.tcx.hir().local_def_id(it.hir_id),
+            def_id: self.tcx.hir().local_def_id(it.hir_id).to_def_id(),
         });
     }
 
-    fn visit_trait_item(&mut self, _it: &'tcx hir::TraitItem) {}
-    fn visit_impl_item(&mut self, _it: &'tcx hir::ImplItem) {}
+    fn visit_trait_item(&mut self, _it: &'tcx hir::TraitItem<'tcx>) {}
+    fn visit_impl_item(&mut self, _it: &'tcx hir::ImplItem<'tcx>) {}
 }

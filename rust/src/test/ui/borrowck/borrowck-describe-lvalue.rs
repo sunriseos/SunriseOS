@@ -1,7 +1,5 @@
 // ignore-tidy-linelength
 
-#![feature(slice_patterns)]
-
 pub struct Foo {
   x: u32
 }
@@ -140,22 +138,22 @@ fn main() {
         let mut v = &[1, 2, 3, 4, 5];
         let x = &mut v;
         match v {
-            &[x..] => println!("{:?}", x),
+            &[x @ ..] => println!("{:?}", x),
                 //~^ ERROR cannot use `v[..]` because it was mutably borrowed
             _ => panic!("other case"),
         }
         match v {
-            &[_, x..] => println!("{:?}", x),
+            &[_, x @ ..] => println!("{:?}", x),
                 //~^ ERROR cannot use `v[..]` because it was mutably borrowed
             _ => panic!("other case"),
         }
         match v {
-            &[x.., _] => println!("{:?}", x),
+            &[x @ .., _] => println!("{:?}", x),
                 //~^ ERROR cannot use `v[..]` because it was mutably borrowed
             _ => panic!("other case"),
         }
         match v {
-            &[_, x.., _] => println!("{:?}", x),
+            &[_, x @ .., _] => println!("{:?}", x),
                 //~^ ERROR cannot use `v[..]` because it was mutably borrowed
             _ => panic!("other case"),
         }
@@ -208,10 +206,8 @@ fn main() {
         fn bump<'a>(mut block: &mut Block<'a>) {
             let x = &mut block;
             let p: &'a u8 = &*block.current;
-            //~^ WARNING cannot borrow `*block.current` as immutable because it is also borrowed as mutable
-            //~| this error has been downgraded
-            //~| this warning will become a hard error in the future
-            // Warning because of issue rust#38899
+            //~^ ERROR cannot borrow `*block.current` as immutable because it is also borrowed as mutable
+            // See issue rust#38899
             drop(x);
         }
     }
@@ -225,10 +221,8 @@ fn main() {
         unsafe fn bump2(mut block: *mut Block2) {
             let x = &mut block;
             let p : *const u8 = &*(*block).current;
-            //~^ WARNING cannot borrow `*block.current` as immutable because it is also borrowed as mutable
-            //~| this error has been downgraded
-            //~| this warning will become a hard error in the future
-            // Warning because of issue rust#38899
+            //~^ ERROR cannot borrow `*block.current` as immutable because it is also borrowed as mutable
+            // See issue rust#38899
             drop(x);
         }
     }

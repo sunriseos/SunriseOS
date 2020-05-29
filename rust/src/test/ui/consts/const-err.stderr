@@ -1,29 +1,29 @@
 warning: any use of this value will cause an error
-  --> $DIR/const-err.rs:10:17
+  --> $DIR/const-err.rs:11:17
    |
 LL | const FOO: u8 = [5u8][1];
    | ----------------^^^^^^^^-
    |                 |
    |                 index out of bounds: the len is 1 but the index is 1
    |
-note: lint level defined here
-  --> $DIR/const-err.rs:4:9
+note: the lint level is defined here
+  --> $DIR/const-err.rs:5:9
    |
 LL | #![warn(const_err)]
    |         ^^^^^^^^^
 
 error[E0080]: erroneous constant used
-  --> $DIR/const-err.rs:14:16
+  --> $DIR/const-err.rs:15:16
    |
 LL |     black_box((FOO, FOO));
    |                ^^^ referenced constant has errors
 
 error[E0080]: erroneous constant used
-  --> $DIR/const-err.rs:14:21
+  --> $DIR/const-err.rs:15:21
    |
 LL |     black_box((FOO, FOO));
    |                     ^^^ referenced constant has errors
 
-error: aborting due to 2 previous errors
+error: aborting due to 2 previous errors; 1 warning emitted
 
 For more information about this error, try `rustc --explain E0080`.

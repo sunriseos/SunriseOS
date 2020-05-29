@@ -20,34 +20,36 @@ error[E0308]: mismatched types
   --> $DIR/destructure-trait-ref.rs:32:10
    |
 LL |     let &&x = &1isize as &dyn T;
-   |          ^^
+   |          ^^   ----------------- this expression has type `&dyn T`
    |          |
-   |          expected trait T, found reference
+   |          expected trait object `dyn T`, found reference
    |          help: you can probably remove the explicit borrow: `x`
    |
-   = note: expected type `dyn T`
-              found type `&_`
+   = note: expected trait object `dyn T`
+                 found reference `&_`
 
 error[E0308]: mismatched types
-  --> $DIR/destructure-trait-ref.rs:37:11
+  --> $DIR/destructure-trait-ref.rs:36:11
    |
 LL |     let &&&x = &(&1isize as &dyn T);
-   |           ^^
+   |           ^^   -------------------- this expression has type `&&dyn T`
    |           |
-   |           expected trait T, found reference
+   |           expected trait object `dyn T`, found reference
    |           help: you can probably remove the explicit borrow: `x`
    |
-   = note: expected type `dyn T`
-              found type `&_`
+   = note: expected trait object `dyn T`
+                 found reference `&_`
 
 error[E0308]: mismatched types
-  --> $DIR/destructure-trait-ref.rs:42:13
+  --> $DIR/destructure-trait-ref.rs:40:13
    |
 LL |     let box box x = box 1isize as Box<dyn T>;
-   |             ^^^^^ expected trait T, found struct `std::boxed::Box`
+   |             ^^^^^   ------------------------ this expression has type `std::boxed::Box<dyn T>`
+   |             |
+   |             expected trait object `dyn T`, found struct `std::boxed::Box`
    |
-   = note: expected type `dyn T`
-              found type `std::boxed::Box<_>`
+   = note: expected trait object `dyn T`
+                    found struct `std::boxed::Box<_>`
 
 error: aborting due to 6 previous errors
 

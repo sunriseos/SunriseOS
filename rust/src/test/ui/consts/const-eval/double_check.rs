@@ -1,4 +1,4 @@
-// build-pass (FIXME(62277): could be check-pass?)
+// check-pass
 
 enum Foo {
     A = 5,
@@ -8,6 +8,7 @@ enum Bar {
     C = 42,
     D = 99,
 }
+#[repr(C)]
 union Union {
     foo: &'static Foo,
     bar: &'static Bar,

@@ -3,22 +3,26 @@
 //! This library contains the tidy lints and exposes it
 //! to be used by tools.
 
-use walkdir::{DirEntry, WalkDir};
 use std::fs::File;
 use std::io::Read;
+use walkdir::{DirEntry, WalkDir};
 
 use std::path::Path;
 
 macro_rules! t {
-    ($e:expr, $p:expr) => (match $e {
-        Ok(e) => e,
-        Err(e) => panic!("{} failed on {} with {}", stringify!($e), ($p).display(), e),
-    });
+    ($e:expr, $p:expr) => {
+        match $e {
+            Ok(e) => e,
+            Err(e) => panic!("{} failed on {} with {}", stringify!($e), ($p).display(), e),
+        }
+    };
 
-    ($e:expr) => (match $e {
-        Ok(e) => e,
-        Err(e) => panic!("{} failed with {}", stringify!($e), e),
-    })
+    ($e:expr) => {
+        match $e {
+            Ok(e) => e,
+            Err(e) => panic!("{} failed with {}", stringify!($e), e),
+        }
+    };
 }
 
 macro_rules! tidy_error {
@@ -30,46 +34,41 @@ macro_rules! tidy_error {
 }
 
 pub mod bins;
-pub mod style;
-pub mod errors;
-pub mod features;
 pub mod cargo;
-pub mod pal;
+pub mod debug_artifacts;
 pub mod deps;
+pub mod edition;
+pub mod error_codes_check;
+pub mod errors;
 pub mod extdeps;
+pub mod features;
+pub mod pal;
+pub mod style;
 pub mod ui_tests;
+pub mod unit_tests;
 pub mod unstable_book;
-pub mod libcoretest;
 
 fn filter_dirs(path: &Path) -> bool {
     let skip = [
-        "src/llvm",
         "src/llvm-project",
-        "src/llvm-emscripten",
-        "src/libbacktrace",
-        "src/librustc_data_structures/owning_ref",
-        "src/vendor",
+        "src/stdarch",
         "src/tools/cargo",
-        "src/tools/clang",
-        "src/tools/rls",
         "src/tools/clippy",
+        "src/tools/miri",
+        "src/tools/rls",
         "src/tools/rust-installer",
         "src/tools/rustfmt",
-        "src/tools/miri",
-        "src/tools/lld",
-        "src/tools/lldb",
-        "src/target",
-        "src/stdsimd",
-        "src/rust-sgx",
-        "target",
-        "vendor",
+        "src/doc/book",
+        // Filter RLS output directories
+        "target/rls",
     ];
     skip.iter().any(|p| path.ends_with(p))
 }
 
-
 fn walk_many(
-    paths: &[&Path], skip: &mut dyn FnMut(&Path) -> bool, f: &mut dyn FnMut(&DirEntry, &str)
+    paths: &[&Path],
+    skip: &mut dyn FnMut(&Path) -> bool,
+    f: &mut dyn FnMut(&DirEntry, &str),
 ) {
     for path in paths {
         walk(path, skip, f);
@@ -88,8 +87,7 @@ fn walk(path: &Path, skip: &mut dyn FnMut(&Path) -> bool, f: &mut dyn FnMut(&Dir
 }
 
 fn walk_no_read(path: &Path, skip: &mut dyn FnMut(&Path) -> bool, f: &mut dyn FnMut(&DirEntry)) {
-    let walker = WalkDir::new(path).into_iter()
-        .filter_entry(|e| !skip(e.path()));
+    let walker = WalkDir::new(path).into_iter().filter_entry(|e| !skip(e.path()));
     for entry in walker {
         if let Ok(entry) = entry {
             if entry.file_type().is_dir() {

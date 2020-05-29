@@ -1,16 +1,17 @@
-use crate::abi::call::{ArgAttribute, FnType, PassMode, Reg, RegKind};
-use crate::abi::{self, HasDataLayout, LayoutOf, TyLayout, TyLayoutMethods};
+use crate::abi::call::{ArgAttribute, FnAbi, PassMode, Reg, RegKind};
+use crate::abi::{self, HasDataLayout, LayoutOf, TyAndLayout, TyAndLayoutMethods};
 use crate::spec::HasTargetSpec;
 
 #[derive(PartialEq)]
 pub enum Flavor {
     General,
-    Fastcall
+    Fastcall,
 }
 
-fn is_single_fp_element<'a, Ty, C>(cx: &C, layout: TyLayout<'a, Ty>) -> bool
-    where Ty: TyLayoutMethods<'a, C> + Copy,
-          C: LayoutOf<Ty = Ty, TyLayout = TyLayout<'a, Ty>> + HasDataLayout
+fn is_single_fp_element<'a, Ty, C>(cx: &C, layout: TyAndLayout<'a, Ty>) -> bool
+where
+    Ty: TyAndLayoutMethods<'a, C> + Copy,
+    C: LayoutOf<Ty = Ty, TyAndLayout = TyAndLayout<'a, Ty>> + HasDataLayout,
 {
     match layout.abi {
         abi::Abi::Scalar(ref scalar) => scalar.value.is_float(),
@@ -21,16 +22,17 @@ fn is_single_fp_element<'a, Ty, C>(cx: &C, layout: TyLayout<'a, Ty>) -> bool
                 false
             }
         }
-        _ => false
+        _ => false,
     }
 }
 
-pub fn compute_abi_info<'a, Ty, C>(cx: &C, fty: &mut FnType<'a, Ty>, flavor: Flavor)
-    where Ty: TyLayoutMethods<'a, C> + Copy,
-          C: LayoutOf<Ty = Ty, TyLayout = TyLayout<'a, Ty>> + HasDataLayout + HasTargetSpec
+pub fn compute_abi_info<'a, Ty, C>(cx: &C, fn_abi: &mut FnAbi<'a, Ty>, flavor: Flavor)
+where
+    Ty: TyAndLayoutMethods<'a, C> + Copy,
+    C: LayoutOf<Ty = Ty, TyAndLayout = TyAndLayout<'a, Ty>> + HasDataLayout + HasTargetSpec,
 {
-    if !fty.ret.is_ignore() {
-        if fty.ret.layout.is_aggregate() {
+    if !fn_abi.ret.is_ignore() {
+        if fn_abi.ret.layout.is_aggregate() {
             // Returning a structure. Most often, this will use
             // a hidden first argument. On some platforms, though,
             // small structs are returned as integers.
@@ -42,31 +44,33 @@ pub fn compute_abi_info<'a, Ty, C>(cx: &C, fty: &mut FnType<'a, Ty>, flavor: Fla
             if t.options.abi_return_struct_as_int {
                 // According to Clang, everyone but MSVC returns single-element
                 // float aggregates directly in a floating-point register.
-                if !t.options.is_like_msvc && is_single_fp_element(cx, fty.ret.layout) {
-                    match fty.ret.layout.size.bytes() {
-                        4 => fty.ret.cast_to(Reg::f32()),
-                        8 => fty.ret.cast_to(Reg::f64()),
-                        _ => fty.ret.make_indirect()
+                if !t.options.is_like_msvc && is_single_fp_element(cx, fn_abi.ret.layout) {
+                    match fn_abi.ret.layout.size.bytes() {
+                        4 => fn_abi.ret.cast_to(Reg::f32()),
+                        8 => fn_abi.ret.cast_to(Reg::f64()),
+                        _ => fn_abi.ret.make_indirect(),
                     }
                 } else {
-                    match fty.ret.layout.size.bytes() {
-                        1 => fty.ret.cast_to(Reg::i8()),
-                        2 => fty.ret.cast_to(Reg::i16()),
-                        4 => fty.ret.cast_to(Reg::i32()),
-                        8 => fty.ret.cast_to(Reg::i64()),
-                        _ => fty.ret.make_indirect()
+                    match fn_abi.ret.layout.size.bytes() {
+                        1 => fn_abi.ret.cast_to(Reg::i8()),
+                        2 => fn_abi.ret.cast_to(Reg::i16()),
+                        4 => fn_abi.ret.cast_to(Reg::i32()),
+                        8 => fn_abi.ret.cast_to(Reg::i64()),
+                        _ => fn_abi.ret.make_indirect(),
                     }
                 }
             } else {
-                fty.ret.make_indirect();
+                fn_abi.ret.make_indirect();
             }
         } else {
-            fty.ret.extend_integer_width_to(32);
+            fn_abi.ret.extend_integer_width_to(32);
         }
     }
 
-    for arg in &mut fty.args {
-        if arg.is_ignore() { continue; }
+    for arg in &mut fn_abi.args {
+        if arg.is_ignore() {
+            continue;
+        }
         if arg.layout.is_aggregate() {
             arg.make_indirect_byval();
         } else {
@@ -86,20 +90,17 @@ pub fn compute_abi_info<'a, Ty, C>(cx: &C, fty: &mut FnType<'a, Ty>, flavor: Fla
 
         let mut free_regs = 2;
 
-        for arg in &mut fty.args {
+        for arg in &mut fn_abi.args {
             let attrs = match arg.mode {
-                PassMode::Ignore(_) |
-                PassMode::Indirect(_, None) => continue,
+                PassMode::Ignore | PassMode::Indirect(_, None) => continue,
                 PassMode::Direct(ref mut attrs) => attrs,
-                PassMode::Pair(..) |
-                PassMode::Indirect(_, Some(_)) |
-                PassMode::Cast(_) => {
+                PassMode::Pair(..) | PassMode::Indirect(_, Some(_)) | PassMode::Cast(_) => {
                     unreachable!("x86 shouldn't be passing arguments by {:?}", arg.mode)
                 }
             };
 
             // At this point we know this must be a primitive of sorts.
-            let unit = arg.layout.homogeneous_aggregate(cx).unit().unwrap();
+            let unit = arg.layout.homogeneous_aggregate(cx).unwrap().unit().unwrap();
             assert_eq!(unit.size, arg.layout.size);
             if unit.kind == RegKind::Float {
                 continue;

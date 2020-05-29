@@ -1,9 +1,9 @@
-#![deny(rust_2018_idioms)]
+#![deny(warnings)]
 
 use std::env;
-use std::process::Command;
-use std::path::{Path, PathBuf};
 use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 struct Test {
     repo: &'static str,
@@ -17,8 +17,8 @@ const TEST_REPOS: &'static [Test] = &[
     Test {
         name: "iron",
         repo: "https://github.com/iron/iron",
-        sha: "21c7dae29c3c214c08533c2a55ac649b418f2fe3",
-        lock: Some(include_str!("lockfiles/iron-Cargo.lock")),
+        sha: "cf056ea5e8052c1feea6141e40ab0306715a2c33",
+        lock: None,
         packages: &[],
     },
     Test {
@@ -52,18 +52,11 @@ const TEST_REPOS: &'static [Test] = &[
     Test {
         name: "servo",
         repo: "https://github.com/servo/servo",
-        sha: "987e376ca7a4245dbc3e0c06e963278ee1ac92d1",
+        sha: "caac107ae8145ef2fd20365e2b8fadaf09c2eb3b",
         lock: None,
         // Only test Stylo a.k.a. Quantum CSS, the parts of Servo going into Firefox.
         // This takes much less time to build than all of Servo and supports stable Rust.
         packages: &["selectors"],
-    },
-    Test {
-        name: "webrender",
-        repo: "https://github.com/servo/webrender",
-        sha: "cdadd068f4c7218bd983d856981d561e605270ab",
-        lock: None,
-        packages: &[],
     },
 ];
 
@@ -93,11 +86,7 @@ fn clone_repo(test: &Test, out_dir: &Path) -> PathBuf {
     let out_dir = out_dir.join(test.name);
 
     if !out_dir.join(".git").is_dir() {
-        let status = Command::new("git")
-                         .arg("init")
-                         .arg(&out_dir)
-                         .status()
-                         .expect("");
+        let status = Command::new("git").arg("init").arg(&out_dir).status().expect("");
         assert!(status.success());
     }
 
@@ -106,23 +95,23 @@ fn clone_repo(test: &Test, out_dir: &Path) -> PathBuf {
     for depth in &[0, 1, 10, 100, 1000, 100000] {
         if *depth > 0 {
             let status = Command::new("git")
-                             .arg("fetch")
-                             .arg(test.repo)
-                             .arg("master")
-                             .arg(&format!("--depth={}", depth))
-                             .current_dir(&out_dir)
-                             .status()
-                             .expect("");
+                .arg("fetch")
+                .arg(test.repo)
+                .arg("master")
+                .arg(&format!("--depth={}", depth))
+                .current_dir(&out_dir)
+                .status()
+                .expect("");
             assert!(status.success());
         }
 
         let status = Command::new("git")
-                         .arg("reset")
-                         .arg(test.sha)
-                         .arg("--hard")
-                         .current_dir(&out_dir)
-                         .status()
-                         .expect("");
+            .arg("reset")
+            .arg(test.sha)
+            .arg("--hard")
+            .current_dir(&out_dir)
+            .status()
+            .expect("");
 
         if status.success() {
             found = true;
@@ -133,12 +122,8 @@ fn clone_repo(test: &Test, out_dir: &Path) -> PathBuf {
     if !found {
         panic!("unable to find commit {}", test.sha)
     }
-    let status = Command::new("git")
-                     .arg("clean")
-                     .arg("-fdx")
-                     .current_dir(&out_dir)
-                     .status()
-                     .unwrap();
+    let status =
+        Command::new("git").arg("clean").arg("-fdx").current_dir(&out_dir).status().unwrap();
     assert!(status.success());
 
     out_dir

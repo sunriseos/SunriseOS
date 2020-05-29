@@ -23,9 +23,15 @@ fi
 ci_dir=`cd $(dirname $0) && pwd`
 source "$ci_dir/shared.sh"
 
-branch_name=$(getCIBranch)
+if command -v python > /dev/null; then
+    PYTHON="python"
+elif command -v python3 > /dev/null; then
+    PYTHON="python3"
+else
+    PYTHON="python2"
+fi
 
-if [ ! isCI ] || [ "$branch_name" = "auto" ]; then
+if ! isCI || isCiBranch auto || isCiBranch beta; then
     RUST_CONFIGURE_ARGS="$RUST_CONFIGURE_ARGS --set build.print-step-timings --enable-verbose-tests"
 fi
 
@@ -46,15 +52,23 @@ fi
 # FIXME: need a scheme for changing this `nightly` value to `beta` and `stable`
 #        either automatically or manually.
 export RUST_RELEASE_CHANNEL=nightly
+
+# Always set the release channel for bootstrap; this is normally not important (i.e., only dist
+# builds would seem to matter) but in practice bootstrap wants to know whether we're targeting
+# master, beta, or stable with a build to determine whether to run some checks (notably toolstate).
+RUST_CONFIGURE_ARGS="$RUST_CONFIGURE_ARGS --release-channel=$RUST_RELEASE_CHANNEL"
+
 if [ "$DEPLOY$DEPLOY_ALT" = "1" ]; then
-  RUST_CONFIGURE_ARGS="$RUST_CONFIGURE_ARGS --release-channel=$RUST_RELEASE_CHANNEL"
   RUST_CONFIGURE_ARGS="$RUST_CONFIGURE_ARGS --enable-llvm-static-stdcpp"
   RUST_CONFIGURE_ARGS="$RUST_CONFIGURE_ARGS --set rust.remap-debuginfo"
-  RUST_CONFIGURE_ARGS="$RUST_CONFIGURE_ARGS --set rust.debuginfo-level-std=1"
+  RUST_CONFIGURE_ARGS="$RUST_CONFIGURE_ARGS --debuginfo-level-std=1"
 
   if [ "$NO_LLVM_ASSERTIONS" = "1" ]; then
     RUST_CONFIGURE_ARGS="$RUST_CONFIGURE_ARGS --disable-llvm-assertions"
   elif [ "$DEPLOY_ALT" != "" ]; then
+    if [ "$NO_PARALLEL_COMPILER" = "" ]; then
+      RUST_CONFIGURE_ARGS="$RUST_CONFIGURE_ARGS --set rust.parallel-compiler"
+    fi
     RUST_CONFIGURE_ARGS="$RUST_CONFIGURE_ARGS --enable-llvm-assertions"
     RUST_CONFIGURE_ARGS="$RUST_CONFIGURE_ARGS --set rust.verify-llvm-ir"
   fi
@@ -78,6 +92,21 @@ if [ "$RUST_RELEASE_CHANNEL" = "nightly" ] || [ "$DIST_REQUIRE_ALL_TOOLS" = "" ]
     RUST_CONFIGURE_ARGS="$RUST_CONFIGURE_ARGS --enable-missing-tools"
 fi
 
+# Print the date from the local machine and the date from an external source to
+# check for clock drifts. An HTTP URL is used instead of HTTPS since on Azure
+# Pipelines it happened that the certificates were marked as expired.
+datecheck() {
+  echo "== clock drift check =="
+  echo -n "  local time: "
+  date
+  echo -n "  network time: "
+  curl -fs --head http://detectportal.firefox.com/success.txt | grep ^Date: \
+      | sed 's/Date: //g' || true
+  echo "== end clock drift check =="
+}
+datecheck
+trap datecheck EXIT
+
 # We've had problems in the past of shell scripts leaking fds into the sccache
 # server (#48192) which causes Cargo to erroneously think that a build script
 # hasn't finished yet. Try to solve that problem by starting a very long-lived
@@ -86,33 +115,20 @@ SCCACHE_IDLE_TIMEOUT=10800 sccache --start-server || true
 
 if [ "$RUN_CHECK_WITH_PARALLEL_QUERIES" != "" ]; then
   $SRC/configure --enable-parallel-compiler
-  CARGO_INCREMENTAL=0 python2.7 ../x.py check
+  CARGO_INCREMENTAL=0 $PYTHON ../x.py check
   rm -f config.toml
   rm -rf build
 fi
 
-travis_fold start configure
-travis_time_start
 $SRC/configure $RUST_CONFIGURE_ARGS
-travis_fold end configure
-travis_time_finish
 
-travis_fold start make-prepare
-travis_time_start
 retry make prepare
-travis_fold end make-prepare
-travis_time_finish
 
-travis_fold start check-bootstrap
-travis_time_start
 make check-bootstrap
-travis_fold end check-bootstrap
-travis_time_finish
 
 # Display the CPU and memory information. This helps us know why the CI timing
 # is fluctuating.
-travis_fold start log-system-info
-if isOSX; then
+if isMacOS; then
     system_profiler SPHardwareDataType || true
     sysctl hw || true
     ncpus=$(sysctl -n hw.ncpu)
@@ -121,19 +137,14 @@ else
     cat /proc/meminfo || true
     ncpus=$(grep processor /proc/cpuinfo | wc -l)
 fi
-travis_fold end log-system-info
 
 if [ ! -z "$SCRIPT" ]; then
   sh -x -c "$SCRIPT"
 else
   do_make() {
-    travis_fold start "make-$1"
-    travis_time_start
     echo "make -j $ncpus $1"
     make -j $ncpus $1
     local retval=$?
-    travis_fold end "make-$1"
-    travis_time_finish
     return $retval
   }
 

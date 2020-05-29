@@ -1,6 +1,5 @@
-// build-pass (FIXME(62277): could be check-pass?)
-
-#![feature(never_type)]
+// check-pass
+#![feature(never_type, never_type_fallback)]
 #![allow(unreachable_code)]
 
 use std::error::Error;

@@ -106,11 +106,11 @@ item, it will be accompanied by a banner explaining that the item is only availa
 platforms.
 
 For Rustdoc to document an item, it needs to see it, regardless of what platform it's currently
-running on. To aid this, Rustdoc sets the flag `#[cfg(rustdoc)]` when running on your crate.
+running on. To aid this, Rustdoc sets the flag `#[cfg(doc)]` when running on your crate.
 Combining this with the target platform of a given item allows it to appear when building your crate
 normally on that platform, as well as when building documentation anywhere.
 
-For example, `#[cfg(any(windows, rustdoc))]` will preserve the item either on Windows or during the
+For example, `#[cfg(any(windows, doc))]` will preserve the item either on Windows or during the
 documentation process. Then, adding a new attribute `#[doc(cfg(windows))]` will tell Rustdoc that
 the item is supposed to be used on Windows. For example:
 
@@ -118,12 +118,12 @@ the item is supposed to be used on Windows. For example:
 #![feature(doc_cfg)]
 
 /// Token struct that can only be used on Windows.
-#[cfg(any(windows, rustdoc))]
+#[cfg(any(windows, doc))]
 #[doc(cfg(windows))]
 pub struct WindowsToken;
 
 /// Token struct that can only be used on Unix.
-#[cfg(any(unix, rustdoc))]
+#[cfg(any(unix, doc))]
 #[doc(cfg(unix))]
 pub struct UnixToken;
 ```
@@ -137,27 +137,6 @@ Book][unstable-doc-cfg] and [its tracking issue][issue-doc-cfg].
 
 [unstable-doc-cfg]: ../unstable-book/language-features/doc-cfg.html
 [issue-doc-cfg]: https://github.com/rust-lang/rust/issues/43781
-
-### Adding your trait to the "Important Traits" dialog
-
-Rustdoc keeps a list of a few traits that are believed to be "fundamental" to a given type when
-implemented on it. These traits are intended to be the primary interface for their types, and are
-often the only thing available to be documented on their types. For this reason, Rustdoc will track
-when a given type implements one of these traits and call special attention to it when a function
-returns one of these types. This is the "Important Traits" dialog, visible as a circle-i button next
-to the function, which, when clicked, shows the dialog.
-
-In the standard library, the traits that qualify for inclusion are `Iterator`, `io::Read`, and
-`io::Write`. However, rather than being implemented as a hard-coded list, these traits have a
-special marker attribute on them: `#[doc(spotlight)]`. This means that you could apply this
-attribute to your own trait to include it in the "Important Traits" dialog in documentation.
-
-The `#[doc(spotlight)]` attribute currently requires the `#![feature(doc_spotlight)]` feature gate.
-For more information, see [its chapter in the Unstable Book][unstable-spotlight] and [its tracking
-issue][issue-spotlight].
-
-[unstable-spotlight]: ../unstable-book/language-features/doc-spotlight.html
-[issue-spotlight]: https://github.com/rust-lang/rust/issues/45040
 
 ### Exclude certain dependencies from documentation
 
@@ -183,9 +162,8 @@ Book][unstable-masked] and [its tracking issue][issue-masked].
 
 As designed in [RFC 1990], Rustdoc can read an external file to use as a type's documentation. This
 is useful if certain documentation is so long that it would break the flow of reading the source.
-Instead of writing it all inline, writing `#[doc(include = "sometype.md")]` (where `sometype.md` is
-a file adjacent to the `lib.rs` for the crate) will ask Rustdoc to instead read that file and use it
-as if it were written inline.
+Instead of writing it all inline, writing `#[doc(include = "sometype.md")]` will ask Rustdoc to
+instead read that file and use it as if it were written inline.
 
 [RFC 1990]: https://github.com/rust-lang/rfcs/pull/1990
 
@@ -211,36 +189,6 @@ pub struct BigX;
 
 Then, when looking for it through the `rustdoc` search, if you enter "x" or
 "big", search will show the `BigX` struct first.
-
-### Include items only when collecting doctests
-
-Rustdoc's [documentation tests] can do some things that regular unit tests can't, so it can
-sometimes be useful to extend your doctests with samples that wouldn't otherwise need to be in
-documentation. To this end, Rustdoc allows you to have certain items only appear when it's
-collecting doctests, so you can utilize doctest functionality without forcing the test to appear in
-docs, or to find an arbitrary private item to include it on.
-
-If you add `#![feature(cfg_doctest)]` to your crate, Rustdoc will set `cfg(doctest)` when collecting
-doctests. Note that they will still link against only the public items of your crate; if you need to
-test private items, unit tests are still the way to go.
-
-In this example, we're adding doctests that we know won't compile, to verify that our struct can
-only take in valid data:
-
-```rust
-#![feature(cfg_doctest)]
-
-/// We have a struct here. Remember it doesn't accept negative numbers!
-pub struct MyStruct(usize);
-
-/// ```compile_fail
-/// let x = my_crate::MyStruct(-5);
-/// ```
-#[cfg(doctest)]
-pub struct MyStructOnlyTakesUsize;
-```
-
-[documentation tests]: documentation-tests.html
 
 ## Unstable command-line arguments
 
@@ -300,31 +248,6 @@ Markdown file, the URL given to `--markdown-playground-url` will take precedence
 `--playground-url` and `#![doc(html_playground_url = "url")]` are present when rendering crate docs,
 the attribute will take precedence.
 
-### `--crate-version`: control the crate version
-
-Using this flag looks like this:
-
-```bash
-$ rustdoc src/lib.rs -Z unstable-options --crate-version 1.3.37
-```
-
-When `rustdoc` receives this flag, it will print an extra "Version (version)" into the sidebar of
-the crate root's docs. You can use this flag to differentiate between different versions of your
-library's documentation.
-
-### `--linker`: control the linker used for documentation tests
-
-Using this flag looks like this:
-
-```bash
-$ rustdoc --test src/lib.rs -Z unstable-options --linker foo
-$ rustdoc --test README.md -Z unstable-options --linker foo
-```
-
-When `rustdoc` runs your documentation tests, it needs to compile and link the tests as executables
-before running them. This flag can be used to change the linker used on these executables. It's
-equivalent to passing `-C linker=foo` to `rustc`.
-
 ### `--sort-modules-by-appearance`: control how items on module pages are sorted
 
 Using this flag looks like this:
@@ -337,30 +260,6 @@ Ordinarily, when `rustdoc` prints items in module pages, it will sort them alpha
 some consideration for their stability, and names that end in a number). Giving this flag to
 `rustdoc` will disable this sorting and instead make it print the items in the order they appear in
 the source.
-
-### `--themes`: provide additional themes
-
-Using this flag looks like this:
-
-```bash
-$ rustdoc src/lib.rs -Z unstable-options --themes theme.css
-```
-
-Giving this flag to `rustdoc` will make it copy your theme into the generated crate docs and enable
-it in the theme selector. Note that `rustdoc` will reject your theme file if it doesn't style
-everything the "light" theme does. See `--theme-checker` below for details.
-
-### `--theme-checker`: verify theme CSS for validity
-
-Using this flag looks like this:
-
-```bash
-$ rustdoc -Z unstable-options --theme-checker theme.css
-```
-
-Before including your theme in crate docs, `rustdoc` will compare all the CSS rules it contains
-against the "light" theme included by default. Using this flag will allow you to see which rules are
-missing if `rustdoc` rejects your theme.
 
 ### `--resource-suffix`: modifying the name of CSS/JavaScript in crate docs
 
@@ -485,3 +384,53 @@ Some methodology notes about what rustdoc counts in this metric:
 
 Public items that are not documented can be seen with the built-in `missing_docs` lint. Private
 items that are not documented can be seen with Clippy's `missing_docs_in_private_items` lint.
+
+### `--enable-per-target-ignores`: allow `ignore-foo` style filters for doctests
+
+Using this flag looks like this:
+
+```bash
+$ rustdoc src/lib.rs -Z unstable-options --enable-per-target-ignores
+```
+
+This flag allows you to tag doctests with compiltest style `ignore-foo` filters that prevent
+rustdoc from running that test if the target triple string contains foo. For example:
+
+```rust
+///```ignore-foo,ignore-bar
+///assert!(2 == 2);
+///```
+struct Foo;
+```
+
+This will not be run when the build target is `super-awesome-foo` or `less-bar-awesome`.
+If the flag is not enabled, then rustdoc will consume the filter, but do nothing with it, and
+the above example will be run for all targets.
+If you want to preserve backwards compatibility for older versions of rustdoc, you can use
+
+```rust
+///```ignore,ignore-foo
+///assert!(2 == 2);
+///```
+struct Foo;
+```
+
+In older versions, this will be ignored on all targets, but on newer versions `ignore-gnu` will
+override `ignore`.
+
+### `--runtool`, `--runtool-arg`: program to run tests with; args to pass to it
+
+Using these options looks like this:
+
+```bash
+$ rustdoc src/lib.rs -Z unstable-options --runtool runner --runtool-arg --do-thing --runtool-arg --do-other-thing
+```
+
+These options can be used to run the doctest under a program, and also pass arguments to
+that program. For example, if you want to run your doctests under valgrind you might run
+
+```bash
+$ rustdoc src/lib.rs -Z unstable-options --runtool valgrind
+```
+
+Another use case would be to run a test inside an emulator, or through a Virtual Machine.

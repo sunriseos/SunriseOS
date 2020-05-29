@@ -1,20 +1,28 @@
 #![feature(allocator_api)]
 #![feature(box_syntax)]
+#![feature(btree_drain_filter)]
 #![feature(drain_filter)]
 #![feature(exact_size_is_empty)]
-#![feature(option_flattening)]
+#![feature(map_first_last)]
+#![feature(new_uninit)]
 #![feature(pattern)]
-#![feature(repeat_generic_slice)]
 #![feature(trusted_len)]
 #![feature(try_reserve)]
 #![feature(unboxed_closures)]
-#![deny(rust_2018_idioms)]
+#![feature(associated_type_bounds)]
+#![feature(binary_heap_into_iter_sorted)]
+#![feature(binary_heap_drain_sorted)]
+#![feature(vec_remove_item)]
+#![feature(split_inclusive)]
+#![feature(binary_heap_retain)]
 
-use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 mod arc;
 mod binary_heap;
+mod borrow;
+mod boxed;
 mod btree;
 mod cow_str;
 mod fmt;
@@ -24,8 +32,8 @@ mod rc;
 mod slice;
 mod str;
 mod string;
-mod vec_deque;
 mod vec;
+mod vec_deque;
 
 fn hash<T: Hash>(t: &T) -> u64 {
     let mut s = DefaultHasher::new();

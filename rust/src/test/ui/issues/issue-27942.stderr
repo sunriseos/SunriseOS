@@ -1,8 +1,8 @@
 error[E0308]: mismatched types
-  --> $DIR/issue-27942.rs:5:5
+  --> $DIR/issue-27942.rs:5:25
    |
 LL |     fn select(&self) -> BufferViewHandle<R>;
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ lifetime mismatch
+   |                         ^^^^^^^^^^^^^^^^^^^ lifetime mismatch
    |
    = note: expected type `Resources<'_>`
               found type `Resources<'a>`
@@ -11,21 +11,21 @@ note: the anonymous lifetime #1 defined on the method body at 5:5...
    |
 LL |     fn select(&self) -> BufferViewHandle<R>;
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-note: ...does not necessarily outlive the lifetime 'a as defined on the trait at 3:18
+note: ...does not necessarily outlive the lifetime `'a` as defined on the trait at 3:18
   --> $DIR/issue-27942.rs:3:18
    |
 LL | pub trait Buffer<'a, R: Resources<'a>> {
    |                  ^^
 
 error[E0308]: mismatched types
-  --> $DIR/issue-27942.rs:5:5
+  --> $DIR/issue-27942.rs:5:25
    |
 LL |     fn select(&self) -> BufferViewHandle<R>;
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ lifetime mismatch
+   |                         ^^^^^^^^^^^^^^^^^^^ lifetime mismatch
    |
    = note: expected type `Resources<'_>`
               found type `Resources<'a>`
-note: the lifetime 'a as defined on the trait at 3:18...
+note: the lifetime `'a` as defined on the trait at 3:18...
   --> $DIR/issue-27942.rs:3:18
    |
 LL | pub trait Buffer<'a, R: Resources<'a>> {

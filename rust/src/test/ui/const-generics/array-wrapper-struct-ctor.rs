@@ -1,7 +1,9 @@
 // run-pass
 
 #![feature(const_generics)]
-//~^ WARN the feature `const_generics` is incomplete and may cause the compiler to crash
+//~^ WARN the feature `const_generics` is incomplete
+
+#![allow(dead_code)]
 
 struct ArrayStruct<T, const N: usize> {
     data: [T; N],

@@ -88,7 +88,7 @@ use crate::marker;
 #[allow(deprecated)]
 pub use self::sip::SipHasher;
 
-#[unstable(feature = "hashmap_internals", issue = "0")]
+#[unstable(feature = "hashmap_internals", issue = "none")]
 #[allow(deprecated)]
 #[doc(hidden)]
 pub use self::sip::SipHasher13;
@@ -190,13 +190,28 @@ pub trait Hash {
     /// [`Hasher`]: trait.Hasher.html
     #[stable(feature = "hash_slice", since = "1.3.0")]
     fn hash_slice<H: Hasher>(data: &[Self], state: &mut H)
-        where Self: Sized
+    where
+        Self: Sized,
     {
         for piece in data {
             piece.hash(state);
         }
     }
 }
+
+// Separate module to reexport the macro `Hash` from prelude without the trait `Hash`.
+pub(crate) mod macros {
+    /// Derive macro generating an impl of the trait `Hash`.
+    #[rustc_builtin_macro]
+    #[stable(feature = "builtin_macro_prelude", since = "1.38.0")]
+    #[allow_internal_unstable(core_intrinsics)]
+    pub macro Hash($item:item) {
+        /* compiler built-in */
+    }
+}
+#[stable(feature = "builtin_macro_prelude", since = "1.38.0")]
+#[doc(inline)]
+pub use macros::Hash;
 
 /// A trait for hashing an arbitrary stream of bytes.
 ///
@@ -538,8 +553,6 @@ impl<H> PartialEq for BuildHasherDefault<H> {
 #[stable(since = "1.29.0", feature = "build_hasher_eq")]
 impl<H> Eq for BuildHasherDefault<H> {}
 
-//////////////////////////////////////////////////////////////////////////////
-
 mod impls {
     use crate::mem;
     use crate::slice;
@@ -557,6 +570,10 @@ mod impls {
                 fn hash_slice<H: Hasher>(data: &[$ty], state: &mut H) {
                     let newlen = data.len() * mem::size_of::<$ty>();
                     let ptr = data.as_ptr() as *const u8;
+                    // SAFETY: `ptr` is valid and aligned, as this macro is only used
+                    // for numeric primitives which have no padding. The new slice only
+                    // spans across `data` and is never mutated, and its total size is the
+                    // same as the original `data` so it can't be over `isize::MAX`.
                     state.write(unsafe { slice::from_raw_parts(ptr, newlen) })
                 }
             }
@@ -654,7 +671,6 @@ mod impls {
         }
     }
 
-
     #[stable(feature = "rust1", since = "1.0.0")]
     impl<T: ?Sized + Hash> Hash for &T {
         fn hash<H: Hasher>(&self, state: &mut H) {
@@ -677,9 +693,12 @@ mod impls {
                 state.write_usize(*self as *const () as usize);
             } else {
                 // Fat pointer
-                let (a, b) = unsafe {
-                    *(self as *const Self as *const (usize, usize))
-                };
+                // SAFETY: we are accessing the memory occupied by `self`
+                // which is guaranteed to be valid.
+                // This assumes a fat pointer can be represented by a `(usize, usize)`,
+                // which is safe to do in `std` because it is shipped and kept in sync
+                // with the implementation of fat pointers in `rustc`.
+                let (a, b) = unsafe { *(self as *const Self as *const (usize, usize)) };
                 state.write_usize(a);
                 state.write_usize(b);
             }
@@ -694,9 +713,12 @@ mod impls {
                 state.write_usize(*self as *const () as usize);
             } else {
                 // Fat pointer
-                let (a, b) = unsafe {
-                    *(self as *const Self as *const (usize, usize))
-                };
+                // SAFETY: we are accessing the memory occupied by `self`
+                // which is guaranteed to be valid.
+                // This assumes a fat pointer can be represented by a `(usize, usize)`,
+                // which is safe to do in `std` because it is shipped and kept in sync
+                // with the implementation of fat pointers in `rustc`.
+                let (a, b) = unsafe { *(self as *const Self as *const (usize, usize)) };
                 state.write_usize(a);
                 state.write_usize(b);
             }

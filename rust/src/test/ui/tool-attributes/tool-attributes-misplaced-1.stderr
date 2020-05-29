@@ -1,11 +1,8 @@
-error[E0658]: The attribute `rustfmt` is currently unknown to the compiler and may have meaning added to it in the future
-  --> $DIR/tool-attributes-misplaced-1.rs:8:3
+error: cannot find derive macro `rustfmt` in this scope
+  --> $DIR/tool-attributes-misplaced-1.rs:4:10
    |
-LL | #[rustfmt]
-   |   ^^^^^^^
-   |
-   = note: for more information, see https://github.com/rust-lang/rust/issues/29642
-   = help: add `#![feature(custom_attribute)]` to the crate attributes to enable
+LL | #[derive(rustfmt)]
+   |          ^^^^^^^
 
 error: cannot find derive macro `rustfmt` in this scope
   --> $DIR/tool-attributes-misplaced-1.rs:4:10
@@ -13,8 +10,14 @@ error: cannot find derive macro `rustfmt` in this scope
 LL | #[derive(rustfmt)]
    |          ^^^^^^^
 
-error: cannot find macro `rustfmt!` in this scope
-  --> $DIR/tool-attributes-misplaced-1.rs:14:5
+error: cannot find attribute `rustfmt` in this scope
+  --> $DIR/tool-attributes-misplaced-1.rs:9:3
+   |
+LL | #[rustfmt]
+   |   ^^^^^^^
+
+error: cannot find macro `rustfmt` in this scope
+  --> $DIR/tool-attributes-misplaced-1.rs:15:5
    |
 LL |     rustfmt!();
    |     ^^^^^^^
@@ -32,18 +35,18 @@ LL | type B = rustfmt::skip;
    |          ^^^^^^^^^^^^^ not a type
 
 error[E0423]: expected value, found tool module `rustfmt`
-  --> $DIR/tool-attributes-misplaced-1.rs:13:5
+  --> $DIR/tool-attributes-misplaced-1.rs:14:5
    |
 LL |     rustfmt;
    |     ^^^^^^^ not a value
 
 error[E0423]: expected value, found tool attribute `rustfmt::skip`
-  --> $DIR/tool-attributes-misplaced-1.rs:16:5
+  --> $DIR/tool-attributes-misplaced-1.rs:17:5
    |
 LL |     rustfmt::skip;
    |     ^^^^^^^^^^^^^ not a value
 
-error: aborting due to 7 previous errors
+error: aborting due to 8 previous errors
 
-Some errors have detailed explanations: E0423, E0658.
+Some errors have detailed explanations: E0423, E0573.
 For more information about an error, try `rustc --explain E0423`.

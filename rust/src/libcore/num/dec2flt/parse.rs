@@ -10,8 +10,8 @@
 //! modules rely on to not panic (or overflow) in turn.
 //! To make matters worse, all that happens in a single pass over the input.
 //! So, be careful when modifying anything, and double-check with the other modules.
+use self::ParseResult::{Invalid, ShortcutToInf, ShortcutToZero, Valid};
 use super::num;
-use self::ParseResult::{Valid, ShortcutToInf, ShortcutToZero, Invalid};
 
 #[derive(Debug)]
 pub enum Sign {
@@ -54,7 +54,7 @@ pub fn parse_decimal(s: &str) -> ParseResult<'_> {
 
     match s.first() {
         None => Valid(Decimal::new(integral, b"", 0)),
-        Some(&b'e') | Some(&b'E') => {
+        Some(&b'e' | &b'E') => {
             if integral.is_empty() {
                 return Invalid; // No digits before 'e'
             }
@@ -70,7 +70,7 @@ pub fn parse_decimal(s: &str) -> ParseResult<'_> {
 
             match s.first() {
                 None => Valid(Decimal::new(integral, fractional, 0)),
-                Some(&b'e') | Some(&b'E') => parse_exp(integral, fractional, &s[1..]),
+                Some(&b'e' | &b'E') => parse_exp(integral, fractional, &s[1..]),
                 _ => Invalid, // Trailing junk after fractional part
             }
         }

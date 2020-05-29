@@ -73,7 +73,7 @@ fn get_filesystem(path: &Path) -> io::Result<(Arc<IFileSystemProxy>, &str, &Path
         Some(Component::Prefix(prefix)) => prefix.as_os_str().to_str().unwrap().trim_end_matches(':'),
         _ => panic!("If path is absolute, it should start with prefix")
     };
-    
+
     for (key, value) in SCHEMA_REGISTRY.lock().unwrap().iter() {
         if prefix == *key {
             return Ok((Arc::clone(&value), prefix, &iter.as_path()))
@@ -202,7 +202,7 @@ impl Iterator for ReadDir {
         }
 
         let count = read_result.unwrap();
-        
+
         if count == 0 {
             return None;
         }
@@ -285,7 +285,7 @@ impl File {
                 let _ = res?;
             }
         }
-        
+
         let mut flags = 0;
 
         if opts.read {
@@ -339,6 +339,10 @@ impl File {
         crate::io::default_read_vectored(|buf| self.read(buf), bufs)
     }
 
+    pub fn is_read_vectored(&self) -> bool {
+        false
+    }
+
     pub fn write(&self, buf: &[u8]) -> io::Result<usize> {
         let mut offset = self.offset.try_lock().unwrap();
 
@@ -351,6 +355,10 @@ impl File {
 
     pub fn write_vectored(&self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
         crate::io::default_write_vectored(|buf| self.write(buf), bufs)
+    }
+
+    pub fn is_write_vectored(&self) -> bool {
+        false
     }
 
     pub fn flush(&self) -> io::Result<()> {

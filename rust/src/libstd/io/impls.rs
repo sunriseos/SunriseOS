@@ -1,7 +1,8 @@
 use crate::cmp;
-use crate::io::{self, SeekFrom, Read, Initializer, Write, Seek, BufRead, Error, ErrorKind,
-        IoSliceMut, IoSlice};
 use crate::fmt;
+use crate::io::{
+    self, BufRead, Error, ErrorKind, Initializer, IoSlice, IoSliceMut, Read, Seek, SeekFrom, Write,
+};
 use crate::mem;
 
 // =============================================================================
@@ -17,6 +18,11 @@ impl<R: Read + ?Sized> Read for &mut R {
     #[inline]
     fn read_vectored(&mut self, bufs: &mut [IoSliceMut<'_>]) -> io::Result<usize> {
         (**self).read_vectored(bufs)
+    }
+
+    #[inline]
+    fn is_read_vectored(&self) -> bool {
+        (**self).is_read_vectored()
     }
 
     #[inline]
@@ -42,7 +48,9 @@ impl<R: Read + ?Sized> Read for &mut R {
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<W: Write + ?Sized> Write for &mut W {
     #[inline]
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> { (**self).write(buf) }
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        (**self).write(buf)
+    }
 
     #[inline]
     fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
@@ -50,7 +58,14 @@ impl<W: Write + ?Sized> Write for &mut W {
     }
 
     #[inline]
-    fn flush(&mut self) -> io::Result<()> { (**self).flush() }
+    fn is_write_vectored(&self) -> bool {
+        (**self).is_write_vectored()
+    }
+
+    #[inline]
+    fn flush(&mut self) -> io::Result<()> {
+        (**self).flush()
+    }
 
     #[inline]
     fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
@@ -65,15 +80,21 @@ impl<W: Write + ?Sized> Write for &mut W {
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<S: Seek + ?Sized> Seek for &mut S {
     #[inline]
-    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> { (**self).seek(pos) }
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        (**self).seek(pos)
+    }
 }
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<B: BufRead + ?Sized> BufRead for &mut B {
     #[inline]
-    fn fill_buf(&mut self) -> io::Result<&[u8]> { (**self).fill_buf() }
+    fn fill_buf(&mut self) -> io::Result<&[u8]> {
+        (**self).fill_buf()
+    }
 
     #[inline]
-    fn consume(&mut self, amt: usize) { (**self).consume(amt) }
+    fn consume(&mut self, amt: usize) {
+        (**self).consume(amt)
+    }
 
     #[inline]
     fn read_until(&mut self, byte: u8, buf: &mut Vec<u8>) -> io::Result<usize> {
@@ -99,6 +120,11 @@ impl<R: Read + ?Sized> Read for Box<R> {
     }
 
     #[inline]
+    fn is_read_vectored(&self) -> bool {
+        (**self).is_read_vectored()
+    }
+
+    #[inline]
     unsafe fn initializer(&self) -> Initializer {
         (**self).initializer()
     }
@@ -121,7 +147,9 @@ impl<R: Read + ?Sized> Read for Box<R> {
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<W: Write + ?Sized> Write for Box<W> {
     #[inline]
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> { (**self).write(buf) }
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        (**self).write(buf)
+    }
 
     #[inline]
     fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
@@ -129,7 +157,14 @@ impl<W: Write + ?Sized> Write for Box<W> {
     }
 
     #[inline]
-    fn flush(&mut self) -> io::Result<()> { (**self).flush() }
+    fn is_write_vectored(&self) -> bool {
+        (**self).is_write_vectored()
+    }
+
+    #[inline]
+    fn flush(&mut self) -> io::Result<()> {
+        (**self).flush()
+    }
 
     #[inline]
     fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
@@ -144,15 +179,21 @@ impl<W: Write + ?Sized> Write for Box<W> {
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<S: Seek + ?Sized> Seek for Box<S> {
     #[inline]
-    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> { (**self).seek(pos) }
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        (**self).seek(pos)
+    }
 }
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<B: BufRead + ?Sized> BufRead for Box<B> {
     #[inline]
-    fn fill_buf(&mut self) -> io::Result<&[u8]> { (**self).fill_buf() }
+    fn fill_buf(&mut self) -> io::Result<&[u8]> {
+        (**self).fill_buf()
+    }
 
     #[inline]
-    fn consume(&mut self, amt: usize) { (**self).consume(amt) }
+    fn consume(&mut self, amt: usize) {
+        (**self).consume(amt)
+    }
 
     #[inline]
     fn read_until(&mut self, byte: u8, buf: &mut Vec<u8>) -> io::Result<usize> {
@@ -220,6 +261,11 @@ impl Read for &[u8] {
     }
 
     #[inline]
+    fn is_read_vectored(&self) -> bool {
+        true
+    }
+
+    #[inline]
     unsafe fn initializer(&self) -> Initializer {
         Initializer::nop()
     }
@@ -227,8 +273,7 @@ impl Read for &[u8] {
     #[inline]
     fn read_exact(&mut self, buf: &mut [u8]) -> io::Result<()> {
         if buf.len() > self.len() {
-            return Err(Error::new(ErrorKind::UnexpectedEof,
-                                  "failed to fill whole buffer"));
+            return Err(Error::new(ErrorKind::UnexpectedEof, "failed to fill whole buffer"));
         }
         let (a, b) = self.split_at(buf.len());
 
@@ -257,10 +302,14 @@ impl Read for &[u8] {
 #[stable(feature = "rust1", since = "1.0.0")]
 impl BufRead for &[u8] {
     #[inline]
-    fn fill_buf(&mut self) -> io::Result<&[u8]> { Ok(*self) }
+    fn fill_buf(&mut self) -> io::Result<&[u8]> {
+        Ok(*self)
+    }
 
     #[inline]
-    fn consume(&mut self, amt: usize) { *self = &self[amt..]; }
+    fn consume(&mut self, amt: usize) {
+        *self = &self[amt..];
+    }
 }
 
 /// Write is implemented for `&mut [u8]` by copying into the slice, overwriting
@@ -293,6 +342,11 @@ impl Write for &mut [u8] {
     }
 
     #[inline]
+    fn is_write_vectored(&self) -> bool {
+        true
+    }
+
+    #[inline]
     fn write_all(&mut self, data: &[u8]) -> io::Result<()> {
         if self.write(data)? == data.len() {
             Ok(())
@@ -302,7 +356,9 @@ impl Write for &mut [u8] {
     }
 
     #[inline]
-    fn flush(&mut self) -> io::Result<()> { Ok(()) }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 /// Write is implemented for `Vec<u8>` by appending to the vector.
@@ -326,13 +382,20 @@ impl Write for Vec<u8> {
     }
 
     #[inline]
+    fn is_write_vectored(&self) -> bool {
+        true
+    }
+
+    #[inline]
     fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
         self.extend_from_slice(buf);
         Ok(())
     }
 
     #[inline]
-    fn flush(&mut self) -> io::Result<()> { Ok(()) }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]

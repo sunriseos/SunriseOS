@@ -1,19 +1,22 @@
-use rustc::ty::outlives::Component;
-use rustc::ty::subst::{Kind, UnpackedKind};
-use rustc::ty::{self, Region, RegionKind, Ty, TyCtxt};
+use rustc_middle::ty::outlives::Component;
+use rustc_middle::ty::subst::{GenericArg, GenericArgKind};
+use rustc_middle::ty::{self, Region, RegionKind, Ty, TyCtxt};
+use rustc_span::Span;
 use smallvec::smallvec;
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 
 /// Tracks the `T: 'a` or `'a: 'a` predicates that we have inferred
 /// must be added to the struct header.
-pub type RequiredPredicates<'tcx> = BTreeSet<ty::OutlivesPredicate<Kind<'tcx>, ty::Region<'tcx>>>;
+pub type RequiredPredicates<'tcx> =
+    BTreeMap<ty::OutlivesPredicate<GenericArg<'tcx>, ty::Region<'tcx>>, Span>;
 
 /// Given a requirement `T: 'a` or `'b: 'a`, deduce the
 /// outlives_component and add it to `required_predicates`
 pub fn insert_outlives_predicate<'tcx>(
     tcx: TyCtxt<'tcx>,
-    kind: Kind<'tcx>,
+    kind: GenericArg<'tcx>,
     outlived_region: Region<'tcx>,
+    span: Span,
     required_predicates: &mut RequiredPredicates<'tcx>,
 ) {
     // If the `'a` region is bound within the field type itself, we
@@ -23,7 +26,7 @@ pub fn insert_outlives_predicate<'tcx>(
     }
 
     match kind.unpack() {
-        UnpackedKind::Type(ty) => {
+        GenericArgKind::Type(ty) => {
             // `T: 'outlived_region` for some type `T`
             // But T could be a lot of things:
             // e.g., if `T = &'b u32`, then `'b: 'outlived_region` is
@@ -52,6 +55,7 @@ pub fn insert_outlives_predicate<'tcx>(
                             tcx,
                             r.into(),
                             outlived_region,
+                            span,
                             required_predicates,
                         );
                     }
@@ -72,7 +76,8 @@ pub fn insert_outlives_predicate<'tcx>(
                         // where clause that `U: 'a`.
                         let ty: Ty<'tcx> = param_ty.to_ty(tcx);
                         required_predicates
-                            .insert(ty::OutlivesPredicate(ty.into(), outlived_region));
+                            .entry(ty::OutlivesPredicate(ty.into(), outlived_region))
+                            .or_insert(span);
                     }
 
                     Component::Projection(proj_ty) => {
@@ -87,7 +92,8 @@ pub fn insert_outlives_predicate<'tcx>(
                         // Here we want to add an explicit `where <T as Iterator>::Item: 'a`.
                         let ty: Ty<'tcx> = tcx.mk_projection(proj_ty.item_def_id, proj_ty.substs);
                         required_predicates
-                            .insert(ty::OutlivesPredicate(ty.into(), outlived_region));
+                            .entry(ty::OutlivesPredicate(ty.into(), outlived_region))
+                            .or_insert(span);
                     }
 
                     Component::EscapingProjection(_) => {
@@ -112,14 +118,14 @@ pub fn insert_outlives_predicate<'tcx>(
             }
         }
 
-        UnpackedKind::Lifetime(r) => {
+        GenericArgKind::Lifetime(r) => {
             if !is_free_region(tcx, r) {
                 return;
             }
-            required_predicates.insert(ty::OutlivesPredicate(kind, outlived_region));
+            required_predicates.entry(ty::OutlivesPredicate(kind, outlived_region)).or_insert(span);
         }
 
-        UnpackedKind::Const(_) => {
+        GenericArgKind::Const(_) => {
             // Generic consts don't impose any constraints.
         }
     }
@@ -144,11 +150,7 @@ fn is_free_region(tcx: TyCtxt<'_>, region: Region<'_>) -> bool {
         //     struct Foo<'a, T> {
         //         field: &'static T, // this would generate a ReStatic
         //     }
-        RegionKind::ReStatic => {
-            tcx.sess
-               .features_untracked()
-               .infer_static_outlives_requirements
-        }
+        RegionKind::ReStatic => tcx.sess.features_untracked().infer_static_outlives_requirements,
 
         // Late-bound regions can appear in `fn` types:
         //
@@ -160,11 +162,14 @@ fn is_free_region(tcx: TyCtxt<'_>, region: Region<'_>) -> bool {
         // ignore it.  We can't put it on the struct header anyway.
         RegionKind::ReLateBound(..) => false,
 
+        // This can appear in `where Self: ` bounds (#64855):
+        //
+        //     struct Bar<T>(<Self as Foo>::Type) where Self: ;
+        //     struct Baz<'a>(&'a Self) where Self: ;
+        RegionKind::ReEmpty(_) => false,
+
         // These regions don't appear in types from type declarations:
-        RegionKind::ReEmpty
-        | RegionKind::ReErased
-        | RegionKind::ReClosureBound(..)
-        | RegionKind::ReScope(..)
+        RegionKind::ReErased
         | RegionKind::ReVar(..)
         | RegionKind::RePlaceholder(..)
         | RegionKind::ReFree(..) => {

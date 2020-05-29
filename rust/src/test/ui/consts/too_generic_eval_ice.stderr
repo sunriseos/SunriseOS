@@ -1,0 +1,19 @@
+error: constant expression depends on a generic parameter
+  --> $DIR/too_generic_eval_ice.rs:7:13
+   |
+LL |         [5; Self::HOST_SIZE] == [6; 0]
+   |             ^^^^^^^^^^^^^^^
+   |
+   = note: this may fail depending on what value the parameter takes
+
+error[E0369]: binary operation `==` cannot be applied to type `[{integer}; _]`
+  --> $DIR/too_generic_eval_ice.rs:7:30
+   |
+LL |         [5; Self::HOST_SIZE] == [6; 0]
+   |         -------------------- ^^ ------ [{integer}; 0]
+   |         |
+   |         [{integer}; _]
+
+error: aborting due to 2 previous errors
+
+For more information about this error, try `rustc --explain E0369`.

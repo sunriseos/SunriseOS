@@ -3,24 +3,40 @@ error[E0412]: cannot find type `FromOutside` in this scope
    |
 LL | generate_mod::check!();
    | ^^^^^^^^^^^^^^^^^^^^^^^ not found in this scope
+   |
+   = note: consider importing this struct:
+           FromOutside
+   = note: this error originates in a macro (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0412]: cannot find type `Outer` in this scope
   --> $DIR/generate-mod.rs:9:1
    |
 LL | generate_mod::check!();
    | ^^^^^^^^^^^^^^^^^^^^^^^ not found in this scope
+   |
+   = note: consider importing this struct:
+           Outer
+   = note: this error originates in a macro (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0412]: cannot find type `FromOutside` in this scope
   --> $DIR/generate-mod.rs:12:1
    |
 LL | #[generate_mod::check_attr]
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^ not found in this scope
+   |
+   = note: consider importing this struct:
+           FromOutside
+   = note: this error originates in an attribute macro (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0412]: cannot find type `OuterAttr` in this scope
   --> $DIR/generate-mod.rs:12:1
    |
 LL | #[generate_mod::check_attr]
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^ not found in this scope
+   |
+   = note: consider importing this struct:
+           OuterAttr
+   = note: this error originates in an attribute macro (in Nightly builds, run with -Z macro-backtrace for more info)
 
 warning: cannot find type `FromOutside` in this scope
   --> $DIR/generate-mod.rs:16:10
@@ -28,7 +44,7 @@ warning: cannot find type `FromOutside` in this scope
 LL | #[derive(generate_mod::CheckDerive)]
    |          ^^^^^^^^^^^^^^^^^^^^^^^^^ names from parent modules are not accessible without an explicit import
    |
-   = note: #[warn(proc_macro_derive_resolution_fallback)] on by default
+   = note: `#[warn(proc_macro_derive_resolution_fallback)]` on by default
    = warning: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
    = note: for more information, see issue #50504 <https://github.com/rust-lang/rust/issues/50504>
 
@@ -59,6 +75,6 @@ LL |     #[derive(generate_mod::CheckDerive)]
    = warning: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
    = note: for more information, see issue #50504 <https://github.com/rust-lang/rust/issues/50504>
 
-error: aborting due to 4 previous errors
+error: aborting due to 4 previous errors; 4 warnings emitted
 
 For more information about this error, try `rustc --explain E0412`.

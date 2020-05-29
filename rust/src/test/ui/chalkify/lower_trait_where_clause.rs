@@ -1,8 +1,8 @@
-#![feature(rustc_attrs)]
+// check-pass
+// compile-flags: -Z chalk
 
 use std::borrow::Borrow;
 
-#[rustc_dump_program_clauses] //~ ERROR program clause dump
 trait Foo<'a, 'b, T, U>
 where
     T: Borrow<U> + ?Sized,
@@ -13,5 +13,4 @@ where
 }
 
 fn main() {
-    println!("hello");
 }

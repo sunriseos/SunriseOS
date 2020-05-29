@@ -4,7 +4,7 @@ use crate::mem;
 use crate::ops::{Deref, DerefMut};
 use crate::ptr;
 use crate::sys_common::mutex as sys;
-use crate::sys_common::poison::{self, TryLockError, TryLockResult, LockResult};
+use crate::sys_common::poison::{self, LockResult, TryLockError, TryLockResult};
 
 /// A mutual exclusion primitive useful for protecting shared data
 ///
@@ -108,6 +108,7 @@ use crate::sys_common::poison::{self, TryLockError, TryLockResult, LockResult};
 /// *guard += 1;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
+#[cfg_attr(not(test), rustc_diagnostic_item = "mutex_type")]
 pub struct Mutex<T: ?Sized> {
     // Note that this mutex is in a *box*, not inlined into the struct itself.
     // Once a native mutex has been used once, its address can never change (it
@@ -122,9 +123,9 @@ pub struct Mutex<T: ?Sized> {
 // these are the only places where `T: Send` matters; all other
 // functionality works fine on a single thread.
 #[stable(feature = "rust1", since = "1.0.0")]
-unsafe impl<T: ?Sized + Send> Send for Mutex<T> { }
+unsafe impl<T: ?Sized + Send> Send for Mutex<T> {}
 #[stable(feature = "rust1", since = "1.0.0")]
-unsafe impl<T: ?Sized + Send> Sync for Mutex<T> { }
+unsafe impl<T: ?Sized + Send> Sync for Mutex<T> {}
 
 /// An RAII implementation of a "scoped lock" of a mutex. When this structure is
 /// dropped (falls out of scope), the lock will be unlocked.
@@ -143,16 +144,14 @@ unsafe impl<T: ?Sized + Send> Sync for Mutex<T> { }
 #[must_use = "if unused the Mutex will immediately unlock"]
 #[stable(feature = "rust1", since = "1.0.0")]
 pub struct MutexGuard<'a, T: ?Sized + 'a> {
-    // funny underscores due to how Deref/DerefMut currently work (they
-    // disregard field privacy).
-    __lock: &'a Mutex<T>,
-    __poison: poison::Guard,
+    lock: &'a Mutex<T>,
+    poison: poison::Guard,
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T: ?Sized> !Send for MutexGuard<'_, T> { }
+impl<T: ?Sized> !Send for MutexGuard<'_, T> {}
 #[stable(feature = "mutexguard", since = "1.19.0")]
-unsafe impl<T: ?Sized + Sync> Sync for MutexGuard<'_, T> { }
+unsafe impl<T: ?Sized + Sync> Sync for MutexGuard<'_, T> {}
 
 impl<T> Mutex<T> {
     /// Creates a new mutex in an unlocked state ready for use.
@@ -311,7 +310,10 @@ impl<T: ?Sized> Mutex<T> {
     /// assert_eq!(mutex.into_inner().unwrap(), 0);
     /// ```
     #[stable(feature = "mutex_into_inner", since = "1.6.0")]
-    pub fn into_inner(self) -> LockResult<T> where T: Sized {
+    pub fn into_inner(self) -> LockResult<T>
+    where
+        T: Sized,
+    {
         // We know statically that there are no outstanding references to
         // `self` so there's no need to lock the inner mutex.
         //
@@ -325,7 +327,7 @@ impl<T: ?Sized> Mutex<T> {
                 (ptr::read(inner), ptr::read(poison), ptr::read(data))
             };
             mem::forget(self);
-            inner.destroy();  // Keep in sync with the `Drop` impl.
+            inner.destroy(); // Keep in sync with the `Drop` impl.
             drop(inner);
 
             poison::map_result(poison.borrow(), |_| data.into_inner())
@@ -356,7 +358,7 @@ impl<T: ?Sized> Mutex<T> {
         // We know statically that there are no other references to `self`, so
         // there's no need to lock the inner mutex.
         let data = unsafe { &mut *self.data.get() };
-        poison::map_result(self.poison.borrow(), |_| data )
+        poison::map_result(self.poison.borrow(), |_| data)
     }
 }
 
@@ -398,7 +400,7 @@ impl<T: ?Sized + fmt::Debug> fmt::Debug for Mutex<T> {
             Ok(guard) => f.debug_struct("Mutex").field("data", &&*guard).finish(),
             Err(TryLockError::Poisoned(err)) => {
                 f.debug_struct("Mutex").field("data", &&**err.get_ref()).finish()
-            },
+            }
             Err(TryLockError::WouldBlock) => {
                 struct LockedPlaceholder;
                 impl fmt::Debug for LockedPlaceholder {
@@ -415,12 +417,7 @@ impl<T: ?Sized + fmt::Debug> fmt::Debug for Mutex<T> {
 
 impl<'mutex, T: ?Sized> MutexGuard<'mutex, T> {
     unsafe fn new(lock: &'mutex Mutex<T>) -> LockResult<MutexGuard<'mutex, T>> {
-        poison::map_result(lock.poison.borrow(), |guard| {
-            MutexGuard {
-                __lock: lock,
-                __poison: guard,
-            }
-        })
+        poison::map_result(lock.poison.borrow(), |guard| MutexGuard { lock, poison: guard })
     }
 }
 
@@ -429,14 +426,14 @@ impl<T: ?Sized> Deref for MutexGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        unsafe { &*self.__lock.data.get() }
+        unsafe { &*self.lock.data.get() }
     }
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T: ?Sized> DerefMut for MutexGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut T {
-        unsafe { &mut *self.__lock.data.get() }
+        unsafe { &mut *self.lock.data.get() }
     }
 }
 
@@ -445,8 +442,8 @@ impl<T: ?Sized> Drop for MutexGuard<'_, T> {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            self.__lock.poison.done(&self.__poison);
-            self.__lock.inner.raw_unlock();
+            self.lock.poison.done(&self.poison);
+            self.lock.inner.raw_unlock();
         }
     }
 }
@@ -466,18 +463,18 @@ impl<T: ?Sized + fmt::Display> fmt::Display for MutexGuard<'_, T> {
 }
 
 pub fn guard_lock<'a, T: ?Sized>(guard: &MutexGuard<'a, T>) -> &'a sys::Mutex {
-    &guard.__lock.inner
+    &guard.lock.inner
 }
 
 pub fn guard_poison<'a, T: ?Sized>(guard: &MutexGuard<'a, T>) -> &'a poison::Flag {
-    &guard.__lock.poison
+    &guard.lock.poison
 }
 
 #[cfg(all(test, not(target_os = "emscripten")))]
 mod tests {
-    use crate::sync::mpsc::channel;
-    use crate::sync::{Arc, Mutex, Condvar};
     use crate::sync::atomic::{AtomicUsize, Ordering};
+    use crate::sync::mpsc::channel;
+    use crate::sync::{Arc, Condvar, Mutex};
     use crate::thread;
 
     struct Packet<T>(Arc<(Mutex<T>, Condvar)>);
@@ -509,10 +506,16 @@ mod tests {
         for _ in 0..K {
             let tx2 = tx.clone();
             let m2 = m.clone();
-            thread::spawn(move|| { inc(&m2); tx2.send(()).unwrap(); });
+            thread::spawn(move || {
+                inc(&m2);
+                tx2.send(()).unwrap();
+            });
             let tx2 = tx.clone();
             let m2 = m.clone();
-            thread::spawn(move|| { inc(&m2); tx2.send(()).unwrap(); });
+            thread::spawn(move || {
+                inc(&m2);
+                tx2.send(()).unwrap();
+            });
         }
 
         drop(tx);
@@ -559,7 +562,8 @@ mod tests {
         let _ = thread::spawn(move || {
             let _lock = m2.lock().unwrap();
             panic!("test panic in inner thread to poison mutex");
-        }).join();
+        })
+        .join();
 
         assert!(m.is_poisoned());
         match Arc::try_unwrap(m).unwrap().into_inner() {
@@ -582,7 +586,8 @@ mod tests {
         let _ = thread::spawn(move || {
             let _lock = m2.lock().unwrap();
             panic!("test panic in inner thread to poison mutex");
-        }).join();
+        })
+        .join();
 
         assert!(m.is_poisoned());
         match Arc::try_unwrap(m).unwrap().get_mut() {
@@ -596,7 +601,7 @@ mod tests {
         let packet = Packet(Arc::new((Mutex::new(false), Condvar::new())));
         let packet2 = Packet(packet.0.clone());
         let (tx, rx) = channel();
-        let _t = thread::spawn(move|| {
+        let _t = thread::spawn(move || {
             // wait until parent gets in
             rx.recv().unwrap();
             let &(ref lock, ref cvar) = &*packet2.0;
@@ -648,10 +653,11 @@ mod tests {
         let arc = Arc::new(Mutex::new(1));
         assert!(!arc.is_poisoned());
         let arc2 = arc.clone();
-        let _ = thread::spawn(move|| {
+        let _ = thread::spawn(move || {
             let lock = arc2.lock().unwrap();
             assert_eq!(*lock, 2);
-        }).join();
+        })
+        .join();
         assert!(arc.lock().is_err());
         assert!(arc.is_poisoned());
     }
@@ -663,7 +669,7 @@ mod tests {
         let arc = Arc::new(Mutex::new(1));
         let arc2 = Arc::new(Mutex::new(arc));
         let (tx, rx) = channel();
-        let _t = thread::spawn(move|| {
+        let _t = thread::spawn(move || {
             let lock = arc2.lock().unwrap();
             let lock2 = lock.lock().unwrap();
             assert_eq!(*lock2, 1);
@@ -676,7 +682,7 @@ mod tests {
     fn test_mutex_arc_access_in_unwind() {
         let arc = Arc::new(Mutex::new(1));
         let arc2 = arc.clone();
-        let _ = thread::spawn(move|| -> () {
+        let _ = thread::spawn(move || -> () {
             struct Unwinder {
                 i: Arc<Mutex<i32>>,
             }
@@ -687,7 +693,8 @@ mod tests {
             }
             let _u = Unwinder { i: arc2 };
             panic!();
-        }).join();
+        })
+        .join();
         let lock = arc.lock().unwrap();
         assert_eq!(*lock, 2);
     }

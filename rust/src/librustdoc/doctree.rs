@@ -2,19 +2,16 @@
 //! manner (and with prettier names) before cleaning.
 pub use self::StructType::*;
 
-use syntax::ast;
-use syntax::ast::{Name, NodeId};
-use syntax::attr;
-use syntax::ext::base::MacroKind;
-use syntax_pos::{self, Span};
+use rustc_ast::ast;
+use rustc_span::hygiene::MacroKind;
+use rustc_span::{self, Span, Symbol};
 
-use rustc::hir;
-use rustc::hir::def_id::CrateNum;
-use rustc::hir::ptr::P;
+use rustc_hir as hir;
+use rustc_hir::def_id::CrateNum;
 
 pub struct Module<'hir> {
-    pub name: Option<Name>,
-    pub attrs: &'hir hir::HirVec<ast::Attribute>,
+    pub name: Option<Symbol>,
+    pub attrs: &'hir [ast::Attribute],
     pub where_outer: Span,
     pub where_inner: Span,
     pub extern_crates: Vec<ExternCrate<'hir>>,
@@ -24,15 +21,13 @@ pub struct Module<'hir> {
     pub enums: Vec<Enum<'hir>>,
     pub fns: Vec<Function<'hir>>,
     pub mods: Vec<Module<'hir>>,
-    pub id: NodeId,
+    pub id: hir::HirId,
     pub typedefs: Vec<Typedef<'hir>>,
-    pub existentials: Vec<Existential<'hir>>,
+    pub opaque_tys: Vec<OpaqueTy<'hir>>,
     pub statics: Vec<Static<'hir>>,
     pub constants: Vec<Constant<'hir>>,
     pub traits: Vec<Trait<'hir>>,
-    pub vis: &'hir hir::Visibility,
-    pub stab: Option<attr::Stability>,
-    pub depr: Option<attr::Deprecation>,
+    pub vis: &'hir hir::Visibility<'hir>,
     pub impls: Vec<Impl<'hir>>,
     pub foreigns: Vec<ForeignItem<'hir>>,
     pub macros: Vec<Macro<'hir>>,
@@ -43,37 +38,35 @@ pub struct Module<'hir> {
 
 impl Module<'hir> {
     pub fn new(
-        name: Option<Name>,
-        attrs: &'hir hir::HirVec<ast::Attribute>,
-        vis: &'hir hir::Visibility,
+        name: Option<Symbol>,
+        attrs: &'hir [ast::Attribute],
+        vis: &'hir hir::Visibility<'hir>,
     ) -> Module<'hir> {
         Module {
-            name       : name,
-            id: ast::CRATE_NODE_ID,
+            name,
+            id: hir::CRATE_HIR_ID,
             vis,
-            stab: None,
-            depr: None,
-            where_outer: syntax_pos::DUMMY_SP,
-            where_inner: syntax_pos::DUMMY_SP,
+            where_outer: rustc_span::DUMMY_SP,
+            where_inner: rustc_span::DUMMY_SP,
             attrs,
             extern_crates: Vec::new(),
-            imports    :   Vec::new(),
-            structs    :   Vec::new(),
-            unions     :   Vec::new(),
-            enums      :   Vec::new(),
-            fns        :   Vec::new(),
-            mods       :   Vec::new(),
-            typedefs   :   Vec::new(),
-            existentials:  Vec::new(),
-            statics    :   Vec::new(),
-            constants  :   Vec::new(),
-            traits     :   Vec::new(),
-            impls      :   Vec::new(),
-            foreigns   :   Vec::new(),
-            macros     :   Vec::new(),
-            proc_macros:   Vec::new(),
+            imports: Vec::new(),
+            structs: Vec::new(),
+            unions: Vec::new(),
+            enums: Vec::new(),
+            fns: Vec::new(),
+            mods: Vec::new(),
+            typedefs: Vec::new(),
+            opaque_tys: Vec::new(),
+            statics: Vec::new(),
+            constants: Vec::new(),
+            traits: Vec::new(),
+            impls: Vec::new(),
+            foreigns: Vec::new(),
+            macros: Vec::new(),
+            proc_macros: Vec::new(),
             trait_aliases: Vec::new(),
-            is_crate   : false,
+            is_crate: false,
         }
     }
 }
@@ -89,112 +82,94 @@ pub enum StructType {
 }
 
 pub struct Struct<'hir> {
-    pub vis: &'hir hir::Visibility,
-    pub stab: Option<attr::Stability>,
-    pub depr: Option<attr::Deprecation>,
+    pub vis: &'hir hir::Visibility<'hir>,
     pub id: hir::HirId,
     pub struct_type: StructType,
-    pub name: Name,
-    pub generics: &'hir hir::Generics,
-    pub attrs: &'hir hir::HirVec<ast::Attribute>,
-    pub fields: &'hir [hir::StructField],
+    pub name: Symbol,
+    pub generics: &'hir hir::Generics<'hir>,
+    pub attrs: &'hir [ast::Attribute],
+    pub fields: &'hir [hir::StructField<'hir>],
     pub whence: Span,
 }
 
 pub struct Union<'hir> {
-    pub vis: &'hir hir::Visibility,
-    pub stab: Option<attr::Stability>,
-    pub depr: Option<attr::Deprecation>,
+    pub vis: &'hir hir::Visibility<'hir>,
     pub id: hir::HirId,
     pub struct_type: StructType,
-    pub name: Name,
-    pub generics: &'hir hir::Generics,
-    pub attrs: &'hir hir::HirVec<ast::Attribute>,
-    pub fields: &'hir [hir::StructField],
+    pub name: Symbol,
+    pub generics: &'hir hir::Generics<'hir>,
+    pub attrs: &'hir [ast::Attribute],
+    pub fields: &'hir [hir::StructField<'hir>],
     pub whence: Span,
 }
 
 pub struct Enum<'hir> {
-    pub vis: &'hir hir::Visibility,
-    pub stab: Option<attr::Stability>,
-    pub depr: Option<attr::Deprecation>,
+    pub vis: &'hir hir::Visibility<'hir>,
     pub variants: Vec<Variant<'hir>>,
-    pub generics: &'hir hir::Generics,
-    pub attrs: &'hir hir::HirVec<ast::Attribute>,
+    pub generics: &'hir hir::Generics<'hir>,
+    pub attrs: &'hir [ast::Attribute],
     pub id: hir::HirId,
     pub whence: Span,
-    pub name: Name,
+    pub name: Symbol,
 }
 
 pub struct Variant<'hir> {
-    pub name: Name,
+    pub name: Symbol,
     pub id: hir::HirId,
-    pub attrs: &'hir hir::HirVec<ast::Attribute>,
-    pub def: &'hir hir::VariantData,
-    pub stab: Option<attr::Stability>,
-    pub depr: Option<attr::Deprecation>,
+    pub attrs: &'hir [ast::Attribute],
+    pub def: &'hir hir::VariantData<'hir>,
     pub whence: Span,
 }
 
 pub struct Function<'hir> {
-    pub decl: &'hir hir::FnDecl,
-    pub attrs: &'hir hir::HirVec<ast::Attribute>,
+    pub decl: &'hir hir::FnDecl<'hir>,
+    pub attrs: &'hir [ast::Attribute],
     pub id: hir::HirId,
-    pub name: Name,
-    pub vis: &'hir hir::Visibility,
-    pub stab: Option<attr::Stability>,
-    pub depr: Option<attr::Deprecation>,
+    pub name: Symbol,
+    pub vis: &'hir hir::Visibility<'hir>,
     pub header: hir::FnHeader,
     pub whence: Span,
-    pub generics: &'hir hir::Generics,
+    pub generics: &'hir hir::Generics<'hir>,
     pub body: hir::BodyId,
 }
 
 pub struct Typedef<'hir> {
-    pub ty: &'hir P<hir::Ty>,
-    pub gen: &'hir hir::Generics,
-    pub name: Name,
+    pub ty: &'hir hir::Ty<'hir>,
+    pub gen: &'hir hir::Generics<'hir>,
+    pub name: Symbol,
     pub id: hir::HirId,
-    pub attrs: &'hir hir::HirVec<ast::Attribute>,
+    pub attrs: &'hir [ast::Attribute],
     pub whence: Span,
-    pub vis: &'hir hir::Visibility,
-    pub stab: Option<attr::Stability>,
-    pub depr: Option<attr::Deprecation>,
+    pub vis: &'hir hir::Visibility<'hir>,
 }
 
-pub struct Existential<'hir> {
-    pub exist_ty: &'hir hir::ExistTy,
-    pub name: Name,
+pub struct OpaqueTy<'hir> {
+    pub opaque_ty: &'hir hir::OpaqueTy<'hir>,
+    pub name: Symbol,
     pub id: hir::HirId,
-    pub attrs: &'hir hir::HirVec<ast::Attribute>,
+    pub attrs: &'hir [ast::Attribute],
     pub whence: Span,
-    pub vis: &'hir hir::Visibility,
-    pub stab: Option<attr::Stability>,
-    pub depr: Option<attr::Deprecation>,
+    pub vis: &'hir hir::Visibility<'hir>,
 }
 
 #[derive(Debug)]
 pub struct Static<'hir> {
-    pub type_: &'hir P<hir::Ty>,
+    pub type_: &'hir hir::Ty<'hir>,
     pub mutability: hir::Mutability,
     pub expr: hir::BodyId,
-    pub name: Name,
-    pub attrs: &'hir hir::HirVec<ast::Attribute>,
-    pub vis: &'hir hir::Visibility,
-    pub stab: Option<attr::Stability>,
-    pub depr: Option<attr::Deprecation>,
+    pub name: Symbol,
+    pub attrs: &'hir [ast::Attribute],
+    pub vis: &'hir hir::Visibility<'hir>,
     pub id: hir::HirId,
     pub whence: Span,
 }
 
 pub struct Constant<'hir> {
-    pub type_: &'hir P<hir::Ty>,
+    pub type_: &'hir hir::Ty<'hir>,
     pub expr: hir::BodyId,
-    pub name: Name,
-    pub attrs: &'hir hir::HirVec<ast::Attribute>,
-    pub vis: &'hir hir::Visibility,
-    pub stab: Option<attr::Stability>,
-    pub depr: Option<attr::Deprecation>,
+    pub name: Symbol,
+    pub attrs: &'hir [ast::Attribute],
+    pub vis: &'hir hir::Visibility<'hir>,
     pub id: hir::HirId,
     pub whence: Span,
 }
@@ -202,28 +177,24 @@ pub struct Constant<'hir> {
 pub struct Trait<'hir> {
     pub is_auto: hir::IsAuto,
     pub unsafety: hir::Unsafety,
-    pub name: Name,
-    pub items: Vec<&'hir hir::TraitItem>,
-    pub generics: &'hir hir::Generics,
-    pub bounds: &'hir hir::HirVec<hir::GenericBound>,
-    pub attrs: &'hir hir::HirVec<ast::Attribute>,
+    pub name: Symbol,
+    pub items: Vec<&'hir hir::TraitItem<'hir>>,
+    pub generics: &'hir hir::Generics<'hir>,
+    pub bounds: &'hir [hir::GenericBound<'hir>],
+    pub attrs: &'hir [ast::Attribute],
     pub id: hir::HirId,
     pub whence: Span,
-    pub vis: &'hir hir::Visibility,
-    pub stab: Option<attr::Stability>,
-    pub depr: Option<attr::Deprecation>,
+    pub vis: &'hir hir::Visibility<'hir>,
 }
 
 pub struct TraitAlias<'hir> {
-    pub name: Name,
-    pub generics: &'hir hir::Generics,
-    pub bounds: &'hir hir::HirVec<hir::GenericBound>,
-    pub attrs: &'hir hir::HirVec<ast::Attribute>,
+    pub name: Symbol,
+    pub generics: &'hir hir::Generics<'hir>,
+    pub bounds: &'hir [hir::GenericBound<'hir>],
+    pub attrs: &'hir [ast::Attribute],
     pub id: hir::HirId,
     pub whence: Span,
-    pub vis: &'hir hir::Visibility,
-    pub stab: Option<attr::Stability>,
-    pub depr: Option<attr::Deprecation>,
+    pub vis: &'hir hir::Visibility<'hir>,
 }
 
 #[derive(Debug)]
@@ -231,70 +202,64 @@ pub struct Impl<'hir> {
     pub unsafety: hir::Unsafety,
     pub polarity: hir::ImplPolarity,
     pub defaultness: hir::Defaultness,
-    pub generics: &'hir hir::Generics,
-    pub trait_: &'hir Option<hir::TraitRef>,
-    pub for_: &'hir P<hir::Ty>,
-    pub items: Vec<&'hir hir::ImplItem>,
-    pub attrs: &'hir hir::HirVec<ast::Attribute>,
+    pub constness: hir::Constness,
+    pub generics: &'hir hir::Generics<'hir>,
+    pub trait_: &'hir Option<hir::TraitRef<'hir>>,
+    pub for_: &'hir hir::Ty<'hir>,
+    pub items: Vec<&'hir hir::ImplItem<'hir>>,
+    pub attrs: &'hir [ast::Attribute],
     pub whence: Span,
-    pub vis: &'hir hir::Visibility,
-    pub stab: Option<attr::Stability>,
-    pub depr: Option<attr::Deprecation>,
+    pub vis: &'hir hir::Visibility<'hir>,
     pub id: hir::HirId,
 }
 
 pub struct ForeignItem<'hir> {
-    pub vis: &'hir hir::Visibility,
-    pub stab: Option<attr::Stability>,
-    pub depr: Option<attr::Deprecation>,
+    pub vis: &'hir hir::Visibility<'hir>,
     pub id: hir::HirId,
-    pub name: Name,
-    pub kind: &'hir hir::ForeignItemKind,
-    pub attrs: &'hir hir::HirVec<ast::Attribute>,
+    pub name: Symbol,
+    pub kind: &'hir hir::ForeignItemKind<'hir>,
+    pub attrs: &'hir [ast::Attribute],
     pub whence: Span,
 }
 
 // For Macro we store the DefId instead of the NodeId, since we also create
 // these imported macro_rules (which only have a DUMMY_NODE_ID).
 pub struct Macro<'hir> {
-    pub name: Name,
+    pub name: Symbol,
+    pub hid: hir::HirId,
     pub def_id: hir::def_id::DefId,
-    pub attrs: &'hir hir::HirVec<ast::Attribute>,
+    pub attrs: &'hir [ast::Attribute],
     pub whence: Span,
-    pub matchers: hir::HirVec<Span>,
-    pub stab: Option<attr::Stability>,
-    pub depr: Option<attr::Deprecation>,
-    pub imported_from: Option<Name>,
+    pub matchers: Vec<Span>,
+    pub imported_from: Option<Symbol>,
 }
 
 pub struct ExternCrate<'hir> {
-    pub name: Name,
+    pub name: Symbol,
     pub cnum: CrateNum,
     pub path: Option<String>,
-    pub vis: &'hir hir::Visibility,
-    pub attrs: &'hir hir::HirVec<ast::Attribute>,
+    pub vis: &'hir hir::Visibility<'hir>,
+    pub attrs: &'hir [ast::Attribute],
     pub whence: Span,
 }
 
 pub struct Import<'hir> {
-    pub name: Name,
+    pub name: Symbol,
     pub id: hir::HirId,
-    pub vis: &'hir hir::Visibility,
-    pub attrs: &'hir hir::HirVec<ast::Attribute>,
-    pub path: &'hir hir::Path,
+    pub vis: &'hir hir::Visibility<'hir>,
+    pub attrs: &'hir [ast::Attribute],
+    pub path: &'hir hir::Path<'hir>,
     pub glob: bool,
     pub whence: Span,
 }
 
 pub struct ProcMacro<'hir> {
-    pub name: Name,
+    pub name: Symbol,
     pub id: hir::HirId,
     pub kind: MacroKind,
-    pub helpers: Vec<Name>,
-    pub attrs: &'hir hir::HirVec<ast::Attribute>,
+    pub helpers: Vec<Symbol>,
+    pub attrs: &'hir [ast::Attribute],
     pub whence: Span,
-    pub stab: Option<attr::Stability>,
-    pub depr: Option<attr::Deprecation>,
 }
 
 pub fn struct_type_from_def(vdata: &hir::VariantData) -> StructType {

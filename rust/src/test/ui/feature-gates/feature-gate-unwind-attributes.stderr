@@ -1,10 +1,10 @@
-error[E0658]: `#[unwind]` is experimental
-  --> $DIR/feature-gate-unwind-attributes.rs:11:5
+error[E0658]: the `#[unwind]` attribute is an experimental feature
+  --> $DIR/feature-gate-unwind-attributes.rs:12:5
    |
 LL |     #[unwind(allowed)]
    |     ^^^^^^^^^^^^^^^^^^
    |
-   = note: for more information, see https://github.com/rust-lang/rust/issues/58760
+   = note: see issue #58760 <https://github.com/rust-lang/rust/issues/58760> for more information
    = help: add `#![feature(unwind_attributes)]` to the crate attributes to enable
 
 error: aborting due to previous error

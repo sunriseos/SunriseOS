@@ -10,21 +10,30 @@ path = "lib.rs"
 doctest = false
 
 [dependencies]
-ena = "0.13"
+ena = "0.14"
 indexmap = "1"
 log = "0.4"
 jobserver_crate = { version = "0.1.13", package = "jobserver" }
 lazy_static = "1"
-serialize = { path = "../libserialize" }
+once_cell = { version = "1", features = ["parking_lot"] }
+rustc_serialize = { path = "../libserialize", package = "serialize" }
 graphviz = { path = "../libgraphviz" }
 cfg-if = "0.1.2"
-crossbeam-utils = { version = "0.6.5", features = ["nightly"] }
+crossbeam-utils = { version = "0.7", features = ["nightly"] }
 stable_deref_trait = "1.0.0"
-rayon = { version = "0.2.0", package = "rustc-rayon" }
-rayon-core = { version = "0.2.0", package = "rustc-rayon-core" }
+rayon = { version = "0.3.0", package = "rustc-rayon" }
+rayon-core = { version = "0.3.0", package = "rustc-rayon-core" }
 rustc-hash = "1.0.1"
-smallvec = { version = "0.6.7", features = ["union", "may_dangle"] }
+smallvec = { version = "1.0", features = ["union", "may_dangle"] }
+rustc_index = { path = "../librustc_index", package = "rustc_index" }
+bitflags = "1.2.1"
+measureme = "0.7.1"
+libc = "0.2"
+stacker = "0.1.9"
 
 [dependencies.parking_lot]
-version = "0.7"
+version = "0.10"
 features = ["nightly"]
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["fileapi", "psapi"] }

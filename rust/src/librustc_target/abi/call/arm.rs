@@ -1,13 +1,13 @@
-use crate::abi::call::{Conv, FnType, ArgType, Reg, RegKind, Uniform};
-use crate::abi::{HasDataLayout, LayoutOf, TyLayout, TyLayoutMethods};
+use crate::abi::call::{ArgAbi, Conv, FnAbi, Reg, RegKind, Uniform};
+use crate::abi::{HasDataLayout, LayoutOf, TyAndLayout, TyAndLayoutMethods};
 use crate::spec::HasTargetSpec;
 
-fn is_homogeneous_aggregate<'a, Ty, C>(cx: &C, arg: &mut ArgType<'a, Ty>)
-                                     -> Option<Uniform>
-    where Ty: TyLayoutMethods<'a, C> + Copy,
-          C: LayoutOf<Ty = Ty, TyLayout = TyLayout<'a, Ty>> + HasDataLayout
+fn is_homogeneous_aggregate<'a, Ty, C>(cx: &C, arg: &mut ArgAbi<'a, Ty>) -> Option<Uniform>
+where
+    Ty: TyAndLayoutMethods<'a, C> + Copy,
+    C: LayoutOf<Ty = Ty, TyAndLayout = TyAndLayout<'a, Ty>> + HasDataLayout,
 {
-    arg.layout.homogeneous_aggregate(cx).unit().and_then(|unit| {
+    arg.layout.homogeneous_aggregate(cx).ok().and_then(|ha| ha.unit()).and_then(|unit| {
         let size = arg.layout.size;
 
         // Ensure we have at most four uniquely addressable members.
@@ -18,23 +18,17 @@ fn is_homogeneous_aggregate<'a, Ty, C>(cx: &C, arg: &mut ArgType<'a, Ty>)
         let valid_unit = match unit.kind {
             RegKind::Integer => false,
             RegKind::Float => true,
-            RegKind::Vector => size.bits() == 64 || size.bits() == 128
+            RegKind::Vector => size.bits() == 64 || size.bits() == 128,
         };
 
-        if valid_unit {
-            Some(Uniform {
-                unit,
-                total: size
-            })
-        } else {
-            None
-        }
+        valid_unit.then_some(Uniform { unit, total: size })
     })
 }
 
-fn classify_ret_ty<'a, Ty, C>(cx: &C, ret: &mut ArgType<'a, Ty>, vfp: bool)
-    where Ty: TyLayoutMethods<'a, C> + Copy,
-          C: LayoutOf<Ty = Ty, TyLayout = TyLayout<'a, Ty>> + HasDataLayout
+fn classify_ret<'a, Ty, C>(cx: &C, ret: &mut ArgAbi<'a, Ty>, vfp: bool)
+where
+    Ty: TyAndLayoutMethods<'a, C> + Copy,
+    C: LayoutOf<Ty = Ty, TyAndLayout = TyAndLayout<'a, Ty>> + HasDataLayout,
 {
     if !ret.layout.is_aggregate() {
         ret.extend_integer_width_to(32);
@@ -58,18 +52,16 @@ fn classify_ret_ty<'a, Ty, C>(cx: &C, ret: &mut ArgType<'a, Ty>, vfp: bool)
         } else {
             Reg::i32()
         };
-        ret.cast_to(Uniform {
-            unit,
-            total: size
-        });
+        ret.cast_to(Uniform { unit, total: size });
         return;
     }
     ret.make_indirect();
 }
 
-fn classify_arg_ty<'a, Ty, C>(cx: &C, arg: &mut ArgType<'a, Ty>, vfp: bool)
-    where Ty: TyLayoutMethods<'a, C> + Copy,
-          C: LayoutOf<Ty = Ty, TyLayout = TyLayout<'a, Ty>> + HasDataLayout
+fn classify_arg<'a, Ty, C>(cx: &C, arg: &mut ArgAbi<'a, Ty>, vfp: bool)
+where
+    Ty: TyAndLayoutMethods<'a, C> + Copy,
+    C: LayoutOf<Ty = Ty, TyAndLayout = TyAndLayout<'a, Ty>> + HasDataLayout,
 {
     if !arg.layout.is_aggregate() {
         arg.extend_integer_width_to(32);
@@ -85,28 +77,28 @@ fn classify_arg_ty<'a, Ty, C>(cx: &C, arg: &mut ArgType<'a, Ty>, vfp: bool)
 
     let align = arg.layout.align.abi.bytes();
     let total = arg.layout.size;
-    arg.cast_to(Uniform {
-        unit: if align <= 4 { Reg::i32() } else { Reg::i64() },
-        total
-    });
+    arg.cast_to(Uniform { unit: if align <= 4 { Reg::i32() } else { Reg::i64() }, total });
 }
 
-pub fn compute_abi_info<'a, Ty, C>(cx: &C, fty: &mut FnType<'a, Ty>)
-    where Ty: TyLayoutMethods<'a, C> + Copy,
-          C: LayoutOf<Ty = Ty, TyLayout = TyLayout<'a, Ty>> + HasDataLayout + HasTargetSpec
+pub fn compute_abi_info<'a, Ty, C>(cx: &C, fn_abi: &mut FnAbi<'a, Ty>)
+where
+    Ty: TyAndLayoutMethods<'a, C> + Copy,
+    C: LayoutOf<Ty = Ty, TyAndLayout = TyAndLayout<'a, Ty>> + HasDataLayout + HasTargetSpec,
 {
     // If this is a target with a hard-float ABI, and the function is not explicitly
     // `extern "aapcs"`, then we must use the VFP registers for homogeneous aggregates.
     let vfp = cx.target_spec().llvm_target.ends_with("hf")
-        && fty.conv != Conv::ArmAapcs
-        && !fty.c_variadic;
+        && fn_abi.conv != Conv::ArmAapcs
+        && !fn_abi.c_variadic;
 
-    if !fty.ret.is_ignore() {
-        classify_ret_ty(cx, &mut fty.ret, vfp);
+    if !fn_abi.ret.is_ignore() {
+        classify_ret(cx, &mut fn_abi.ret, vfp);
     }
 
-    for arg in &mut fty.args {
-        if arg.is_ignore() { continue; }
-        classify_arg_ty(cx, arg, vfp);
+    for arg in &mut fn_abi.args {
+        if arg.is_ignore() {
+            continue;
+        }
+        classify_arg(cx, arg, vfp);
     }
 }

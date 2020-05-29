@@ -1,7 +1,7 @@
 // aux-build:lints-in-foreign-macros.rs
-// build-pass (FIXME(62277): could be check-pass?)
+// check-pass
 
-#![warn(unused_imports)] //~ missing documentation for crate [missing_docs]
+#![warn(unused_imports)] //~ missing documentation for the crate [missing_docs]
 #![warn(missing_docs)]
 
 #[macro_use]

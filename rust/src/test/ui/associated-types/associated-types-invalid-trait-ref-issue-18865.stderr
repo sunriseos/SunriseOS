@@ -4,7 +4,10 @@ error[E0277]: the trait bound `T: Foo<usize>` is not satisfied
 LL |     let u: <T as Foo<usize>>::Bar = t.get_bar();
    |            ^^^^^^^^^^^^^^^^^^^^^^ the trait `Foo<usize>` is not implemented for `T`
    |
-   = help: consider adding a `where T: Foo<usize>` bound
+help: consider further restricting this bound
+   |
+LL | fn f<T:Foo<isize> + Foo<usize>>(t: &T) {
+   |                   ^^^^^^^^^^^^
 
 error: aborting due to previous error
 

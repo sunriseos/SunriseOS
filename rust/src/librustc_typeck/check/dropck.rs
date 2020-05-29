@@ -1,16 +1,18 @@
 use crate::check::regionck::RegionCtxt;
-
 use crate::hir;
-use crate::hir::def_id::DefId;
-use rustc::infer::outlives::env::OutlivesEnvironment;
-use rustc::infer::{self, InferOk, SuppressRegionErrors};
-use rustc::middle::region;
-use rustc::traits::{ObligationCause, TraitEngine, TraitEngineExt};
-use rustc::ty::subst::{Subst, SubstsRef, UnpackedKind};
-use rustc::ty::{self, Ty, TyCtxt};
-use crate::util::common::ErrorReported;
-
-use syntax_pos::Span;
+use crate::hir::def_id::{DefId, LocalDefId};
+use rustc_errors::{struct_span_err, ErrorReported};
+use rustc_infer::infer::outlives::env::OutlivesEnvironment;
+use rustc_infer::infer::{InferOk, RegionckMode, TyCtxtInferExt};
+use rustc_infer::traits::TraitEngineExt as _;
+use rustc_middle::ty::error::TypeError;
+use rustc_middle::ty::relate::{Relate, RelateResult, TypeRelation};
+use rustc_middle::ty::subst::{Subst, SubstsRef};
+use rustc_middle::ty::{self, Predicate, Ty, TyCtxt};
+use rustc_span::Span;
+use rustc_trait_selection::traits::error_reporting::InferCtxtExt;
+use rustc_trait_selection::traits::query::dropck_outlives::AtExt;
+use rustc_trait_selection::traits::{ObligationCause, TraitEngine, TraitEngineExt};
 
 /// This function confirms that the `Drop` implementation identified by
 /// `drop_impl_did` is not any more specialized than the type it is
@@ -32,20 +34,19 @@ use syntax_pos::Span;
 pub fn check_drop_impl(tcx: TyCtxt<'_>, drop_impl_did: DefId) -> Result<(), ErrorReported> {
     let dtor_self_type = tcx.type_of(drop_impl_did);
     let dtor_predicates = tcx.predicates_of(drop_impl_did);
-    match dtor_self_type.sty {
+    match dtor_self_type.kind {
         ty::Adt(adt_def, self_to_impl_substs) => {
             ensure_drop_params_and_item_params_correspond(
                 tcx,
-                drop_impl_did,
+                drop_impl_did.expect_local(),
                 dtor_self_type,
                 adt_def.did,
             )?;
 
             ensure_drop_predicates_are_implied_by_item_defn(
                 tcx,
-                drop_impl_did,
-                &dtor_predicates,
-                adt_def.did,
+                dtor_predicates,
+                adt_def.did.expect_local(),
                 self_to_impl_substs,
             )
         }
@@ -54,8 +55,10 @@ pub fn check_drop_impl(tcx: TyCtxt<'_>, drop_impl_did: DefId) -> Result<(), Erro
             // already checked by coherence, but compilation may
             // not have been terminated.
             let span = tcx.def_span(drop_impl_did);
-            tcx.sess.delay_span_bug(span,
-                &format!("should have been rejected by coherence check: {}", dtor_self_type));
+            tcx.sess.delay_span_bug(
+                span,
+                &format!("should have been rejected by coherence check: {}", dtor_self_type),
+            );
             Err(ErrorReported)
         }
     }
@@ -63,11 +66,11 @@ pub fn check_drop_impl(tcx: TyCtxt<'_>, drop_impl_did: DefId) -> Result<(), Erro
 
 fn ensure_drop_params_and_item_params_correspond<'tcx>(
     tcx: TyCtxt<'tcx>,
-    drop_impl_did: DefId,
+    drop_impl_did: LocalDefId,
     drop_impl_ty: Ty<'tcx>,
     self_type_did: DefId,
 ) -> Result<(), ErrorReported> {
-    let drop_impl_hir_id = tcx.hir().as_local_hir_id(drop_impl_did).unwrap();
+    let drop_impl_hir_id = tcx.hir().as_local_hir_id(drop_impl_did);
 
     // check that the impl type can be made to match the trait type.
 
@@ -79,30 +82,33 @@ fn ensure_drop_params_and_item_params_correspond<'tcx>(
         let named_type = tcx.type_of(self_type_did);
 
         let drop_impl_span = tcx.def_span(drop_impl_did);
-        let fresh_impl_substs = infcx.fresh_substs_for_item(drop_impl_span, drop_impl_did);
+        let fresh_impl_substs =
+            infcx.fresh_substs_for_item(drop_impl_span, drop_impl_did.to_def_id());
         let fresh_impl_self_ty = drop_impl_ty.subst(tcx, fresh_impl_substs);
 
         let cause = &ObligationCause::misc(drop_impl_span, drop_impl_hir_id);
-        match infcx
-            .at(cause, impl_param_env)
-            .eq(named_type, fresh_impl_self_ty)
-        {
+        match infcx.at(cause, impl_param_env).eq(named_type, fresh_impl_self_ty) {
             Ok(InferOk { obligations, .. }) => {
                 fulfillment_cx.register_predicate_obligations(infcx, obligations);
             }
             Err(_) => {
                 let item_span = tcx.def_span(self_type_did);
+                let self_descr = tcx.def_kind(self_type_did).descr(self_type_did);
                 struct_span_err!(
                     tcx.sess,
                     drop_impl_span,
                     E0366,
-                    "Implementations of Drop cannot be specialized"
-                ).span_note(
-                    item_span,
-                    "Use same sequence of generic type and region \
-                     parameters that is on the struct/enum definition",
+                    "`Drop` impls cannot be specialized"
                 )
-                    .emit();
+                .span_note(
+                    item_span,
+                    &format!(
+                        "use the same sequence of generic type, lifetime and const parameters \
+                        as the {} definition",
+                        self_descr,
+                    ),
+                )
+                .emit();
                 return Err(ErrorReported);
             }
         }
@@ -112,8 +118,6 @@ fn ensure_drop_params_and_item_params_correspond<'tcx>(
             infcx.report_fulfillment_errors(errors, None, false);
             return Err(ErrorReported);
         }
-
-        let region_scope_tree = region::ScopeTree::default();
 
         // NB. It seems a bit... suspicious to use an empty param-env
         // here. The correct thing, I imagine, would be
@@ -126,10 +130,9 @@ fn ensure_drop_params_and_item_params_correspond<'tcx>(
         let outlives_env = OutlivesEnvironment::new(ty::ParamEnv::empty());
 
         infcx.resolve_regions_and_report_errors(
-            drop_impl_did,
-            &region_scope_tree,
+            drop_impl_did.to_def_id(),
             &outlives_env,
-            SuppressRegionErrors::default(),
+            RegionckMode::default(),
         );
         Ok(())
     })
@@ -139,9 +142,8 @@ fn ensure_drop_params_and_item_params_correspond<'tcx>(
 /// implied by assuming the predicates attached to self_type_did.
 fn ensure_drop_predicates_are_implied_by_item_defn<'tcx>(
     tcx: TyCtxt<'tcx>,
-    drop_impl_did: DefId,
-    dtor_predicates: &ty::GenericPredicates<'tcx>,
-    self_type_did: DefId,
+    dtor_predicates: ty::GenericPredicates<'tcx>,
+    self_type_did: LocalDefId,
     self_to_impl_substs: SubstsRef<'tcx>,
 ) -> Result<(), ErrorReported> {
     let mut result = Ok(());
@@ -181,9 +183,7 @@ fn ensure_drop_predicates_are_implied_by_item_defn<'tcx>(
     // absent. So we report an error that the Drop impl injected a
     // predicate that is not present on the struct definition.
 
-    let self_type_hir_id = tcx.hir().as_local_hir_id(self_type_did).unwrap();
-
-    let drop_impl_span = tcx.def_span(drop_impl_did);
+    let self_type_hir_id = tcx.hir().as_local_hir_id(self_type_did);
 
     // We can assume the predicates attached to struct/enum definition
     // hold.
@@ -192,6 +192,8 @@ fn ensure_drop_predicates_are_implied_by_item_defn<'tcx>(
     let assumptions_in_impl_context = generic_assumptions.instantiate(tcx, &self_to_impl_substs);
     let assumptions_in_impl_context = assumptions_in_impl_context.predicates;
 
+    let self_param_env = tcx.param_env(self_type_did);
+
     // An earlier version of this code attempted to do this checking
     // via the traits::fulfill machinery. However, it ran into trouble
     // since the fulfill machinery merely turns outlives-predicates
@@ -199,33 +201,55 @@ fn ensure_drop_predicates_are_implied_by_item_defn<'tcx>(
     // just to look for all the predicates directly.
 
     assert_eq!(dtor_predicates.parent, None);
-    for (predicate, _) in &dtor_predicates.predicates {
+    for (predicate, predicate_sp) in dtor_predicates.predicates {
         // (We do not need to worry about deep analysis of type
         // expressions etc because the Drop impls are already forced
         // to take on a structure that is roughly an alpha-renaming of
         // the generic parameters of the item definition.)
 
-        // This path now just checks *all* predicates via the direct
-        // lookup, rather than using fulfill machinery.
+        // This path now just checks *all* predicates via an instantiation of
+        // the `SimpleEqRelation`, which simply forwards to the `relate` machinery
+        // after taking care of anonymizing late bound regions.
         //
         // However, it may be more efficient in the future to batch
-        // the analysis together via the fulfill , rather than the
-        // repeated `contains` calls.
+        // the analysis together via the fulfill (see comment above regarding
+        // the usage of the fulfill machinery), rather than the
+        // repeated `.iter().any(..)` calls.
 
-        if !assumptions_in_impl_context.contains(&predicate) {
+        // This closure is a more robust way to check `Predicate` equality
+        // than simple `==` checks (which were the previous implementation).
+        // It relies on `ty::relate` for `TraitPredicate` and `ProjectionPredicate`
+        // (which implement the Relate trait), while delegating on simple equality
+        // for the other `Predicate`.
+        // This implementation solves (Issue #59497) and (Issue #58311).
+        // It is unclear to me at the moment whether the approach based on `relate`
+        // could be extended easily also to the other `Predicate`.
+        let predicate_matches_closure = |p: &'_ Predicate<'tcx>| {
+            let mut relator: SimpleEqRelation<'tcx> = SimpleEqRelation::new(tcx, self_param_env);
+            match (predicate.kind(), p.kind()) {
+                (ty::PredicateKind::Trait(a, _), ty::PredicateKind::Trait(b, _)) => {
+                    relator.relate(a, b).is_ok()
+                }
+                (ty::PredicateKind::Projection(a), ty::PredicateKind::Projection(b)) => {
+                    relator.relate(a, b).is_ok()
+                }
+                _ => predicate == p,
+            }
+        };
+
+        if !assumptions_in_impl_context.iter().any(predicate_matches_closure) {
             let item_span = tcx.hir().span(self_type_hir_id);
+            let self_descr = tcx.def_kind(self_type_did).descr(self_type_did.to_def_id());
             struct_span_err!(
                 tcx.sess,
-                drop_impl_span,
+                *predicate_sp,
                 E0367,
-                "The requirement `{}` is added only by the Drop impl.",
-                predicate
-            ).span_note(
-                item_span,
-                "The same requirement must be part of \
-                 the struct/enum definition",
+                "`Drop` impl requires `{}` but the {} it is implemented for does not",
+                predicate,
+                self_descr,
             )
-                .emit();
+            .span_note(item_span, "the implementor must specify the same requirement")
+            .emit();
             result = Err(ErrorReported);
         }
     }
@@ -233,87 +257,117 @@ fn ensure_drop_predicates_are_implied_by_item_defn<'tcx>(
     result
 }
 
-/// This function confirms that the type
-/// expression `typ` conforms to the "Drop Check Rule" from the Sound
-/// Generic Drop RFC (#769).
-///
-/// ----
-///
-/// The simplified (*) Drop Check Rule is the following:
-///
-/// Let `v` be some value (either temporary or named) and 'a be some
-/// lifetime (scope). If the type of `v` owns data of type `D`, where
-///
-/// * (1.) `D` has a lifetime- or type-parametric Drop implementation,
-///        (where that `Drop` implementation does not opt-out of
-///         this check via the `may_dangle`
-///         attribute), and
-/// * (2.) the structure of `D` can reach a reference of type `&'a _`,
-///
-/// then 'a must strictly outlive the scope of v.
-///
-/// ----
-///
-/// This function is meant to by applied to the type for every
-/// expression in the program.
-///
-/// ----
-///
-/// (*) The qualifier "simplified" is attached to the above
-/// definition of the Drop Check Rule, because it is a simplification
-/// of the original Drop Check rule, which attempted to prove that
-/// some `Drop` implementations could not possibly access data even if
-/// it was technically reachable, due to parametricity.
-///
-/// However, (1.) parametricity on its own turned out to be a
-/// necessary but insufficient condition, and (2.)  future changes to
-/// the language are expected to make it impossible to ensure that a
-/// `Drop` implementation is actually parametric with respect to any
-/// particular type parameter. (In particular, impl specialization is
-/// expected to break the needed parametricity property beyond
-/// repair.)
-///
-/// Therefore, we have scaled back Drop-Check to a more conservative
-/// rule that does not attempt to deduce whether a `Drop`
-/// implementation could not possible access data of a given lifetime;
-/// instead Drop-Check now simply assumes that if a destructor has
-/// access (direct or indirect) to a lifetime parameter, then that
-/// lifetime must be forced to outlive that destructor's dynamic
-/// extent. We then provide the `may_dangle`
-/// attribute as a way for destructor implementations to opt-out of
-/// this conservative assumption (and thus assume the obligation of
-/// ensuring that they do not access data nor invoke methods of
-/// values that have been previously dropped).
-pub fn check_safety_of_destructor_if_necessary<'a, 'tcx>(
+/// This function is not only checking that the dropck obligations are met for
+/// the given type, but it's also currently preventing non-regular recursion in
+/// types from causing stack overflows (dropck_no_diverge_on_nonregular_*.rs).
+crate fn check_drop_obligations<'a, 'tcx>(
     rcx: &mut RegionCtxt<'a, 'tcx>,
     ty: Ty<'tcx>,
     span: Span,
     body_id: hir::HirId,
-    scope: region::Scope,
 ) -> Result<(), ErrorReported> {
-    debug!("check_safety_of_destructor_if_necessary typ: {:?} scope: {:?}",
-           ty, scope);
+    debug!("check_drop_obligations typ: {:?}", ty);
 
-    let parent_scope = match rcx.region_scope_tree.opt_encl_scope(scope) {
-        Some(parent_scope) => parent_scope,
-        // If no enclosing scope, then it must be the root scope
-        // which cannot be outlived.
-        None => return Ok(()),
-    };
-    let parent_scope = rcx.tcx.mk_region(ty::ReScope(parent_scope));
-    let origin = || infer::SubregionOrigin::SafeDestructor(span);
     let cause = &ObligationCause::misc(span, body_id);
     let infer_ok = rcx.infcx.at(cause, rcx.fcx.param_env).dropck_outlives(ty);
     debug!("dropck_outlives = {:#?}", infer_ok);
-    let kinds = rcx.fcx.register_infer_ok_obligations(infer_ok);
-    for kind in kinds {
-        match kind.unpack() {
-            UnpackedKind::Lifetime(r) => rcx.sub_regions(origin(), parent_scope, r),
-            UnpackedKind::Type(ty) => rcx.type_must_outlive(origin(), ty, parent_scope),
-            UnpackedKind::Const(_) => {
-                // Generic consts don't add constraints.
-            }
+    rcx.fcx.register_infer_ok_obligations(infer_ok);
+
+    Ok(())
+}
+
+// This is an implementation of the TypeRelation trait with the
+// aim of simply comparing for equality (without side-effects).
+// It is not intended to be used anywhere else other than here.
+crate struct SimpleEqRelation<'tcx> {
+    tcx: TyCtxt<'tcx>,
+    param_env: ty::ParamEnv<'tcx>,
+}
+
+impl<'tcx> SimpleEqRelation<'tcx> {
+    fn new(tcx: TyCtxt<'tcx>, param_env: ty::ParamEnv<'tcx>) -> SimpleEqRelation<'tcx> {
+        SimpleEqRelation { tcx, param_env }
+    }
+}
+
+impl TypeRelation<'tcx> for SimpleEqRelation<'tcx> {
+    fn tcx(&self) -> TyCtxt<'tcx> {
+        self.tcx
+    }
+
+    fn param_env(&self) -> ty::ParamEnv<'tcx> {
+        self.param_env
+    }
+
+    fn tag(&self) -> &'static str {
+        "dropck::SimpleEqRelation"
+    }
+
+    fn a_is_expected(&self) -> bool {
+        true
+    }
+
+    fn relate_with_variance<T: Relate<'tcx>>(
+        &mut self,
+        _: ty::Variance,
+        a: &T,
+        b: &T,
+    ) -> RelateResult<'tcx, T> {
+        // Here we ignore variance because we require drop impl's types
+        // to be *exactly* the same as to the ones in the struct definition.
+        self.relate(a, b)
+    }
+
+    fn tys(&mut self, a: Ty<'tcx>, b: Ty<'tcx>) -> RelateResult<'tcx, Ty<'tcx>> {
+        debug!("SimpleEqRelation::tys(a={:?}, b={:?})", a, b);
+        ty::relate::super_relate_tys(self, a, b)
+    }
+
+    fn regions(
+        &mut self,
+        a: ty::Region<'tcx>,
+        b: ty::Region<'tcx>,
+    ) -> RelateResult<'tcx, ty::Region<'tcx>> {
+        debug!("SimpleEqRelation::regions(a={:?}, b={:?})", a, b);
+
+        // We can just equate the regions because LBRs have been
+        // already anonymized.
+        if a == b {
+            Ok(a)
+        } else {
+            // I'm not sure is this `TypeError` is the right one, but
+            // it should not matter as it won't be checked (the dropck
+            // will emit its own, more informative and higher-level errors
+            // in case anything goes wrong).
+            Err(TypeError::RegionsPlaceholderMismatch)
         }
     }
-    Ok(())
+
+    fn consts(
+        &mut self,
+        a: &'tcx ty::Const<'tcx>,
+        b: &'tcx ty::Const<'tcx>,
+    ) -> RelateResult<'tcx, &'tcx ty::Const<'tcx>> {
+        debug!("SimpleEqRelation::consts(a={:?}, b={:?})", a, b);
+        ty::relate::super_relate_consts(self, a, b)
+    }
+
+    fn binders<T>(
+        &mut self,
+        a: &ty::Binder<T>,
+        b: &ty::Binder<T>,
+    ) -> RelateResult<'tcx, ty::Binder<T>>
+    where
+        T: Relate<'tcx>,
+    {
+        debug!("SimpleEqRelation::binders({:?}: {:?}", a, b);
+
+        // Anonymizing the LBRs is necessary to solve (Issue #59497).
+        // After we do so, it should be totally fine to skip the binders.
+        let anon_a = self.tcx.anonymize_late_bound_regions(a);
+        let anon_b = self.tcx.anonymize_late_bound_regions(b);
+        self.relate(anon_a.skip_binder(), anon_b.skip_binder())?;
+
+        Ok(a.clone())
+    }
 }

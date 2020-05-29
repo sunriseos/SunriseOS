@@ -1,11 +1,13 @@
 // FIXME: The assumes we're using the non-vector ABI, i.e., compiling
 // for a pre-z13 machine or using -mno-vx.
 
-use crate::abi::call::{FnType, ArgType, Reg};
-use crate::abi::{self, HasDataLayout, LayoutOf, TyLayout, TyLayoutMethods};
+use crate::abi::call::{ArgAbi, FnAbi, Reg};
+use crate::abi::{self, HasDataLayout, LayoutOf, TyAndLayout, TyAndLayoutMethods};
 
-fn classify_ret_ty<'a, Ty, C>(ret: &mut ArgType<'_, Ty>)
-    where Ty: TyLayoutMethods<'a, C>, C: LayoutOf<Ty = Ty> + HasDataLayout
+fn classify_ret<'a, Ty, C>(ret: &mut ArgAbi<'_, Ty>)
+where
+    Ty: TyAndLayoutMethods<'a, C>,
+    C: LayoutOf<Ty = Ty> + HasDataLayout,
 {
     if !ret.layout.is_aggregate() && ret.layout.size.bits() <= 64 {
         ret.extend_integer_width_to(64);
@@ -14,9 +16,10 @@ fn classify_ret_ty<'a, Ty, C>(ret: &mut ArgType<'_, Ty>)
     }
 }
 
-fn is_single_fp_element<'a, Ty, C>(cx: &C, layout: TyLayout<'a, Ty>) -> bool
-    where Ty: TyLayoutMethods<'a, C>,
-          C: LayoutOf<Ty = Ty, TyLayout = TyLayout<'a, Ty>> + HasDataLayout
+fn is_single_fp_element<'a, Ty, C>(cx: &C, layout: TyAndLayout<'a, Ty>) -> bool
+where
+    Ty: TyAndLayoutMethods<'a, C>,
+    C: LayoutOf<Ty = Ty, TyAndLayout = TyAndLayout<'a, Ty>> + HasDataLayout,
 {
     match layout.abi {
         abi::Abi::Scalar(ref scalar) => scalar.value.is_float(),
@@ -27,13 +30,14 @@ fn is_single_fp_element<'a, Ty, C>(cx: &C, layout: TyLayout<'a, Ty>) -> bool
                 false
             }
         }
-        _ => false
+        _ => false,
     }
 }
 
-fn classify_arg_ty<'a, Ty, C>(cx: &C, arg: &mut ArgType<'a, Ty>)
-    where Ty: TyLayoutMethods<'a, C> + Copy,
-          C: LayoutOf<Ty = Ty, TyLayout = TyLayout<'a, Ty>> + HasDataLayout
+fn classify_arg<'a, Ty, C>(cx: &C, arg: &mut ArgAbi<'a, Ty>)
+where
+    Ty: TyAndLayoutMethods<'a, C> + Copy,
+    C: LayoutOf<Ty = Ty, TyAndLayout = TyAndLayout<'a, Ty>> + HasDataLayout,
 {
     if !arg.layout.is_aggregate() && arg.layout.size.bits() <= 64 {
         arg.extend_integer_width_to(64);
@@ -44,7 +48,7 @@ fn classify_arg_ty<'a, Ty, C>(cx: &C, arg: &mut ArgType<'a, Ty>)
         match arg.layout.size.bytes() {
             4 => arg.cast_to(Reg::f32()),
             8 => arg.cast_to(Reg::f64()),
-            _ => arg.make_indirect()
+            _ => arg.make_indirect(),
         }
     } else {
         match arg.layout.size.bytes() {
@@ -52,21 +56,24 @@ fn classify_arg_ty<'a, Ty, C>(cx: &C, arg: &mut ArgType<'a, Ty>)
             2 => arg.cast_to(Reg::i16()),
             4 => arg.cast_to(Reg::i32()),
             8 => arg.cast_to(Reg::i64()),
-            _ => arg.make_indirect()
+            _ => arg.make_indirect(),
         }
     }
 }
 
-pub fn compute_abi_info<'a, Ty, C>(cx: &C, fty: &mut FnType<'a, Ty>)
-    where Ty: TyLayoutMethods<'a, C> + Copy,
-          C: LayoutOf<Ty = Ty, TyLayout = TyLayout<'a, Ty>> + HasDataLayout
+pub fn compute_abi_info<'a, Ty, C>(cx: &C, fn_abi: &mut FnAbi<'a, Ty>)
+where
+    Ty: TyAndLayoutMethods<'a, C> + Copy,
+    C: LayoutOf<Ty = Ty, TyAndLayout = TyAndLayout<'a, Ty>> + HasDataLayout,
 {
-    if !fty.ret.is_ignore() {
-        classify_ret_ty(&mut fty.ret);
+    if !fn_abi.ret.is_ignore() {
+        classify_ret(&mut fn_abi.ret);
     }
 
-    for arg in &mut fty.args {
-        if arg.is_ignore() { continue; }
-        classify_arg_ty(cx, arg);
+    for arg in &mut fn_abi.args {
+        if arg.is_ignore() {
+            continue;
+        }
+        classify_arg(cx, arg);
     }
 }

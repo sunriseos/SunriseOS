@@ -12,7 +12,7 @@ mod aux_mod;
 include!("aux_mod.rs");
 
 // Here we check that the expansion of the file!() macro is mapped.
-// CHECK: @0 = private unnamed_addr constant <{ [34 x i8] }> <{ [34 x i8] c"/the/src/remap_path_prefix/main.rs" }>, align 1
+// CHECK: @alloc1 = private unnamed_addr constant <{ [34 x i8] }> <{ [34 x i8] c"/the/src/remap_path_prefix/main.rs" }>, align 1
 pub static FILE_PATH: &'static str = file!();
 
 fn main() {
@@ -22,7 +22,7 @@ fn main() {
 }
 
 // Here we check that local debuginfo is mapped correctly.
-// CHECK: !DIFile(filename: "/the/src/remap_path_prefix/main.rs", directory: "/the/cwd/")
+// CHECK: !DIFile(filename: "/the/src/remap_path_prefix/main.rs", directory: "/the/cwd/"
 
 // And here that debuginfo from other crates are expanded to absolute paths.
-// CHECK: !DIFile(filename: "/the/aux-src/remap_path_prefix_aux.rs", directory: "")
+// CHECK: !DIFile(filename: "/the/aux-src/remap_path_prefix_aux.rs", directory: ""

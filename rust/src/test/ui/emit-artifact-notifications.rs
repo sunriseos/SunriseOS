@@ -1,5 +1,5 @@
-// compile-flags:--emit=metadata --error-format=json -Z emit-artifact-notifications
-// build-pass (FIXME(62277): could be check-pass?)
+// compile-flags:--emit=metadata --error-format=json --json artifacts
+// build-pass
 // ignore-pass
 // ^-- needed because `--pass check` does not emit the output needed.
 

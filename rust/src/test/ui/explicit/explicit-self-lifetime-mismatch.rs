@@ -6,13 +6,13 @@ struct Foo<'a,'b> {
 impl<'a,'b> Foo<'a,'b> {
     fn bar(self:
            Foo<'b,'a>
-    //~^ ERROR mismatched method receiver
-    //~| expected type `Foo<'a, 'b>`
-    //~| found type `Foo<'b, 'a>`
+    //~^ ERROR mismatched `self` parameter type
+    //~| expected struct `Foo<'a, 'b>`
+    //~| found struct `Foo<'b, 'a>`
     //~| lifetime mismatch
-    //~| ERROR mismatched method receiver
-    //~| expected type `Foo<'a, 'b>`
-    //~| found type `Foo<'b, 'a>`
+    //~| ERROR mismatched `self` parameter type
+    //~| expected struct `Foo<'a, 'b>`
+    //~| found struct `Foo<'b, 'a>`
     //~| lifetime mismatch
            ) {}
 }

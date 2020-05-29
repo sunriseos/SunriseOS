@@ -29,7 +29,7 @@ pub fn init() -> Result<(), Error> {
     }
 
     // Close the pipes on exit
-    crate::sys_common::at_exit(|| {
+    let _ = crate::sys_common::at_exit(|| {
         get_poison_inner(PIPE_STDIN.write()).take();
         get_poison_inner(PIPE_STDOUT.write()).take();
         get_poison_inner(PIPE_STDERR.write()).take();

@@ -6,49 +6,12 @@ use std::path::{Path, PathBuf};
 
 use log::*;
 
-use crate::common::{self, CompareMode, Config, Mode, PassMode};
+use crate::common::{CompareMode, Config, Debugger, FailMode, Mode, PassMode};
+use crate::extract_gdb_version;
 use crate::util;
 
-use crate::extract_gdb_version;
-
-/// Whether to ignore the test.
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum Ignore {
-    /// Runs it.
-    Run,
-    /// Ignore it totally.
-    Ignore,
-    /// Ignore only the gdb test, but run the lldb test.
-    IgnoreGdb,
-    /// Ignore only the lldb test, but run the gdb test.
-    IgnoreLldb,
-}
-
-impl Ignore {
-    pub fn can_run_gdb(&self) -> bool {
-        *self == Ignore::Run || *self == Ignore::IgnoreLldb
-    }
-
-    pub fn can_run_lldb(&self) -> bool {
-        *self == Ignore::Run || *self == Ignore::IgnoreGdb
-    }
-
-    pub fn no_gdb(&self) -> Ignore {
-        match *self {
-            Ignore::Run => Ignore::IgnoreGdb,
-            Ignore::IgnoreGdb => Ignore::IgnoreGdb,
-            _ => Ignore::Ignore,
-        }
-    }
-
-    pub fn no_lldb(&self) -> Ignore {
-        match *self {
-            Ignore::Run => Ignore::IgnoreLldb,
-            Ignore::IgnoreLldb => Ignore::IgnoreLldb,
-            _ => Ignore::Ignore,
-        }
-    }
-}
+#[cfg(test)]
+mod tests;
 
 /// The result of parse_cfg_name_directive.
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -57,98 +20,83 @@ enum ParsedNameDirective {
     NoMatch,
     /// Match.
     Match,
-    /// Mode was DebugInfoGdbLldb and this matched gdb.
-    MatchGdb,
-    /// Mode was DebugInfoGdbLldb and this matched lldb.
-    MatchLldb,
 }
 
 /// Properties which must be known very early, before actually running
 /// the test.
+#[derive(Default)]
 pub struct EarlyProps {
-    pub ignore: Ignore,
+    pub ignore: bool,
     pub should_fail: bool,
     pub aux: Vec<String>,
+    pub aux_crate: Vec<(String, String)>,
     pub revisions: Vec<String>,
 }
 
 impl EarlyProps {
     pub fn from_file(config: &Config, testfile: &Path) -> Self {
-        let mut props = EarlyProps {
-            ignore: Ignore::Run,
-            should_fail: false,
-            aux: Vec::new(),
-            revisions: vec![],
-        };
+        let file = File::open(testfile).unwrap();
+        Self::from_reader(config, testfile, file)
+    }
 
-        if config.mode == common::DebugInfoGdbLldb {
-            if config.lldb_python_dir.is_none() {
-                props.ignore = props.ignore.no_lldb();
-            }
-            if config.gdb_version.is_none() {
-                props.ignore = props.ignore.no_gdb();
-            }
-        } else if config.mode == common::DebugInfoCdb {
-            if config.cdb.is_none() {
-                props.ignore = Ignore::Ignore;
-            }
-        }
-
+    pub fn from_reader<R: Read>(config: &Config, testfile: &Path, rdr: R) -> Self {
+        let mut props = EarlyProps::default();
         let rustc_has_profiler_support = env::var_os("RUSTC_PROFILER_SUPPORT").is_some();
         let rustc_has_sanitizer_support = env::var_os("RUSTC_SANITIZER_SUPPORT").is_some();
 
-        iter_header(testfile, None, &mut |ln| {
+        iter_header(testfile, None, rdr, &mut |ln| {
             // we should check if any only-<platform> exists and if it exists
             // and does not matches the current platform, skip the test
-            if props.ignore != Ignore::Ignore {
+            if !props.ignore {
                 props.ignore = match config.parse_cfg_name_directive(ln, "ignore") {
-                    ParsedNameDirective::Match => Ignore::Ignore,
+                    ParsedNameDirective::Match => true,
                     ParsedNameDirective::NoMatch => props.ignore,
-                    ParsedNameDirective::MatchGdb => props.ignore.no_gdb(),
-                    ParsedNameDirective::MatchLldb => props.ignore.no_lldb(),
                 };
 
                 if config.has_cfg_prefix(ln, "only") {
                     props.ignore = match config.parse_cfg_name_directive(ln, "only") {
                         ParsedNameDirective::Match => props.ignore,
-                        ParsedNameDirective::NoMatch => Ignore::Ignore,
-                        ParsedNameDirective::MatchLldb => props.ignore.no_gdb(),
-                        ParsedNameDirective::MatchGdb => props.ignore.no_lldb(),
+                        ParsedNameDirective::NoMatch => true,
                     };
                 }
 
                 if ignore_llvm(config, ln) {
-                    props.ignore = Ignore::Ignore;
+                    props.ignore = true;
                 }
 
-                if config.run_clang_based_tests_with.is_none() &&
-                   config.parse_needs_matching_clang(ln) {
-                    props.ignore = Ignore::Ignore;
+                if config.run_clang_based_tests_with.is_none()
+                    && config.parse_needs_matching_clang(ln)
+                {
+                    props.ignore = true;
                 }
 
-                if !rustc_has_profiler_support &&
-                   config.parse_needs_profiler_support(ln) {
-                    props.ignore = Ignore::Ignore;
+                if !rustc_has_profiler_support && config.parse_needs_profiler_support(ln) {
+                    props.ignore = true;
                 }
 
-                if !rustc_has_sanitizer_support &&
-                   config.parse_needs_sanitizer_support(ln) {
-                    props.ignore = Ignore::Ignore;
+                if !rustc_has_sanitizer_support && config.parse_needs_sanitizer_support(ln) {
+                    props.ignore = true;
                 }
-            }
 
-            if (config.mode == common::DebugInfoGdb || config.mode == common::DebugInfoGdbLldb) &&
-                props.ignore.can_run_gdb() && ignore_gdb(config, ln) {
-                props.ignore = props.ignore.no_gdb();
-            }
+                if config.target == "wasm32-unknown-unknown" && config.parse_check_run_results(ln) {
+                    props.ignore = true;
+                }
 
-            if (config.mode == common::DebugInfoLldb || config.mode == common::DebugInfoGdbLldb) &&
-                props.ignore.can_run_lldb() && ignore_lldb(config, ln) {
-                props.ignore = props.ignore.no_lldb();
+                if config.debugger == Some(Debugger::Gdb) && ignore_gdb(config, ln) {
+                    props.ignore = true;
+                }
+
+                if config.debugger == Some(Debugger::Lldb) && ignore_lldb(config, ln) {
+                    props.ignore = true;
+                }
             }
 
             if let Some(s) = config.parse_aux_build(ln) {
                 props.aux.push(s);
+            }
+
+            if let Some(ac) = config.parse_aux_crate(ln) {
+                props.aux_crate.push(ac);
             }
 
             if let Some(r) = config.parse_revisions(ln) {
@@ -195,12 +143,13 @@ impl EarlyProps {
         fn extract_gdb_version_range(line: &str) -> (u32, u32) {
             const ERROR_MESSAGE: &'static str = "Malformed GDB version directive";
 
-            let range_components = line.split(&[' ', '-'][..])
-                                       .filter(|word| !word.is_empty())
-                                       .map(extract_gdb_version)
-                                       .skip_while(Option::is_none)
-                                       .take(3) // 3 or more = invalid, so take at most 3.
-                                       .collect::<Vec<Option<u32>>>();
+            let range_components = line
+                .split(&[' ', '-'][..])
+                .filter(|word| !word.is_empty())
+                .map(extract_gdb_version)
+                .skip_while(Option::is_none)
+                .take(3) // 3 or more = invalid, so take at most 3.
+                .collect::<Vec<Option<u32>>>();
 
             match range_components.len() {
                 1 => {
@@ -219,7 +168,8 @@ impl EarlyProps {
         fn ignore_lldb(config: &Config, line: &str) -> bool {
             if let Some(ref actual_version) = config.lldb_version {
                 if line.starts_with("min-lldb-version") {
-                    let min_version = line.trim_end()
+                    let min_version = line
+                        .trim_end()
                         .rsplit(' ')
                         .next()
                         .expect("Malformed lldb version directive");
@@ -241,42 +191,44 @@ impl EarlyProps {
                 return true;
             }
             if let Some(ref actual_version) = config.llvm_version {
+                let actual_version = version_to_int(actual_version);
                 if line.starts_with("min-llvm-version") {
-                    let min_version = line.trim_end()
+                    let min_version = line
+                        .trim_end()
                         .rsplit(' ')
                         .next()
                         .expect("Malformed llvm version directive");
                     // Ignore if actual version is smaller the minimum required
                     // version
-                    &actual_version[..] < min_version
+                    actual_version < version_to_int(min_version)
                 } else if line.starts_with("min-system-llvm-version") {
-                    let min_version = line.trim_end()
+                    let min_version = line
+                        .trim_end()
                         .rsplit(' ')
                         .next()
                         .expect("Malformed llvm version directive");
                     // Ignore if using system LLVM and actual version
                     // is smaller the minimum required version
-                    config.system_llvm && &actual_version[..] < min_version
+                    config.system_llvm && actual_version < version_to_int(min_version)
                 } else if line.starts_with("ignore-llvm-version") {
                     // Syntax is: "ignore-llvm-version <version1> [- <version2>]"
-                    let range_components = line.split(' ')
+                    let range_components = line
+                        .split(' ')
                         .skip(1) // Skip the directive.
                         .map(|s| s.trim())
                         .filter(|word| !word.is_empty() && word != &"-")
                         .take(3) // 3 or more = invalid, so take at most 3.
                         .collect::<Vec<&str>>();
                     match range_components.len() {
-                        1 => {
-                            &actual_version[..] == range_components[0]
-                        }
+                        1 => actual_version == version_to_int(range_components[0]),
                         2 => {
-                            let v_min = range_components[0];
-                            let v_max = range_components[1];
+                            let v_min = version_to_int(range_components[0]);
+                            let v_max = version_to_int(range_components[1]);
                             if v_max < v_min {
                                 panic!("Malformed LLVM version range: max < min")
                             }
                             // Ignore if version lies inside of range.
-                            &actual_version[..] >= v_min && &actual_version[..] <= v_max
+                            actual_version >= v_min && actual_version <= v_max
                         }
                         _ => panic!("Malformed LLVM version directive"),
                     }
@@ -285,6 +237,20 @@ impl EarlyProps {
                 }
             } else {
                 false
+            }
+        }
+
+        fn version_to_int(version: &str) -> u32 {
+            let version_without_suffix = version.split('-').next().unwrap();
+            let components: Vec<u32> = version_without_suffix
+                .split('.')
+                .map(|s| s.parse().expect("Malformed version component"))
+                .collect();
+            match components.len() {
+                1 => components[0] * 10000,
+                2 => components[0] * 10000 + components[1] * 100,
+                3 => components[0] * 10000 + components[1] * 100 + components[2],
+                _ => panic!("Malformed version"),
             }
         }
     }
@@ -305,10 +271,9 @@ pub struct TestProps {
     // directory as the test, but for backwards compatibility reasons
     // we also check the auxiliary directory)
     pub aux_builds: Vec<String>,
-    // A list of crates to pass '--extern-private name:PATH' flags for
-    // This should be a subset of 'aux_build'
-    // FIXME: Replace this with a better solution: https://github.com/rust-lang/rust/pull/54020
-    pub extern_private: Vec<String>,
+    // Similar to `aux_builds`, but a list of NAME=somelib.rs of dependencies
+    // to build and pass with the `--extern` flag.
+    pub aux_crates: Vec<(String, String)>,
     // Environment settings to use for compiling
     pub rustc_env: Vec<(String, String)>,
     // Environment variables to unset prior to compiling.
@@ -324,6 +289,8 @@ pub struct TestProps {
     pub force_host: bool,
     // Check stdout for error-pattern output as well as stderr
     pub check_stdout: bool,
+    // Check stdout & stderr for output of run-pass test
+    pub check_run_results: bool,
     // For UI tests, allows compiler to generate arbitrary output to stdout
     pub dont_check_compiler_stdout: bool,
     // For UI tests, allows compiler to generate arbitrary output to stderr
@@ -353,10 +320,10 @@ pub struct TestProps {
     pass_mode: Option<PassMode>,
     // Ignore `--pass` overrides from the command line for this test.
     ignore_pass: bool,
+    // How far this test should proceed to start failing.
+    pub fail_mode: Option<FailMode>,
     // rustdoc will test the output of the `--test` option
     pub check_test_line_numbers_match: bool,
-    // Do not pass `-Z ui-testing` to UI tests
-    pub disable_ui_testing_normalization: bool,
     // customized normalization rules
     pub normalize_stdout: Vec<(String, String)>,
     pub normalize_stderr: Vec<(String, String)>,
@@ -367,6 +334,8 @@ pub struct TestProps {
     // If true, `rustfix` will only apply `MachineApplicable` suggestions.
     pub rustfix_only_machine_applicable: bool,
     pub assembly_output: Option<String>,
+    // If true, the test is expected to ICE
+    pub should_ice: bool,
 }
 
 impl TestProps {
@@ -377,7 +346,7 @@ impl TestProps {
             run_flags: None,
             pp_exact: None,
             aux_builds: vec![],
-            extern_private: vec![],
+            aux_crates: vec![],
             revisions: vec![],
             rustc_env: vec![],
             unset_rustc_env: vec![],
@@ -386,6 +355,7 @@ impl TestProps {
             build_aux_docs: false,
             force_host: false,
             check_stdout: false,
+            check_run_results: false,
             dont_check_compiler_stdout: false,
             dont_check_compiler_stderr: false,
             no_prefer_dynamic: false,
@@ -395,15 +365,16 @@ impl TestProps {
             forbid_output: vec![],
             incremental_dir: None,
             pass_mode: None,
+            fail_mode: None,
             ignore_pass: false,
             check_test_line_numbers_match: false,
-            disable_ui_testing_normalization: false,
             normalize_stdout: vec![],
             normalize_stderr: vec![],
             failure_status: -1,
             run_rustfix: false,
             rustfix_only_machine_applicable: false,
             assembly_output: None,
+            should_ice: false,
         }
     }
 
@@ -420,6 +391,13 @@ impl TestProps {
     pub fn from_file(testfile: &Path, cfg: Option<&str>, config: &Config) -> Self {
         let mut props = TestProps::new();
         props.load_from(testfile, cfg, config);
+
+        match (props.pass_mode, props.fail_mode) {
+            (None, None) => props.fail_mode = Some(FailMode::Check),
+            (Some(_), None) | (None, Some(_)) => {}
+            (Some(_), Some(_)) => panic!("cannot use a *-fail and *-pass mode together"),
+        }
+
         props
     }
 
@@ -428,141 +406,152 @@ impl TestProps {
     /// `//[foo]`), then the property is ignored unless `cfg` is
     /// `Some("foo")`.
     fn load_from(&mut self, testfile: &Path, cfg: Option<&str>, config: &Config) {
-        iter_header(testfile, cfg, &mut |ln| {
-            if let Some(ep) = config.parse_error_pattern(ln) {
-                self.error_patterns.push(ep);
-            }
+        if !testfile.is_dir() {
+            let file = File::open(testfile).unwrap();
 
-            if let Some(flags) = config.parse_compile_flags(ln) {
-                self.compile_flags
-                    .extend(flags.split_whitespace().map(|s| s.to_owned()));
-            }
+            iter_header(testfile, cfg, file, &mut |ln| {
+                if let Some(ep) = config.parse_error_pattern(ln) {
+                    self.error_patterns.push(ep);
+                }
 
-            if let Some(edition) = config.parse_edition(ln) {
-                self.compile_flags.push(format!("--edition={}", edition));
-            }
+                if let Some(flags) = config.parse_compile_flags(ln) {
+                    self.compile_flags.extend(flags.split_whitespace().map(|s| s.to_owned()));
+                }
 
-            if let Some(r) = config.parse_revisions(ln) {
-                self.revisions.extend(r);
-            }
+                if let Some(edition) = config.parse_edition(ln) {
+                    self.compile_flags.push(format!("--edition={}", edition));
+                }
 
-            if self.run_flags.is_none() {
-                self.run_flags = config.parse_run_flags(ln);
-            }
+                if let Some(r) = config.parse_revisions(ln) {
+                    self.revisions.extend(r);
+                }
 
-            if self.pp_exact.is_none() {
-                self.pp_exact = config.parse_pp_exact(ln, testfile);
-            }
+                if self.run_flags.is_none() {
+                    self.run_flags = config.parse_run_flags(ln);
+                }
 
-            if !self.build_aux_docs {
-                self.build_aux_docs = config.parse_build_aux_docs(ln);
-            }
+                if self.pp_exact.is_none() {
+                    self.pp_exact = config.parse_pp_exact(ln, testfile);
+                }
 
-            if !self.force_host {
-                self.force_host = config.parse_force_host(ln);
-            }
+                if !self.should_ice {
+                    self.should_ice = config.parse_should_ice(ln);
+                }
 
-            if !self.check_stdout {
-                self.check_stdout = config.parse_check_stdout(ln);
-            }
+                if !self.build_aux_docs {
+                    self.build_aux_docs = config.parse_build_aux_docs(ln);
+                }
 
-            if !self.dont_check_compiler_stdout {
-                self.dont_check_compiler_stdout = config.parse_dont_check_compiler_stdout(ln);
-            }
+                if !self.force_host {
+                    self.force_host = config.parse_force_host(ln);
+                }
 
-            if !self.dont_check_compiler_stderr {
-                self.dont_check_compiler_stderr = config.parse_dont_check_compiler_stderr(ln);
-            }
+                if !self.check_stdout {
+                    self.check_stdout = config.parse_check_stdout(ln);
+                }
 
-            if !self.no_prefer_dynamic {
-                self.no_prefer_dynamic = config.parse_no_prefer_dynamic(ln);
-            }
+                if !self.check_run_results {
+                    self.check_run_results = config.parse_check_run_results(ln);
+                }
 
-            if !self.pretty_expanded {
-                self.pretty_expanded = config.parse_pretty_expanded(ln);
-            }
+                if !self.dont_check_compiler_stdout {
+                    self.dont_check_compiler_stdout = config.parse_dont_check_compiler_stdout(ln);
+                }
 
-            if let Some(m) = config.parse_pretty_mode(ln) {
-                self.pretty_mode = m;
-            }
+                if !self.dont_check_compiler_stderr {
+                    self.dont_check_compiler_stderr = config.parse_dont_check_compiler_stderr(ln);
+                }
 
-            if !self.pretty_compare_only {
-                self.pretty_compare_only = config.parse_pretty_compare_only(ln);
-            }
+                if !self.no_prefer_dynamic {
+                    self.no_prefer_dynamic = config.parse_no_prefer_dynamic(ln);
+                }
 
-            if let Some(ab) = config.parse_aux_build(ln) {
-                self.aux_builds.push(ab);
-            }
+                if !self.pretty_expanded {
+                    self.pretty_expanded = config.parse_pretty_expanded(ln);
+                }
 
-            if let Some(ep) = config.parse_extern_private(ln) {
-                self.extern_private.push(ep);
-            }
+                if let Some(m) = config.parse_pretty_mode(ln) {
+                    self.pretty_mode = m;
+                }
 
-            if let Some(ee) = config.parse_env(ln, "exec-env") {
-                self.exec_env.push(ee);
-            }
+                if !self.pretty_compare_only {
+                    self.pretty_compare_only = config.parse_pretty_compare_only(ln);
+                }
 
-            if let Some(ee) = config.parse_env(ln, "rustc-env") {
-                self.rustc_env.push(ee);
-            }
+                if let Some(ab) = config.parse_aux_build(ln) {
+                    self.aux_builds.push(ab);
+                }
 
-            if let Some(ev) = config.parse_name_value_directive(ln, "unset-rustc-env") {
-                self.unset_rustc_env.push(ev);
-            }
+                if let Some(ac) = config.parse_aux_crate(ln) {
+                    self.aux_crates.push(ac);
+                }
 
-            if let Some(cl) = config.parse_check_line(ln) {
-                self.check_lines.push(cl);
-            }
+                if let Some(ee) = config.parse_env(ln, "exec-env") {
+                    self.exec_env.push(ee);
+                }
 
-            if let Some(of) = config.parse_forbid_output(ln) {
-                self.forbid_output.push(of);
-            }
+                if let Some(ee) = config.parse_env(ln, "rustc-env") {
+                    self.rustc_env.push(ee);
+                }
 
-            if !self.check_test_line_numbers_match {
-                self.check_test_line_numbers_match = config.parse_check_test_line_numbers_match(ln);
-            }
+                if let Some(ev) = config.parse_name_value_directive(ln, "unset-rustc-env") {
+                    self.unset_rustc_env.push(ev);
+                }
 
-            self.update_pass_mode(ln, cfg, config);
+                if let Some(cl) = config.parse_check_line(ln) {
+                    self.check_lines.push(cl);
+                }
 
-            if !self.ignore_pass {
-                self.ignore_pass = config.parse_ignore_pass(ln);
-            }
+                if let Some(of) = config.parse_forbid_output(ln) {
+                    self.forbid_output.push(of);
+                }
 
-            if !self.disable_ui_testing_normalization {
-                self.disable_ui_testing_normalization =
-                    config.parse_disable_ui_testing_normalization(ln);
-            }
+                if !self.check_test_line_numbers_match {
+                    self.check_test_line_numbers_match =
+                        config.parse_check_test_line_numbers_match(ln);
+                }
 
-            if let Some(rule) = config.parse_custom_normalization(ln, "normalize-stdout") {
-                self.normalize_stdout.push(rule);
-            }
-            if let Some(rule) = config.parse_custom_normalization(ln, "normalize-stderr") {
-                self.normalize_stderr.push(rule);
-            }
+                self.update_pass_mode(ln, cfg, config);
+                self.update_fail_mode(ln, config);
 
-            if let Some(code) = config.parse_failure_status(ln) {
-                self.failure_status = code;
-            }
+                if !self.ignore_pass {
+                    self.ignore_pass = config.parse_ignore_pass(ln);
+                }
 
-            if !self.run_rustfix {
-                self.run_rustfix = config.parse_run_rustfix(ln);
-            }
+                if let Some(rule) = config.parse_custom_normalization(ln, "normalize-stdout") {
+                    self.normalize_stdout.push(rule);
+                }
+                if let Some(rule) = config.parse_custom_normalization(ln, "normalize-stderr") {
+                    self.normalize_stderr.push(rule);
+                }
 
-            if !self.rustfix_only_machine_applicable {
-                self.rustfix_only_machine_applicable =
-                    config.parse_rustfix_only_machine_applicable(ln);
-            }
+                if let Some(code) = config.parse_failure_status(ln) {
+                    self.failure_status = code;
+                }
 
-            if self.assembly_output.is_none() {
-                self.assembly_output = config.parse_assembly_output(ln);
-            }
-        });
+                if !self.run_rustfix {
+                    self.run_rustfix = config.parse_run_rustfix(ln);
+                }
+
+                if !self.rustfix_only_machine_applicable {
+                    self.rustfix_only_machine_applicable =
+                        config.parse_rustfix_only_machine_applicable(ln);
+                }
+
+                if self.assembly_output.is_none() {
+                    self.assembly_output = config.parse_assembly_output(ln);
+                }
+            });
+        }
 
         if self.failure_status == -1 {
             self.failure_status = match config.mode {
                 Mode::RunFail => 101,
                 _ => 1,
             };
+        }
+        if self.should_ice {
+            self.failure_status = 101;
         }
 
         for key in &["RUST_TEST_NOCAPTURE", "RUST_TEST_THREADS"] {
@@ -574,14 +563,43 @@ impl TestProps {
         }
     }
 
+    fn update_fail_mode(&mut self, ln: &str, config: &Config) {
+        let check_ui = |mode: &str| {
+            if config.mode != Mode::Ui {
+                panic!("`{}-fail` header is only supported in UI tests", mode);
+            }
+        };
+        if config.mode == Mode::Ui && config.parse_name_directive(ln, "compile-fail") {
+            panic!("`compile-fail` header is useless in UI tests");
+        }
+        let fail_mode = if config.parse_name_directive(ln, "check-fail") {
+            check_ui("check");
+            Some(FailMode::Check)
+        } else if config.parse_name_directive(ln, "build-fail") {
+            check_ui("build");
+            Some(FailMode::Build)
+        } else if config.parse_name_directive(ln, "run-fail") {
+            check_ui("run");
+            Some(FailMode::Run)
+        } else {
+            None
+        };
+        match (self.fail_mode, fail_mode) {
+            (None, Some(_)) => self.fail_mode = fail_mode,
+            (Some(_), Some(_)) => panic!("multiple `*-fail` headers in a single test"),
+            (_, None) => {}
+        }
+    }
+
     fn update_pass_mode(&mut self, ln: &str, revision: Option<&str>, config: &Config) {
         let check_no_run = |s| {
             if config.mode != Mode::Ui && config.mode != Mode::Incremental {
                 panic!("`{}` header is only supported in UI and incremental tests", s);
             }
-            if config.mode == Mode::Incremental &&
-                !revision.map_or(false, |r| r.starts_with("cfail")) &&
-                !self.revisions.iter().all(|r| r.starts_with("cfail")) {
+            if config.mode == Mode::Incremental
+                && !revision.map_or(false, |r| r.starts_with("cfail"))
+                && !self.revisions.iter().all(|r| r.starts_with("cfail"))
+            {
                 panic!("`{}` header is only supported in `cfail` incremental tests", s);
             }
         };
@@ -592,7 +610,7 @@ impl TestProps {
             check_no_run("build-pass");
             Some(PassMode::Build)
         } else if config.parse_name_directive(ln, "run-pass") {
-            if config.mode != Mode::Ui && config.mode != Mode::RunPass /* compatibility */ {
+            if config.mode != Mode::Ui {
                 panic!("`run-pass` header is only supported in UI tests")
             }
             Some(PassMode::Run)
@@ -607,44 +625,47 @@ impl TestProps {
     }
 
     pub fn pass_mode(&self, config: &Config) -> Option<PassMode> {
-        if !self.ignore_pass {
+        if !self.ignore_pass && self.fail_mode.is_none() && config.mode == Mode::Ui {
             if let (mode @ Some(_), Some(_)) = (config.force_pass_mode, self.pass_mode) {
                 return mode;
             }
         }
         self.pass_mode
     }
+
+    // does not consider CLI override for pass mode
+    pub fn local_pass_mode(&self) -> Option<PassMode> {
+        self.pass_mode
+    }
 }
 
-fn iter_header(testfile: &Path, cfg: Option<&str>, it: &mut dyn FnMut(&str)) {
+fn iter_header<R: Read>(testfile: &Path, cfg: Option<&str>, rdr: R, it: &mut dyn FnMut(&str)) {
     if testfile.is_dir() {
         return;
     }
 
-    let comment = if testfile.to_string_lossy().ends_with(".rs") {
-        "//"
-    } else {
-        "#"
-    };
+    let comment = if testfile.to_string_lossy().ends_with(".rs") { "//" } else { "#" };
 
-    // FIXME: would be nice to allow some whitespace between comment and brace :)
-    // It took me like 2 days to debug why compile-flags weren’t taken into account for my test :)
-    let comment_with_brace = comment.to_string() + "[";
+    let mut rdr = BufReader::new(rdr);
+    let mut ln = String::new();
 
-    let rdr = BufReader::new(File::open(testfile).unwrap());
-    for ln in rdr.lines() {
+    loop {
+        ln.clear();
+        if rdr.read_line(&mut ln).unwrap() == 0 {
+            break;
+        }
+
         // Assume that any directives will be found before the first
         // module or function. This doesn't seem to be an optimization
         // with a warm page cache. Maybe with a cold one.
-        let ln = ln.unwrap();
         let ln = ln.trim();
         if ln.starts_with("fn") || ln.starts_with("mod") {
             return;
-        } else if ln.starts_with(&comment_with_brace) {
+        } else if ln.starts_with(comment) && ln[comment.len()..].trim_start().starts_with('[') {
             // A comment like `//[foo]` is specific to revision `foo`
             if let Some(close_brace) = ln.find(']') {
                 let open_brace = ln.find('[').unwrap();
-                let lncfg = &ln[open_brace + 1 .. close_brace];
+                let lncfg = &ln[open_brace + 1..close_brace];
                 let matches = match cfg {
                     Some(s) => s == &lncfg[..],
                     None => false,
@@ -653,17 +674,19 @@ fn iter_header(testfile: &Path, cfg: Option<&str>, it: &mut dyn FnMut(&str)) {
                     it(ln[(close_brace + 1)..].trim_start());
                 }
             } else {
-                panic!("malformed condition directive: expected `{}foo]`, found `{}`",
-                        comment_with_brace, ln)
+                panic!("malformed condition directive: expected `{}[foo]`, found `{}`", comment, ln)
             }
         } else if ln.starts_with(comment) {
-            it(ln[comment.len() ..].trim_start());
+            it(ln[comment.len()..].trim_start());
         }
     }
     return;
 }
 
 impl Config {
+    fn parse_should_ice(&self, line: &str) -> bool {
+        self.parse_name_directive(line, "should-ice")
+    }
     fn parse_error_pattern(&self, line: &str) -> Option<String> {
         self.parse_name_value_directive(line, "error-pattern")
     }
@@ -673,12 +696,17 @@ impl Config {
     }
 
     fn parse_aux_build(&self, line: &str) -> Option<String> {
-        self.parse_name_value_directive(line, "aux-build")
-            .map(|r| r.trim().to_string())
+        self.parse_name_value_directive(line, "aux-build").map(|r| r.trim().to_string())
     }
 
-    fn parse_extern_private(&self, line: &str) -> Option<String> {
-        self.parse_name_value_directive(line, "extern-private")
+    fn parse_aux_crate(&self, line: &str) -> Option<(String, String)> {
+        self.parse_name_value_directive(line, "aux-crate").map(|r| {
+            let mut parts = r.trim().splitn(2, '=');
+            (
+                parts.next().expect("aux-crate name").to_string(),
+                parts.next().expect("aux-crate value").to_string(),
+            )
+        })
     }
 
     fn parse_compile_flags(&self, line: &str) -> Option<String> {
@@ -708,6 +736,10 @@ impl Config {
 
     fn parse_check_stdout(&self, line: &str) -> bool {
         self.parse_name_directive(line, "check-stdout")
+    }
+
+    fn parse_check_run_results(&self, line: &str) -> bool {
+        self.parse_name_directive(line, "check-run-results")
     }
 
     fn parse_dont_check_compiler_stdout(&self, line: &str) -> bool {
@@ -741,10 +773,6 @@ impl Config {
         }
     }
 
-    fn parse_disable_ui_testing_normalization(&self, line: &str) -> bool {
-        self.parse_name_directive(line, "disable-ui-testing-normalization")
-    }
-
     fn parse_check_test_line_numbers_match(&self, line: &str) -> bool {
         self.parse_name_directive(line, "check-test-line-numbers-match")
     }
@@ -754,8 +782,7 @@ impl Config {
     }
 
     fn parse_assembly_output(&self, line: &str) -> Option<String> {
-        self.parse_name_value_directive(line, "assembly-output")
-            .map(|r| r.trim().to_string())
+        self.parse_name_value_directive(line, "assembly-output").map(|r| r.trim().to_string())
     }
 
     fn parse_env(&self, line: &str, name: &str) -> Option<(String, String)> {
@@ -809,63 +836,37 @@ impl Config {
     /// Parses a name-value directive which contains config-specific information, e.g., `ignore-x86`
     /// or `normalize-stderr-32bit`.
     fn parse_cfg_name_directive(&self, line: &str, prefix: &str) -> ParsedNameDirective {
-        if line.starts_with(prefix) && line.as_bytes().get(prefix.len()) == Some(&b'-') {
-            let name = line[prefix.len() + 1..]
-                .split(&[':', ' '][..])
-                .next()
-                .unwrap();
-
-            if name == "test" ||
-                util::matches_os(&self.target, name) ||             // target
-                name == util::get_arch(&self.target) ||             // architecture
-                name == util::get_pointer_width(&self.target) ||    // pointer width
-                name == self.stage_id.split('-').next().unwrap() || // stage
-                Some(name) == util::get_env(&self.target) ||        // env
-                (self.target != self.host && name == "cross-compile") ||
-                match self.compare_mode {
-                    Some(CompareMode::Nll) => name == "compare-mode-nll",
-                    Some(CompareMode::Polonius) => name == "compare-mode-polonius",
-                    None => false,
-                } ||
-                (cfg!(debug_assertions) && name == "debug") {
-                ParsedNameDirective::Match
-            } else {
-                match self.mode {
-                    common::DebugInfoGdbLldb => {
-                        if name == "gdb" {
-                            ParsedNameDirective::MatchGdb
-                        } else if name == "lldb" {
-                            ParsedNameDirective::MatchLldb
-                        } else {
-                            ParsedNameDirective::NoMatch
-                        }
-                    },
-                    common::DebugInfoCdb => if name == "cdb" {
-                        ParsedNameDirective::Match
-                    } else {
-                        ParsedNameDirective::NoMatch
-                    },
-                    common::DebugInfoGdb => if name == "gdb" {
-                        ParsedNameDirective::Match
-                    } else {
-                        ParsedNameDirective::NoMatch
-                    },
-                    common::DebugInfoLldb => if name == "lldb" {
-                        ParsedNameDirective::Match
-                    } else {
-                        ParsedNameDirective::NoMatch
-                    },
-                    common::Pretty => if name == "pretty" {
-                        ParsedNameDirective::Match
-                    } else {
-                        ParsedNameDirective::NoMatch
-                    },
-                    _ => ParsedNameDirective::NoMatch,
-                }
-            }
-        } else {
-            ParsedNameDirective::NoMatch
+        if !line.as_bytes().starts_with(prefix.as_bytes()) {
+            return ParsedNameDirective::NoMatch;
         }
+        if line.as_bytes().get(prefix.len()) != Some(&b'-') {
+            return ParsedNameDirective::NoMatch;
+        }
+
+        let name = line[prefix.len() + 1..].split(&[':', ' '][..]).next().unwrap();
+
+        let is_match = name == "test" ||
+            &self.target == name ||                             // triple
+            util::matches_os(&self.target, name) ||             // target
+            util::matches_env(&self.target, name) ||            // env
+            name == util::get_arch(&self.target) ||             // architecture
+            name == util::get_pointer_width(&self.target) ||    // pointer width
+            name == self.stage_id.split('-').next().unwrap() || // stage
+            (self.target != self.host && name == "cross-compile") ||
+            match self.compare_mode {
+                Some(CompareMode::Nll) => name == "compare-mode-nll",
+                Some(CompareMode::Polonius) => name == "compare-mode-polonius",
+                None => false,
+            } ||
+            (cfg!(debug_assertions) && name == "debug") ||
+            match self.debugger {
+                Some(Debugger::Cdb) => name == "cdb",
+                Some(Debugger::Gdb) => name == "gdb",
+                Some(Debugger::Lldb) => name == "lldb",
+                None => false,
+            };
+
+        if is_match { ParsedNameDirective::Match } else { ParsedNameDirective::NoMatch }
     }
 
     fn has_cfg_prefix(&self, line: &str, prefix: &str) -> bool {
@@ -878,10 +879,11 @@ impl Config {
     fn parse_name_directive(&self, line: &str, directive: &str) -> bool {
         // Ensure the directive is a whole word. Do not match "ignore-x86" when
         // the line says "ignore-x86_64".
-        line.starts_with(directive) && match line.as_bytes().get(directive.len()) {
-            None | Some(&b' ') | Some(&b':') => true,
-            _ => false,
-        }
+        line.starts_with(directive)
+            && match line.as_bytes().get(directive.len()) {
+                None | Some(&b' ') | Some(&b':') => true,
+                _ => false,
+            }
     }
 
     pub fn parse_name_value_directive(&self, line: &str, directive: &str) -> Option<String> {
@@ -922,10 +924,8 @@ impl Config {
 }
 
 pub fn lldb_version_to_int(version_string: &str) -> isize {
-    let error_string = format!(
-        "Encountered LLDB version string with unexpected format: {}",
-        version_string
-    );
+    let error_string =
+        format!("Encountered LLDB version string with unexpected format: {}", version_string);
     version_string.parse().expect(&error_string)
 }
 
@@ -968,30 +968,4 @@ fn parse_normalization_string(line: &mut &str) -> Option<String> {
     let result = line[begin..end].to_owned();
     *line = &line[end + 1..];
     Some(result)
-}
-
-#[test]
-fn test_parse_normalization_string() {
-    let mut s = "normalize-stderr-32bit: \"something (32 bits)\" -> \"something ($WORD bits)\".";
-    let first = parse_normalization_string(&mut s);
-    assert_eq!(first, Some("something (32 bits)".to_owned()));
-    assert_eq!(s, " -> \"something ($WORD bits)\".");
-
-    // Nothing to normalize (No quotes)
-    let mut s = "normalize-stderr-32bit: something (32 bits) -> something ($WORD bits).";
-    let first = parse_normalization_string(&mut s);
-    assert_eq!(first, None);
-    assert_eq!(s, r#"normalize-stderr-32bit: something (32 bits) -> something ($WORD bits)."#);
-
-    // Nothing to normalize (Only a single quote)
-    let mut s = "normalize-stderr-32bit: \"something (32 bits) -> something ($WORD bits).";
-    let first = parse_normalization_string(&mut s);
-    assert_eq!(first, None);
-    assert_eq!(s, "normalize-stderr-32bit: \"something (32 bits) -> something ($WORD bits).");
-
-    // Nothing to normalize (Three quotes)
-    let mut s = "normalize-stderr-32bit: \"something (32 bits)\" -> \"something ($WORD bits).";
-    let first = parse_normalization_string(&mut s);
-    assert_eq!(first, Some("something (32 bits)".to_owned()));
-    assert_eq!(s, " -> \"something ($WORD bits).");
 }

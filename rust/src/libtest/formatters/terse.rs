@@ -1,4 +1,17 @@
-use super::*;
+use std::{io, io::prelude::Write};
+
+use super::OutputFormatter;
+use crate::{
+    bench::fmt_bench_samples,
+    console::{ConsoleTestState, OutputLocation},
+    test_result::TestResult,
+    time,
+    types::NamePadding,
+    types::TestDesc,
+};
+
+// insert a '\n' after 100 tests in quiet mode
+const QUIET_MODE_MAX_COLUMN: usize = 100;
 
 pub(crate) struct TerseFormatter<T> {
     out: OutputLocation<T>,
@@ -58,7 +71,7 @@ impl<T: Write> TerseFormatter<T> {
             // we insert a new line every 100 dots in order to flush the
             // screen when dealing with line-buffered output (e.g., piping to
             // `stamp` in the rust CI).
-            let out = format!(" {}/{}\n", self.test_count+1, self.total_test_count);
+            let out = format!(" {}/{}\n", self.test_count + 1, self.total_test_count);
             self.write_plain(&out)?;
         }
 
@@ -68,7 +81,7 @@ impl<T: Write> TerseFormatter<T> {
 
     pub fn write_pretty(&mut self, word: &str, color: term::color::Color) -> io::Result<()> {
         match self.out {
-            Pretty(ref mut term) => {
+            OutputLocation::Pretty(ref mut term) => {
                 if self.use_color {
                     term.fg(color)?;
                 }
@@ -78,7 +91,7 @@ impl<T: Write> TerseFormatter<T> {
                 }
                 term.flush()
             }
-            Raw(ref mut stdout) => {
+            OutputLocation::Raw(ref mut stdout) => {
                 stdout.write_all(word.as_bytes())?;
                 stdout.flush()
             }
@@ -163,20 +176,29 @@ impl<T: Write> OutputFormatter for TerseFormatter<T> {
         // in order to indicate benchmarks.
         // When running benchmarks, terse-mode should still print their name as if
         // it is the Pretty formatter.
-        if !self.is_multithreaded && desc.name.padding() == PadOnRight {
+        if !self.is_multithreaded && desc.name.padding() == NamePadding::PadOnRight {
             self.write_test_name(desc)?;
         }
 
         Ok(())
     }
 
-    fn write_result(&mut self, desc: &TestDesc, result: &TestResult, _: &[u8]) -> io::Result<()> {
+    fn write_result(
+        &mut self,
+        desc: &TestDesc,
+        result: &TestResult,
+        _: Option<&time::TestExecTime>,
+        _: &[u8],
+        _: &ConsoleTestState,
+    ) -> io::Result<()> {
         match *result {
-            TrOk => self.write_ok(),
-            TrFailed | TrFailedMsg(_) => self.write_failed(),
-            TrIgnored => self.write_ignored(),
-            TrAllowedFail => self.write_allowed_fail(),
-            TrBench(ref bs) => {
+            TestResult::TrOk => self.write_ok(),
+            TestResult::TrFailed | TestResult::TrFailedMsg(_) | TestResult::TrTimedFail => {
+                self.write_failed()
+            }
+            TestResult::TrIgnored => self.write_ignored(),
+            TestResult::TrAllowedFail => self.write_allowed_fail(),
+            TestResult::TrBench(ref bs) => {
                 if self.is_multithreaded {
                     self.write_test_name(desc)?;
                 }
@@ -189,7 +211,8 @@ impl<T: Write> OutputFormatter for TerseFormatter<T> {
     fn write_timeout(&mut self, desc: &TestDesc) -> io::Result<()> {
         self.write_plain(&format!(
             "test {} has been running for over {} seconds\n",
-            desc.name, TEST_WARN_TIMEOUT_S
+            desc.name,
+            time::TEST_WARN_TIMEOUT_S
         ))
     }
 

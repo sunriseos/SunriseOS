@@ -10,25 +10,27 @@ path = "lib.rs"
 test = false
 
 [dependencies]
-bitflags = "1.0.4"
+bitflags = "1.2.1"
 cc = "1.0.1"
 num_cpus = "1.0"
-memmap = "0.6"
+memmap = "0.7"
 log = "0.4.5"
-libc = "0.2.44"
+libc = "0.2.50"
 jobserver = "0.1.11"
-parking_lot = "0.7"
-tempfile = "3.0.5"
+tempfile = "3.1"
 
-serialize = { path = "../libserialize" }
-syntax = { path = "../libsyntax" }
-syntax_pos = { path = "../libsyntax_pos" }
-rustc = { path = "../librustc" }
-rustc_allocator = { path = "../librustc_allocator" }
+rustc_serialize = { path = "../libserialize", package = "serialize" }
+rustc_ast = { path = "../librustc_ast" }
+rustc_span = { path = "../librustc_span" }
+rustc_middle = { path = "../librustc_middle" }
 rustc_apfloat = { path = "../librustc_apfloat" }
-rustc_codegen_utils = { path = "../librustc_codegen_utils" }
+rustc_attr = { path = "../librustc_attr" }
+rustc_symbol_mangling = { path = "../librustc_symbol_mangling" }
 rustc_data_structures = { path = "../librustc_data_structures"}
 rustc_errors = { path = "../librustc_errors" }
 rustc_fs_util = { path = "../librustc_fs_util" }
+rustc_hir = { path = "../librustc_hir" }
 rustc_incremental = { path = "../librustc_incremental" }
+rustc_index = { path = "../librustc_index" }
 rustc_target = { path = "../librustc_target" }
+rustc_session = { path = "../librustc_session" }

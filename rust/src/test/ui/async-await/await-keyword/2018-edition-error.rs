@@ -7,6 +7,10 @@ mod outer_mod {
     }
 }
 use self::outer_mod::await::await; //~ ERROR expected identifier
-    //~^ ERROR expected identifier, found reserved keyword `await`
+    //~^ ERROR expected identifier, found keyword `await`
 
-fn main() {}
+macro_rules! await { () => {}; } //~ ERROR expected identifier, found keyword `await`
+
+fn main() {
+    await!(); //~ ERROR expected expression, found `)`
+}

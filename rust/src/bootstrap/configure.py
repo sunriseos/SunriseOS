@@ -36,7 +36,6 @@ o("docs", "build.docs", "build standard library documentation")
 o("compiler-docs", "build.compiler-docs", "build compiler documentation")
 o("optimize-tests", "rust.optimize-tests", "build tests with optimizations")
 o("parallel-compiler", "rust.parallel-compiler", "build a multi-threaded rustc")
-o("test-miri", "rust.test-miri", "run miri's test suite")
 o("verbose-tests", "rust.verbose-tests", "enable verbose output when running tests")
 o("ccache", "llvm.ccache", "invoke gcc/clang via ccache to reuse object files between builds")
 o("sccache", None, "invoke gcc/clang via sccache to reuse object files between builds")
@@ -56,18 +55,17 @@ o("sanitizers", "build.sanitizers", "build the sanitizer runtimes (asan, lsan, m
 o("dist-src", "rust.dist-src", "when building tarballs enables building a source tarball")
 o("cargo-native-static", "build.cargo-native-static", "static native libraries in cargo")
 o("profiler", "build.profiler", "build the profiler runtime")
-o("emscripten", None, "compile the emscripten backend as well as LLVM")
 o("full-tools", None, "enable all tools")
 o("lld", "rust.lld", "build lld")
-o("lldb", "rust.lldb", "build lldb")
 o("missing-tools", "dist.missing-tools", "allow failures when building tools")
-o("use-libcxx", "llvm.use_libcxx", "build LLVM with libc++")
+o("use-libcxx", "llvm.use-libcxx", "build LLVM with libc++")
+o("control-flow-guard", "rust.control-flow-guard", "Enable Control Flow Guard")
 
-o("cflags", "llvm.cflags", "build LLVM with these extra compiler flags")
-o("cxxflags", "llvm.cxxflags", "build LLVM with these extra compiler flags")
-o("ldflags", "llvm.ldflags", "build LLVM with these extra linker flags")
+v("llvm-cflags", "llvm.cflags", "build LLVM with these extra compiler flags")
+v("llvm-cxxflags", "llvm.cxxflags", "build LLVM with these extra compiler flags")
+v("llvm-ldflags", "llvm.ldflags", "build LLVM with these extra linker flags")
 
-o("llvm-libunwind", "rust.llvm_libunwind", "use LLVM libunwind")
+o("llvm-libunwind", "rust.llvm-libunwind", "use LLVM libunwind")
 
 # Optimization and debugging options. These may be overridden by the release
 # channel, etc.
@@ -76,11 +74,11 @@ o("optimize-llvm", "llvm.optimize", "build optimized LLVM")
 o("llvm-assertions", "llvm.assertions", "build LLVM with assertions")
 o("debug-assertions", "rust.debug-assertions", "build with debugging assertions")
 o("llvm-release-debuginfo", "llvm.release-debuginfo", "build LLVM with debugger metadata")
-o("debuginfo-level", "rust.debuginfo-level", "debuginfo level for Rust code")
-o("debuginfo-level-rustc", "rust.debuginfo-level-rustc", "debuginfo level for the compiler")
-o("debuginfo-level-std", "rust.debuginfo-level-std", "debuginfo level for the standard library")
-o("debuginfo-level-tools", "rust.debuginfo-level-tools", "debuginfo level for the tools")
-o("debuginfo-level-tests", "rust.debuginfo-level-tests", "debuginfo level for the test suites run with compiletest")
+v("debuginfo-level", "rust.debuginfo-level", "debuginfo level for Rust code")
+v("debuginfo-level-rustc", "rust.debuginfo-level-rustc", "debuginfo level for the compiler")
+v("debuginfo-level-std", "rust.debuginfo-level-std", "debuginfo level for the standard library")
+v("debuginfo-level-tools", "rust.debuginfo-level-tools", "debuginfo level for the tools")
+v("debuginfo-level-tests", "rust.debuginfo-level-tests", "debuginfo level for the test suites run with compiletest")
 v("save-toolstates", "rust.save-toolstates", "save build and test status of external tools into this file")
 
 v("prefix", "install.prefix", "set installation prefix")
@@ -125,7 +123,9 @@ v("musl-root-armhf", "target.arm-unknown-linux-musleabihf.musl-root",
   "arm-unknown-linux-musleabihf install directory")
 v("musl-root-armv5te", "target.armv5te-unknown-linux-musleabi.musl-root",
   "armv5te-unknown-linux-musleabi install directory")
-v("musl-root-armv7", "target.armv7-unknown-linux-musleabihf.musl-root",
+v("musl-root-armv7", "target.armv7-unknown-linux-musleabi.musl-root",
+  "armv7-unknown-linux-musleabi install directory")
+v("musl-root-armv7hf", "target.armv7-unknown-linux-musleabihf.musl-root",
   "armv7-unknown-linux-musleabihf install directory")
 v("musl-root-aarch64", "target.aarch64-unknown-linux-musl.musl-root",
   "aarch64-unknown-linux-musl install directory")
@@ -133,6 +133,10 @@ v("musl-root-mips", "target.mips-unknown-linux-musl.musl-root",
   "mips-unknown-linux-musl install directory")
 v("musl-root-mipsel", "target.mipsel-unknown-linux-musl.musl-root",
   "mipsel-unknown-linux-musl install directory")
+v("musl-root-mips64", "target.mips64-unknown-linux-muslabi64.musl-root",
+  "mips64-unknown-linux-muslabi64 install directory")
+v("musl-root-mips64el", "target.mips64el-unknown-linux-muslabi64.musl-root",
+  "mips64el-unknown-linux-muslabi64 install directory")
 v("qemu-armhf-rootfs", "target.arm-unknown-linux-gnueabihf.qemu-rootfs",
   "rootfs in qemu testing, you probably don't want to use this")
 v("qemu-aarch64-rootfs", "target.aarch64-unknown-linux-gnu.qemu-rootfs",
@@ -334,10 +338,8 @@ for key in known_args:
         set('build.host', value.split(','))
     elif option.name == 'target':
         set('build.target', value.split(','))
-    elif option.name == 'emscripten':
-        set('rust.codegen-backends', ['llvm', 'emscripten'])
     elif option.name == 'full-tools':
-        set('rust.codegen-backends', ['llvm', 'emscripten'])
+        set('rust.codegen-backends', ['llvm'])
         set('rust.lld', True)
         set('rust.llvm-tools', True)
         set('build.extended', True)
@@ -390,11 +392,12 @@ for target in configured_targets:
 
 
 def is_number(value):
-  try:
-    float(value)
-    return True
-  except ValueError:
-    return False
+    try:
+        float(value)
+        return True
+    except ValueError:
+        return False
+
 
 # Here we walk through the constructed configuration we have from the parsed
 # command line arguments. We then apply each piece of configuration by

@@ -3,7 +3,7 @@
 //
 // Although this is mostly a lint pass, it lives in here because it depends on
 // resolve data structures and because it finalises the privacy information for
-// `use` directives.
+// `use` items.
 //
 // Unused trait imports can't be checked until the method resolution. We save
 // candidates here, and do the actual check in librustc_typeck/check_unused.rs.
@@ -23,17 +23,18 @@
 //  - `check_crate` finally emits the diagnostics based on the data generated
 //    in the last step
 
-use std::ops::{Deref, DerefMut};
-
+use crate::imports::ImportKind;
 use crate::Resolver;
-use crate::resolve_imports::ImportDirectiveSubclass;
 
-use rustc::util::nodemap::NodeMap;
-use rustc::{lint, ty};
+use rustc_ast::ast;
+use rustc_ast::node_id::NodeMap;
+use rustc_ast::visit::{self, Visitor};
 use rustc_data_structures::fx::FxHashSet;
-use syntax::ast;
-use syntax::visit::{self, Visitor};
-use syntax_pos::{Span, MultiSpan, DUMMY_SP};
+use rustc_errors::pluralize;
+use rustc_middle::ty;
+use rustc_session::lint::builtin::{MACRO_USE_EXTERN_CRATE, UNUSED_IMPORTS};
+use rustc_session::lint::BuiltinLintDiagnostics;
+use rustc_span::{MultiSpan, Span, DUMMY_SP};
 
 struct UnusedImport<'a> {
     use_tree: &'a ast::UseTree,
@@ -49,7 +50,7 @@ impl<'a> UnusedImport<'a> {
 }
 
 struct UnusedImportCheckVisitor<'a, 'b> {
-    resolver: &'a mut Resolver<'b>,
+    r: &'a mut Resolver<'b>,
     /// All the (so far) unused imports, grouped path list
     unused_imports: NodeMap<UnusedImport<'a>>,
     base_use_tree: Option<&'a ast::UseTree>,
@@ -57,29 +58,14 @@ struct UnusedImportCheckVisitor<'a, 'b> {
     item_span: Span,
 }
 
-// Deref and DerefMut impls allow treating UnusedImportCheckVisitor as Resolver.
-impl<'a, 'b> Deref for UnusedImportCheckVisitor<'a, 'b> {
-    type Target = Resolver<'b>;
-
-    fn deref<'c>(&'c self) -> &'c Resolver<'b> {
-        &*self.resolver
-    }
-}
-
-impl<'a, 'b> DerefMut for UnusedImportCheckVisitor<'a, 'b> {
-    fn deref_mut<'c>(&'c mut self) -> &'c mut Resolver<'b> {
-        &mut *self.resolver
-    }
-}
-
 impl<'a, 'b> UnusedImportCheckVisitor<'a, 'b> {
-    // We have information about whether `use` (import) directives are actually
+    // We have information about whether `use` (import) items are actually
     // used now. If an import is not used at all, we signal a lint error.
     fn check_import(&mut self, id: ast::NodeId) {
         let mut used = false;
-        self.per_ns(|this, ns| used |= this.used_imports.contains(&(id, ns)));
+        self.r.per_ns(|this, ns| used |= this.used_imports.contains(&(id, ns)));
         if !used {
-            if self.maybe_unused_trait_imports.contains(&id) {
+            if self.r.maybe_unused_trait_imports.contains(&id) {
                 // Check later.
                 return;
             }
@@ -87,7 +73,7 @@ impl<'a, 'b> UnusedImportCheckVisitor<'a, 'b> {
         } else {
             // This trait import is definitely used, in a way other than
             // method resolution.
-            self.maybe_unused_trait_imports.remove(&id);
+            self.r.maybe_unused_trait_imports.remove(&id);
             if let Some(i) = self.unused_imports.get_mut(&self.base_id) {
                 i.unused.remove(&id);
             }
@@ -99,14 +85,12 @@ impl<'a, 'b> UnusedImportCheckVisitor<'a, 'b> {
         let use_tree = self.base_use_tree.unwrap();
         let item_span = self.item_span;
 
-        self.unused_imports
-            .entry(id)
-            .or_insert_with(|| UnusedImport {
-                use_tree,
-                use_tree_id,
-                item_span,
-                unused: FxHashSet::default(),
-            })
+        self.unused_imports.entry(id).or_insert_with(|| UnusedImport {
+            use_tree,
+            use_tree_id,
+            item_span,
+            unused: FxHashSet::default(),
+        })
     }
 }
 
@@ -118,7 +102,7 @@ impl<'a, 'b> Visitor<'a> for UnusedImportCheckVisitor<'a, 'b> {
         // whether they're used or not. Also ignore imports with a dummy span
         // because this means that they were generated in some fashion by the
         // compiler and we don't need to consider them.
-        if let ast::ItemKind::Use(..) = item.node {
+        if let ast::ItemKind::Use(..) = item.kind {
             if item.vis.node.is_pub() || item.span.is_dummy() {
                 return;
             }
@@ -175,7 +159,7 @@ fn calc_unused_spans(
             }
         }
         ast::UseTreeKind::Nested(ref nested) => {
-            if nested.len() == 0 {
+            if nested.is_empty() {
                 return UnusedSpanResult::FlatUnused(use_tree.span, full_span);
             }
 
@@ -238,104 +222,104 @@ fn calc_unused_spans(
     }
 }
 
-pub fn check_crate(resolver: &mut Resolver<'_>, krate: &ast::Crate) {
-    for directive in resolver.potentially_unused_imports.iter() {
-        match directive.subclass {
-            _ if directive.used.get() ||
-                 directive.vis.get() == ty::Visibility::Public ||
-                 directive.span.is_dummy() => {
-                if let ImportDirectiveSubclass::MacroUse = directive.subclass {
-                    if !directive.span.is_dummy() {
-                        resolver.session.buffer_lint(
-                            lint::builtin::MACRO_USE_EXTERN_CRATE,
-                            directive.id,
-                            directive.span,
-                            "deprecated `#[macro_use]` directive used to \
-                             import macros should be replaced at use sites \
-                             with a `use` statement to import the macro \
-                             instead",
-                        );
+impl Resolver<'_> {
+    crate fn check_unused(&mut self, krate: &ast::Crate) {
+        for import in self.potentially_unused_imports.iter() {
+            match import.kind {
+                _ if import.used.get()
+                    || import.vis.get() == ty::Visibility::Public
+                    || import.span.is_dummy() =>
+                {
+                    if let ImportKind::MacroUse = import.kind {
+                        if !import.span.is_dummy() {
+                            self.lint_buffer.buffer_lint(
+                                MACRO_USE_EXTERN_CRATE,
+                                import.id,
+                                import.span,
+                                "deprecated `#[macro_use]` attribute used to \
+                                import macros should be replaced at use sites \
+                                with a `use` item to import the macro \
+                                instead",
+                            );
+                        }
                     }
                 }
-            }
-            ImportDirectiveSubclass::ExternCrate { .. } => {
-                resolver.maybe_unused_extern_crates.push((directive.id, directive.span));
-            }
-            ImportDirectiveSubclass::MacroUse => {
-                let lint = lint::builtin::UNUSED_IMPORTS;
-                let msg = "unused `#[macro_use]` import";
-                resolver.session.buffer_lint(lint, directive.id, directive.span, msg);
-            }
-            _ => {}
-        }
-    }
-
-    for (id, span) in resolver.unused_labels.iter() {
-        resolver.session.buffer_lint(lint::builtin::UNUSED_LABELS, *id, *span, "unused label");
-    }
-
-    let mut visitor = UnusedImportCheckVisitor {
-        resolver,
-        unused_imports: Default::default(),
-        base_use_tree: None,
-        base_id: ast::DUMMY_NODE_ID,
-        item_span: DUMMY_SP,
-    };
-    visit::walk_crate(&mut visitor, krate);
-
-    for unused in visitor.unused_imports.values() {
-        let mut fixes = Vec::new();
-        let mut spans = match calc_unused_spans(unused, unused.use_tree, unused.use_tree_id) {
-            UnusedSpanResult::Used => continue,
-            UnusedSpanResult::FlatUnused(span, remove) => {
-                fixes.push((remove, String::new()));
-                vec![span]
-            }
-            UnusedSpanResult::NestedFullUnused(spans, remove) => {
-                fixes.push((remove, String::new()));
-                spans
-            }
-            UnusedSpanResult::NestedPartialUnused(spans, remove) => {
-                for fix in &remove {
-                    fixes.push((*fix, String::new()));
+                ImportKind::ExternCrate { .. } => {
+                    self.maybe_unused_extern_crates.push((import.id, import.span));
                 }
-                spans
+                ImportKind::MacroUse => {
+                    let msg = "unused `#[macro_use]` import";
+                    self.lint_buffer.buffer_lint(UNUSED_IMPORTS, import.id, import.span, msg);
+                }
+                _ => {}
             }
-        };
+        }
 
-        let len = spans.len();
-        spans.sort();
-        let ms = MultiSpan::from_spans(spans.clone());
-        let mut span_snippets = spans.iter()
-            .filter_map(|s| {
-                match visitor.session.source_map().span_to_snippet(*s) {
+        let mut visitor = UnusedImportCheckVisitor {
+            r: self,
+            unused_imports: Default::default(),
+            base_use_tree: None,
+            base_id: ast::DUMMY_NODE_ID,
+            item_span: DUMMY_SP,
+        };
+        visit::walk_crate(&mut visitor, krate);
+
+        for unused in visitor.unused_imports.values() {
+            let mut fixes = Vec::new();
+            let mut spans = match calc_unused_spans(unused, unused.use_tree, unused.use_tree_id) {
+                UnusedSpanResult::Used => continue,
+                UnusedSpanResult::FlatUnused(span, remove) => {
+                    fixes.push((remove, String::new()));
+                    vec![span]
+                }
+                UnusedSpanResult::NestedFullUnused(spans, remove) => {
+                    fixes.push((remove, String::new()));
+                    spans
+                }
+                UnusedSpanResult::NestedPartialUnused(spans, remove) => {
+                    for fix in &remove {
+                        fixes.push((*fix, String::new()));
+                    }
+                    spans
+                }
+            };
+
+            let len = spans.len();
+            spans.sort();
+            let ms = MultiSpan::from_spans(spans.clone());
+            let mut span_snippets = spans
+                .iter()
+                .filter_map(|s| match visitor.r.session.source_map().span_to_snippet(*s) {
                     Ok(s) => Some(format!("`{}`", s)),
                     _ => None,
+                })
+                .collect::<Vec<String>>();
+            span_snippets.sort();
+            let msg = format!(
+                "unused import{}{}",
+                pluralize!(len),
+                if !span_snippets.is_empty() {
+                    format!(": {}", span_snippets.join(", "))
+                } else {
+                    String::new()
                 }
-            }).collect::<Vec<String>>();
-        span_snippets.sort();
-        let msg = format!("unused import{}{}",
-                          if len > 1 { "s" } else { "" },
-                          if !span_snippets.is_empty() {
-                              format!(": {}", span_snippets.join(", "))
-                          } else {
-                              String::new()
-                          });
+            );
 
-        let fix_msg = if fixes.len() == 1 && fixes[0].0 == unused.item_span {
-            "remove the whole `use` item"
-        } else if spans.len() > 1 {
-            "remove the unused imports"
-        } else {
-            "remove the unused import"
-        };
+            let fix_msg = if fixes.len() == 1 && fixes[0].0 == unused.item_span {
+                "remove the whole `use` item"
+            } else if spans.len() > 1 {
+                "remove the unused imports"
+            } else {
+                "remove the unused import"
+            };
 
-        visitor.session.buffer_lint_with_diagnostic(
-            lint::builtin::UNUSED_IMPORTS,
-            unused.use_tree_id,
-            ms,
-            &msg,
-            lint::builtin::BuiltinLintDiagnostics::UnusedImports(fix_msg.into(), fixes),
-        );
+            visitor.r.lint_buffer.buffer_lint_with_diagnostic(
+                UNUSED_IMPORTS,
+                unused.use_tree_id,
+                ms,
+                &msg,
+                BuiltinLintDiagnostics::UnusedImports(fix_msg.into(), fixes),
+            );
+        }
     }
 }

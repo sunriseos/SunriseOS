@@ -5,10 +5,10 @@ LL |     const FROM: Self::Out;
    |                 --------- type in trait
 ...
 LL |     const FROM: &'static str = "foo";
-   |                 ^^^^^^^^^^^^ expected associated type, found reference
+   |                 ^^^^^^^^^^^^ expected associated type, found `&str`
    |
-   = note: expected type `<T as Foo>::Out`
-              found type `&'static str`
+   = note: expected associated type `<T as Foo>::Out`
+                    found reference `&'static str`
 
 error: aborting due to previous error
 

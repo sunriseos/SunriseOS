@@ -1,9 +1,11 @@
-#![feature(asm)]
+// ignore-emscripten
+
+#![feature(llvm_asm)]
 
 fn main() {
-    asm!("mov $$0x200, %eax"
-         :
-         :
-         : "{eax}" //~ ERROR E0664
-        );
+    llvm_asm!("mov $$0x200, %eax"
+              :
+              :
+              : "{eax}" //~ ERROR E0664
+             );
 }

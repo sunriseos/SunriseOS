@@ -15,23 +15,22 @@ links to the major sections:
 * [Helpful Links and Information](#helpful-links-and-information)
 
 If you have questions, please make a post on [internals.rust-lang.org][internals] or
-hop on the [Rust Discord server][rust-discord], [Rust Zulip server][rust-zulip] or [#rust-internals][pound-rust-internals].
+hop on the [Rust Discord server][rust-discord] or [Rust Zulip server][rust-zulip].
 
 As a reminder, all contributors are expected to follow our [Code of Conduct][coc].
 
-The [rustc-guide] is your friend! It describes how the compiler works and how
+The [rustc-dev-guide] is your friend! It describes how the compiler works and how
 to contribute to it in more detail than this document.
 
 If this is your first time contributing, the [walkthrough] chapter of the guide
 can give you a good example of how a typical contribution would go.
 
-[pound-rust-internals]: https://chat.mibbit.com/?server=irc.mozilla.org&channel=%23rust-internals
 [internals]: https://internals.rust-lang.org
 [rust-discord]: http://discord.gg/rust-lang
 [rust-zulip]: https://rust-lang.zulipchat.com
 [coc]: https://www.rust-lang.org/conduct.html
-[rustc-guide]: https://rust-lang.github.io/rustc-guide/
-[walkthrough]: https://rust-lang.github.io/rustc-guide/walkthrough.html
+[rustc-dev-guide]: https://rustc-dev-guide.rust-lang.org/
+[walkthrough]: https://rustc-dev-guide.rust-lang.org/walkthrough.html
 
 ## Feature Requests
 [feature-requests]: #feature-requests
@@ -50,6 +49,9 @@ is a bug or not, feel free to file a bug anyway.
 
 **If you believe reporting your bug publicly represents a security risk to Rust users,
 please follow our [instructions for reporting security vulnerabilities](https://www.rust-lang.org/policies/security)**.
+
+If you're using the nightly channel, please check if the bug exists in the
+latest toolchain before filing your bug. It might be fixed already.
 
 If you have the chance, before reporting a bug, please [search existing
 issues](https://github.com/rust-lang/rust/search?q=&type=Issues&utf8=%E2%9C%93),
@@ -101,12 +103,12 @@ $ RUST_BACKTRACE=1 rustc ...
 ## The Build System
 
 For info on how to configure and build the compiler, please see [this
-chapter][rustcguidebuild] of the rustc-guide. This chapter contains info for
+chapter][rustcguidebuild] of the rustc-dev-guide. This chapter contains info for
 contributions to the compiler and the standard library. It also lists some
 really useful commands to the build system (`./x.py`), which could save you a
 lot of time.
 
-[rustcguidebuild]: https://rust-lang.github.io/rustc-guide/how-to-build-and-run.html
+[rustcguidebuild]: https://rustc-dev-guide.rust-lang.org/building/how-to-build-and-run.html
 
 ## Pull Requests
 [pull-requests]: #pull-requests
@@ -129,10 +131,18 @@ the master branch to your feature branch.
 Also, please make sure that fixup commits are squashed into other related
 commits with meaningful commit messages.
 
+GitHub allows [closing issues using keywords][closing-keywords]. This feature
+should be used to keep the issue tracker tidy. However, it is generally preferred
+to put the "closes #123" text in the PR description rather than the issue commit;
+particularly during rebasing, citing the issue number in the commit can "spam"
+the issue in question.
+
+[closing-keywords]: https://help.github.com/en/articles/closing-issues-using-keywords
+
 Please make sure your pull request is in compliance with Rust's style
 guidelines by running
 
-    $ python x.py test src/tools/tidy
+    $ python x.py test tidy
 
 Make this check before every pull request (and every new commit in a pull
 request); you can add [git hooks](https://git-scm.com/book/en/v2/Customizing-Git-Git-Hooks)
@@ -143,13 +153,13 @@ All pull requests are reviewed by another person. We have a bot,
 request.
 
 If you want to request that a specific person reviews your pull request,
-you can add an `r?` to the message. For example, [Steve][steveklabnik] usually reviews
+you can add an `r?` to the pull request description. For example, [Steve][steveklabnik] usually reviews
 documentation changes. So if you were to make a documentation change, add
 
     r? @steveklabnik
 
-to the end of the message, and @rust-highfive will assign [@steveklabnik][steveklabnik] instead
-of a random person. This is entirely optional.
+to the end of the pull request description, and [@rust-highfive][rust-highfive] will assign
+[@steveklabnik][steveklabnik] instead of a random person. This is entirely optional.
 
 After someone has reviewed your pull request, they will leave an annotation
 on the pull request with an `r+`. It will look something like this:
@@ -178,11 +188,73 @@ with one another are rolled up.
 Speaking of tests, Rust has a comprehensive test suite. More information about
 it can be found [here][rctd].
 
-### External Dependencies
+### External Dependencies (subtree)
+
+As a developer to this repository, you don't have to treat the following external projects
+differently from other crates that are directly in this repo:
+
+* Clippy
+
+They are just regular files and directories. This is in contrast to `submodule` dependencies
+(see below for those). Only tool authors will actually use any operations here.
+
+#### Synchronizing a subtree
+
+There are two synchronization directions: `subtree push` and `subtree pull`.
+
+```
+git subtree push -P src/tools/clippy git@github.com:your-github-name/rust-clippy sync-from-rust
+```
+
+takes all the changes that
+happened to the copy in this repo and creates commits on the remote repo that match the local
+changes. Every local commit that touched the subtree causes a commit on the remote repo, but is
+modified to move the files from the specified directory to the tool repo root.
+
+Make sure to not pick the `master` branch on the tool repo, so you can open a normal PR to the tool
+to merge that subrepo push.
+
+```
+git subtree pull -P src/tools/clippy https://github.com/rust-lang/rust-clippy master
+```
+
+takes all changes since the last `subtree pull` from the tool repo
+repo and adds these commits to the rustc repo + a merge commit that moves the tool changes into
+the specified directory in the rust repository.
+
+It is recommended that you always do a push first and get that merged to the tool master branch.
+Then, when you do a pull, the merge works without conflicts.
+While it's definitely possible to resolve conflicts during a pull, you may have to redo the conflict
+resolution if your PR doesn't get merged fast enough and there are new conflicts. Do not try to
+rebase the result of a `git subtree pull`, rebasing merge commits is a bad idea in general.
+
+You always need to specify the `-P` prefix to the subtree directory and the corresponding remote
+repository. If you specify the wrong directory or repository
+you'll get very fun merges that try to push the wrong directory to the wrong remote repository.
+Luckily you can just abort this without any consequences by throwing away either the pulled commits
+in rustc or the pushed branch on the remote and try again. It is usually fairly obvious
+that this is happening because you suddenly get thousands of commits that want to be synchronized.
+
+#### Creating a new subtree dependency
+
+If you want to create a new subtree dependency from an existing repository, call (from this
+repository's root directory!)
+
+```
+git subtree add -P src/tools/clippy https://github.com/rust-lang/rust-clippy.git master
+```
+
+This will create a new commit, which you may not rebase under any circumstances! Delete the commit
+and redo the operation if you need to rebase.
+
+Now you're done, the `src/tools/clippy` directory behaves as if Clippy were part of the rustc
+monorepo, so no one but you (or others that synchronize subtrees) actually needs to use `git subtree`.
+
+
+### External Dependencies (submodules)
 
 Currently building Rust will also build the following external projects:
 
-* [clippy](https://github.com/rust-lang/rust-clippy)
 * [miri](https://github.com/rust-lang/miri)
 * [rustfmt](https://github.com/rust-lang/rustfmt)
 * [rls](https://github.com/rust-lang/rls/)
@@ -211,7 +283,6 @@ before the PR is merged.
 
 Rust's build system builds a number of tools that make use of the
 internals of the compiler. This includes
-[Clippy](https://github.com/rust-lang/rust-clippy),
 [RLS](https://github.com/rust-lang/rls) and
 [rustfmt](https://github.com/rust-lang/rustfmt). If these tools
 break because of your changes, you may run into a sort of "chicken and egg"
@@ -321,14 +392,22 @@ You can find documentation style guidelines in [RFC 1574][rfc1574].
 
 [rfc1574]: https://github.com/rust-lang/rfcs/blob/master/text/1574-more-api-documentation-conventions.md#appendix-a-full-conventions-text
 
-In many cases, you don't need a full `./x.py doc`. You can use `rustdoc` directly
-to check small fixes. For example, `rustdoc src/doc/reference.md` will render
-reference to `doc/reference.html`. The CSS might be messed up, but you can
-verify that the HTML is right.
+In many cases, you don't need a full `./x.py doc`, which will build the entire
+stage 2 compiler and compile the various books published on
+[doc.rust-lang.org]. When updating documentation for the standard library,
+first try `./x.py doc --stage 0 src/libstd`. If that fails, or if you need to
+see the output from the latest version of `rustdoc`, use `--stage 1` instead of
+`--stage 0`. Results should appear in `build/$TARGET/crate-docs`.
 
-Additionally, contributions to the [rustc-guide] are always welcome. Contributions
+[doc.rust-lang.org]: htts://doc.rust-lang.org
+
+You can also use `rustdoc` directly to check small fixes. For example,
+`rustdoc src/doc/reference.md` will render reference to `doc/reference.html`.
+The CSS might be messed up, but you can verify that the HTML is right.
+
+Additionally, contributions to the [rustc-dev-guide] are always welcome. Contributions
 can be made directly at [the
-rust-lang/rustc-guide](https://github.com/rust-lang/rustc-guide) repo. The issue
+rust-lang/rustc-dev-guide](https://github.com/rust-lang/rustc-dev-guide) repo. The issue
 tracker in that repo is also a great way to find things that need doing. There
 are issues for beginners and advanced compiler devs alike!
 
@@ -360,7 +439,7 @@ labels to triage issues:
   to fix the issue.
 
 * The dark blue **final-comment-period** label marks bugs that are using the
-  RFC signoff functionality of [rfcbot][rfcbot] and are currently in the final
+  RFC signoff functionality of [rfcbot] and are currently in the final
   comment period.
 
 * Red, **I**-prefixed labels indicate the **importance** of the issue. The
@@ -378,7 +457,7 @@ labels to triage issues:
   label.
 
 * The gray **proposed-final-comment-period** label marks bugs that are using
-  the RFC signoff functionality of [rfcbot][rfcbot] and are currently awaiting
+  the RFC signoff functionality of [rfcbot] and are currently awaiting
   signoff of all team members in order to enter the final comment period.
 
 * Pink, **regression**-prefixed labels track regressions from stable to the
@@ -404,7 +483,7 @@ If you're looking for somewhere to start, check out the [E-easy][eeasy] tag.
 There are a number of other ways to contribute to Rust that don't deal with
 this repository.
 
-Answer questions in [#rust][pound-rust], or on [users.rust-lang.org][users],
+Answer questions in the _Get Help!_ channels from the [Rust Discord server][rust-discord], on [users.rust-lang.org][users],
 or on [StackOverflow][so].
 
 Participate in the [RFC process](https://github.com/rust-lang/rfcs).
@@ -413,7 +492,7 @@ Find a [requested community library][community-library], build it, and publish
 it to [Crates.io](http://crates.io). Easier said than done, but very, very
 valuable!
 
-[pound-rust]: http://chat.mibbit.com/?server=irc.mozilla.org&channel=%23rust
+[rust-discord]: https://discord.gg/rust-lang
 [users]: https://users.rust-lang.org/
 [so]: http://stackoverflow.com/questions/tagged/rust
 [community-library]: https://github.com/rust-lang/rfcs/labels/A-community-library
@@ -424,7 +503,7 @@ For people new to Rust, and just starting to contribute, or even for
 more seasoned developers, some useful places to look for information
 are:
 
-* The [rustc guide] contains information about how various parts of the compiler work and how to contribute to the compiler
+* The [rustc dev guide] contains information about how various parts of the compiler work and how to contribute to the compiler
 * [Rust Forge][rustforge] contains additional documentation, including write-ups of how to achieve common tasks
 * The [Rust Internals forum][rif], a place to ask questions and
   discuss Rust's internals
@@ -438,13 +517,13 @@ are:
 * **Google!** ([search only in Rust Documentation][gsearchdocs] to find types, traits, etc. quickly)
 * Don't be afraid to ask! The Rust community is friendly and helpful.
 
-[rustc guide]: https://rust-lang.github.io/rustc-guide/about-this-guide.html
-[gdfrustc]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc/
+[rustc dev guide]: https://rustc-dev-guide.rust-lang.org/about-this-guide.html
+[gdfrustc]: https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/
 [gsearchdocs]: https://www.google.com/search?q=site:doc.rust-lang.org+your+query+here
 [rif]: http://internals.rust-lang.org
 [rr]: https://doc.rust-lang.org/book/README.html
 [rustforge]: https://forge.rust-lang.org/
 [tlgba]: http://tomlee.co/2014/04/a-more-detailed-tour-of-the-rust-compiler/
 [ro]: http://www.rustaceans.org/
-[rctd]: https://rust-lang.github.io/rustc-guide/tests/intro.html
+[rctd]: https://rustc-dev-guide.rust-lang.org/tests/intro.html
 [cheatsheet]: https://buildbot2.rust-lang.org/homu/

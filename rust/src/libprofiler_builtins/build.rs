@@ -9,20 +9,22 @@ fn main() {
     let target = env::var("TARGET").expect("TARGET was not set");
     let cfg = &mut cc::Build::new();
 
-    let mut profile_sources = vec!["GCDAProfiling.c",
-                                   "InstrProfiling.c",
-                                   "InstrProfilingBuffer.c",
-                                   "InstrProfilingFile.c",
-                                   "InstrProfilingMerge.c",
-                                   "InstrProfilingMergeFile.c",
-                                   "InstrProfilingNameVar.c",
-                                   "InstrProfilingPlatformDarwin.c",
-                                   "InstrProfilingPlatformLinux.c",
-                                   "InstrProfilingPlatformOther.c",
-                                   "InstrProfilingRuntime.cc",
-                                   "InstrProfilingUtil.c",
-                                   "InstrProfilingValue.c",
-                                   "InstrProfilingWriter.c"];
+    let mut profile_sources = vec![
+        "GCDAProfiling.c",
+        "InstrProfiling.c",
+        "InstrProfilingBuffer.c",
+        "InstrProfilingFile.c",
+        "InstrProfilingMerge.c",
+        "InstrProfilingMergeFile.c",
+        "InstrProfilingNameVar.c",
+        "InstrProfilingPlatformDarwin.c",
+        "InstrProfilingPlatformLinux.c",
+        "InstrProfilingPlatformOther.c",
+        "InstrProfilingPlatformWindows.c",
+        "InstrProfilingUtil.c",
+        "InstrProfilingValue.c",
+        "InstrProfilingWriter.c",
+    ];
 
     if target.contains("msvc") {
         // Don't pull in extra libraries on MSVC
@@ -39,7 +41,6 @@ fn main() {
         cfg.flag("-fno-builtin");
         cfg.flag("-fvisibility=hidden");
         cfg.flag("-fomit-frame-pointer");
-        cfg.flag("-ffreestanding");
         cfg.define("VISIBILITY_HIDDEN", None);
         if !target.contains("windows") {
             cfg.define("COMPILER_RT_HAS_UNAME", Some("1"));
@@ -55,19 +56,28 @@ fn main() {
 
     // This should be a pretty good heuristic for when to set
     // COMPILER_RT_HAS_ATOMICS
-    if env::var_os("CARGO_CFG_TARGET_HAS_ATOMIC").map(|features| {
-        features.to_string_lossy().to_lowercase().contains("cas")
-    }).unwrap_or(false) {
+    if env::var_os("CARGO_CFG_TARGET_HAS_ATOMIC")
+        .map(|features| features.to_string_lossy().to_lowercase().contains("cas"))
+        .unwrap_or(false)
+    {
         cfg.define("COMPILER_RT_HAS_ATOMICS", Some("1"));
     }
 
-    let root = env::var_os("RUST_COMPILER_RT_ROOT").unwrap();
-    let root = Path::new(&root);
+    // Note that this should exist if we're going to run (otherwise we just
+    // don't build profiler builtins at all).
+    let root = Path::new("../llvm-project/compiler-rt");
 
+    let src_root = root.join("lib").join("profile");
     for src in profile_sources {
-        cfg.file(root.join("lib").join("profile").join(src));
+        cfg.file(src_root.join(src));
     }
 
+    // The file was renamed in LLVM 10.
+    let old_runtime_path = src_root.join("InstrProfilingRuntime.cc");
+    let new_runtime_path = src_root.join("InstrProfilingRuntime.cpp");
+    cfg.file(if old_runtime_path.exists() { old_runtime_path } else { new_runtime_path });
+
+    cfg.include(root.join("include"));
     cfg.warnings(false);
     cfg.compile("profiler-rt");
 }

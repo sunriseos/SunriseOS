@@ -1,7 +1,5 @@
 // Test that we do not permit moves from &[] matched by a vec pattern.
 
-#![feature(slice_patterns)]
-
 #[derive(Clone, Debug)]
 struct Foo {
     string: String
@@ -15,7 +13,7 @@ pub fn main() {
     ];
     let x: &[Foo] = &x;
     match *x {
-        [_, ref tail..] => {
+        [_, ref tail @ ..] => {
             match tail {
             //~^ ERROR cannot move out of type `[Foo]`
                 &[Foo { string: a },

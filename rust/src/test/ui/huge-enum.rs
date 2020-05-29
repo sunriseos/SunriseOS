@@ -1,3 +1,4 @@
+// build-fail
 // normalize-stderr-test "std::option::Option<\[u32; \d+\]>" -> "TYPE"
 // normalize-stderr-test "\[u32; \d+\]" -> "TYPE"
 
@@ -6,11 +7,12 @@
 // normalize-stderr-test "note:.*RUST_BACKTRACE=1.*\n" -> ""
 
 #[cfg(target_pointer_width = "32")]
-fn main() {
-    let big: Option<[u32; (1<<29)-1]> = None;
-}
+type BIG = Option<[u32; (1<<29)-1]>;
 
 #[cfg(target_pointer_width = "64")]
+type BIG = Option<[u32; (1<<45)-1]>;
+
 fn main() {
-    let big: Option<[u32; (1<<45)-1]> = None;
+    let big: BIG = None;
+    //~^ ERROR is too big for the current architecture
 }

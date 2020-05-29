@@ -1,13 +1,13 @@
-// build-pass (FIXME(62277): could be check-pass?)
+// check-pass
 
 #![feature(lint_reasons)]
 
 #![warn(elided_lifetimes_in_paths,
-        //~^ NOTE lint level defined here
+        //~^ NOTE the lint level is defined here
         reason = "explicit anonymous lifetimes aid reasoning about ownership")]
 #![warn(
     nonstandard_style,
-    //~^ NOTE lint level defined here
+    //~^ NOTE the lint level is defined here
     reason = r#"people shouldn't have to change their usual style habits
 to contribute to our project"#
 )]
@@ -28,6 +28,8 @@ impl fmt::Debug for CheaterDetectionMechanism {
 
 fn main() {
     let Social_exchange_psychology = CheaterDetectionMechanism {};
-    //~^ WARN should have a snake case name such as
+    //~^ WARN should have a snake case name
+    //~| NOTE #[warn(non_snake_case)]` implied by `#[warn(nonstandard_style)]
     //~| NOTE people shouldn't have to change their usual style habits
+    //~| HELP convert the identifier to snake case
 }

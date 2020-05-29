@@ -1,5 +1,3 @@
-// compile-flags: -Z continue-parse-after-error
-
 // Test that we can recover from missing braces in the parser.
 
 trait Foo {
@@ -12,4 +10,4 @@ fn main() {
     let x = y.;
     //~^ ERROR unexpected token
     //~| ERROR cannot find value `y` in this scope
-} //~ ERROR this file contains an un-closed delimiter
+} //~ ERROR this file contains an unclosed delimiter

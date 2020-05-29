@@ -1,8 +1,8 @@
 #![feature(optin_builtin_traits)]
+#![feature(negative_impls)]
 
 unsafe auto trait Trait {
-//~^ ERROR E0380
-    fn method(&self) {
+    fn method(&self) { //~ ERROR E0380
         println!("Hello");
     }
 }

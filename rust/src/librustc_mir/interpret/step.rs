@@ -2,9 +2,9 @@
 //!
 //! The main entry point is the `step` method.
 
-use rustc::mir;
-use rustc::ty::layout::LayoutOf;
-use rustc::mir::interpret::{InterpResult, Scalar, PointerArithmetic};
+use rustc_middle::mir;
+use rustc_middle::mir::interpret::{InterpResult, Scalar};
+use rustc_target::abi::LayoutOf;
 
 use super::{InterpCx, Machine};
 
@@ -12,30 +12,24 @@ use super::{InterpCx, Machine};
 /// same type as the result.
 #[inline]
 fn binop_left_homogeneous(op: mir::BinOp) -> bool {
-    use rustc::mir::BinOp::*;
+    use rustc_middle::mir::BinOp::*;
     match op {
-        Add | Sub | Mul | Div | Rem | BitXor | BitAnd | BitOr |
-        Offset | Shl | Shr =>
-            true,
-        Eq | Ne | Lt | Le | Gt | Ge =>
-            false,
+        Add | Sub | Mul | Div | Rem | BitXor | BitAnd | BitOr | Offset | Shl | Shr => true,
+        Eq | Ne | Lt | Le | Gt | Ge => false,
     }
 }
 /// Classify whether an operator is "right-homogeneous", i.e., the RHS has the
 /// same type as the LHS.
 #[inline]
 fn binop_right_homogeneous(op: mir::BinOp) -> bool {
-    use rustc::mir::BinOp::*;
+    use rustc_middle::mir::BinOp::*;
     match op {
-        Add | Sub | Mul | Div | Rem | BitXor | BitAnd | BitOr |
-        Eq | Ne | Lt | Le | Gt | Ge =>
-            true,
-        Offset | Shl | Shr =>
-            false,
+        Add | Sub | Mul | Div | Rem | BitXor | BitAnd | BitOr | Eq | Ne | Lt | Le | Gt | Ge => true,
+        Offset | Shl | Shr => false,
     }
 }
 
-impl<'mir, 'tcx, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
+impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
     pub fn run(&mut self) -> InterpResult<'tcx> {
         while self.step()? {}
         Ok(())
@@ -44,20 +38,30 @@ impl<'mir, 'tcx, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
     /// Returns `true` as long as there are more things to do.
     ///
     /// This is used by [priroda](https://github.com/oli-obk/priroda)
+    ///
+    /// This is marked `#inline(always)` to work around adverserial codegen when `opt-level = 3`
+    #[inline(always)]
     pub fn step(&mut self) -> InterpResult<'tcx, bool> {
-        if self.stack.is_empty() {
+        if self.stack().is_empty() {
             return Ok(false);
         }
 
-        let block = self.frame().block;
-        let stmt_id = self.frame().stmt;
-        let body = self.body();
-        let basic_block = &body.basic_blocks()[block];
+        let loc = match self.frame().loc {
+            Some(loc) => loc,
+            None => {
+                // We are unwinding and this fn has no cleanup code.
+                // Just go on unwinding.
+                trace!("unwinding: skipping frame");
+                self.pop_stack_frame(/* unwinding */ true)?;
+                return Ok(true);
+            }
+        };
+        let basic_block = &self.body().basic_blocks()[loc.block];
 
-        let old_frames = self.cur_frame();
+        let old_frames = self.frame_idx();
 
-        if let Some(stmt) = basic_block.statements.get(stmt_id) {
-            assert_eq!(old_frames, self.cur_frame());
+        if let Some(stmt) = basic_block.statements.get(loc.statement_index) {
+            assert_eq!(old_frames, self.frame_idx());
             self.statement(stmt)?;
             return Ok(true);
         }
@@ -65,42 +69,38 @@ impl<'mir, 'tcx, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
         M::before_terminator(self)?;
 
         let terminator = basic_block.terminator();
-        assert_eq!(old_frames, self.cur_frame());
+        assert_eq!(old_frames, self.frame_idx());
         self.terminator(terminator)?;
         Ok(true)
     }
 
     fn statement(&mut self, stmt: &mir::Statement<'tcx>) -> InterpResult<'tcx> {
         info!("{:?}", stmt);
+        self.set_span(stmt.source_info.span);
 
-        use rustc::mir::StatementKind::*;
+        use rustc_middle::mir::StatementKind::*;
 
         // Some statements (e.g., box) push new stack frames.
         // We have to record the stack frame number *before* executing the statement.
-        let frame_idx = self.cur_frame();
-        self.tcx.span = stmt.source_info.span;
-        self.memory.tcx.span = stmt.source_info.span;
+        let frame_idx = self.frame_idx();
 
-        match stmt.kind {
-            Assign(ref place, ref rvalue) => self.eval_rvalue_into_place(rvalue, place)?,
+        match &stmt.kind {
+            Assign(box (place, rvalue)) => self.eval_rvalue_into_place(rvalue, *place)?,
 
-            SetDiscriminant {
-                ref place,
-                variant_index,
-            } => {
-                let dest = self.eval_place(place)?;
-                self.write_discriminant_index(variant_index, dest)?;
+            SetDiscriminant { place, variant_index } => {
+                let dest = self.eval_place(**place)?;
+                self.write_discriminant_index(*variant_index, dest)?;
             }
 
             // Mark locals as alive
             StorageLive(local) => {
-                let old_val = self.storage_live(local)?;
+                let old_val = self.storage_live(*local)?;
                 self.deallocate_local(old_val)?;
             }
 
             // Mark locals as dead
             StorageDead(local) => {
-                let old_val = self.storage_dead(local);
+                let old_val = self.storage_dead(*local);
                 self.deallocate_local(old_val)?;
             }
 
@@ -109,9 +109,9 @@ impl<'mir, 'tcx, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
             FakeRead(..) => {}
 
             // Stacked Borrows.
-            Retag(kind, ref place) => {
-                let dest = self.eval_place(place)?;
-                M::retag(self, kind, dest)?;
+            Retag(kind, place) => {
+                let dest = self.eval_place(**place)?;
+                M::retag(self, *kind, dest)?;
             }
 
             // Statements we do not track.
@@ -121,10 +121,10 @@ impl<'mir, 'tcx, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
             // size of MIR constantly.
             Nop => {}
 
-            InlineAsm { .. } => return err!(InlineAsm),
+            LlvmInlineAsm { .. } => throw_unsup_format!("inline assembly is not supported"),
         }
 
-        self.stack[frame_idx].stmt += 1;
+        self.stack_mut()[frame_idx].loc.as_mut().unwrap().statement_index += 1;
         Ok(())
     }
 
@@ -132,14 +132,14 @@ impl<'mir, 'tcx, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
     ///
     /// There is no separate `eval_rvalue` function. Instead, the code for handling each rvalue
     /// type writes its results directly into the memory specified by the place.
-    fn eval_rvalue_into_place(
+    pub fn eval_rvalue_into_place(
         &mut self,
         rvalue: &mir::Rvalue<'tcx>,
-        place: &mir::Place<'tcx>,
+        place: mir::Place<'tcx>,
     ) -> InterpResult<'tcx> {
         let dest = self.eval_place(place)?;
 
-        use rustc::mir::Rvalue::*;
+        use rustc_middle::mir::Rvalue::*;
         match *rvalue {
             Use(ref operand) => {
                 // Avoid recomputing the layout
@@ -148,36 +148,27 @@ impl<'mir, 'tcx, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
             }
 
             BinaryOp(bin_op, ref left, ref right) => {
-                let layout = if binop_left_homogeneous(bin_op) { Some(dest.layout) } else { None };
+                let layout = binop_left_homogeneous(bin_op).then_some(dest.layout);
                 let left = self.read_immediate(self.eval_operand(left, layout)?)?;
-                let layout = if binop_right_homogeneous(bin_op) { Some(left.layout) } else { None };
+                let layout = binop_right_homogeneous(bin_op).then_some(left.layout);
                 let right = self.read_immediate(self.eval_operand(right, layout)?)?;
-                self.binop_ignore_overflow(
-                    bin_op,
-                    left,
-                    right,
-                    dest,
-                )?;
+                self.binop_ignore_overflow(bin_op, left, right, dest)?;
             }
 
             CheckedBinaryOp(bin_op, ref left, ref right) => {
                 // Due to the extra boolean in the result, we can never reuse the `dest.layout`.
                 let left = self.read_immediate(self.eval_operand(left, None)?)?;
-                let layout = if binop_right_homogeneous(bin_op) { Some(left.layout) } else { None };
+                let layout = binop_right_homogeneous(bin_op).then_some(left.layout);
                 let right = self.read_immediate(self.eval_operand(right, layout)?)?;
-                self.binop_with_overflow(
-                    bin_op,
-                    left,
-                    right,
-                    dest,
-                )?;
+                self.binop_with_overflow(bin_op, left, right, dest)?;
             }
 
             UnaryOp(un_op, ref operand) => {
                 // The operand always has the same type as the result.
                 let val = self.read_immediate(self.eval_operand(operand, Some(dest.layout))?)?;
                 let val = self.unary_op(un_op, val)?;
-                self.write_scalar(val, dest)?;
+                assert_eq!(val.layout, dest.layout, "layout mismatch for result of {:?}", un_op);
+                self.write_immediate(*val, dest)?;
             }
 
             Aggregate(ref kind, ref operands) => {
@@ -190,7 +181,7 @@ impl<'mir, 'tcx, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
                             (dest, active_field_index)
                         }
                     }
-                    _ => (dest, None)
+                    _ => (dest, None),
                 };
 
                 for (i, operand) in operands.iter().enumerate() {
@@ -198,7 +189,7 @@ impl<'mir, 'tcx, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
                     // Ignore zero-sized fields.
                     if !op.layout.is_zst() {
                         let field_index = active_field_index.unwrap_or(i);
-                        let field_dest = self.place_field(dest, field_index as u64)?;
+                        let field_dest = self.place_field(dest, field_index)?;
                         self.copy_op(op, field_dest)?;
                     }
                 }
@@ -220,28 +211,32 @@ impl<'mir, 'tcx, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
                         // for big static/const arrays!
                         let rest_ptr = first_ptr.offset(elem_size, self)?;
                         self.memory.copy_repeatedly(
-                            first_ptr, rest_ptr, elem_size, length - 1, /*nonoverlapping:*/true
+                            first_ptr,
+                            rest_ptr,
+                            elem_size,
+                            length - 1,
+                            /*nonoverlapping:*/ true,
                         )?;
                     }
                 }
             }
 
-            Len(ref place) => {
+            Len(place) => {
                 // FIXME(CTFE): don't allow computing the length of arrays in const eval
                 let src = self.eval_place(place)?;
                 let mplace = self.force_allocation(src)?;
                 let len = mplace.len(self)?;
-                let size = self.pointer_size();
-                self.write_scalar(
-                    Scalar::from_uint(len, size),
-                    dest,
-                )?;
+                self.write_scalar(Scalar::from_machine_usize(len, self), dest)?;
             }
 
-            Ref(_, _, ref place) => {
+            AddressOf(_, place) | Ref(_, _, place) => {
                 let src = self.eval_place(place)?;
-                let val = self.force_allocation(src)?;
-                self.write_immediate(val.to_ref(), dest)?;
+                let place = self.force_allocation(src)?;
+                if place.layout.size.bytes() > 0 {
+                    // definitely not a ZST
+                    assert!(place.ptr.is_ptr(), "non-ZST places should be normalized to `Pointer`");
+                }
+                self.write_immediate(place.to_ref(), dest)?;
             }
 
             NullaryOp(mir::NullOp::Box, _) => {
@@ -249,23 +244,22 @@ impl<'mir, 'tcx, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
             }
 
             NullaryOp(mir::NullOp::SizeOf, ty) => {
-                let ty = self.monomorphize(ty)?;
+                let ty = self.subst_from_current_frame_and_normalize_erasing_regions(ty);
                 let layout = self.layout_of(ty)?;
-                assert!(!layout.is_unsized(),
-                        "SizeOf nullary MIR operator called for unsized type");
-                let size = self.pointer_size();
-                self.write_scalar(
-                    Scalar::from_uint(layout.size.bytes(), size),
-                    dest,
-                )?;
+                assert!(
+                    !layout.is_unsized(),
+                    "SizeOf nullary MIR operator called for unsized type"
+                );
+                self.write_scalar(Scalar::from_machine_usize(layout.size.bytes(), self), dest)?;
             }
 
-            Cast(kind, ref operand, _) => {
+            Cast(cast_kind, ref operand, cast_ty) => {
                 let src = self.eval_operand(operand, None)?;
-                self.cast(src, kind, dest)?;
+                let cast_ty = self.subst_from_current_frame_and_normalize_erasing_regions(cast_ty);
+                self.cast(src, cast_kind, cast_ty, dest)?;
             }
 
-            Discriminant(ref place) => {
+            Discriminant(place) => {
                 let op = self.eval_place_to_op(place, None)?;
                 let discr_val = self.read_discriminant(op)?.0;
                 let size = dest.layout.size;
@@ -280,16 +274,13 @@ impl<'mir, 'tcx, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
 
     fn terminator(&mut self, terminator: &mir::Terminator<'tcx>) -> InterpResult<'tcx> {
         info!("{:?}", terminator.kind);
-        self.tcx.span = terminator.source_info.span;
-        self.memory.tcx.span = terminator.source_info.span;
+        self.set_span(terminator.source_info.span);
 
-        let old_stack = self.cur_frame();
-        let old_bb = self.frame().block;
         self.eval_terminator(terminator)?;
-        if !self.stack.is_empty() {
-            // This should change *something*
-            debug_assert!(self.cur_frame() != old_stack || self.frame().block != old_bb);
-            info!("// {:?}", self.frame().block);
+        if !self.stack().is_empty() {
+            if let Some(loc) = self.frame().loc {
+                info!("// executing {:?}", loc.block);
+            }
         }
         Ok(())
     }

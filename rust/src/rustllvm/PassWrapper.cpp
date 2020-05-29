@@ -8,9 +8,17 @@
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/IR/AutoUpgrade.h"
 #include "llvm/IR/AssemblyAnnotationWriter.h"
 #include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/Verifier.h"
+#include "llvm/Object/ObjectFile.h"
+#include "llvm/Object/IRObjectFile.h"
+#include "llvm/Passes/PassBuilder.h"
+#if LLVM_VERSION_GE(9, 0)
+#include "llvm/Passes/StandardInstrumentations.h"
+#endif
 #include "llvm/Support/CBindingWrapping.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Host.h"
@@ -20,13 +28,21 @@
 #include "llvm/Transforms/IPO/FunctionImport.h"
 #include "llvm/Transforms/Utils/FunctionImportUtils.h"
 #include "llvm/LTO/LTO.h"
-
 #include "llvm-c/Transforms/PassManagerBuilder.h"
 
-using namespace llvm;
-using namespace llvm::legacy;
+#include "llvm/Transforms/Instrumentation.h"
+#if LLVM_VERSION_GE(9, 0)
+#include "llvm/Transforms/Instrumentation/AddressSanitizer.h"
+#include "llvm/Support/TimeProfiler.h"
+#endif
+#include "llvm/Transforms/Instrumentation/ThreadSanitizer.h"
+#include "llvm/Transforms/Instrumentation/MemorySanitizer.h"
+#if LLVM_VERSION_GE(9, 0)
+#include "llvm/Transforms/Utils/CanonicalizeAliases.h"
+#endif
+#include "llvm/Transforms/Utils/NameAnonGlobals.h"
 
-extern cl::opt<bool> EnableARMEHABI;
+using namespace llvm;
 
 typedef struct LLVMOpaquePass *LLVMPassRef;
 typedef struct LLVMOpaqueTargetMachine *LLVMTargetMachineRef;
@@ -48,6 +64,27 @@ extern "C" void LLVMInitializePasses() {
   initializeInstCombine(Registry);
   initializeInstrumentation(Registry);
   initializeTarget(Registry);
+}
+
+extern "C" void LLVMTimeTraceProfilerInitialize() {
+#if LLVM_VERSION_GE(10, 0)
+  timeTraceProfilerInitialize(
+      /* TimeTraceGranularity */ 0,
+      /* ProcName */ "rustc");
+#elif LLVM_VERSION_GE(9, 0)
+  timeTraceProfilerInitialize();
+#endif
+}
+
+extern "C" void LLVMTimeTraceProfilerFinish(const char* FileName) {
+#if LLVM_VERSION_GE(9, 0)
+  StringRef FN(FileName);
+  std::error_code EC;
+  raw_fd_ostream OS(FN, EC, sys::fs::CD_CreateAlways);
+
+  timeTraceProfilerWrite(OS);
+  timeTraceProfilerCleanup();
+#endif
 }
 
 enum class LLVMRustPassKind {
@@ -78,6 +115,38 @@ extern "C" LLVMPassRef LLVMRustFindAndCreatePass(const char *PassName) {
   return nullptr;
 }
 
+extern "C" LLVMPassRef LLVMRustCreateAddressSanitizerFunctionPass(bool Recover) {
+  const bool CompileKernel = false;
+  const bool UseAfterScope = true;
+
+  return wrap(createAddressSanitizerFunctionPass(CompileKernel, Recover, UseAfterScope));
+}
+
+extern "C" LLVMPassRef LLVMRustCreateModuleAddressSanitizerPass(bool Recover) {
+  const bool CompileKernel = false;
+
+#if LLVM_VERSION_GE(9, 0)
+  return wrap(createModuleAddressSanitizerLegacyPassPass(CompileKernel, Recover));
+#else
+  return wrap(createAddressSanitizerModulePass(CompileKernel, Recover));
+#endif
+}
+
+extern "C" LLVMPassRef LLVMRustCreateMemorySanitizerPass(int TrackOrigins, bool Recover) {
+#if LLVM_VERSION_GE(9, 0)
+  const bool CompileKernel = false;
+
+  return wrap(createMemorySanitizerLegacyPassPass(
+      MemorySanitizerOptions{TrackOrigins, Recover, CompileKernel}));
+#else
+  return wrap(createMemorySanitizerLegacyPassPass(TrackOrigins, Recover));
+#endif
+}
+
+extern "C" LLVMPassRef LLVMRustCreateThreadSanitizerPass() {
+  return wrap(createThreadSanitizerLegacyPassPass());
+}
+
 extern "C" LLVMRustPassKind LLVMRustPassKind(LLVMPassRef RustPass) {
   assert(RustPass);
   Pass *Pass = unwrap(RustPass);
@@ -97,6 +166,23 @@ void LLVMRustPassManagerBuilderPopulateThinLTOPassManager(
   LLVMPassManagerRef PMR
 ) {
   unwrap(PMBR)->populateThinLTOPassManager(*unwrap(PMR));
+}
+
+extern "C"
+void LLVMRustAddLastExtensionPasses(
+    LLVMPassManagerBuilderRef PMBR, LLVMPassRef *Passes, size_t NumPasses) {
+  auto AddExtensionPasses = [Passes, NumPasses](
+      const PassManagerBuilder &Builder, PassManagerBase &PM) {
+    for (size_t I = 0; I < NumPasses; I++) {
+      PM.add(unwrap(Passes[I]));
+    }
+  };
+  // Add the passes to both of the pre-finalization extension points,
+  // so they are run for optimized and non-optimized builds.
+  unwrap(PMBR)->addExtension(PassManagerBuilder::EP_OptimizerLast,
+                             AddExtensionPasses);
+  unwrap(PMBR)->addExtension(PassManagerBuilder::EP_EnabledOnOptLevel0,
+                             AddExtensionPasses);
 }
 
 #ifdef LLVM_COMPONENT_X86
@@ -188,7 +274,7 @@ extern "C" bool LLVMRustHasFeature(LLVMTargetMachineRef TM,
 }
 
 enum class LLVMRustCodeModel {
-  Other,
+  Tiny,
   Small,
   Kernel,
   Medium,
@@ -196,8 +282,10 @@ enum class LLVMRustCodeModel {
   None,
 };
 
-static CodeModel::Model fromRust(LLVMRustCodeModel Model) {
+static Optional<CodeModel::Model> fromRust(LLVMRustCodeModel Model) {
   switch (Model) {
+  case LLVMRustCodeModel::Tiny:
+    return CodeModel::Tiny;
   case LLVMRustCodeModel::Small:
     return CodeModel::Small;
   case LLVMRustCodeModel::Kernel:
@@ -206,6 +294,8 @@ static CodeModel::Model fromRust(LLVMRustCodeModel Model) {
     return CodeModel::Medium;
   case LLVMRustCodeModel::Large:
     return CodeModel::Large;
+  case LLVMRustCodeModel::None:
+    return None;
   default:
     report_fatal_error("Bad CodeModel.");
   }
@@ -234,8 +324,35 @@ static CodeGenOpt::Level fromRust(LLVMRustCodeGenOptLevel Level) {
   }
 }
 
-enum class LLVMRustRelocMode {
-  Default,
+enum class LLVMRustPassBuilderOptLevel {
+  O0,
+  O1,
+  O2,
+  O3,
+  Os,
+  Oz,
+};
+
+static PassBuilder::OptimizationLevel fromRust(LLVMRustPassBuilderOptLevel Level) {
+  switch (Level) {
+  case LLVMRustPassBuilderOptLevel::O0:
+    return PassBuilder::O0;
+  case LLVMRustPassBuilderOptLevel::O1:
+    return PassBuilder::O1;
+  case LLVMRustPassBuilderOptLevel::O2:
+    return PassBuilder::O2;
+  case LLVMRustPassBuilderOptLevel::O3:
+    return PassBuilder::O3;
+  case LLVMRustPassBuilderOptLevel::Os:
+    return PassBuilder::Os;
+  case LLVMRustPassBuilderOptLevel::Oz:
+    return PassBuilder::Oz;
+  default:
+    report_fatal_error("Bad PassBuilderOptLevel.");
+  }
+}
+
+enum class LLVMRustRelocModel {
   Static,
   PIC,
   DynamicNoPic,
@@ -244,21 +361,19 @@ enum class LLVMRustRelocMode {
   ROPIRWPI,
 };
 
-static Optional<Reloc::Model> fromRust(LLVMRustRelocMode RustReloc) {
+static Reloc::Model fromRust(LLVMRustRelocModel RustReloc) {
   switch (RustReloc) {
-  case LLVMRustRelocMode::Default:
-    return None;
-  case LLVMRustRelocMode::Static:
+  case LLVMRustRelocModel::Static:
     return Reloc::Static;
-  case LLVMRustRelocMode::PIC:
+  case LLVMRustRelocModel::PIC:
     return Reloc::PIC_;
-  case LLVMRustRelocMode::DynamicNoPic:
+  case LLVMRustRelocModel::DynamicNoPic:
     return Reloc::DynamicNoPIC;
-  case LLVMRustRelocMode::ROPI:
+  case LLVMRustRelocModel::ROPI:
     return Reloc::ROPI;
-  case LLVMRustRelocMode::RWPI:
+  case LLVMRustRelocModel::RWPI:
     return Reloc::RWPI;
-  case LLVMRustRelocMode::ROPIRWPI:
+  case LLVMRustRelocModel::ROPIRWPI:
     return Reloc::ROPI_RWPI;
   }
   report_fatal_error("Bad RelocModel.");
@@ -266,8 +381,8 @@ static Optional<Reloc::Model> fromRust(LLVMRustRelocMode RustReloc) {
 
 #ifdef LLVM_RUSTLLVM
 /// getLongestEntryLength - Return the length of the longest entry in the table.
-///
-static size_t getLongestEntryLength(ArrayRef<SubtargetFeatureKV> Table) {
+template<typename KV>
+static size_t getLongestEntryLength(ArrayRef<KV> Table) {
   size_t MaxLen = 0;
   for (auto &I : Table)
     MaxLen = std::max(MaxLen, std::strlen(I.Key));
@@ -279,7 +394,7 @@ extern "C" void LLVMRustPrintTargetCPUs(LLVMTargetMachineRef TM) {
   const MCSubtargetInfo *MCInfo = Target->getMCSubtargetInfo();
   const Triple::ArchType HostArch = Triple(sys::getProcessTriple()).getArch();
   const Triple::ArchType TargetArch = Target->getTargetTriple().getArch();
-  const ArrayRef<SubtargetFeatureKV> CPUTable = MCInfo->getCPUTable();
+  const ArrayRef<SubtargetSubTypeKV> CPUTable = MCInfo->getCPUTable();
   unsigned MaxCPULen = getLongestEntryLength(CPUTable);
 
   printf("Available CPUs for this target:\n");
@@ -289,7 +404,7 @@ extern "C" void LLVMRustPrintTargetCPUs(LLVMTargetMachineRef TM) {
       MaxCPULen, "native", (int)HostCPU.size(), HostCPU.data());
   }
   for (auto &CPU : CPUTable)
-    printf("    %-*s - %s.\n", MaxCPULen, CPU.Key, CPU.Desc);
+    printf("    %-*s\n", MaxCPULen, CPU.Key);
   printf("\n");
 }
 
@@ -328,17 +443,20 @@ extern "C" const char* LLVMRustGetHostCPUName(size_t *len) {
 
 extern "C" LLVMTargetMachineRef LLVMRustCreateTargetMachine(
     const char *TripleStr, const char *CPU, const char *Feature,
-    LLVMRustCodeModel RustCM, LLVMRustRelocMode RustReloc,
+    const char *ABIStr, LLVMRustCodeModel RustCM, LLVMRustRelocModel RustReloc,
     LLVMRustCodeGenOptLevel RustOptLevel, bool UseSoftFloat,
-    bool PositionIndependentExecutable, bool FunctionSections,
+    bool FunctionSections,
     bool DataSections,
     bool TrapUnreachable,
     bool Singlethread,
     bool AsmComments,
-    bool EmitStackSizeSection) {
+    bool EmitStackSizeSection,
+    bool RelaxELFRelocations,
+    bool UseInitArray) {
 
   auto OptLevel = fromRust(RustOptLevel);
   auto RM = fromRust(RustReloc);
+  auto CM = fromRust(RustCM);
 
   std::string Error;
   Triple Trip(Triple::normalize(TripleStr));
@@ -359,6 +477,9 @@ extern "C" LLVMTargetMachineRef LLVMRustCreateTargetMachine(
   Options.FunctionSections = FunctionSections;
   Options.MCOptions.AsmVerbose = AsmComments;
   Options.MCOptions.PreserveAsmComments = AsmComments;
+  Options.MCOptions.ABIName = ABIStr;
+  Options.RelaxELFRelocations = RelaxELFRelocations;
+  Options.UseInitArray = UseInitArray;
 
   if (TrapUnreachable) {
     // Tell LLVM to codegen `unreachable` into an explicit trap instruction.
@@ -374,9 +495,6 @@ extern "C" LLVMTargetMachineRef LLVMRustCreateTargetMachine(
 
   Options.EmitStackSizeSection = EmitStackSizeSection;
 
-  Optional<CodeModel::Model> CM;
-  if (RustCM != LLVMRustCodeModel::None)
-    CM = fromRust(RustCM);
   TargetMachine *TM = TheTarget->createTargetMachine(
       Trip.getTriple(), CPU, Feature, Options, RM, CM, OptLevel);
   return wrap(TM);
@@ -386,24 +504,11 @@ extern "C" void LLVMRustDisposeTargetMachine(LLVMTargetMachineRef TM) {
   delete unwrap(TM);
 }
 
-// Unfortunately, LLVM doesn't expose a C API to add the corresponding analysis
-// passes for a target to a pass manager. We export that functionality through
-// this function.
-extern "C" void LLVMRustAddAnalysisPasses(LLVMTargetMachineRef TM,
-                                          LLVMPassManagerRef PMR,
-                                          LLVMModuleRef M) {
-  PassManagerBase *PM = unwrap(PMR);
-  PM->add(
-      createTargetTransformInfoWrapperPass(unwrap(TM)->getTargetIRAnalysis()));
-}
-
 extern "C" void LLVMRustConfigurePassManagerBuilder(
     LLVMPassManagerBuilderRef PMBR, LLVMRustCodeGenOptLevel OptLevel,
     bool MergeFunctions, bool SLPVectorize, bool LoopVectorize, bool PrepareForThinLTO,
     const char* PGOGenPath, const char* PGOUsePath) {
-#if LLVM_VERSION_GE(7, 0)
   unwrap(PMBR)->MergeFunctions = MergeFunctions;
-#endif
   unwrap(PMBR)->SLPVectorize = SLPVectorize;
   unwrap(PMBR)->OptLevel = fromRust(OptLevel);
   unwrap(PMBR)->LoopVectorize = LoopVectorize;
@@ -482,6 +587,18 @@ enum class LLVMRustFileType {
   ObjectFile,
 };
 
+#if LLVM_VERSION_GE(10, 0)
+static CodeGenFileType fromRust(LLVMRustFileType Type) {
+  switch (Type) {
+  case LLVMRustFileType::AssemblyFile:
+    return CGFT_AssemblyFile;
+  case LLVMRustFileType::ObjectFile:
+    return CGFT_ObjectFile;
+  default:
+    report_fatal_error("Bad FileType.");
+  }
+}
+#else
 static TargetMachine::CodeGenFileType fromRust(LLVMRustFileType Type) {
   switch (Type) {
   case LLVMRustFileType::AssemblyFile:
@@ -492,6 +609,7 @@ static TargetMachine::CodeGenFileType fromRust(LLVMRustFileType Type) {
     report_fatal_error("Bad FileType.");
   }
 }
+#endif
 
 extern "C" LLVMRustResult
 LLVMRustWriteOutputFile(LLVMTargetMachineRef Target, LLVMPassManagerRef PMR,
@@ -510,21 +628,294 @@ LLVMRustWriteOutputFile(LLVMTargetMachineRef Target, LLVMPassManagerRef PMR,
     return LLVMRustResult::Failure;
   }
 
-#if LLVM_VERSION_GE(7, 0)
   buffer_ostream BOS(OS);
   unwrap(Target)->addPassesToEmitFile(*PM, BOS, nullptr, FileType, false);
-#else
-  unwrap(Target)->addPassesToEmitFile(*PM, OS, FileType, false);
-#endif
   PM->run(*unwrap(M));
 
   // Apparently `addPassesToEmitFile` adds a pointer to our on-the-stack output
   // stream (OS), so the only real safe place to delete this is here? Don't we
   // wish this was written in Rust?
-  delete PM;
+  LLVMDisposePassManager(PMR);
   return LLVMRustResult::Success;
 }
 
+extern "C" typedef void (*LLVMRustSelfProfileBeforePassCallback)(void*, // LlvmSelfProfiler
+                                                      const char*,      // pass name
+                                                      const char*);     // IR name
+extern "C" typedef void (*LLVMRustSelfProfileAfterPassCallback)(void*); // LlvmSelfProfiler
+
+#if LLVM_VERSION_GE(9, 0)
+
+std::string LLVMRustwrappedIrGetName(const llvm::Any &WrappedIr) {
+  if (any_isa<const Module *>(WrappedIr))
+    return any_cast<const Module *>(WrappedIr)->getName().str();
+  if (any_isa<const Function *>(WrappedIr))
+    return any_cast<const Function *>(WrappedIr)->getName().str();
+  if (any_isa<const Loop *>(WrappedIr))
+    return any_cast<const Loop *>(WrappedIr)->getName().str();
+  if (any_isa<const LazyCallGraph::SCC *>(WrappedIr))
+    return any_cast<const LazyCallGraph::SCC *>(WrappedIr)->getName();
+  return "<UNKNOWN>";
+}
+
+
+void LLVMSelfProfileInitializeCallbacks(
+    PassInstrumentationCallbacks& PIC, void* LlvmSelfProfiler,
+    LLVMRustSelfProfileBeforePassCallback BeforePassCallback,
+    LLVMRustSelfProfileAfterPassCallback AfterPassCallback) {
+  PIC.registerBeforePassCallback([LlvmSelfProfiler, BeforePassCallback](
+                                     StringRef Pass, llvm::Any Ir) {
+    std::string PassName = Pass.str();
+    std::string IrName = LLVMRustwrappedIrGetName(Ir);
+    BeforePassCallback(LlvmSelfProfiler, PassName.c_str(), IrName.c_str());
+    return true;
+  });
+
+  PIC.registerAfterPassCallback(
+      [LlvmSelfProfiler, AfterPassCallback](StringRef Pass, llvm::Any Ir) {
+        AfterPassCallback(LlvmSelfProfiler);
+      });
+
+  PIC.registerAfterPassInvalidatedCallback(
+      [LlvmSelfProfiler, AfterPassCallback](StringRef Pass) {
+        AfterPassCallback(LlvmSelfProfiler);
+      });
+
+  PIC.registerBeforeAnalysisCallback([LlvmSelfProfiler, BeforePassCallback](
+                                         StringRef Pass, llvm::Any Ir) {
+    std::string PassName = Pass.str();
+    std::string IrName = LLVMRustwrappedIrGetName(Ir);
+    BeforePassCallback(LlvmSelfProfiler, PassName.c_str(), IrName.c_str());
+  });
+
+  PIC.registerAfterAnalysisCallback(
+      [LlvmSelfProfiler, AfterPassCallback](StringRef Pass, llvm::Any Ir) {
+        AfterPassCallback(LlvmSelfProfiler);
+      });
+}
+#endif
+
+enum class LLVMRustOptStage {
+  PreLinkNoLTO,
+  PreLinkThinLTO,
+  PreLinkFatLTO,
+  ThinLTO,
+  FatLTO,
+};
+
+struct LLVMRustSanitizerOptions {
+  bool SanitizeMemory;
+  bool SanitizeThread;
+  bool SanitizeAddress;
+  bool SanitizeRecover;
+  int SanitizeMemoryTrackOrigins;
+};
+
+extern "C" void
+LLVMRustOptimizeWithNewPassManager(
+    LLVMModuleRef ModuleRef,
+    LLVMTargetMachineRef TMRef,
+    LLVMRustPassBuilderOptLevel OptLevelRust,
+    LLVMRustOptStage OptStage,
+    bool NoPrepopulatePasses, bool VerifyIR, bool UseThinLTOBuffers,
+    bool MergeFunctions, bool UnrollLoops, bool SLPVectorize, bool LoopVectorize,
+    bool DisableSimplifyLibCalls, bool EmitLifetimeMarkers,
+    LLVMRustSanitizerOptions *SanitizerOptions,
+    const char *PGOGenPath, const char *PGOUsePath,
+    void* LlvmSelfProfiler,
+    LLVMRustSelfProfileBeforePassCallback BeforePassCallback,
+    LLVMRustSelfProfileAfterPassCallback AfterPassCallback) {
+#if LLVM_VERSION_GE(9, 0)
+  Module *TheModule = unwrap(ModuleRef);
+  TargetMachine *TM = unwrap(TMRef);
+  PassBuilder::OptimizationLevel OptLevel = fromRust(OptLevelRust);
+
+  // FIXME: MergeFunctions is not supported by NewPM yet.
+  (void) MergeFunctions;
+
+  PipelineTuningOptions PTO;
+  PTO.LoopUnrolling = UnrollLoops;
+  PTO.LoopInterleaving = UnrollLoops;
+  PTO.LoopVectorization = LoopVectorize;
+  PTO.SLPVectorization = SLPVectorize;
+
+  PassInstrumentationCallbacks PIC;
+  StandardInstrumentations SI;
+  SI.registerCallbacks(PIC);
+
+  if (LlvmSelfProfiler){
+    LLVMSelfProfileInitializeCallbacks(PIC,LlvmSelfProfiler,BeforePassCallback,AfterPassCallback);
+  }
+
+  Optional<PGOOptions> PGOOpt;
+  if (PGOGenPath) {
+    assert(!PGOUsePath);
+    PGOOpt = PGOOptions(PGOGenPath, "", "", PGOOptions::IRInstr);
+  } else if (PGOUsePath) {
+    assert(!PGOGenPath);
+    PGOOpt = PGOOptions(PGOUsePath, "", "", PGOOptions::IRUse);
+  }
+
+  PassBuilder PB(TM, PTO, PGOOpt, &PIC);
+
+  // FIXME: We may want to expose this as an option.
+  bool DebugPassManager = false;
+  LoopAnalysisManager LAM(DebugPassManager);
+  FunctionAnalysisManager FAM(DebugPassManager);
+  CGSCCAnalysisManager CGAM(DebugPassManager);
+  ModuleAnalysisManager MAM(DebugPassManager);
+
+  FAM.registerPass([&] { return PB.buildDefaultAAPipeline(); });
+
+  Triple TargetTriple(TheModule->getTargetTriple());
+  std::unique_ptr<TargetLibraryInfoImpl> TLII(new TargetLibraryInfoImpl(TargetTriple));
+  if (DisableSimplifyLibCalls)
+    TLII->disableAllFunctions();
+  FAM.registerPass([&] { return TargetLibraryAnalysis(*TLII); });
+
+  PB.registerModuleAnalyses(MAM);
+  PB.registerCGSCCAnalyses(CGAM);
+  PB.registerFunctionAnalyses(FAM);
+  PB.registerLoopAnalyses(LAM);
+  PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
+
+  // We manually collect pipeline callbacks so we can apply them at O0, where the
+  // PassBuilder does not create a pipeline.
+  std::vector<std::function<void(ModulePassManager &)>> PipelineStartEPCallbacks;
+  std::vector<std::function<void(FunctionPassManager &, PassBuilder::OptimizationLevel)>>
+      OptimizerLastEPCallbacks;
+
+  if (VerifyIR) {
+    PipelineStartEPCallbacks.push_back([VerifyIR](ModulePassManager &MPM) {
+        MPM.addPass(VerifierPass());
+    });
+  }
+
+  if (SanitizerOptions) {
+    if (SanitizerOptions->SanitizeMemory) {
+      MemorySanitizerOptions Options(
+          SanitizerOptions->SanitizeMemoryTrackOrigins,
+          SanitizerOptions->SanitizeRecover,
+          /*CompileKernel=*/false);
+#if LLVM_VERSION_GE(10, 0)
+      PipelineStartEPCallbacks.push_back([Options](ModulePassManager &MPM) {
+        MPM.addPass(MemorySanitizerPass(Options));
+      });
+#endif
+      OptimizerLastEPCallbacks.push_back(
+        [Options](FunctionPassManager &FPM, PassBuilder::OptimizationLevel Level) {
+          FPM.addPass(MemorySanitizerPass(Options));
+        }
+      );
+    }
+
+    if (SanitizerOptions->SanitizeThread) {
+#if LLVM_VERSION_GE(10, 0)
+      PipelineStartEPCallbacks.push_back([](ModulePassManager &MPM) {
+        MPM.addPass(ThreadSanitizerPass());
+      });
+#endif
+      OptimizerLastEPCallbacks.push_back(
+        [](FunctionPassManager &FPM, PassBuilder::OptimizationLevel Level) {
+          FPM.addPass(ThreadSanitizerPass());
+        }
+      );
+    }
+
+    if (SanitizerOptions->SanitizeAddress) {
+      PipelineStartEPCallbacks.push_back([&](ModulePassManager &MPM) {
+        MPM.addPass(RequireAnalysisPass<ASanGlobalsMetadataAnalysis, Module>());
+      });
+      OptimizerLastEPCallbacks.push_back(
+        [SanitizerOptions](FunctionPassManager &FPM, PassBuilder::OptimizationLevel Level) {
+          FPM.addPass(AddressSanitizerPass(
+              /*CompileKernel=*/false, SanitizerOptions->SanitizeRecover,
+              /*UseAfterScope=*/true));
+        }
+      );
+      PipelineStartEPCallbacks.push_back(
+        [SanitizerOptions](ModulePassManager &MPM) {
+          MPM.addPass(ModuleAddressSanitizerPass(
+              /*CompileKernel=*/false, SanitizerOptions->SanitizeRecover));
+        }
+      );
+    }
+  }
+
+  ModulePassManager MPM(DebugPassManager);
+  if (!NoPrepopulatePasses) {
+    if (OptLevel == PassBuilder::O0) {
+      for (const auto &C : PipelineStartEPCallbacks)
+        C(MPM);
+
+      if (!OptimizerLastEPCallbacks.empty()) {
+        FunctionPassManager FPM(DebugPassManager);
+        for (const auto &C : OptimizerLastEPCallbacks)
+          C(FPM, OptLevel);
+        MPM.addPass(createModuleToFunctionPassAdaptor(std::move(FPM)));
+      }
+
+      MPM.addPass(AlwaysInlinerPass(EmitLifetimeMarkers));
+
+#if LLVM_VERSION_GE(10, 0)
+      if (PGOOpt) {
+        PB.addPGOInstrPassesForO0(
+            MPM, DebugPassManager, PGOOpt->Action == PGOOptions::IRInstr,
+            /*IsCS=*/false, PGOOpt->ProfileFile, PGOOpt->ProfileRemappingFile);
+      }
+#endif
+    } else {
+      for (const auto &C : PipelineStartEPCallbacks)
+        PB.registerPipelineStartEPCallback(C);
+      if (OptStage != LLVMRustOptStage::PreLinkThinLTO) {
+        for (const auto &C : OptimizerLastEPCallbacks)
+          PB.registerOptimizerLastEPCallback(C);
+      }
+
+      switch (OptStage) {
+      case LLVMRustOptStage::PreLinkNoLTO:
+        MPM = PB.buildPerModuleDefaultPipeline(OptLevel, DebugPassManager);
+        break;
+      case LLVMRustOptStage::PreLinkThinLTO:
+        MPM = PB.buildThinLTOPreLinkDefaultPipeline(OptLevel, DebugPassManager);
+        if (!OptimizerLastEPCallbacks.empty()) {
+          FunctionPassManager FPM(DebugPassManager);
+          for (const auto &C : OptimizerLastEPCallbacks)
+            C(FPM, OptLevel);
+          MPM.addPass(createModuleToFunctionPassAdaptor(std::move(FPM)));
+        }
+        break;
+      case LLVMRustOptStage::PreLinkFatLTO:
+        MPM = PB.buildLTOPreLinkDefaultPipeline(OptLevel, DebugPassManager);
+        break;
+      case LLVMRustOptStage::ThinLTO:
+        // FIXME: Does it make sense to pass the ModuleSummaryIndex?
+        // It only seems to be needed for C++ specific optimizations.
+        MPM = PB.buildThinLTODefaultPipeline(OptLevel, DebugPassManager, nullptr);
+        break;
+      case LLVMRustOptStage::FatLTO:
+        MPM = PB.buildLTODefaultPipeline(OptLevel, DebugPassManager, nullptr);
+        break;
+      }
+    }
+  }
+
+  if (UseThinLTOBuffers) {
+    MPM.addPass(CanonicalizeAliasesPass());
+    MPM.addPass(NameAnonGlobalPass());
+  }
+
+  // Upgrade all calls to old intrinsics first.
+  for (Module::iterator I = TheModule->begin(), E = TheModule->end(); I != E;)
+    UpgradeCallsToIntrinsic(&*I++); // must be post-increment, as we remove
+
+  MPM.run(*TheModule, MAM);
+#else
+  // The new pass manager has been available for a long time,
+  // but we don't bother supporting it on old LLVM versions.
+  report_fatal_error("New pass manager only supported since LLVM 9");
+#endif
+}
 
 // Callback to demangle function name
 // Parameters:
@@ -612,46 +1003,11 @@ public:
   }
 };
 
-class RustPrintModulePass : public ModulePass {
-  raw_ostream* OS;
-  DemangleFn Demangle;
-public:
-  static char ID;
-  RustPrintModulePass() : ModulePass(ID), OS(nullptr), Demangle(nullptr) {}
-  RustPrintModulePass(raw_ostream &OS, DemangleFn Demangle)
-      : ModulePass(ID), OS(&OS), Demangle(Demangle) {}
-
-  bool runOnModule(Module &M) override {
-    RustAssemblyAnnotationWriter AW(Demangle);
-
-    M.print(*OS, &AW, false);
-
-    return false;
-  }
-
-  void getAnalysisUsage(AnalysisUsage &AU) const override {
-    AU.setPreservesAll();
-  }
-
-  static StringRef name() { return "RustPrintModulePass"; }
-};
-
 } // namespace
 
-namespace llvm {
-  void initializeRustPrintModulePassPass(PassRegistry&);
-}
-
-char RustPrintModulePass::ID = 0;
-INITIALIZE_PASS(RustPrintModulePass, "print-rust-module",
-                "Print rust module to stderr", false, false)
-
 extern "C" LLVMRustResult
-LLVMRustPrintModule(LLVMPassManagerRef PMR, LLVMModuleRef M,
-                    const char *Path, DemangleFn Demangle) {
-  llvm::legacy::PassManager *PM = unwrap<llvm::legacy::PassManager>(PMR);
+LLVMRustPrintModule(LLVMModuleRef M, const char *Path, DemangleFn Demangle) {
   std::string ErrorInfo;
-
   std::error_code EC;
   raw_fd_ostream OS(Path, EC, sys::fs::F_None);
   if (EC)
@@ -661,11 +1017,9 @@ LLVMRustPrintModule(LLVMPassManagerRef PMR, LLVMModuleRef M,
     return LLVMRustResult::Failure;
   }
 
+  RustAssemblyAnnotationWriter AAW(Demangle);
   formatted_raw_ostream FOS(OS);
-
-  PM->add(new RustPrintModulePass(FOS, Demangle));
-
-  PM->run(*unwrap(M));
+  unwrap(M)->print(FOS, &AAW);
 
   return LLVMRustResult::Success;
 }
@@ -739,6 +1093,10 @@ LLVMRustSetDataLayoutFromTargetMachine(LLVMModuleRef Module,
   unwrap(Module)->setDataLayout(Target->createDataLayout());
 }
 
+extern "C" void LLVMRustSetModulePICLevel(LLVMModuleRef M) {
+  unwrap(M)->setPICLevel(PICLevel::Level::BigPIC);
+}
+
 extern "C" void LLVMRustSetModulePIELevel(LLVMModuleRef M) {
   unwrap(M)->setPIELevel(PIELevel::Level::Large);
 }
@@ -795,9 +1153,7 @@ struct LLVMRustThinLTOData {
   StringMap<FunctionImporter::ExportSetTy> ExportLists;
   StringMap<GVSummaryMapTy> ModuleToDefinedGVSummaries;
 
-#if LLVM_VERSION_GE(7, 0)
   LLVMRustThinLTOData() : Index(/* HaveGVs = */ false) {}
-#endif
 };
 
 // Just an argument to the `LLVMRustCreateThinLTOData` function below.
@@ -838,7 +1194,11 @@ LLVMRustCreateThinLTOData(LLVMRustThinLTOModule *modules,
                           int num_modules,
                           const char **preserved_symbols,
                           int num_symbols) {
+#if LLVM_VERSION_GE(10, 0)
+  auto Ret = std::make_unique<LLVMRustThinLTOData>();
+#else
   auto Ret = llvm::make_unique<LLVMRustThinLTOData>();
+#endif
 
   // Load each module's summary and merge it into one combined index
   for (int i = 0; i < num_modules; i++) {
@@ -868,22 +1228,14 @@ LLVMRustCreateThinLTOData(LLVMRustThinLTOModule *modules,
   // combined index
   //
   // This is copied from `lib/LTO/ThinLTOCodeGenerator.cpp`
-#if LLVM_VERSION_GE(7, 0)
   auto deadIsPrevailing = [&](GlobalValue::GUID G) {
     return PrevailingType::Unknown;
   };
-#if LLVM_VERSION_GE(8, 0)
   // We don't have a complete picture in our use of ThinLTO, just our immediate
   // crate, so we need `ImportEnabled = false` to limit internalization.
   // Otherwise, we sometimes lose `static` values -- see #60184.
   computeDeadSymbolsWithConstProp(Ret->Index, Ret->GUIDPreservedSymbols,
                                   deadIsPrevailing, /* ImportEnabled = */ false);
-#else
-  computeDeadSymbols(Ret->Index, Ret->GUIDPreservedSymbols, deadIsPrevailing);
-#endif
-#else
-  computeDeadSymbols(Ret->Index, Ret->GUIDPreservedSymbols);
-#endif
   ComputeCrossModuleImport(
     Ret->Index,
     Ret->ModuleToDefinedGVSummaries,
@@ -916,10 +1268,8 @@ LLVMRustCreateThinLTOData(LLVMRustThinLTOModule *modules,
 #if LLVM_VERSION_GE(9, 0)
   thinLTOResolvePrevailingInIndex(Ret->Index, isPrevailing, recordNewLinkage,
                                   Ret->GUIDPreservedSymbols);
-#elif LLVM_VERSION_GE(8, 0)
-  thinLTOResolvePrevailingInIndex(Ret->Index, isPrevailing, recordNewLinkage);
 #else
-  thinLTOResolveWeakForLinkerInIndex(Ret->Index, isPrevailing, recordNewLinkage);
+  thinLTOResolvePrevailingInIndex(Ret->Index, isPrevailing, recordNewLinkage);
 #endif
 
   // Here we calculate an `ExportedGUIDs` set for use in the `isExported`
@@ -937,6 +1287,15 @@ LLVMRustCreateThinLTOData(LLVMRustThinLTOModule *modules,
         ExportedGUIDs.insert(GUID);
     }
   }
+#if LLVM_VERSION_GE(10, 0)
+  auto isExported = [&](StringRef ModuleIdentifier, ValueInfo VI) {
+    const auto &ExportList = Ret->ExportLists.find(ModuleIdentifier);
+    return (ExportList != Ret->ExportLists.end() &&
+      ExportList->second.count(VI)) ||
+      ExportedGUIDs.count(VI.getGUID());
+  };
+  thinLTOInternalizeAndPromoteInIndex(Ret->Index, isExported, isPrevailing);
+#else
   auto isExported = [&](StringRef ModuleIdentifier, GlobalValue::GUID GUID) {
     const auto &ExportList = Ret->ExportLists.find(ModuleIdentifier);
     return (ExportList != Ret->ExportLists.end() &&
@@ -944,6 +1303,7 @@ LLVMRustCreateThinLTOData(LLVMRustThinLTOModule *modules,
       ExportedGUIDs.count(GUID);
   };
   thinLTOInternalizeAndPromoteInIndex(Ret->Index, isExported);
+#endif
 
   return Ret.release();
 }
@@ -975,11 +1335,7 @@ extern "C" bool
 LLVMRustPrepareThinLTOResolveWeak(const LLVMRustThinLTOData *Data, LLVMModuleRef M) {
   Module &Mod = *unwrap(M);
   const auto &DefinedGlobals = Data->ModuleToDefinedGVSummaries.lookup(Mod.getModuleIdentifier());
-#if LLVM_VERSION_GE(8, 0)
   thinLTOResolvePrevailingInModule(Mod, DefinedGlobals);
-#else
-  thinLTOResolveWeakForLinkerModule(Mod, DefinedGlobals);
-#endif
   return true;
 }
 
@@ -1074,7 +1430,11 @@ struct LLVMRustThinLTOBuffer {
 
 extern "C" LLVMRustThinLTOBuffer*
 LLVMRustThinLTOBufferCreate(LLVMModuleRef M) {
+#if LLVM_VERSION_GE(10, 0)
+  auto Ret = std::make_unique<LLVMRustThinLTOBuffer>();
+#else
   auto Ret = llvm::make_unique<LLVMRustThinLTOBuffer>();
+#endif
   {
     raw_string_ostream OS(Ret->data);
     {
@@ -1119,6 +1479,32 @@ LLVMRustParseBitcodeForLTO(LLVMContextRef Context,
     return nullptr;
   }
   return wrap(std::move(*SrcOrError).release());
+}
+
+// Find the bitcode section in the object file data and return it as a slice.
+// Fail if the bitcode section is present but empty.
+//
+// On success, the return value is the pointer to the start of the slice and
+// `out_len` is filled with the (non-zero) length. On failure, the return value
+// is `nullptr` and `out_len` is set to zero.
+extern "C" const char*
+LLVMRustGetBitcodeSliceFromObjectData(const char *data,
+                                      size_t len,
+                                      size_t *out_len) {
+  *out_len = 0;
+
+  StringRef Data(data, len);
+  MemoryBufferRef Buffer(Data, ""); // The id is unused.
+
+  Expected<MemoryBufferRef> BitcodeOrError =
+    object::IRObjectFile::findBitcodeInMemBuffer(Buffer);
+  if (!BitcodeOrError) {
+    LLVMRustSetLastError(toString(BitcodeOrError.takeError()).c_str());
+    return nullptr;
+  }
+
+  *out_len = BitcodeOrError->getBufferSize();
+  return BitcodeOrError->getBufferStart();
 }
 
 // Rewrite all `DICompileUnit` pointers to the `DICompileUnit` specified. See

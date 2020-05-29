@@ -4,6 +4,7 @@
 
 #![crate_name = "foo"]
 
+#[derive(PartialEq, Eq)]
 pub enum Order {
     Sorted,
     Unsorted,
@@ -16,16 +17,23 @@ pub struct VSet<T, const ORDER: Order> {
     inner: Vec<T>,
 }
 
-// @has foo/struct.VSet.html '//h3[@id="impl"]/code' 'impl<T> VSet<T, { Order::Sorted }>'
+// @has foo/struct.VSet.html '//h3[@id="impl"]/code' 'impl<T> VSet<T, {Order::Sorted}>'
 impl <T> VSet<T, {Order::Sorted}> {
     pub fn new() -> Self {
         Self { inner: Vec::new() }
     }
 }
 
-// @has foo/struct.VSet.html '//h3[@id="impl-1"]/code' 'impl<T> VSet<T, { Order::Unsorted }>'
+// @has foo/struct.VSet.html '//h3[@id="impl-1"]/code' 'impl<T> VSet<T, {Order::Unsorted}>'
 impl <T> VSet<T, {Order::Unsorted}> {
     pub fn new() -> Self {
         Self { inner: Vec::new() }
     }
+}
+
+pub struct Escape<const S: &'static str>;
+
+// @has foo/struct.Escape.html '//h3[@id="impl"]/code' 'impl Escape<{ r#"<script>alert("Escape");</script>"# }>'
+impl Escape<{ r#"<script>alert("Escape");</script>"# }> {
+    pub fn f() {}
 }

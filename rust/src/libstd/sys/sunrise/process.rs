@@ -4,12 +4,14 @@ use crate::io::{self, Error, ErrorKind};
 use crate::sys::fs::File;
 use crate::sys::pipe::AnonPipe;
 use crate::sys::unsupported;
-use crate::sys_common::process::{CommandEnv, DefaultEnvKey};
+use crate::sys_common::process::CommandEnv;
 use crate::sync::Arc;
 use crate::vec::Vec;
 use crate::string::String;
 
 use sunrise_libuser::ldr::{ILoaderInterfaceProxy};
+
+pub use crate::ffi::OsString as EnvKey;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Command
@@ -18,7 +20,7 @@ use sunrise_libuser::ldr::{ILoaderInterfaceProxy};
 pub struct Command {
     program: String,
     args: Vec<String>,
-    env: CommandEnv<DefaultEnvKey>,
+    env: CommandEnv,
     stdin: Option<Stdio>,
     stdout: Option<Stdio>,
     stderr: Option<Stdio>,
@@ -54,7 +56,7 @@ impl Command {
         self.args.push(arg.to_str().unwrap().to_owned());
     }
 
-    pub fn env_mut(&mut self) -> &mut CommandEnv<DefaultEnvKey> {
+    pub fn env_mut(&mut self) -> &mut CommandEnv {
         &mut self.env
     }
 

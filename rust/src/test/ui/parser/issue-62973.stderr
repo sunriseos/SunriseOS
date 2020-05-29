@@ -1,0 +1,75 @@
+error: this file contains an unclosed delimiter
+  --> $DIR/issue-62973.rs:8:2
+   |
+LL | fn p() { match s { v, E { [) {) }
+   |        -         - unclosed delimiter
+   |        |
+   |        unclosed delimiter
+LL | 
+LL | 
+   |  ^
+
+error: this file contains an unclosed delimiter
+  --> $DIR/issue-62973.rs:8:2
+   |
+LL | fn p() { match s { v, E { [) {) }
+   |        -         - unclosed delimiter
+   |        |
+   |        unclosed delimiter
+LL | 
+LL | 
+   |  ^
+
+error: expected one of `,` or `}`, found `{`
+  --> $DIR/issue-62973.rs:6:25
+   |
+LL | fn p() { match s { v, E { [) {) }
+   |        -       -       -^ expected one of `,` or `}`
+   |        |       |       |
+   |        |       |       help: `}` may belong here
+   |        |       while parsing this struct
+   |        unclosed delimiter
+
+error: struct literals are not allowed here
+  --> $DIR/issue-62973.rs:6:16
+   |
+LL |   fn p() { match s { v, E { [) {) }
+   |  ________________^
+LL | |
+LL | |
+   | |_^
+   |
+help: surround the struct literal with parentheses
+   |
+LL | fn p() { match (s { v, E { [) {) }
+LL | 
+LL | )
+   |
+
+error: expected one of `.`, `?`, `{`, or an operator, found `}`
+  --> $DIR/issue-62973.rs:8:2
+   |
+LL | fn p() { match s { v, E { [) {) }
+   |          ----- while parsing this match expression
+LL | 
+LL | 
+   |  ^ expected one of `.`, `?`, `{`, or an operator
+
+error: mismatched closing delimiter: `)`
+  --> $DIR/issue-62973.rs:6:28
+   |
+LL | fn p() { match s { v, E { [) {) }
+   |                           -^ mismatched closing delimiter
+   |                           |
+   |                           unclosed delimiter
+
+error: mismatched closing delimiter: `)`
+  --> $DIR/issue-62973.rs:6:31
+   |
+LL | fn p() { match s { v, E { [) {) }
+   |                              -^ mismatched closing delimiter
+   |                              |
+   |                              unclosed delimiter
+
+error: aborting due to 7 previous errors
+

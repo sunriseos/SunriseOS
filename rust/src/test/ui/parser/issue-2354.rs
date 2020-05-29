@@ -1,4 +1,4 @@
-fn foo() { //~ NOTE un-closed delimiter
+fn foo() { //~ NOTE unclosed delimiter
   match Some(10) {
   //~^ NOTE this delimiter might not be properly closed...
       Some(y) => { panic!(); }
@@ -11,5 +11,5 @@ fn bar() {
     while (i < 1000) {}
 }
 
-fn main() {} //~ NOTE here is a function named 'main'
-             //~ ERROR this file contains an un-closed delimiter
+fn main() {}
+//~ ERROR this file contains an unclosed delimiter

@@ -4,14 +4,16 @@
 //! and methods are represented as just a fn ptr and not a full
 //! closure.
 
+use crate::abi::{FnAbi, FnAbiLlvmExt};
 use crate::attributes;
-use crate::llvm;
 use crate::context::CodegenCx;
+use crate::llvm;
 use crate::value::Value;
+use log::debug;
 use rustc_codegen_ssa::traits::*;
 
-use rustc::ty::{TypeFoldable, Instance};
-use rustc::ty::layout::{LayoutOf, HasTyCtxt};
+use rustc_middle::ty::layout::{FnAbiExt, HasTyCtxt};
+use rustc_middle::ty::{Instance, TypeFoldable};
 
 /// Codegens a reference to a fn/method item, monomorphizing and
 /// inlining as it goes.
@@ -20,31 +22,28 @@ use rustc::ty::layout::{LayoutOf, HasTyCtxt};
 ///
 /// - `cx`: the crate context
 /// - `instance`: the instance to be instantiated
-pub fn get_fn(
-    cx: &CodegenCx<'ll, 'tcx>,
-    instance: Instance<'tcx>,
-) -> &'ll Value {
+pub fn get_fn(cx: &CodegenCx<'ll, 'tcx>, instance: Instance<'tcx>) -> &'ll Value {
     let tcx = cx.tcx();
 
     debug!("get_fn(instance={:?})", instance);
 
     assert!(!instance.substs.needs_infer());
     assert!(!instance.substs.has_escaping_bound_vars());
-    assert!(!instance.substs.has_param_types());
+    assert!(!instance.substs.has_param_types_or_consts());
 
-    let sig = instance.fn_sig(cx.tcx());
-    if let Some(&llfn) = cx.instances().borrow().get(&instance) {
+    if let Some(&llfn) = cx.instances.borrow().get(&instance) {
         return llfn;
     }
 
-    let sym = tcx.symbol_name(instance).as_str();
-    debug!("get_fn({:?}: {:?}) => {}", instance, sig, sym);
+    let sym = tcx.symbol_name(instance).name.as_str();
+    debug!("get_fn({:?}: {:?}) => {}", instance, instance.monomorphic_ty(cx.tcx()), sym);
 
-    // Create a fn pointer with the substituted signature.
-    let fn_ptr_ty = tcx.mk_fn_ptr(sig);
-    let llptrty = cx.backend_type(cx.layout_of(fn_ptr_ty));
+    let fn_abi = FnAbi::of_instance(cx, instance, &[]);
 
     let llfn = if let Some(llfn) = cx.get_declared_value(&sym) {
+        // Create a fn pointer with the new signature.
+        let llptrty = fn_abi.ptr_to_llvm_type(cx);
+
         // This is subtle and surprising, but sometimes we have to bitcast
         // the resulting fn pointer.  The reason has to do with external
         // functions.  If you have two crates that both bind the same C
@@ -76,14 +75,10 @@ pub fn get_fn(
             llfn
         }
     } else {
-        let llfn = cx.declare_fn(&sym, sig);
-        assert_eq!(cx.val_ty(llfn), llptrty);
+        let llfn = cx.declare_fn(&sym, &fn_abi);
         debug!("get_fn: not casting pointer!");
 
-        if instance.def.is_inline(tcx) {
-            attributes::inline(cx, llfn, attributes::InlineAttr::Hint);
-        }
-        attributes::from_fn_attrs(cx, llfn, Some(instance.def.def_id()), sig);
+        attributes::from_fn_attrs(cx, llfn, instance);
 
         let instance_def_id = instance.def_id();
 
@@ -121,22 +116,21 @@ pub fn get_fn(
                 if cx.tcx.sess.opts.share_generics() {
                     // We are in share_generics mode.
 
-                    if instance_def_id.is_local() {
+                    if let Some(instance_def_id) = instance_def_id.as_local() {
                         // This is a definition from the current crate. If the
                         // definition is unreachable for downstream crates or
                         // the current crate does not re-export generics, the
                         // definition of the instance will have been declared
                         // as `hidden`.
-                        if cx.tcx.is_unreachable_local_definition(instance_def_id) ||
-                           !cx.tcx.local_crate_exports_generics() {
+                        if cx.tcx.is_unreachable_local_definition(instance_def_id)
+                            || !cx.tcx.local_crate_exports_generics()
+                        {
                             llvm::LLVMRustSetVisibility(llfn, llvm::Visibility::Hidden);
                         }
                     } else {
                         // This is a monomorphization of a generic function
                         // defined in an upstream crate.
-                        if cx.tcx.upstream_monomorphizations_for(instance_def_id)
-                                 .map(|set| set.contains_key(instance.substs))
-                                 .unwrap_or(false) {
+                        if instance.upstream_monomorphization(tcx).is_some() {
                             // This is instantiated in another crate. It cannot
                             // be `hidden`.
                         } else {
@@ -174,9 +168,7 @@ pub fn get_fn(
             }
         }
 
-        if cx.use_dll_storage_attrs &&
-            tcx.is_dllimport_foreign_item(instance_def_id)
-        {
+        if cx.use_dll_storage_attrs && tcx.is_dllimport_foreign_item(instance_def_id) {
             unsafe {
                 llvm::LLVMSetDLLStorageClass(llfn, llvm::DLLStorageClass::DllImport);
             }

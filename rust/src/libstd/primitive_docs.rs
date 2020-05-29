@@ -56,7 +56,7 @@
 /// assert_eq!(false as i32, 0);
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
-mod prim_bool { }
+mod prim_bool {}
 
 #[doc(primitive = "never")]
 #[doc(alias = "!")]
@@ -240,7 +240,7 @@ mod prim_bool { }
 /// [`default()`]: default/trait.Default.html#tymethod.default
 ///
 #[unstable(feature = "never_type", issue = "35121")]
-mod prim_never { }
+mod prim_never {}
 
 #[doc(primitive = "char")]
 //
@@ -316,11 +316,11 @@ mod prim_never { }
 /// assert_eq!(32, std::mem::size_of_val(&v[..]));
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
-mod prim_char { }
+mod prim_char {}
 
 #[doc(primitive = "unit")]
 //
-/// The `()` type, sometimes called "unit" or "nil".
+/// The `()` type, also called "unit".
 ///
 /// The `()` type has exactly one value `()`, and is used when there
 /// is no other meaningful value that could be returned. `()` is most
@@ -354,7 +354,7 @@ mod prim_char { }
 /// ```
 ///
 #[stable(feature = "rust1", since = "1.0.0")]
-mod prim_unit { }
+mod prim_unit {}
 
 #[doc(primitive = "pointer")]
 //
@@ -362,8 +362,13 @@ mod prim_unit { }
 ///
 /// *[See also the `std::ptr` module](ptr/index.html).*
 ///
-/// Working with raw pointers in Rust is uncommon,
-/// typically limited to a few patterns.
+/// Working with raw pointers in Rust is uncommon, typically limited to a few patterns.
+/// Raw pointers can be unaligned or [`null`]. However, when a raw pointer is
+/// dereferenced (using the `*` operator), it must be non-null and aligned.
+///
+/// Storing through a raw pointer using `*ptr = data` calls `drop` on the old value, so
+/// [`write`] must be used if the type has drop glue and memory is not already
+/// initialized - otherwise `drop` would be called on the uninitialized memory.
 ///
 /// Use the [`null`] and [`null_mut`] functions to create null pointers, and the
 /// [`is_null`] method of the `*const T` and `*mut T` types to check for null.
@@ -421,14 +426,12 @@ mod prim_unit { }
 ///
 /// use std::mem;
 ///
-/// fn main() {
-///     unsafe {
-///         let my_num: *mut i32 = libc::malloc(mem::size_of::<i32>()) as *mut i32;
-///         if my_num.is_null() {
-///             panic!("failed to allocate memory");
-///         }
-///         libc::free(my_num as *mut libc::c_void);
+/// unsafe {
+///     let my_num: *mut i32 = libc::malloc(mem::size_of::<i32>()) as *mut i32;
+///     if my_num.is_null() {
+///         panic!("failed to allocate memory");
 ///     }
+///     libc::free(my_num as *mut libc::c_void);
 /// }
 /// ```
 ///
@@ -442,8 +445,9 @@ mod prim_unit { }
 /// [`offset`]: ../std/primitive.pointer.html#method.offset
 /// [`into_raw`]: ../std/boxed/struct.Box.html#method.into_raw
 /// [`drop`]: ../std/mem/fn.drop.html
+/// [`write`]: ../std/ptr/fn.write.html
 #[stable(feature = "rust1", since = "1.0.0")]
-mod prim_pointer { }
+mod prim_pointer {}
 
 #[doc(primitive = "array")]
 //
@@ -554,13 +558,15 @@ mod prim_pointer { }
 /// [`IntoIterator`]: iter/trait.IntoIterator.html
 ///
 #[stable(feature = "rust1", since = "1.0.0")]
-mod prim_array { }
+mod prim_array {}
 
 #[doc(primitive = "slice")]
 #[doc(alias = "[")]
 #[doc(alias = "]")]
 #[doc(alias = "[]")]
-/// A dynamically-sized view into a contiguous sequence, `[T]`.
+/// A dynamically-sized view into a contiguous sequence, `[T]`. Contiguous here
+/// means that elements are laid out so that every element is the same
+/// distance from its neighbors.
 ///
 /// *[See also the `std::slice` module](slice/index.html).*
 ///
@@ -587,7 +593,7 @@ mod prim_array { }
 /// assert_eq!(x, &[1, 7, 3]);
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
-mod prim_slice { }
+mod prim_slice {}
 
 #[doc(primitive = "str")]
 //
@@ -649,10 +655,10 @@ mod prim_slice { }
 /// [`len`]: #method.len
 ///
 /// Note: This example shows the internals of `&str`. `unsafe` should not be
-/// used to get a string slice under normal circumstances. Use `as_slice`
+/// used to get a string slice under normal circumstances. Use `as_str`
 /// instead.
 #[stable(feature = "rust1", since = "1.0.0")]
-mod prim_str { }
+mod prim_str {}
 
 #[doc(primitive = "tuple")]
 #[doc(alias = "(")]
@@ -760,128 +766,104 @@ mod prim_str { }
 /// ```
 ///
 #[stable(feature = "rust1", since = "1.0.0")]
-mod prim_tuple { }
+mod prim_tuple {}
 
 #[doc(primitive = "f32")]
 /// The 32-bit floating point type.
 ///
-/// *[See also the `std::f32` module](f32/index.html).*
+/// *[See also the `std::f32::consts` module](f32/consts/index.html).*
 ///
 #[stable(feature = "rust1", since = "1.0.0")]
-mod prim_f32 { }
+mod prim_f32 {}
 
 #[doc(primitive = "f64")]
 //
 /// The 64-bit floating point type.
 ///
-/// *[See also the `std::f64` module](f64/index.html).*
+/// *[See also the `std::f64::consts` module](f64/consts/index.html).*
 ///
 #[stable(feature = "rust1", since = "1.0.0")]
-mod prim_f64 { }
+mod prim_f64 {}
 
 #[doc(primitive = "i8")]
 //
 /// The 8-bit signed integer type.
-///
-/// *[See also the `std::i8` module](i8/index.html).*
 #[stable(feature = "rust1", since = "1.0.0")]
-mod prim_i8 { }
+mod prim_i8 {}
 
 #[doc(primitive = "i16")]
 //
 /// The 16-bit signed integer type.
-///
-/// *[See also the `std::i16` module](i16/index.html).*
 #[stable(feature = "rust1", since = "1.0.0")]
-mod prim_i16 { }
+mod prim_i16 {}
 
 #[doc(primitive = "i32")]
 //
 /// The 32-bit signed integer type.
-///
-/// *[See also the `std::i32` module](i32/index.html).*
 #[stable(feature = "rust1", since = "1.0.0")]
-mod prim_i32 { }
+mod prim_i32 {}
 
 #[doc(primitive = "i64")]
 //
 /// The 64-bit signed integer type.
-///
-/// *[See also the `std::i64` module](i64/index.html).*
 #[stable(feature = "rust1", since = "1.0.0")]
-mod prim_i64 { }
+mod prim_i64 {}
 
 #[doc(primitive = "i128")]
 //
 /// The 128-bit signed integer type.
-///
-/// *[See also the `std::i128` module](i128/index.html).*
-#[stable(feature = "i128", since="1.26.0")]
-mod prim_i128 { }
+#[stable(feature = "i128", since = "1.26.0")]
+mod prim_i128 {}
 
 #[doc(primitive = "u8")]
 //
 /// The 8-bit unsigned integer type.
-///
-/// *[See also the `std::u8` module](u8/index.html).*
 #[stable(feature = "rust1", since = "1.0.0")]
-mod prim_u8 { }
+mod prim_u8 {}
 
 #[doc(primitive = "u16")]
 //
 /// The 16-bit unsigned integer type.
-///
-/// *[See also the `std::u16` module](u16/index.html).*
 #[stable(feature = "rust1", since = "1.0.0")]
-mod prim_u16 { }
+mod prim_u16 {}
 
 #[doc(primitive = "u32")]
 //
 /// The 32-bit unsigned integer type.
-///
-/// *[See also the `std::u32` module](u32/index.html).*
 #[stable(feature = "rust1", since = "1.0.0")]
-mod prim_u32 { }
+mod prim_u32 {}
 
 #[doc(primitive = "u64")]
 //
 /// The 64-bit unsigned integer type.
-///
-/// *[See also the `std::u64` module](u64/index.html).*
 #[stable(feature = "rust1", since = "1.0.0")]
-mod prim_u64 { }
+mod prim_u64 {}
 
 #[doc(primitive = "u128")]
 //
 /// The 128-bit unsigned integer type.
-///
-/// *[See also the `std::u128` module](u128/index.html).*
-#[stable(feature = "i128", since="1.26.0")]
-mod prim_u128 { }
+#[stable(feature = "i128", since = "1.26.0")]
+mod prim_u128 {}
 
 #[doc(primitive = "isize")]
 //
 /// The pointer-sized signed integer type.
 ///
-/// *[See also the `std::isize` module](isize/index.html).*
-///
 /// The size of this primitive is how many bytes it takes to reference any
 /// location in memory. For example, on a 32 bit target, this is 4 bytes
 /// and on a 64 bit target, this is 8 bytes.
 #[stable(feature = "rust1", since = "1.0.0")]
-mod prim_isize { }
+mod prim_isize {}
 
 #[doc(primitive = "usize")]
 //
 /// The pointer-sized unsigned integer type.
 ///
-/// *[See also the `std::usize` module](usize/index.html).*
-///
 /// The size of this primitive is how many bytes it takes to reference any
 /// location in memory. For example, on a 32 bit target, this is 4 bytes
 /// and on a 64 bit target, this is 8 bytes.
 #[stable(feature = "rust1", since = "1.0.0")]
-mod prim_usize { }
+mod prim_usize {}
 
 #[doc(primitive = "reference")]
 #[doc(alias = "&")]
@@ -891,9 +873,13 @@ mod prim_usize { }
 /// A reference represents a borrow of some owned value. You can get one by using the `&` or `&mut`
 /// operators on a value, or by using a `ref` or `ref mut` pattern.
 ///
-/// For those familiar with pointers, a reference is just a pointer that is assumed to not be null.
-/// In fact, `Option<&T>` has the same memory representation as a nullable pointer, and can be
-/// passed across FFI boundaries as such.
+/// For those familiar with pointers, a reference is just a pointer that is assumed to be
+/// aligned, not null, and pointing to memory containing a valid value of `T` - for example,
+/// `&bool` can only point to an allocation containing the integer values `1` (`true`) or `0`
+/// (`false`), but creating a `&bool` that points to an allocation containing
+/// the value `3` causes undefined behaviour.
+/// In fact, `Option<&T>` has the same memory representation as a
+/// nullable but aligned pointer, and can be passed across FFI boundaries as such.
 ///
 /// In most cases, references can be used much like the original value. Field access, method
 /// calling, and indexing work the same (save for mutability rules, of course). In addition, the
@@ -1024,7 +1010,7 @@ mod prim_usize { }
 /// meant for generic contexts, where the final type `T` is a type parameter or otherwise not
 /// locally known.
 #[stable(feature = "rust1", since = "1.0.0")]
-mod prim_ref { }
+mod prim_ref {}
 
 #[doc(primitive = "fn")]
 //
@@ -1035,6 +1021,11 @@ mod prim_ref { }
 /// [`Fn`]: ops/trait.Fn.html
 /// [`FnMut`]: ops/trait.FnMut.html
 /// [`FnOnce`]: ops/trait.FnOnce.html
+///
+/// Function pointers are pointers that point to *code*, not data. They can be called
+/// just like functions. Like references, function pointers are, among other things, assumed to
+/// not be null, so if you want to pass a function pointer over FFI and be able to accommodate null
+/// pointers, make your type `Option<fn()>` with your required signature.
 ///
 /// Plain function pointers are obtained by casting either plain functions, or closures that don't
 /// capture an environment:
@@ -1091,10 +1082,6 @@ mod prim_ref { }
 ///
 /// These markers can be combined, so `unsafe extern "stdcall" fn()` is a valid type.
 ///
-/// Like references in rust, function pointers are assumed to not be null, so if you want to pass a
-/// function pointer over FFI and be able to accommodate null pointers, make your type
-/// `Option<fn()>` with your required signature.
-///
 /// Function pointers implement the following traits:
 ///
 /// * [`Clone`]
@@ -1125,4 +1112,4 @@ mod prim_ref { }
 ///
 /// [`Copy`]: marker/trait.Copy.html
 #[stable(feature = "rust1", since = "1.0.0")]
-mod prim_fn { }
+mod prim_fn {}

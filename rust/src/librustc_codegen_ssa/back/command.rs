@@ -7,6 +7,7 @@ use std::io;
 use std::mem;
 use std::process::{self, Output};
 
+use rustc_span::symbol::Symbol;
 use rustc_target::spec::LldFlavor;
 
 #[derive(Clone)]
@@ -14,13 +15,14 @@ pub struct Command {
     program: Program,
     args: Vec<OsString>,
     env: Vec<(OsString, OsString)>,
+    env_remove: Vec<OsString>,
 }
 
 #[derive(Clone)]
 enum Program {
     Normal(OsString),
     CmdBatScript(OsString),
-    Lld(OsString, LldFlavor)
+    Lld(OsString, LldFlavor),
 }
 
 impl Command {
@@ -37,11 +39,7 @@ impl Command {
     }
 
     fn _new(program: Program) -> Command {
-        Command {
-            program,
-            args: Vec::new(),
-            env: Vec::new(),
-        }
+        Command { program, args: Vec::new(), env: Vec::new(), env_remove: Vec::new() }
     }
 
     pub fn arg<P: AsRef<OsStr>>(&mut self, arg: P) -> &mut Command {
@@ -49,9 +47,14 @@ impl Command {
         self
     }
 
+    pub fn sym_arg(&mut self, arg: Symbol) -> &mut Command {
+        self.arg(&*arg.as_str());
+        self
+    }
+
     pub fn args<I>(&mut self, args: I) -> &mut Command
-        where I: IntoIterator,
-              I::Item: AsRef<OsStr>,
+    where
+        I: IntoIterator<Item: AsRef<OsStr>>,
     {
         for arg in args {
             self._arg(arg.as_ref());
@@ -64,8 +67,9 @@ impl Command {
     }
 
     pub fn env<K, V>(&mut self, key: K, value: V) -> &mut Command
-        where K: AsRef<OsStr>,
-              V: AsRef<OsStr>
+    where
+        K: AsRef<OsStr>,
+        V: AsRef<OsStr>,
     {
         self._env(key.as_ref(), value.as_ref());
         self
@@ -73,6 +77,18 @@ impl Command {
 
     fn _env(&mut self, key: &OsStr, value: &OsStr) {
         self.env.push((key.to_owned(), value.to_owned()));
+    }
+
+    pub fn env_remove<K>(&mut self, key: K) -> &mut Command
+    where
+        K: AsRef<OsStr>,
+    {
+        self._env_remove(key.as_ref());
+        self
+    }
+
+    fn _env_remove(&mut self, key: &OsStr) {
+        self.env_remove.push(key.to_owned());
     }
 
     pub fn output(&mut self) -> io::Result<Output> {
@@ -100,7 +116,10 @@ impl Command {
         };
         ret.args(&self.args);
         ret.envs(self.env.clone());
-        return ret
+        for k in &self.env_remove {
+            ret.env_remove(k);
+        }
+        ret
     }
 
     // extensions
@@ -119,14 +138,14 @@ impl Command {
         // We mostly only care about Windows in this method, on Unix the limits
         // can be gargantuan anyway so we're pretty unlikely to hit them
         if cfg!(unix) {
-            return false
+            return false;
         }
 
         // Right now LLD doesn't support the `@` syntax of passing an argument
         // through files, so regardless of the platform we try to go to the OS
         // on this one.
         if let Program::Lld(..) = self.program {
-            return false
+            return false;
         }
 
         // Ok so on Windows to spawn a process is 32,768 characters in its
@@ -149,11 +168,10 @@ impl Command {
         // error code if we fail to spawn and automatically re-spawning the
         // linker with smaller arguments.
         //
-        // [1]: https://msdn.microsoft.com/en-us/library/windows/desktop/ms682425(v=vs.85).aspx
-        // [2]: https://blogs.msdn.microsoft.com/oldnewthing/20031210-00/?p=41553
+        // [1]: https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessa
+        // [2]: https://devblogs.microsoft.com/oldnewthing/?p=41553
 
-        let estimated_command_line_len =
-            self.args.iter().map(|a| a.len()).sum::<usize>();
+        let estimated_command_line_len = self.args.iter().map(|a| a.len()).sum::<usize>();
         estimated_command_line_len > 1024 * 6
     }
 }

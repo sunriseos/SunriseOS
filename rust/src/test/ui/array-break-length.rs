@@ -1,11 +1,9 @@
 fn main() {
     loop {
-        |_: [_; break]| {} //~ ERROR: `break` outside of loop
-        //~^ ERROR mismatched types
+        |_: [_; break]| {} //~ ERROR: `break` outside of a loop
     }
 
     loop {
-        |_: [_; continue]| {} //~ ERROR: `continue` outside of loop
-        //~^ ERROR mismatched types
+        |_: [_; continue]| {} //~ ERROR: `continue` outside of a loop
     }
 }

@@ -1,4 +1,4 @@
-FROM ubuntu:19.04
+FROM ubuntu:19.10
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
   g++ \
@@ -6,8 +6,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   file \
   curl \
   ca-certificates \
-  python2.7 \
-  python2.7-dev \
+  python3 \
+  python3-dev \
   libxml2-dev \
   libncurses-dev \
   libedit-dev \
@@ -33,7 +33,6 @@ ENV RUST_CONFIGURE_ARGS \
       --build=x86_64-unknown-linux-gnu \
       --enable-debug \
       --enable-lld \
-      --enable-lldb \
       --enable-optimize \
       --set llvm.use-linker=lld \
       --set target.x86_64-unknown-linux-gnu.linker=clang \
@@ -41,5 +40,5 @@ ENV RUST_CONFIGURE_ARGS \
       --set target.x86_64-unknown-linux-gnu.cxx=clang++
 
 ENV SCRIPT \
-  python2.7 ../x.py build && \
-  python2.7 ../x.py test src/test/run-make-fulldeps --test-args clang
+  python3 ../x.py build && \
+  python3 ../x.py test src/test/run-make-fulldeps --test-args clang

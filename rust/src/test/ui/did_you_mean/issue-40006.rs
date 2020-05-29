@@ -1,16 +1,30 @@
-impl dyn X { //~ ERROR cannot be made into an object
-//~^ ERROR missing
+impl dyn A {
     Y
-}
+} //~ ERROR expected one of `!` or `::`, found `}`
 
 struct S;
 
-trait X { //~ ERROR missing
-    X() {}
-    fn xxx() { ### } //~ ERROR missing
-    //~^ ERROR expected
-    L = M; //~ ERROR missing
-    Z = { 2 + 3 }; //~ ERROR expected one of
+trait X {
+    X() {} //~ ERROR expected one of `!` or `::`, found `(`
+    fn xxx() { ### }
+    L = M;
+    Z = { 2 + 3 };
+    ::Y ();
+}
+
+trait A {
+    X() {} //~ ERROR expected one of `!` or `::`, found `(`
+}
+trait B {
+    fn xxx() { ### } //~ ERROR expected
+}
+trait C {
+    L = M; //~ ERROR expected one of `!` or `::`, found `=`
+}
+trait D {
+    Z = { 2 + 3 }; //~ ERROR expected one of `!` or `::`, found `=`
+}
+trait E {
     ::Y (); //~ ERROR expected one of
 }
 
@@ -21,5 +35,5 @@ impl S {
 }
 
 fn main() {
-    S.hello_method();
+    S.hello_method(); //~ no method named `hello_method` found
 }

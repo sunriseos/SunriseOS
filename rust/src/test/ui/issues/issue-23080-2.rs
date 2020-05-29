@@ -1,10 +1,10 @@
 //~ ERROR
 
 #![feature(optin_builtin_traits)]
+#![feature(negative_impls)]
 
 unsafe auto trait Trait {
-//~^ ERROR E0380
-    type Output;
+    type Output; //~ ERROR E0380
 }
 
 fn call_method<T: Trait>(x: T) {}

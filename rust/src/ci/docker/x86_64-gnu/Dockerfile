@@ -1,4 +1,4 @@
-FROM ubuntu:19.04
+FROM ubuntu:19.10
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
   g++ \
@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   file \
   curl \
   ca-certificates \
-  python2.7 \
+  python3 \
   git \
   cmake \
   sudo \
@@ -23,4 +23,4 @@ ENV RUST_CONFIGURE_ARGS \
  --enable-sanitizers \
  --enable-profiler \
  --enable-compiler-docs
-ENV SCRIPT python2.7 ../x.py test
+ENV SCRIPT python3 ../x.py test

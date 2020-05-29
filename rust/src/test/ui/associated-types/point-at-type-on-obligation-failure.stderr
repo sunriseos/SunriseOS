@@ -1,0 +1,9 @@
+error[E0271]: type mismatch resolving `<Foo2 as Bar2>::Ok == ()`
+  --> $DIR/point-at-type-on-obligation-failure.rs:13:15
+   |
+LL |     type Ok = ();
+   |               ^^ expected `u32`, found `()`
+
+error: aborting due to previous error
+
+For more information about this error, try `rustc --explain E0271`.

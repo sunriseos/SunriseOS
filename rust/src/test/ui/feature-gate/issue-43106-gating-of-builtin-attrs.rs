@@ -12,7 +12,7 @@
 // the change when it happens.
 //
 // At the time of authoring, the attributes here are listed in the
-// order that they occur in libsyntax/feature_gate.rs.
+// order that they occur in `librustc_feature`.
 //
 // Any builtin attributes that:
 //
@@ -32,7 +32,13 @@
 
 // check-pass
 
+#![feature(test, plugin_registrar)]
 #![warn(unused_attributes, unknown_lints)]
+
+// Exception, a gated and deprecated attribute.
+
+#![plugin_registrar] //~ WARN unused attribute
+//~| WARN use of deprecated attribute
 
 // UNGATED WHITE-LISTED BUILT-IN ATTRIBUTES
 
@@ -42,7 +48,6 @@
 #![deny(x5100)] //~ WARN unknown lint: `x5100`
 #![macro_use] // (allowed if no argument; see issue-43160-gating-of-macro_use.rs)
 #![macro_export] //~ WARN unused attribute
-#![plugin_registrar] //~ WARN unused attribute
 // skipping testing of cfg
 // skipping testing of cfg_attr
 #![main] //~ WARN unused attribute
@@ -83,12 +88,12 @@
 #![crate_name = "0900"]
 #![crate_type = "bin"] // cannot pass "0800" here
 
-// For #![crate_id], see issue #43142. (I cannot bear to enshrine current behavior in a test)
+#![crate_id = "10"] //~ WARN use of deprecated attribute
 
 // FIXME(#44232) we should warn that this isn't used.
-#![feature(rust1)]
+#![feature(rust1)] //~ WARN no longer requires an attribute to enable
 
-// For #![no_start], see issue #43144. (I cannot bear to enshrine current behavior in a test)
+#![no_start] //~ WARN use of deprecated attribute
 
 // (cannot easily gating state of crate-level #[no_main]; but non crate-level is below at "0400")
 #![no_builtins]
@@ -211,20 +216,25 @@ mod macro_export {
 
 #[plugin_registrar]
 //~^ WARN unused attribute
+//~| WARN use of deprecated attribute
 mod plugin_registrar {
     mod inner { #![plugin_registrar] }
     //~^ WARN unused attribute
+    //~| WARN use of deprecated attribute
 
     // for `fn f()` case, see gated-plugin_registrar.rs
 
     #[plugin_registrar] struct S;
     //~^ WARN unused attribute
+    //~| WARN use of deprecated attribute
 
     #[plugin_registrar] type T = S;
     //~^ WARN unused attribute
+    //~| WARN use of deprecated attribute
 
     #[plugin_registrar] impl S { }
     //~^ WARN unused attribute
+    //~| WARN use of deprecated attribute
 }
 
 #[main]
@@ -454,10 +464,10 @@ mod reexport_test_harness_main {
 
 // Cannot feed "2700" to `#[macro_escape]` without signaling an error.
 #[macro_escape]
-//~^ WARN macro_escape is a deprecated synonym for macro_use
+//~^ WARN `#[macro_escape]` is a deprecated synonym for `#[macro_use]`
 mod macro_escape {
     mod inner { #![macro_escape] }
-    //~^ WARN macro_escape is a deprecated synonym for macro_use
+    //~^ WARN `#[macro_escape]` is a deprecated synonym for `#[macro_use]`
 
     #[macro_escape] fn f() { }
     //~^ WARN unused attribute

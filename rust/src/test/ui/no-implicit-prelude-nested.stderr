@@ -3,17 +3,19 @@ error[E0405]: cannot find trait `Add` in this scope
    |
 LL |         impl Add for Test {}
    |              ^^^ not found in this scope
-help: possible candidate is found in another module, you can import it into scope
+   |
+help: consider importing this trait
    |
 LL |         use std::ops::Add;
    |
 
-error[E0405]: cannot find trait `Clone` in this scope
+error[E0404]: expected trait, found derive macro `Clone`
   --> $DIR/no-implicit-prelude-nested.rs:12:14
    |
 LL |         impl Clone for Test {}
-   |              ^^^^^ not found in this scope
-help: possible candidates are found in other modules, you can import them into scope
+   |              ^^^^^ not a trait
+   |
+help: consider importing one of these items instead
    |
 LL |         use std::clone::Clone;
    |
@@ -25,7 +27,8 @@ error[E0405]: cannot find trait `Iterator` in this scope
    |
 LL |         impl Iterator for Test {}
    |              ^^^^^^^^ not found in this scope
-help: possible candidates are found in other modules, you can import them into scope
+   |
+help: consider importing one of these items
    |
 LL |         use std::iter::Iterator;
    |
@@ -37,7 +40,8 @@ error[E0405]: cannot find trait `ToString` in this scope
    |
 LL |         impl ToString for Test {}
    |              ^^^^^^^^ not found in this scope
-help: possible candidates are found in other modules, you can import them into scope
+   |
+help: consider importing one of these items
    |
 LL |         use std::prelude::v1::ToString;
    |
@@ -55,7 +59,8 @@ error[E0425]: cannot find function `drop` in this scope
    |
 LL |             drop(2)
    |             ^^^^ not found in this scope
-help: possible candidates are found in other modules, you can import them into scope
+   |
+help: consider importing one of these items
    |
 LL |         use std::mem::drop;
    |
@@ -67,17 +72,19 @@ error[E0405]: cannot find trait `Add` in this scope
    |
 LL |     impl Add for Test {}
    |          ^^^ not found in this scope
-help: possible candidate is found in another module, you can import it into scope
+   |
+help: consider importing this trait
    |
 LL |     use std::ops::Add;
    |
 
-error[E0405]: cannot find trait `Clone` in this scope
+error[E0404]: expected trait, found derive macro `Clone`
   --> $DIR/no-implicit-prelude-nested.rs:24:10
    |
 LL |     impl Clone for Test {}
-   |          ^^^^^ not found in this scope
-help: possible candidates are found in other modules, you can import them into scope
+   |          ^^^^^ not a trait
+   |
+help: consider importing one of these items instead
    |
 LL |     use std::clone::Clone;
    |
@@ -89,7 +96,8 @@ error[E0405]: cannot find trait `Iterator` in this scope
    |
 LL |     impl Iterator for Test {}
    |          ^^^^^^^^ not found in this scope
-help: possible candidates are found in other modules, you can import them into scope
+   |
+help: consider importing one of these items
    |
 LL |     use std::iter::Iterator;
    |
@@ -101,7 +109,8 @@ error[E0405]: cannot find trait `ToString` in this scope
    |
 LL |     impl ToString for Test {}
    |          ^^^^^^^^ not found in this scope
-help: possible candidates are found in other modules, you can import them into scope
+   |
+help: consider importing one of these items
    |
 LL |     use std::prelude::v1::ToString;
    |
@@ -119,7 +128,8 @@ error[E0425]: cannot find function `drop` in this scope
    |
 LL |         drop(2)
    |         ^^^^ not found in this scope
-help: possible candidates are found in other modules, you can import them into scope
+   |
+help: consider importing one of these items
    |
 LL |     use std::mem::drop;
    |
@@ -131,17 +141,19 @@ error[E0405]: cannot find trait `Add` in this scope
    |
 LL |         impl Add for Test {}
    |              ^^^ not found in this scope
-help: possible candidate is found in another module, you can import it into scope
+   |
+help: consider importing this trait
    |
 LL |         use std::ops::Add;
    |
 
-error[E0405]: cannot find trait `Clone` in this scope
+error[E0404]: expected trait, found derive macro `Clone`
   --> $DIR/no-implicit-prelude-nested.rs:39:14
    |
 LL |         impl Clone for Test {}
-   |              ^^^^^ not found in this scope
-help: possible candidates are found in other modules, you can import them into scope
+   |              ^^^^^ not a trait
+   |
+help: consider importing one of these items instead
    |
 LL |         use std::clone::Clone;
    |
@@ -153,7 +165,8 @@ error[E0405]: cannot find trait `Iterator` in this scope
    |
 LL |         impl Iterator for Test {}
    |              ^^^^^^^^ not found in this scope
-help: possible candidates are found in other modules, you can import them into scope
+   |
+help: consider importing one of these items
    |
 LL |         use std::iter::Iterator;
    |
@@ -165,7 +178,8 @@ error[E0405]: cannot find trait `ToString` in this scope
    |
 LL |         impl ToString for Test {}
    |              ^^^^^^^^ not found in this scope
-help: possible candidates are found in other modules, you can import them into scope
+   |
+help: consider importing one of these items
    |
 LL |         use std::prelude::v1::ToString;
    |
@@ -183,7 +197,8 @@ error[E0425]: cannot find function `drop` in this scope
    |
 LL |             drop(2)
    |             ^^^^ not found in this scope
-help: possible candidates are found in other modules, you can import them into scope
+   |
+help: consider importing one of these items
    |
 LL |         use std::mem::drop;
    |
@@ -192,5 +207,5 @@ LL |         use std::prelude::v1::drop;
 
 error: aborting due to 18 previous errors
 
-Some errors have detailed explanations: E0405, E0425.
-For more information about an error, try `rustc --explain E0405`.
+Some errors have detailed explanations: E0404, E0405, E0425.
+For more information about an error, try `rustc --explain E0404`.

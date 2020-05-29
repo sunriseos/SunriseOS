@@ -1,5 +1,6 @@
+use super::crt_objects::CrtObjectsFallback;
+use super::{LinkerFlavor, LldFlavor, PanicStrategy, RelocModel, TargetOptions, TlsModel};
 use std::collections::BTreeMap;
-use super::{LldFlavor, TargetOptions, PanicStrategy, LinkerFlavor};
 
 pub fn options() -> TargetOptions {
     let mut lld_args = Vec::new();
@@ -81,7 +82,7 @@ pub fn options() -> TargetOptions {
         dynamic_linking: true,
         only_cdylib: true,
 
-        // This means we'll just embed a `start` function in the wasm module
+        // This means we'll just embed a `#[start]` function in the wasm module
         executables: true,
 
         // relatively self-explanatory!
@@ -123,6 +124,8 @@ pub fn options() -> TargetOptions {
 
         pre_link_args,
 
+        crt_objects_fallback: Some(CrtObjectsFallback::Wasm),
+
         // This has no effect in LLVM 8 or prior, but in LLVM 9 and later when
         // PIC code is implemented this has quite a drastric effect if it stays
         // at the default, `pic`. In an effort to keep wasm binaries as minimal
@@ -130,8 +133,19 @@ pub fn options() -> TargetOptions {
         // that eventually we can ship a `pic`-compatible standard library which
         // works with `static` as well (or works with some method of generating
         // non-relative calls and such later on).
-        relocation_model: "static".to_string(),
+        relocation_model: RelocModel::Static,
 
-        .. Default::default()
+        // When the atomics feature is activated then these two keys matter,
+        // otherwise they're basically ignored by the standard library. In this
+        // mode, however, the `#[thread_local]` attribute works (i.e.
+        // `has_elf_tls`) and we need to get it to work by specifying
+        // `local-exec` as that's all that's implemented in LLVM today for wasm.
+        has_elf_tls: true,
+        tls_model: TlsModel::LocalExec,
+
+        // gdb scripts don't work on wasm blobs
+        emit_debug_gdb_scripts: false,
+
+        ..Default::default()
     }
 }

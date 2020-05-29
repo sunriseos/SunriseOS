@@ -14,6 +14,14 @@ note: candidate #2 is defined in an impl of the trait `Add` for the type `isize`
    |
 LL |     fn to_int(&self) -> isize { *self }
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+help: disambiguate the associated function for candidate #1
+   |
+LL |         ToPrimitive::to_int(&self) + other.to_int()
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: disambiguate the associated function for candidate #2
+   |
+LL |         Add::to_int(&self) + other.to_int()
+   |         ^^^^^^^^^^^^^^^^^^
 
 error: aborting due to previous error
 

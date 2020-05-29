@@ -1,11 +1,11 @@
 #![feature(const_fn)]
 
 const ARR_LEN: usize = Tt::const_val::<[i8; 123]>();
-//~^ ERROR constant contains unimplemented expression type
+//~^ ERROR type annotations needed
 
 trait Tt {
     const fn const_val<T: Sized>() -> usize {
-    //~^ ERROR trait fns cannot be declared const
+        //~^ ERROR functions in traits cannot be declared const
         core::mem::size_of::<T>()
     }
 }

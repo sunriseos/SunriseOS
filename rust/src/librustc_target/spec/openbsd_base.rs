@@ -1,18 +1,19 @@
-use crate::spec::{LinkArgs, LinkerFlavor, TargetOptions, RelroLevel};
-use std::default::Default;
+use crate::spec::{LinkArgs, LinkerFlavor, RelroLevel, TargetOptions};
 
 pub fn opts() -> TargetOptions {
     let mut args = LinkArgs::new();
-    args.insert(LinkerFlavor::Gcc, vec![
-        // GNU-style linkers will use this to omit linking to libraries
-        // which don't actually fulfill any relocations, but only for
-        // libraries which follow this flag.  Thus, use it before
-        // specifying libraries to link to.
-        "-Wl,--as-needed".to_string(),
-
-        // Always enable NX protection when it is available
-        "-Wl,-z,noexecstack".to_string(),
-    ]);
+    args.insert(
+        LinkerFlavor::Gcc,
+        vec![
+            // GNU-style linkers will use this to omit linking to libraries
+            // which don't actually fulfill any relocations, but only for
+            // libraries which follow this flag.  Thus, use it before
+            // specifying libraries to link to.
+            "-Wl,--as-needed".to_string(),
+            // Always enable NX protection when it is available
+            "-Wl,-z,noexecstack".to_string(),
+        ],
+    );
 
     TargetOptions {
         dynamic_linking: true,
@@ -25,6 +26,6 @@ pub fn opts() -> TargetOptions {
         position_independent_executables: true,
         eliminate_frame_pointer: false, // FIXME 43575
         relro_level: RelroLevel::Full,
-        .. Default::default()
+        ..Default::default()
     }
 }

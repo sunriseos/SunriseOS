@@ -3,12 +3,14 @@
 	font-family: 'Fira Sans';
 	font-style: normal;
 	font-weight: 400;
+	font-display: optional;
 	src: local('Fira Sans'), url("FiraSans-Regular.woff") format('woff');
 }
 @font-face {
 	font-family: 'Fira Sans';
 	font-style: normal;
 	font-weight: 500;
+	font-display: optional;
 	src: local('Fira Sans Medium'), url("FiraSans-Medium.woff") format('woff');
 }
 
@@ -17,18 +19,23 @@
 	font-family: 'Source Serif Pro';
 	font-style: normal;
 	font-weight: 400;
+	/* The difference for body text without this font is greater than other fonts,
+	 * so the 0~100ms block of fallback is preferred over optional, for legibility. */
+	font-display: fallback;
 	src: local('Source Serif Pro'), url("SourceSerifPro-Regular.ttf.woff") format('woff');
 }
 @font-face {
 	font-family: 'Source Serif Pro';
 	font-style: italic;
 	font-weight: 400;
+	font-display: optional;
 	src: local('Source Serif Pro Italic'), url("SourceSerifPro-It.ttf.woff") format('woff');
 }
 @font-face {
 	font-family: 'Source Serif Pro';
 	font-style: normal;
 	font-weight: 700;
+	font-display: optional;
 	src: local('Source Serif Pro Bold'), url("SourceSerifPro-Bold.ttf.woff") format('woff');
 }
 
@@ -37,6 +44,7 @@
 	font-family: 'Source Code Pro';
 	font-style: normal;
 	font-weight: 400;
+	font-display: optional;
 	/* Avoid using locally installed font because bad versions are in circulation:
 	 * see https://github.com/rust-lang/rust/issues/24355 */
 	src: url("SourceCodePro-Regular.woff") format('woff');
@@ -45,6 +53,7 @@
 	font-family: 'Source Code Pro';
 	font-style: normal;
 	font-weight: 600;
+	font-display: optional;
 	src: url("SourceCodePro-Semibold.woff") format('woff');
 }
 
@@ -52,6 +61,21 @@
   -webkit-box-sizing: border-box;
 	 -moz-box-sizing: border-box;
 		  box-sizing: border-box;
+}
+
+/* This part handles the "default" theme being used depending on the system one. */
+html {
+	content: "";
+}
+@media (prefers-color-scheme: light) {
+	html {
+		content: "light";
+	}
+}
+@media (prefers-color-scheme: dark) {
+	html {
+		content: "dark";
+	}
 }
 
 /* General structure and fonts */
@@ -121,18 +145,15 @@ summary {
 	outline: none;
 }
 
-code, pre {
+code, pre, a.test-arrow {
 	font-family: "Source Code Pro", monospace;
 }
 .docblock code, .docblock-short code {
 	border-radius: 3px;
 	padding: 0 0.1em;
 }
-.docblock pre code, .docblock-short pre code, .docblock code.spotlight {
+.docblock pre code, .docblock-short pre code {
 	padding: 0;
-}
-.docblock code.spotlight :last-child {
-	padding-bottom: 0.6em;
 }
 pre {
 	padding: 14px;
@@ -168,8 +189,27 @@ nav.sub {
 	position: fixed;
 	left: 0;
 	top: 0;
-	height: 100vh;
+	bottom: 0;
 	overflow: auto;
+}
+
+/* Improve the scrollbar display on firefox */
+* {
+	scrollbar-width: initial;
+}
+.sidebar {
+	scrollbar-width: thin;
+}
+
+/* Improve the scrollbar display on webkit-based browsers */
+::-webkit-scrollbar {
+	width: 12px;
+}
+.sidebar::-webkit-scrollbar {
+	width: 8px;
+}
+::-webkit-scrollbar-track {
+	-webkit-box-shadow: inset 0;
 }
 
 .sidebar .block > ul > li {
@@ -182,7 +222,7 @@ nav.sub {
 
 /* Everything else */
 
-.js-only, .hidden {
+.hidden {
 	display: none !important;
 }
 
@@ -290,6 +330,7 @@ nav.sub {
 .rustdoc:not(.source) .example-wrap {
 	display: inline-flex;
 	margin-bottom: 10px;
+	position: relative;
 }
 
 .example-wrap {
@@ -361,7 +402,7 @@ nav.sub {
 	text-overflow: ellipsis;
 	margin: 0;
 }
-.docblock-short code {
+.docblock code, .docblock-short code {
 	white-space: pre-wrap;
 }
 
@@ -487,7 +528,7 @@ h4 > code, h3 > code, .invisible > code {
 	font-size: 0.8em;
 }
 
-.content .methods > div:not(.important-traits) {
+.content .methods > div {
 	margin-left: 40px;
 	margin-bottom: 15px;
 }
@@ -527,11 +568,11 @@ h4 > code, h3 > code, .invisible > code {
 }
 
 .content .stability::before {
-	content: '˪';
-	font-size: 30px;
+	content: '⬑';
+	font-size: 25px;
 	position: absolute;
-	top: -9px;
-	left: -13px;
+	top: -6px;
+	left: -19px;
 }
 
 .content .impl-items .method, .content .impl-items > .type, .impl-items > .associatedconstant {
@@ -558,7 +599,7 @@ h4 > code, h3 > code, .invisible > code {
 	margin-top: 0;
 }
 
-nav {
+nav:not(.sidebar) {
 	border-bottom: 1px solid;
 	padding-bottom: 10px;
 	margin-bottom: 10px;
@@ -593,7 +634,7 @@ a {
 	display: initial;
 }
 
-.in-band:hover > .anchor {
+.in-band:hover > .anchor, .impl:hover > .anchor {
 	display: inline-block;
 	position: absolute;
 }
@@ -863,6 +904,7 @@ a.test-arrow {
 	font-size: 130%;
 	top: 5px;
 	right: 5px;
+	z-index: 1;
 }
 a.test-arrow:hover{
 	text-decoration: none;
@@ -1018,7 +1060,7 @@ h3 > .collapse-toggle, h4 > .collapse-toggle {
 
 .information {
 	position: absolute;
-	left: -20px;
+	left: -25px;
 	margin-top: 7px;
 	z-index: 1;
 }
@@ -1033,12 +1075,13 @@ h3 > .collapse-toggle, h4 > .collapse-toggle {
 	width: 120px;
 	display: none;
 	text-align: center;
-	padding: 5px 3px;
+	padding: 5px 3px 3px 3px;
 	border-radius: 6px;
 	margin-left: 5px;
 	top: -5px;
 	left: 105%;
 	z-index: 10;
+	font-size: 16px;
 }
 
 .tooltip:hover .tooltiptext {
@@ -1049,20 +1092,26 @@ h3 > .collapse-toggle, h4 > .collapse-toggle {
 	content: " ";
 	position: absolute;
 	top: 50%;
-	left: 11px;
+	left: 16px;
 	margin-top: -5px;
 	border-width: 5px;
 	border-style: solid;
 }
 
-.important-traits .tooltip .tooltiptext {
+.tooltip.compile_fail, .tooltip.ignore {
+	font-weight: bold;
+	font-size: 20px;
+}
+
+.tooltip .tooltiptext {
 	border: 1px solid;
+	font-weight: normal;
 }
 
 pre.rust {
 	position: relative;
-	tab-width: 4;
-	-moz-tab-width: 4;
+	tab-size: 4;
+	-moz-tab-size: 4;
 }
 
 .search-failed {
@@ -1098,17 +1147,6 @@ pre.rust {
 #titles > div > div.count {
 	display: inline-block;
 	font-size: 16px;
-}
-
-.important-traits {
-	cursor: pointer;
-	z-index: 2;
-}
-
-h4 > .important-traits {
-	position: absolute;
-	left: -44px;
-	top: 2px;
 }
 
 #all-types {
@@ -1337,12 +1375,6 @@ h4 > .important-traits {
 		z-index: 1;
 	}
 
-	h4 > .important-traits {
-		position: absolute;
-		left: -22px;
-		top: 24px;
-	}
-
 	#titles > div > div.count {
 		float: left;
 		width: 100%;
@@ -1445,80 +1477,10 @@ h4 > .important-traits {
 	}
 }
 
-.modal {
-	position: fixed;
-	width: 100vw;
-	height: 100vh;
-	z-index: 10000;
-	top: 0;
-	left: 0;
-}
-
-.modal-content {
-	display: block;
-	max-width: 60%;
-	min-width: 200px;
-	padding: 8px;
-	top: 40%;
-	position: absolute;
-	left: 50%;
-	transform: translate(-50%, -40%);
-	border: 1px solid;
-	border-radius: 4px;
-	border-top-right-radius: 0;
-}
-
-.modal-content > .docblock {
-	margin: 0;
-}
-
 h3.important {
 	margin: 0;
 	margin-bottom: 13px;
 	font-size: 19px;
-}
-
-.modal-content > .docblock > code.content {
-	margin: 0;
-	padding: 0;
-	font-size: 20px;
-}
-
-.modal-content > .close {
-	position: absolute;
-	font-weight: 900;
-	right: -25px;
-	top: -1px;
-	font-size: 18px;
-	width: 25px;
-	padding-right: 2px;
-	border-top-right-radius: 5px;
-	border-bottom-right-radius: 5px;
-	text-align: center;
-	border: 1px solid;
-	border-right: 0;
-	cursor: pointer;
-}
-
-.modal-content > .whiter {
-	height: 25px;
-	position: absolute;
-	width: 3px;
-	right: -2px;
-	top: 0px;
-}
-
-#main > div.important-traits {
-	position: absolute;
-	left: -24px;
-	margin-top: 16px;
-}
-
-.content > .methods > .method > div.important-traits {
-	position: absolute;
-	font-weight: 400;
-	left: -42px;
-	margin-top: 2px;
 }
 
 kbd {

@@ -67,7 +67,6 @@ fn install_sh(
     let sysconfdir_default = PathBuf::from("/etc");
     let datadir_default = PathBuf::from("share");
     let docdir_default = datadir_default.join("doc/rust");
-    let bindir_default = PathBuf::from("bin");
     let libdir_default = PathBuf::from("lib");
     let mandir_default = datadir_default.join("man");
     let prefix = builder.config.prefix.as_ref().map_or(prefix_default, |p| {
@@ -76,7 +75,7 @@ fn install_sh(
     let sysconfdir = builder.config.sysconfdir.as_ref().unwrap_or(&sysconfdir_default);
     let datadir = builder.config.datadir.as_ref().unwrap_or(&datadir_default);
     let docdir = builder.config.docdir.as_ref().unwrap_or(&docdir_default);
-    let bindir = builder.config.bindir.as_ref().unwrap_or(&bindir_default);
+    let bindir = &builder.config.bindir;
     let libdir = builder.config.libdir.as_ref().unwrap_or(&libdir_default);
     let mandir = builder.config.mandir.as_ref().unwrap_or(&mandir_default);
 
@@ -127,9 +126,8 @@ fn add_destdir(path: &Path, destdir: &Option<PathBuf>) -> PathBuf {
         None => return path.to_path_buf(),
     };
     for part in path.components() {
-        match part {
-            Component::Normal(s) => ret.push(s),
-            _ => {}
+        if let Component::Normal(s) = part {
+            ret.push(s)
         }
     }
     ret
@@ -216,10 +214,8 @@ install!((self, builder, _config),
         }
     };
     Clippy, "clippy", Self::should_build(_config), only_hosts: true, {
-        if builder.ensure(dist::Clippy {
-            compiler: self.compiler,
-            target: self.target,
-        }).is_some() || Self::should_install(builder) {
+        builder.ensure(dist::Clippy { compiler: self.compiler, target: self.target });
+        if Self::should_install(builder) {
             install_clippy(builder, self.compiler.stage, self.target);
         } else {
             builder.info(
@@ -261,7 +257,7 @@ install!((self, builder, _config),
     };
     Rustc, "src/librustc", true, only_hosts: true, {
         builder.ensure(dist::Rustc {
-            compiler: self.compiler,
+            compiler: builder.compiler(builder.top_stage, self.target),
         });
         install_rustc(builder, self.compiler.stage, self.target);
     };

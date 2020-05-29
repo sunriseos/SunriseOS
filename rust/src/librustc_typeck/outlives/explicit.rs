@@ -1,6 +1,6 @@
-use rustc::hir::def_id::DefId;
-use rustc::ty::{self, OutlivesPredicate, TyCtxt};
-use crate::util::nodemap::FxHashMap;
+use rustc_data_structures::fx::FxHashMap;
+use rustc_hir::def_id::DefId;
+use rustc_middle::ty::{self, OutlivesPredicate, TyCtxt};
 
 use super::utils::*;
 
@@ -11,9 +11,7 @@ pub struct ExplicitPredicatesMap<'tcx> {
 
 impl<'tcx> ExplicitPredicatesMap<'tcx> {
     pub fn new() -> ExplicitPredicatesMap<'tcx> {
-        ExplicitPredicatesMap {
-            map: FxHashMap::default(),
-        }
+        ExplicitPredicatesMap { map: FxHashMap::default() }
     }
 
     pub fn explicit_predicates_of(
@@ -30,30 +28,38 @@ impl<'tcx> ExplicitPredicatesMap<'tcx> {
             let mut required_predicates = RequiredPredicates::default();
 
             // process predicates and convert to `RequiredPredicates` entry, see below
-            for (pred, _) in predicates.predicates.iter() {
-                match pred {
-                    ty::Predicate::TypeOutlives(predicate) => {
+            for &(predicate, span) in predicates.predicates {
+                match predicate.kind() {
+                    ty::PredicateKind::TypeOutlives(predicate) => {
                         let OutlivesPredicate(ref ty, ref reg) = predicate.skip_binder();
-                        insert_outlives_predicate(tcx, (*ty).into(), reg, &mut required_predicates)
+                        insert_outlives_predicate(
+                            tcx,
+                            (*ty).into(),
+                            reg,
+                            span,
+                            &mut required_predicates,
+                        )
                     }
 
-                    ty::Predicate::RegionOutlives(predicate) => {
+                    ty::PredicateKind::RegionOutlives(predicate) => {
                         let OutlivesPredicate(ref reg1, ref reg2) = predicate.skip_binder();
                         insert_outlives_predicate(
                             tcx,
                             (*reg1).into(),
                             reg2,
+                            span,
                             &mut required_predicates,
                         )
                     }
 
-                    ty::Predicate::Trait(..)
-                    | ty::Predicate::Projection(..)
-                    | ty::Predicate::WellFormed(..)
-                    | ty::Predicate::ObjectSafe(..)
-                    | ty::Predicate::ClosureKind(..)
-                    | ty::Predicate::Subtype(..)
-                    | ty::Predicate::ConstEvaluatable(..) => (),
+                    ty::PredicateKind::Trait(..)
+                    | ty::PredicateKind::Projection(..)
+                    | ty::PredicateKind::WellFormed(..)
+                    | ty::PredicateKind::ObjectSafe(..)
+                    | ty::PredicateKind::ClosureKind(..)
+                    | ty::PredicateKind::Subtype(..)
+                    | ty::PredicateKind::ConstEvaluatable(..)
+                    | ty::PredicateKind::ConstEquate(..) => (),
                 }
             }
 
