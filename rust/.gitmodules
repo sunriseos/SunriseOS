@@ -1,3 +1,0 @@
-[submodule "src/stdarch"]
-	path = src/stdarch
-	url = https://github.com/rust-lang/stdarch.git
