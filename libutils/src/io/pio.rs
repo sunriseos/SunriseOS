@@ -35,7 +35,7 @@ impl Io for Pio<u8> {
     fn read(&self) -> u8 {
         let value: u8;
         unsafe {
-            asm!("in $0, $1" : "={al}"(value) : "{dx}"(self.port) : "memory" : "intel", "volatile");
+            llvm_asm!("in $0, $1" : "={al}"(value) : "{dx}"(self.port) : "memory" : "intel", "volatile");
         }
         value
     }
@@ -44,7 +44,7 @@ impl Io for Pio<u8> {
     #[inline(always)]
     fn write(&mut self, value: u8) {
         unsafe {
-            asm!("out $1, $0" : : "{al}"(value), "{dx}"(self.port) : "memory" : "intel", "volatile");
+            llvm_asm!("out $1, $0" : : "{al}"(value), "{dx}"(self.port) : "memory" : "intel", "volatile");
         }
     }
 }
@@ -58,7 +58,7 @@ impl Io for Pio<u16> {
     fn read(&self) -> u16 {
         let value: u16;
         unsafe {
-            asm!("in $0, $1" : "={ax}"(value) : "{dx}"(self.port) : "memory" : "intel", "volatile");
+            llvm_asm!("in $0, $1" : "={ax}"(value) : "{dx}"(self.port) : "memory" : "intel", "volatile");
         }
         value
     }
@@ -67,7 +67,7 @@ impl Io for Pio<u16> {
     #[inline(always)]
     fn write(&mut self, value: u16) {
         unsafe {
-            asm!("out $1, $0" : : "{ax}"(value), "{dx}"(self.port) : "memory" : "intel", "volatile");
+            llvm_asm!("out $1, $0" : : "{ax}"(value), "{dx}"(self.port) : "memory" : "intel", "volatile");
         }
     }
 }
@@ -81,7 +81,7 @@ impl Io for Pio<u32> {
     fn read(&self) -> u32 {
         let value: u32;
         unsafe {
-            asm!("in $0, $1" : "={eax}"(value) : "{dx}"(self.port) : "memory" : "intel", "volatile");
+            llvm_asm!("in $0, $1" : "={eax}"(value) : "{dx}"(self.port) : "memory" : "intel", "volatile");
         }
         value
     }
@@ -90,7 +90,7 @@ impl Io for Pio<u32> {
     #[inline(always)]
     fn write(&mut self, value: u32) {
         unsafe {
-            asm!("out $1, $0" : : "{eax}"(value), "{dx}"(self.port) : "memory" : "intel", "volatile");
+            llvm_asm!("out $1, $0" : : "{eax}"(value), "{dx}"(self.port) : "memory" : "intel", "volatile");
         }
     }
 }

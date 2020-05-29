@@ -202,7 +202,7 @@ pub fn kernel_panic(panic_origin: &PanicOrigin) -> ! {
 
     let _ = writeln!(SerialLogger, "!!!!!!!!!!!!!!!END PANIC!!!!!!!!!!!!!!");
 
-    loop { unsafe { asm!("HLT"); } }
+    loop { unsafe { llvm_asm!("HLT"); } }
 }
 
 

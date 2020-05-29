@@ -44,7 +44,7 @@ pub mod instructions {
 
         /// Load GDT table.
         pub unsafe fn lgdt(gdt: DescriptorTablePointer) {
-            asm!("lgdt ($0)" :: "r" (&gdt) : "memory" : "volatile");
+            llvm_asm!("lgdt ($0)" :: "r" (&gdt) : "memory" : "volatile");
         }
 
         /// Store GDT table.
@@ -56,7 +56,7 @@ pub mod instructions {
                 };
                 // This *requires* the =*m bound. For whatever reason, using =r causes UB, the
                 // compiler starts wildly reordering SGDTs and LGDTs, even with volatile.
-                asm!("sgdt $0" : "=*m"(&mut out) :: "memory" : "volatile");
+                llvm_asm!("sgdt $0" : "=*m"(&mut out) :: "memory" : "volatile");
                 out
             }
         }
@@ -64,18 +64,18 @@ pub mod instructions {
 
         /// Load LDT table.
         pub unsafe fn lldt(ldt: SegmentSelector) {
-            asm!("lldt $0" :: "r" (ldt.0) : "memory");
+            llvm_asm!("lldt $0" :: "r" (ldt.0) : "memory");
         }
 
         // TODO: Goes somewhere else.
         /// Sets the task register to the given TSS segment.
         pub unsafe fn ltr(segment: SegmentSelector) {
-            asm!("ltr $0" :: "r"(segment.0));
+            llvm_asm!("ltr $0" :: "r"(segment.0));
         }
 
         /// Load IDT table.
         pub unsafe fn lidt(idt: DescriptorTablePointer) {
-            asm!("lidt ($0)" :: "r" (&idt) : "memory");
+            llvm_asm!("lidt ($0)" :: "r" (&idt) : "memory");
         }
     }
 
@@ -90,7 +90,7 @@ pub mod instructions {
         /// and return value on the stack and use lretq
         /// to reload cs and continue at 1:.
         pub unsafe fn set_cs(sel: SegmentSelector) {
-            asm!("pushl $0; \
+            llvm_asm!("pushl $0; \
                   pushl $$1f; \
                   lretl; \
                   1:" :: "ri" (u64::from(sel.0)) : "rax" "memory");
@@ -98,68 +98,68 @@ pub mod instructions {
 
         /// Reload stack segment register.
         pub unsafe fn load_ss(sel: SegmentSelector) {
-            asm!("movw $0, %ss " :: "r" (sel.0) : "memory");
+            llvm_asm!("movw $0, %ss " :: "r" (sel.0) : "memory");
         }
 
         /// Reload data segment register.
         pub unsafe fn load_ds(sel: SegmentSelector) {
-            asm!("movw $0, %ds " :: "r" (sel.0) : "memory");
+            llvm_asm!("movw $0, %ds " :: "r" (sel.0) : "memory");
         }
 
         /// Reload es segment register.
         pub unsafe fn load_es(sel: SegmentSelector) {
-            asm!("movw $0, %es " :: "r" (sel.0) : "memory");
+            llvm_asm!("movw $0, %es " :: "r" (sel.0) : "memory");
         }
 
         /// Reload fs segment register.
         pub unsafe fn load_fs(sel: SegmentSelector) {
-            asm!("movw $0, %fs " :: "r" (sel.0) : "memory");
+            llvm_asm!("movw $0, %fs " :: "r" (sel.0) : "memory");
         }
 
         /// Reload gs segment register.
         pub unsafe fn load_gs(sel: SegmentSelector) {
-            asm!("movw $0, %gs " :: "r" (sel.0) : "memory");
+            llvm_asm!("movw $0, %gs " :: "r" (sel.0) : "memory");
         }
 
         /// Returns the current value of the code segment register.
         pub fn cs() -> SegmentSelector {
             let segment: u16;
-            unsafe { asm!("mov %cs, $0" : "=r" (segment) ) };
+            unsafe { llvm_asm!("mov %cs, $0" : "=r" (segment) ) };
             SegmentSelector(segment)
         }
 
         /// Read the value of the stack segment register.
         pub fn ss() -> SegmentSelector {
             let segment: u16;
-            unsafe { asm!("mov %ss, $0" : "=r" (segment) ) };
+            unsafe { llvm_asm!("mov %ss, $0" : "=r" (segment) ) };
             SegmentSelector(segment)
         }
 
         /// Read the value of the data segment register.
         pub fn ds() -> SegmentSelector {
             let segment: u16;
-            unsafe { asm!("mov %ds, $0" : "=r" (segment) ) };
+            unsafe { llvm_asm!("mov %ds, $0" : "=r" (segment) ) };
             SegmentSelector(segment)
         }
 
         /// Read the value of the es segment register.
         pub fn es() -> SegmentSelector {
             let segment: u16;
-            unsafe { asm!("mov %es, $0" : "=r" (segment) ) };
+            unsafe { llvm_asm!("mov %es, $0" : "=r" (segment) ) };
             SegmentSelector(segment)
         }
 
         /// Read the value of the fs segment register.
         pub fn fs() -> SegmentSelector {
             let segment: u16;
-            unsafe { asm!("mov %fs, $0" : "=r" (segment) ) };
+            unsafe { llvm_asm!("mov %fs, $0" : "=r" (segment) ) };
             SegmentSelector(segment)
         }
 
         /// Read the value of the gs segment register.
         pub fn gs() -> SegmentSelector {
             let segment: u16;
-            unsafe { asm!("mov %gs, $0" : "=r" (segment) ) };
+            unsafe { llvm_asm!("mov %gs, $0" : "=r" (segment) ) };
             SegmentSelector(segment)
         }
     }
@@ -168,17 +168,17 @@ pub mod instructions {
 
         /// Enable interrupts
         pub unsafe fn sti() {
-            asm!("sti" :::: "volatile");
+            llvm_asm!("sti" :::: "volatile");
         }
 
         /// Disable interrupts
         pub unsafe fn cli() {
-            asm!("cli" :::: "volatile");
+            llvm_asm!("cli" :::: "volatile");
         }
 
         /// Waits until an interrupt is fired
         pub unsafe fn hlt() {
-            asm!("hlt" :::: "volatile");
+            llvm_asm!("hlt" :::: "volatile");
         }
 
         /// Returns whether interrupts are enabled.

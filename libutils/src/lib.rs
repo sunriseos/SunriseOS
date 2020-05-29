@@ -1,7 +1,7 @@
 //! A messy crate with various utilities shared between the user and kernel code.
 //! Should probably be further split into several useful libraries.
 
-#![feature(asm)]
+#![feature(llvm_asm)]
 #![no_std]
 
 // rustc warnings

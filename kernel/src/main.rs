@@ -10,7 +10,7 @@
 //! Currently doesn't do much, besides booting and printing Hello World on the
 //! screen. But hey, that's a start.
 
-#![feature(lang_items, start, asm, global_asm, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, allocator_api, box_syntax, no_more_cas, step_trait, step_trait_ext, thread_local, nll, doc_cfg, exclusive_range_pattern)]
+#![feature(lang_items, start, llvm_asm, global_asm, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, allocator_api, box_syntax, no_more_cas, step_trait, step_trait_ext, thread_local, nll, doc_cfg, exclusive_range_pattern)]
 #![no_std]
 #![cfg_attr(target_os = "none", no_main)]
 #![recursion_limit = "1024"]
@@ -107,7 +107,7 @@ use sunrise_libkern::process::*;
 /// This triggers the DoubleFault exception.
 unsafe fn force_double_fault() {
     loop {
-        asm!("push 0" :::: "intel", "volatile");
+        llvm_asm!("push 0" :::: "intel", "volatile");
     }
 }
 
@@ -195,7 +195,7 @@ fn main() {
 #[cfg(any(target_os = "none", rustdoc))]
 #[no_mangle]
 pub unsafe extern fn start() -> ! {
-    asm!("
+    llvm_asm!("
         // Memset the bss. Hopefully memset doesn't actually use the bss...
         mov eax, BSS_END
         sub eax, BSS_START
@@ -269,7 +269,7 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     // We shouldn't reach this...
     loop {
         #[cfg(target_os = "none")]
-        unsafe { asm!("HLT"); }
+        unsafe { llvm_asm!("HLT"); }
     }
 }
 

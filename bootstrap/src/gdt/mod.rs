@@ -147,12 +147,12 @@ impl DescriptorTable {
             // For some reason, I can only far jmp using AT&T syntax... Which
             // makes me unbelievably sad. I should probably yell at LLVM for
             // this one.
-            asm!("
+            llvm_asm!("
             // Reload CS through far jmp
             ljmp $$0x8, $$reload_CS
             reload_CS:");
 
-            asm!("
+            llvm_asm!("
             // Reload other selectors
             MOV   AX, $0
             MOV   DS, AX

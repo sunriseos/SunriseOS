@@ -201,7 +201,7 @@ const_assert_eq!((GdtIndex::UTlsElf as u16) << 3 | 0b11, 0x43);
 ///
 /// ## Usage
 ///
-/// This macro is intended to be inserted in an `asm!()` block, like this:
+/// This macro is intended to be inserted in an `llvm_asm!()` block, like this:
 ///
 /// ```rust
 /// extern "C" fn my_isr_function(userspace_context: &mut UserspaceHardwareContext) {
@@ -209,12 +209,12 @@ const_assert_eq!((GdtIndex::UTlsElf as u16) << 3 | 0b11, 0x43);
 /// }
 ///
 /// unsafe {
-///     asm!(trap_gate_asm!(has_errorcode: false)
+///     llvm_asm!(trap_gate_asm!(has_errorcode: false)
 ///         :: "i"(my_isr_function as *const u8) :: "volatile", "intel");
 /// }
 /// ```
 ///
-/// Because `asm!()` expects a literal, `trap_gate_asm` needs to be macro.
+/// Because `llvm_asm!()` expects a literal, `trap_gate_asm` needs to be macro.
 ///
 /// ## Error code
 ///
@@ -274,7 +274,7 @@ macro_rules! trap_gate_asm {
         mov gs, ax
 
         // Call some rust code, passing it a pointer to the UserspaceHardwareContext
-        call $0
+        call ${0:P}
 
         // Handler finished, restore registers.
         add esp, 0x8 // pop and ignore the pushed arg ptr and esp cpy
@@ -364,7 +364,7 @@ macro_rules! trap_gate_asm {
 /// #[naked]
 /// extern "C" fn $wrapper_asm_fnname() {
 ///     unsafe {
-///         asm!(interrupt_gate_asm!(has_errorcode: $has_errcode)
+///         llvm_asm!(interrupt_gate_llvm_asm!(has_errorcode: $has_errcode)
 ///         :: "s"($wrapper_rust_fnname as extern "C" fn (&mut UserspaceHardwareContext) : "memory" : "volatile", "intel");
 ///     }
 /// }
@@ -518,7 +518,7 @@ macro_rules! generate_trap_gate_handler {
         #[naked]
         extern "C" fn $wrapper_asm_fnname() {
             unsafe {
-                asm!(trap_gate_asm!(has_errorcode: $errcode)
+                llvm_asm!(trap_gate_asm!(has_errorcode: $errcode)
                 :: "s"($wrapper_rust_fnname as extern "C" fn (&mut UserspaceHardwareContext)) : "memory" : "volatile", "intel");
             }
         }

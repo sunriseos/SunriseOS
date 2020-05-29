@@ -83,7 +83,7 @@ const DT_RELASZ: isize = 8;
 /// The size, in bytes, of the DT_RELA relocation entry.
 const DT_RELAENT: isize = 9;
 
-/// Indicates that all ElfRela RELATIVE relocations have been concatenated together, and specifies the RELATIVE relocation count. 
+/// Indicates that all ElfRela RELATIVE relocations have been concatenated together, and specifies the RELATIVE relocation count.
 const DT_RELACOUNT: isize = 0x6ffffff9;
 
 /// Similar to DT_RELA, except its table has implicit addends.
@@ -96,7 +96,7 @@ const DT_RELSZ: isize = 18;
 /// The size, in bytes, of the DT_REL relocation entry.
 const DT_RELENT: isize = 19;
 
-/// Indicates that all ElfRel RELATIVE relocations have been concatenated together, and specifies the RELATIVE relocation count. 
+/// Indicates that all ElfRel RELATIVE relocations have been concatenated together, and specifies the RELATIVE relocation count.
 const DT_RELCOUNT: isize = 0x6ffffffa;
 
 /// Relocation table entry without addend.

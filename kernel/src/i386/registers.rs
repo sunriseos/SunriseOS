@@ -7,7 +7,7 @@
 #[inline(never)]
 pub extern fn eip() -> usize {
     let eip;
-    unsafe { asm!("mov $0, [ebp + 4]" : "=r"(eip) ::: "intel"); }
+    unsafe { llvm_asm!("mov $0, [ebp + 4]" : "=r"(eip) ::: "intel"); }
     eip
 }
 
@@ -15,7 +15,7 @@ pub extern fn eip() -> usize {
 macro_rules! ebp {
     () => {{
         let ebp;
-        unsafe { asm!("mov $0, ebp" : "=r"(ebp) ::: "intel"); }
+        unsafe { llvm_asm!("mov $0, ebp" : "=r"(ebp) ::: "intel"); }
         ebp
     }}
 }
@@ -24,7 +24,7 @@ macro_rules! ebp {
 macro_rules! esp {
     () => {{
         let esp;
-        unsafe { asm!("mov $0, esp" : "=r"(esp) ::: "intel"); }
+        unsafe { llvm_asm!("mov $0, esp" : "=r"(esp) ::: "intel"); }
         esp
     }}
 }
@@ -99,7 +99,7 @@ pub mod eflags {
     /// Returns the raw current value of the EFLAGS register.
     pub fn read_raw() -> u32 {
         let r: u32;
-        unsafe { asm!("pushfd; pop $0" : "=r"(r) :: "memory") };
+        unsafe { llvm_asm!("pushfd; pop $0" : "=r"(r) :: "memory") };
         r
     }
 
@@ -116,6 +116,6 @@ pub mod eflags {
     ///
     /// Does not preserve any bits, including reserved bits.
     pub fn write_raw(val: u32) {
-        unsafe { asm!("pushd $0; popfd" :: "r"(val) : "memory" "flags") };
+        unsafe { llvm_asm!("pushd $0; popfd" :: "r"(val) : "memory" "flags") };
     }
 }

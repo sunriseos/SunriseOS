@@ -22,7 +22,7 @@
 //! fancy logging interfaces that the kernel has.
 //!
 
-#![feature(lang_items, start, asm, global_asm, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, doc_cfg)]
+#![feature(lang_items, start, llvm_asm, global_asm, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, doc_cfg)]
 #![no_std]
 #![cfg_attr(target_os = "none", no_main)]
 
@@ -83,7 +83,7 @@ pub static mut STACK: AlignedStack = AlignedStack([0; 4096 * 4]);
 pub fn print_stack() {
     unsafe {
         let sp: usize;
-        asm!("mov $0, esp" : "=r"(sp) : : : "intel");
+        llvm_asm!("mov $0, esp" : "=r"(sp) : : : "intel");
         let sp_start = sp - crate::STACK.0.as_ptr() as usize;
         sunrise_libutils::print_hexdump(&mut Serial, &crate::STACK.0[sp_start..]);
     }
@@ -101,7 +101,7 @@ pub fn print_stack() {
 #[cfg(any(target_os = "none", rustdoc))]
 #[no_mangle]
 pub unsafe extern fn bootstrap_start() -> ! {
-    asm!("
+    llvm_asm!("
         // Memset the bss. Hopefully memset doesn't actually use the bss...
         mov eax, BSS_END
         sub eax, BSS_START
@@ -176,7 +176,7 @@ pub extern "C" fn do_bootstrap(multiboot_info_addr: usize) -> ! {
 
     #[cfg(not(test))]
     unsafe {
-    asm!("
+    llvm_asm!("
         // save multiboot info pointer
         mov ebx, $0
 
@@ -215,7 +215,7 @@ pub extern fn panic_fmt(p: &::core::panic::PanicInfo<'_>) -> ! {
                                !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
                      p);
 
-    loop { unsafe { asm!("HLT"); } }
+    loop { unsafe { llvm_asm!("HLT"); } }
 }
 
 macro_rules! multiboot_header {

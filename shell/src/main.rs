@@ -3,7 +3,7 @@
 //! Creates an interactive terminal window, providing a few functions useful to
 //! test Sunrise. Type help followed by enter to get a list of allowed commands.
 
-#![feature(asm, naked_functions)]
+#![feature(llvm_asm, naked_functions)]
 #![no_std]
 
 // rustc warnings

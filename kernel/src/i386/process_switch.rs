@@ -111,7 +111,7 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
         gdt.commit(None, None, None, None, None, None);
 
         let current_esp: usize;
-        asm!("mov $0, esp" : "=r"(current_esp) : : : "intel", "volatile");
+        llvm_asm!("mov $0, esp" : "=r"(current_esp) : : : "intel", "volatile");
 
         // on restoring, esp will point to the top of the saved registers
         let esp_to_save = current_esp - (8 + 1 + 1) * size_of::<usize>();
@@ -152,7 +152,7 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
     let thread_b_whoami = Arc::into_raw(thread_b);
     let whoami: *const ThreadStruct;
 
-    asm!("
+    llvm_asm!("
     // Push all registers on the stack, swap to B's stack, and jump to B's schedule-in
     schedule_out:
         lea eax, resume // we push a callback function, called at the end of schedule-in
@@ -286,14 +286,14 @@ pub unsafe fn prepare_for_first_schedule(t: &ThreadStruct, entrypoint: usize, us
 unsafe fn first_schedule() {
     // just get the ProcessStruct pointer in $edi, the entrypoint in $eax, and call a rust function
     unsafe {
-        asm!("
+        llvm_asm!("
         push ebx
         push edx
         push ecx
         push eax
         push edi
-        call $0
-        " : : "i"(first_schedule_inner as *const u8) : : "volatile", "intel");
+        call ${0:P}
+        " : : "s"(first_schedule_inner as *const u8) : : "volatile", "intel");
     }
 
     /// Stack is set-up, now we can run rust code.
@@ -348,7 +348,7 @@ fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize, arg1: usize, arg2: 
     const_assert_eq!((GdtIndex::UTlsElf as u16) << 3 | 0b11, 0x43);
     const_assert_eq!((GdtIndex::UStack as u16) << 3 | 0b11, 0x4B);
     unsafe {
-        asm!("
+        llvm_asm!("
         mov ax,0x33  // ds, es <- UData, Ring 3
         mov ds,ax
         mov es,ax

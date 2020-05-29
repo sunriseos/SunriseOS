@@ -198,7 +198,7 @@ fn get_my_tls_region() -> *mut TLS {
     unsafe {
         // get the address of the TLS region from fs:0x00 translated to the flat model
         // safe: fs:0x00 is guaranteed by the kernel to hold a valid pointer to itself.
-        asm!("mov $0, fs:0x00" : "=r" (tls) ::: "intel");
+        llvm_asm!("mov $0, fs:0x00" : "=r" (tls) ::: "intel");
     }
     tls
 }
