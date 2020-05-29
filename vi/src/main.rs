@@ -4,7 +4,6 @@
 //! In the future, it will also be capable of talking to the GPU to provide an
 //! OpenGL abstraction layer.
 
-#![feature(const_vec_new, async_await)]
 #![no_std]
 
 // rustc warnings

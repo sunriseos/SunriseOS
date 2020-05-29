@@ -21,7 +21,6 @@
 //! by an unprivileged process.
 //! Service Manager
 
-#![feature(async_await)]
 #![no_std]
 
 // rustc warnings

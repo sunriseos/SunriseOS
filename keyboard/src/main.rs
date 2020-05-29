@@ -2,7 +2,7 @@
 //!
 //! This service takes care of anything related to keyboard inputs.
 
-#![feature(untagged_unions, async_await)]
+#![feature(untagged_unions)]
 #![no_std]
 
 // rustc warnings

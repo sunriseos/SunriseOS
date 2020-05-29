@@ -2,7 +2,7 @@
 //!
 //! A simple wrapper around linked_list_allocator. We catch the OomError, and
 //! try to expand the heap with more pages in that case.
-use core::alloc::{GlobalAlloc, Layout, AllocErr};
+use core::alloc::{GlobalAlloc, Layout};
 use crate::sync::{SpinLock, Once};
 use core::ops::Deref;
 use core::ptr::NonNull;
@@ -85,7 +85,7 @@ unsafe impl<'a> GlobalAlloc for Allocator {
         let size = layout.size();
         // If the heap is exhausted, then extend and attempt the allocation another time.
         let alloc = match allocation {
-            Err(AllocErr) => {
+            Err(()) => {
                 self.expand(size); // TODO: how much should I *really* expand by?
                 self.0.call_once(Self::init).lock().allocate_first_fit(layout)
             }

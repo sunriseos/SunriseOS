@@ -22,7 +22,7 @@
 //! fancy logging interfaces that the kernel has.
 //!
 
-#![feature(lang_items, start, asm, global_asm, compiler_builtins_lib, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, doc_cfg)]
+#![feature(lang_items, start, asm, global_asm, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, doc_cfg)]
 #![no_std]
 #![cfg_attr(target_os = "none", no_main)]
 

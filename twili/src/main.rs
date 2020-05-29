@@ -1,4 +1,3 @@
-#![feature(async_await)]
 #![no_std]
 
 extern crate alloc;

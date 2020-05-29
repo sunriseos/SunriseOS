@@ -202,22 +202,16 @@ impl VirtualAddress {
     pub fn ceil(self) -> VirtualAddress { VirtualAddress(round_to_page_upper(self.0)) }
 }
 
-impl core::iter::Step for PhysicalAddress {
+unsafe impl core::iter::Step for PhysicalAddress {
     fn steps_between(start: &Self, end: &Self) -> Option<usize> { Step::steps_between(&start.0, &end.0) }
-    fn replace_one(&mut self) -> Self { PhysicalAddress(Step::replace_one(&mut self.0)) }
-    fn replace_zero(&mut self) -> Self { PhysicalAddress(Step::replace_zero(&mut self.0)) }
-    fn add_one(&self) -> Self { PhysicalAddress(Step::add_one(&self.0)) }
-    fn sub_one(&self) -> Self { PhysicalAddress(Step::sub_one(&self.0)) }
-    fn add_usize(&self, n: usize) -> Option<Self> { self.0.add_usize(n).map(PhysicalAddress) }
+    fn forward_checked(start: Self, count: usize) -> Option<Self> { Step::forward_checked(start.0, count).map(PhysicalAddress) }
+    fn backward_checked(start: Self, count: usize) -> Option<Self> { Step::backward_checked(start.0, count).map(PhysicalAddress) }
 }
 
-impl core::iter::Step for VirtualAddress {
+unsafe impl core::iter::Step for VirtualAddress {
     fn steps_between(start: &Self, end: &Self) -> Option<usize> { Step::steps_between(&start.0, &end.0) }
-    fn replace_one(&mut self) -> Self { VirtualAddress(Step::replace_one(&mut self.0)) }
-    fn replace_zero(&mut self) -> Self { VirtualAddress(Step::replace_zero(&mut self.0)) }
-    fn add_one(&self) -> Self { VirtualAddress(Step::add_one(&self.0)) }
-    fn sub_one(&self) -> Self { VirtualAddress(Step::sub_one(&self.0)) }
-    fn add_usize(&self, n: usize) -> Option<Self> { self.0.add_usize(n).map(VirtualAddress) }
+    fn forward_checked(start: Self, count: usize) -> Option<Self> { Step::forward_checked(start.0, count).map(VirtualAddress) }
+    fn backward_checked(start: Self, count: usize) -> Option<Self> { Step::backward_checked(start.0, count).map(VirtualAddress) }
 }
 
 // TODO: Properly implement UserSpacePtr
@@ -229,7 +223,7 @@ impl core::iter::Step for VirtualAddress {
 // BODY: not mapped?).
 // BODY:
 // BODY: We also have to handle unsized types. Maybe have a get_ref() which
-// BODY: returns a &T? Maybe don't allow unsized types? I should check how 
+// BODY: returns a &T? Maybe don't allow unsized types? I should check how
 // BODY: Horizon/NX deals with it in sendsyncrequest (that's the only place that
 // BODY: allows huge data afaik)
 /// A pointer to read-only userspace memory. Prevents userspace from trying to

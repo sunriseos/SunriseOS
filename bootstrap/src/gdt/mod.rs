@@ -86,7 +86,7 @@ pub fn init_gdt() {
 
     let _ = writeln!(super::Serial, "Loading GDT");
     gdt.load_global(0x8, 0x10, 0x18);
-    unsafe { 
+    unsafe {
         let _ = writeln!(super::Serial, "Loading LDT");
         lldt(SegmentSelector(7 << 3));
         let _ = writeln!(super::Serial, "Loading Task");

@@ -21,7 +21,6 @@ CLIPPY_RULES = """
 -W clippy::explicit_iter_loop \
 -W clippy::missing_docs_in_private_items \
 -W clippy::mut_mut \
--W clippy::replace_consts \
 -W clippy::used_underscore_binding \
 -W clippy::wildcard_dependencies \
 -W clippy::wrong_pub_self_convention"""
@@ -341,20 +340,9 @@ args = ["test", "--target=i686-unknown-linux-gnu",
 description = "Run all the tests."
 dependencies = ["testdoc", "testinner"]
 
-[tasks.refresh-crates]
-description = "Make cargo-clippy work..."
-command = "touch"
-args = ["-c", "kernel/src/main.rs", "bootstrap/src/main.rs",
-	"shell/src/main.rs", "libuser/src/lib.rs", "wall-clock/src/main.rs",
-	"sm/src/main.rs", "vi/src/main.rs", "ahci/src/main.rs",
-	"libutils/src/lib.rs", "libkern/src/lib.rs", "swipc-gen/src/lib.rs",
-	"swipc-parser/src/lib.rs", "time/src/main.rs", "libtimezone/src/lib.rs",
-	"loader/src/main.rs", "keyboard/src/main.rs", "twili/src/main.rs"
-]
-
 [tasks.clippy-sunrise-kernel-target]
 description = "Run clippy on sunrise kernel and bootstrap"
-dependencies = ["install-xargo", "refresh-crates"]
+dependencies = ["install-xargo"]
 install_crate = { rustup_component_name = "clippy" }
 command = "xargo"
 args = ["clippy", "--target=i386-unknown-none",
@@ -367,7 +355,7 @@ args = ["clippy", "--target=i386-unknown-none",
 
 [tasks.clippy-sunrise-userspace-target-nostd]
 description = "Run clippy on sunrise userspace (no std)"
-dependencies = ["install-xargo", "refresh-crates"]
+dependencies = ["install-xargo"]
 install_crate = { rustup_component_name = "clippy" }
 command = "xargo"
 args = ["clippy", "--target=i386-unknown-sunrise-user",
@@ -391,7 +379,7 @@ args = ["clippy", "--target=i386-unknown-sunrise-user",
 
 [tasks.clippy-sunrise-userspace-target-std]
 description = "Run clippy on sunrise userspace (std)"
-dependencies = ["install-xargo", "refresh-crates"]
+dependencies = ["install-xargo"]
 install_crate = { rustup_component_name = "clippy" }
 command = "xargo"
 args = ["clippy", "--target=i386-unknown-sunrise-user",
@@ -404,7 +392,6 @@ args = ["clippy", "--target=i386-unknown-sunrise-user",
 
 [tasks.clippy-host-target]
 description = "Run clippy on host components (relying on std)"
-dependencies = ["refresh-crates"]
 install_crate = { rustup_component_name = "clippy" }
 command = "cargo"
 args = ["clippy",
