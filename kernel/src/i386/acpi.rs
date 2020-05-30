@@ -93,6 +93,10 @@ unsafe fn parse_rsdp_tag(memory_handler: &mut MemoryHandler, rsdp_virtual_addres
 }
 
 /// Parse ACPI tables and store them.
+///
+/// # Safety
+///
+/// May only be called once.
 pub unsafe fn init() {
     let mut handler = MemoryHandler;
     let mut is_init = false;

@@ -570,6 +570,11 @@ impl<F> IdtEntry<F> {
     ///
     /// The function returns a mutable reference to the entry's options that allows
     /// further customization.
+    ///
+    /// # Safety
+    ///
+    /// The provided addr must be a valid virtual address to a function
+    /// following the x86-interrupt ABI.
     pub unsafe fn set_interrupt_gate_addr(&mut self, addr: u32) -> &mut EntryOptions {
         use crate::i386::instructions::segmentation;
 
@@ -584,7 +589,7 @@ impl<F> IdtEntry<F> {
 
     /// Set a task gate for the IDT entry and sets the present bit.
     ///
-    /// # Unsafety
+    /// # Safety
     ///
     /// `tss_selector` must point to a valid TSS, which will remain present.
     /// The TSS' `eip` should point to the handler function.

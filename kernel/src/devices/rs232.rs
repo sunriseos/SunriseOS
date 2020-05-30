@@ -110,7 +110,7 @@ struct SerialInternal<T> {
 
 impl SerialInternal<Pio<u8>> {
     /// Creates a COM port from it's base IO address.
-    #[cfg(any(all(target_arch="x86", not(test)), rustdoc))]
+    #[cfg(any(all(target_arch="x86", not(test)), doc))]
     #[allow(unused)]
     pub fn new(com_port: ComPort) -> SerialInternal<Pio<u8>> {
         let mut data_port       = Pio::<u8>::new(com_port.0 + 0);

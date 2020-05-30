@@ -648,7 +648,7 @@ pub trait InactiveHierarchyTrait : TableHierarchy {
     /// These frames were marked as occupied when initialising the `FrameAllocator`,
     /// we're making them available again.
     ///
-    /// # Unsafety
+    /// # Safety
     ///
     /// Having multiple InactiveHierarchy pointing to the same table hierarchy is unsafe.
     /// Should not be used for any other purpose, it is only guaranteed to be safe to drop.

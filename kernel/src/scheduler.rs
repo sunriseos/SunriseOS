@@ -334,7 +334,7 @@ where
 /// The passed function should take care to change the protection level, and ensure it cleans up all
 /// the registers before calling the EIP, in order to avoid leaking information to userspace.
 ///
-/// # Unsafety:
+/// # Safety
 ///
 /// Interrupts must be off when calling this function. It will set [`CURRENT_THREAD`], and then
 /// turn them on, as we are running a new thread, no SpinLockIRQ is held.

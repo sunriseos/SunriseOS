@@ -191,7 +191,12 @@ fn main() {
 /// * gave us a valid KernelStack,
 /// * mapped grub's multiboot information structure in KernelLand (its address in $ebx),
 ///
-/// What we do is just bzero the .bss, and call a rust function, passing it the content of $ebx.
+/// What we do is just bzero the .bss, and call a rust function, passing it the
+/// content of $ebx.
+///
+/// # Safety
+///
+/// May only be called once, as the program entrypoint.
 #[cfg(any(target_os = "none", doc))]
 #[no_mangle]
 pub unsafe extern fn start() -> ! {

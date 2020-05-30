@@ -117,7 +117,7 @@ unsafe fn syscall(nr: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize,
 ///
 /// * `new_size` must be PAGE_SIZE aligned.
 ///
-/// # Unsafety
+/// # Safety
 ///
 /// This function can free memory, potentially invalidating references to structs that were in it.
 pub unsafe fn set_heap_size(new_size: usize) -> Result<usize, KernelError> {

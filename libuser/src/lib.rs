@@ -122,6 +122,10 @@ pub fn rust_oom(_: core::alloc::Layout) -> ! {
 
 /// calls logger initialization, main, and finally exits the
 /// process.
+///
+/// # Safety
+///
+///
 #[cfg(any(all(target_os = "sunrise", not(test), not(feature = "build-for-std-app")), doc))]
 #[no_mangle]
 pub unsafe extern fn real_start() -> ! {

@@ -22,22 +22,43 @@ pub mod instructions {
         }
 
         /// Load GDT table.
+        ///
+        /// # Safety
+        ///
+        /// The gdt argument must be a valid table pointer, containing a pointer
+        /// in physical memory to a correct GDT. The meaning of a "correct GDT"
+        /// is left as an exercise to the reader.
         pub unsafe fn lgdt(gdt: &DescriptorTablePointer) {
             llvm_asm!("lgdt ($0)" :: "r" (gdt) : "memory");
         }
 
         /// Load LDT table.
+        ///
+        /// # Safety
+        ///
+        /// The ldt must point to a valid LDT segment in the GDT. Note that
+        /// modifying the current LDT might cause pointer invalidation.
         pub unsafe fn lldt(ldt: SegmentSelector) {
             llvm_asm!("lldt $0" :: "r" (ldt.0) : "memory");
         }
 
         // TODO: Goes somewhere else.
         /// Sets the task register to the given TSS segment.
+        ///
+        /// # Safety
+        ///
+        /// segment must point to a valid TSS segment in the GDT.
         pub unsafe fn ltr(segment: SegmentSelector) {
             llvm_asm!("ltr $0" :: "r"(segment.0));
         }
 
         /// Load IDT table.
+        ///
+        /// # Safety
+        ///
+        /// The idt argument must be a valid table pointer, containing a pointer
+        /// in physical memory to a correct IDT. The meaning of a "correct IDT"
+        /// is left as an exercise to the reader.
         pub unsafe fn lidt(idt: &DescriptorTablePointer) {
             llvm_asm!("lidt ($0)" :: "r" (idt) : "memory");
         }
@@ -53,6 +74,13 @@ pub mod instructions {
         /// to %cs. Instead we push the new segment selector
         /// and return value on the stack and use lretq
         /// to reload cs and continue at 1:.
+        ///
+        /// # Safety
+        ///
+        /// Sel must point to a present, valid segment in the GDT or LDT.
+        /// Changing a segment will cause pointers to become invalidated. The
+        /// only sound way to use this function is if the target segment has the
+        /// same layout as the original segment.
         pub unsafe fn set_cs(sel: SegmentSelector) {
             llvm_asm!("pushl $0; \
                   pushl $$1f; \
@@ -61,26 +89,61 @@ pub mod instructions {
         }
 
         /// Reload stack segment register.
+        ///
+        /// # Safety
+        ///
+        /// Sel must point to a present, valid segment in the GDT or LDT.
+        /// Changing a segment will cause pointers to become invalidated. The
+        /// only sound way to use this function is if the target segment has the
+        /// same layout as the original segment.
         pub unsafe fn load_ss(sel: SegmentSelector) {
             llvm_asm!("movw $0, %ss " :: "r" (sel.0) : "memory");
         }
 
         /// Reload data segment register.
+        ///
+        /// # Safety
+        ///
+        /// Sel must point to a present, valid segment in the GDT or LDT.
+        /// Changing a segment will cause pointers to become invalidated. The
+        /// only sound way to use this function is if the target segment has the
+        /// same layout as the original segment.
         pub unsafe fn load_ds(sel: SegmentSelector) {
             llvm_asm!("movw $0, %ds " :: "r" (sel.0) : "memory");
         }
 
         /// Reload es segment register.
+        ///
+        /// # Safety
+        ///
+        /// Sel must point to a present, valid segment in the GDT or LDT.
+        /// Changing a segment will cause pointers to become invalidated. The
+        /// only sound way to use this function is if the target segment has the
+        /// same layout as the original segment.
         pub unsafe fn load_es(sel: SegmentSelector) {
             llvm_asm!("movw $0, %es " :: "r" (sel.0) : "memory");
         }
 
         /// Reload fs segment register.
+        ///
+        /// # Safety
+        ///
+        /// Sel must point to a present, valid segment in the GDT or LDT.
+        /// Changing a segment will cause pointers to become invalidated. The
+        /// only sound way to use this function is if the target segment has the
+        /// same layout as the original segment.
         pub unsafe fn load_fs(sel: SegmentSelector) {
             llvm_asm!("movw $0, %fs " :: "r" (sel.0) : "memory");
         }
 
         /// Reload gs segment register.
+        ///
+        /// # Safety
+        ///
+        /// Sel must point to a present, valid segment in the GDT or LDT.
+        /// Changing a segment will cause pointers to become invalidated. The
+        /// only sound way to use this function is if the target segment has the
+        /// same layout as the original segment.
         pub unsafe fn load_gs(sel: SegmentSelector) {
             llvm_asm!("movw $0, %gs " :: "r" (sel.0) : "memory");
         }
@@ -96,11 +159,22 @@ pub mod instructions {
         //! Interrupt disabling functionality.
 
         /// Enable interrupts
+        ///
+        /// # Safety
+        ///
+        /// Enabling interrupts when they are disabled can break critical
+        /// sections.
         pub unsafe fn sti() {
             llvm_asm!("sti" :::: "volatile");
         }
 
         /// Disable interrupts
+        ///
+        /// # Safety
+        ///
+        /// Should be paired with a call to [sti]. While interrupts are
+        /// disabled, care should be taken not to sleep in any way, as this will
+        /// cause a deadlock.
         pub unsafe fn cli() {
             llvm_asm!("cli" :::: "volatile");
         }

@@ -98,6 +98,10 @@ pub fn print_stack() {
 /// * bzero the .bss.
 /// * make $esp and $ebp point to [STACK].
 /// * call [do_bootstrap], passing it $ebx.
+///
+/// # Safety
+///
+/// This may only be called once, as the bootstrap entrypoint.
 #[cfg(any(target_os = "none", doc))]
 #[no_mangle]
 pub unsafe extern fn bootstrap_start() -> ! {

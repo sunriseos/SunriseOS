@@ -166,7 +166,7 @@ impl TLSManager {
 
     /// Mark this TLS as free, so it can be re-used by future spawned thread.
     ///
-    /// # Unsafety
+    /// # Safety
     ///
     /// The TLS will be reassigned, so it must never be used again after calling this function.
     ///

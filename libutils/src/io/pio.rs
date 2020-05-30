@@ -35,7 +35,7 @@ impl Io for Pio<u8> {
     fn read(&self) -> u8 {
         let value: u8;
         unsafe {
-            llvm_asm!("in $0, $1" : "={al}"(value) : "{dx}"(self.port) : "memory" : "intel", "volatile");
+           llvm_asm!("in $0, $1" : "={al}"(value) : "{dx}"(self.port) : "memory" : "intel", "volatile");
         }
         value
     }

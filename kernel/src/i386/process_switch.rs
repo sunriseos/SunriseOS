@@ -82,7 +82,7 @@ impl Default for ThreadHardwareContext {
 /// Panics if the locks protecting the ProcessStruct of current or B process cannot be obtained.
 /// Panics if the locks protecting the MAIN_TASK TSS or DOUBLE_FAULT_TSS cannot be obtained.
 ///
-/// # Safety:
+/// # Safety
 ///
 /// Interrupts definitely must be masked when calling this function
 #[inline(never)] // we need that sweet saved ebp + eip on the stack

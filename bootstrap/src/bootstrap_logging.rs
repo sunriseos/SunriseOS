@@ -8,6 +8,10 @@
 const COM1: u16 = 0x3F8;
 
 /// Init the rs232 COM1. Must be called before logging anything.
+///
+/// # Safety
+///
+/// May only be called once.
 pub unsafe fn init_bootstrap_log() {
     let _data_port      = COM1 + 0;
     let interrupt_port  = COM1 + 1;
