@@ -2,19 +2,23 @@
 //!
 //! Example checks are:
 //!
-//! * No lines over 100 characters.
-//! * No files with over 3000 lines.
+//! * No lines over 100 characters (in non-Rust files).
+//! * No files with over 3000 lines (in non-Rust files).
 //! * No tabs.
 //! * No trailing whitespace.
 //! * No CR characters.
 //! * No `TODO` or `XXX` directives.
 //! * No unexplained ` ```ignore ` or ` ```rust,ignore ` doc tests.
 //!
+//! Note that some of these rules are excluded from Rust files because we enforce rustfmt. It is
+//! preferable to be formatted rather than tidy-clean.
+//!
 //! A number of these checks can be opted-out of with various directives of the form:
 //! `// ignore-tidy-CHECK-NAME`.
 
 use std::path::Path;
 
+const ERROR_CODE_COLS: usize = 80;
 const COLS: usize = 100;
 
 const LINES: usize = 3000;
@@ -51,32 +55,33 @@ enum LIUState {
 /// Lines of this form are allowed to be overlength, because Markdown
 /// offers no way to split a line in the middle of a URL, and the lengths
 /// of URLs to external references are beyond our control.
-fn line_is_url(line: &str) -> bool {
+fn line_is_url(columns: usize, line: &str) -> bool {
+    // more basic check for error_codes.rs, to avoid complexity in implementing two state machines
+    if columns == ERROR_CODE_COLS {
+        return line.starts_with('[') && line.contains("]:") && line.contains("http");
+    }
+
     use self::LIUState::*;
     let mut state: LIUState = EXP_COMMENT_START;
     let is_url = |w: &str| w.starts_with("http://") || w.starts_with("https://");
 
     for tok in line.split_whitespace() {
         match (state, tok) {
-            (EXP_COMMENT_START, "//") |
-            (EXP_COMMENT_START, "///") |
-            (EXP_COMMENT_START, "//!") => state = EXP_LINK_LABEL_OR_URL,
+            (EXP_COMMENT_START, "//") | (EXP_COMMENT_START, "///") | (EXP_COMMENT_START, "//!") => {
+                state = EXP_LINK_LABEL_OR_URL
+            }
 
             (EXP_LINK_LABEL_OR_URL, w)
-                if w.len() >= 4 && w.starts_with('[') && w.ends_with("]:")
-                => state = EXP_URL,
+                if w.len() >= 4 && w.starts_with('[') && w.ends_with("]:") =>
+            {
+                state = EXP_URL
+            }
 
-            (EXP_LINK_LABEL_OR_URL, w)
-                if is_url(w)
-                => state = EXP_END,
+            (EXP_LINK_LABEL_OR_URL, w) if is_url(w) => state = EXP_END,
 
-            (EXP_URL, w)
-                if is_url(w) || w.starts_with("../")
-                => state = EXP_END,
+            (EXP_URL, w) if is_url(w) || w.starts_with("../") => state = EXP_END,
 
-            (_, w)
-                if w.len() > COLS && is_url(w)
-                => state = EXP_END,
+            (_, w) if w.len() > columns && is_url(w) => state = EXP_END,
 
             (_, _) => {}
         }
@@ -88,8 +93,8 @@ fn line_is_url(line: &str) -> bool {
 /// Returns `true` if `line` is allowed to be longer than the normal limit.
 /// Currently there is only one exception, for long URLs, but more
 /// may be added in the future.
-fn long_line_is_ok(line: &str) -> bool {
-    if line_is_url(line) {
+fn long_line_is_ok(max_columns: usize, line: &str) -> bool {
+    if line_is_url(max_columns, line) {
         return true;
     }
 
@@ -112,8 +117,9 @@ fn contains_ignore_directive(can_contain: bool, contents: &str, check: &str) -> 
         return Directive::Deny;
     }
     // Update `can_contain` when changing this
-    if contents.contains(&format!("// ignore-tidy-{}", check)) ||
-        contents.contains(&format!("# ignore-tidy-{}", check)) {
+    if contents.contains(&format!("// ignore-tidy-{}", check))
+        || contents.contains(&format!("# ignore-tidy-{}", check))
+    {
         Directive::Ignore(false)
     } else {
         Directive::Deny
@@ -134,37 +140,72 @@ pub fn check(path: &Path, bad: &mut bool) {
     super::walk(path, &mut super::filter_dirs, &mut |entry, contents| {
         let file = entry.path();
         let filename = file.file_name().unwrap().to_string_lossy();
-        let extensions = [".rs", ".py", ".js", ".sh", ".c", ".cpp", ".h"];
-        if extensions.iter().all(|e| !filename.ends_with(e)) ||
-           filename.starts_with(".#") {
-            return
+        let extensions = [".rs", ".py", ".js", ".sh", ".c", ".cpp", ".h", ".md"];
+        if extensions.iter().all(|e| !filename.ends_with(e)) || filename.starts_with(".#") {
+            return;
+        }
+
+        let under_rustfmt = filename.ends_with(".rs") &&
+            // This list should ideally be sourced from rustfmt.toml but we don't want to add a toml
+            // parser to tidy.
+            !file.ancestors().any(|a| {
+                a.ends_with("src/test") ||
+                    a.ends_with("src/libstd/sys/cloudabi") ||
+                    a.ends_with("src/doc/book")
+            });
+
+        if filename.ends_with(".md")
+            && file.parent().unwrap().file_name().unwrap().to_string_lossy() != "error_codes"
+        {
+            // We don't want to check all ".md" files (almost of of them aren't compliant
+            // currently), just the long error code explanation ones.
+            return;
         }
 
         if contents.is_empty() {
             tidy_error!(bad, "{}: empty file", file.display());
         }
 
-        let can_contain = contents.contains("// ignore-tidy-") ||
-            contents.contains("# ignore-tidy-");
+        let max_columns = if filename == "error_codes.rs" || filename.ends_with(".md") {
+            ERROR_CODE_COLS
+        } else {
+            COLS
+        };
+
+        let can_contain =
+            contents.contains("// ignore-tidy-") || contents.contains("# ignore-tidy-");
+        // Enable testing ICE's that require specific (untidy)
+        // file formats easily eg. `issue-1234-ignore-tidy.rs`
+        if filename.contains("ignore-tidy") {
+            return;
+        }
         let mut skip_cr = contains_ignore_directive(can_contain, &contents, "cr");
+        let mut skip_undocumented_unsafe =
+            contains_ignore_directive(can_contain, &contents, "undocumented-unsafe");
         let mut skip_tab = contains_ignore_directive(can_contain, &contents, "tab");
         let mut skip_line_length = contains_ignore_directive(can_contain, &contents, "linelength");
         let mut skip_file_length = contains_ignore_directive(can_contain, &contents, "filelength");
         let mut skip_end_whitespace =
             contains_ignore_directive(can_contain, &contents, "end-whitespace");
+        let mut skip_trailing_newlines =
+            contains_ignore_directive(can_contain, &contents, "trailing-newlines");
         let mut skip_copyright = contains_ignore_directive(can_contain, &contents, "copyright");
         let mut leading_new_lines = false;
         let mut trailing_new_lines = 0;
         let mut lines = 0;
+        let mut last_safety_comment = false;
         for (i, line) in contents.split('\n').enumerate() {
             let mut err = |msg: &str| {
                 tidy_error!(bad, "{}:{}: {}", file.display(), i + 1, msg);
             };
-            if line.chars().count() > COLS && !long_line_is_ok(line) {
+            if !under_rustfmt
+                && line.chars().count() > max_columns
+                && !long_line_is_ok(max_columns, line)
+            {
                 suppressible_tidy_err!(
                     err,
                     skip_line_length,
-                    &format!("line longer than {} chars", COLS)
+                    &format!("line longer than {} chars", max_columns)
                 );
             }
             if line.contains('\t') {
@@ -184,11 +225,25 @@ pub fn check(path: &Path, bad: &mut bool) {
                     err("XXX is deprecated; use FIXME")
                 }
             }
-            if (line.starts_with("// Copyright") ||
-                line.starts_with("# Copyright") ||
-                line.starts_with("Copyright"))
-                && (line.contains("Rust Developers") ||
-                    line.contains("Rust Project Developers")) {
+            let is_test = || file.components().any(|c| c.as_os_str() == "tests");
+            // for now we just check libcore
+            if line.contains("unsafe {") && !line.trim().starts_with("//") && !last_safety_comment {
+                if file.components().any(|c| c.as_os_str() == "libcore") && !is_test() {
+                    suppressible_tidy_err!(err, skip_undocumented_unsafe, "undocumented unsafe");
+                }
+            }
+            if line.contains("// SAFETY: ") || line.contains("// Safety: ") {
+                last_safety_comment = true;
+            } else if line.trim().starts_with("//") || line.trim().is_empty() {
+                // keep previous value
+            } else {
+                last_safety_comment = false;
+            }
+            if (line.starts_with("// Copyright")
+                || line.starts_with("# Copyright")
+                || line.starts_with("Copyright"))
+                && (line.contains("Rust Developers") || line.contains("Rust Project Developers"))
+            {
                 suppressible_tidy_err!(
                     err,
                     skip_copyright,
@@ -214,10 +269,17 @@ pub fn check(path: &Path, bad: &mut bool) {
         if leading_new_lines {
             tidy_error!(bad, "{}: leading newline", file.display());
         }
+        let mut err = |msg: &str| {
+            tidy_error!(bad, "{}: {}", file.display(), msg);
+        };
         match trailing_new_lines {
-            0 => tidy_error!(bad, "{}: missing trailing newline", file.display()),
+            0 => suppressible_tidy_err!(err, skip_trailing_newlines, "missing trailing newline"),
             1 => {}
-            n => tidy_error!(bad, "{}: too many trailing newlines ({})", file.display(), n),
+            n => suppressible_tidy_err!(
+                err,
+                skip_trailing_newlines,
+                &format!("too many trailing newlines ({})", n)
+            ),
         };
         if lines > LINES {
             let mut err = |_| {
@@ -246,6 +308,9 @@ pub fn check(path: &Path, bad: &mut bool) {
         }
         if let Directive::Ignore(false) = skip_end_whitespace {
             tidy_error!(bad, "{}: ignoring trailing whitespace unnecessarily", file.display());
+        }
+        if let Directive::Ignore(false) = skip_trailing_newlines {
+            tidy_error!(bad, "{}: ignoring trailing newlines unnecessarily", file.display());
         }
         if let Directive::Ignore(false) = skip_copyright {
             tidy_error!(bad, "{}: ignoring copyright unnecessarily", file.display());

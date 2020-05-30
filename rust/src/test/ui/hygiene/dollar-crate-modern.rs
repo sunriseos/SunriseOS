@@ -1,9 +1,9 @@
 // Make sure `$crate` and `crate` work in for basic cases of nested macros.
 
-// build-pass (FIXME(62277): could be check-pass?)
+// check-pass
 // aux-build:intercrate.rs
 
-#![feature(decl_macro, crate_in_paths)]
+#![feature(decl_macro)]
 
 extern crate intercrate;
 

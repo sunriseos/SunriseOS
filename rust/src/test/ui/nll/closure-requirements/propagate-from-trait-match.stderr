@@ -1,4 +1,4 @@
-note: External requirements
+note: external requirements
   --> $DIR/propagate-from-trait-match.rs:32:36
    |
 LL |       establish_relationships(value, |value| {
@@ -11,16 +11,15 @@ LL | |         require(value);
 LL | |     });
    | |_____^
    |
-   = note: defining type: DefId(0:23 ~ propagate_from_trait_match[317d]::supply[0]::{{closure}}[0]) with closure substs [
-               '_#1r,
-               T,
+   = note: defining type: supply::<'_#1r, T>::{{closure}}#0 with closure substs [
                i32,
                extern "rust-call" fn((T,)),
+               (),
            ]
    = note: number of external vids: 2
    = note: where T: '_#1r
 
-note: No external requirements
+note: no external requirements
   --> $DIR/propagate-from-trait-match.rs:28:1
    |
 LL | / fn supply<'a, T>(value: T)
@@ -32,10 +31,7 @@ LL | |     });
 LL | | }
    | |_^
    |
-   = note: defining type: DefId(0:20 ~ propagate_from_trait_match[317d]::supply[0]) with substs [
-               '_#1r,
-               T,
-           ]
+   = note: defining type: supply::<'_#1r, T>
 
 error[E0309]: the parameter type `T` may not live long enough
   --> $DIR/propagate-from-trait-match.rs:32:36
@@ -50,7 +46,7 @@ LL | |         require(value);
 LL | |     });
    | |_____^
    |
-   = help: consider adding an explicit lifetime bound `T: ReEarlyBound(0, 'a)`...
+   = help: consider adding an explicit lifetime bound `T: 'a`...
 
 error: aborting due to previous error
 

@@ -17,14 +17,19 @@ note: ...so that reference does not outlive borrowed content
    |
 LL |         self.foo();
    |         ^^^^
-note: but, the lifetime must be valid for the lifetime 'a as defined on the trait at 4:11...
+note: but, the lifetime must be valid for the lifetime `'a` as defined on the trait at 4:11...
   --> $DIR/issue-17758.rs:4:11
    |
 LL | trait Foo<'a> {
    |           ^^
-   = note: ...so that the types are compatible:
-           expected &'a Self
-              found &Self
+note: ...so that the types are compatible
+  --> $DIR/issue-17758.rs:7:14
+   |
+LL |         self.foo();
+   |              ^^^
+   = note: expected  `&'a Self`
+              found  `&Self`
 
 error: aborting due to previous error
 
+For more information about this error, try `rustc --explain E0495`.

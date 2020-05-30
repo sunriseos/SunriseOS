@@ -4,7 +4,7 @@ error: private type `types::Priv` in public interface (error E0446)
 LL |     pub type Alias = Priv;
    |     ^^^^^^^^^^^^^^^^^^^^^^
    |
-note: lint level defined here
+note: the lint level is defined here
   --> $DIR/private-in-public-warn.rs:5:9
    |
 LL | #![deny(private_in_public)]
@@ -339,8 +339,11 @@ warning: bounds on generic parameters are not enforced in type aliases
 LL |     pub type Alias<T: PrivTr> = T;
    |                       ^^^^^^
    |
-   = note: #[warn(type_alias_bounds)] on by default
-   = help: the bound will not be checked when the type alias is used, and should be removed
+   = note: `#[warn(type_alias_bounds)]` on by default
+help: the bound will not be checked when the type alias is used, and should be removed
+   |
+LL |     pub type Alias<T> = T;
+   |                    --
 
 warning: where clauses are not enforced in type aliases
   --> $DIR/private-in-public-warn.rs:75:29
@@ -348,8 +351,11 @@ warning: where clauses are not enforced in type aliases
 LL |     pub type Alias<T> where T: PrivTr = T;
    |                             ^^^^^^^^^
    |
-   = help: the clause will not be checked when the type alias is used, and should be removed
+help: the clause will not be checked when the type alias is used, and should be removed
+   |
+LL |     pub type Alias<T>  = T;
+   |                      --
 
-error: aborting due to 36 previous errors
+error: aborting due to 36 previous errors; 2 warnings emitted
 
 For more information about this error, try `rustc --explain E0446`.

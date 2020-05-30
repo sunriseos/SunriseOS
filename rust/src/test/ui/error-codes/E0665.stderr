@@ -3,6 +3,9 @@ error[E0665]: `Default` cannot be derived for enums, only structs
    |
 LL | #[derive(Default)]
    |          ^^^^^^^
+   |
+   = note: this error originates in a derive macro (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error: aborting due to previous error
 
+For more information about this error, try `rustc --explain E0665`.

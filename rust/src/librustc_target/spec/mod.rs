@@ -34,41 +34,51 @@
 //! the target's settings, though `target-feature` and `link-args` will *add*
 //! to the list specified by the target, rather than replace.
 
-use serialize::json::{Json, ToJson};
+use crate::spec::abi::{lookup as lookup_abi, Abi};
+use crate::spec::crt_objects::{CrtObjects, CrtObjectsFallback};
+use rustc_serialize::json::{Json, ToJson};
 use std::collections::BTreeMap;
-use std::default::Default;
-use std::{fmt, io};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use crate::spec::abi::{Abi, lookup as lookup_abi};
+use std::{fmt, io};
+
+use rustc_macros::HashStable_Generic;
 
 pub mod abi;
+pub mod crt_objects;
+
 mod android_base;
 mod apple_base;
-mod apple_ios_base;
+mod apple_sdk_base;
 mod arm_base;
 mod cloudabi_base;
 mod dragonfly_base;
 mod freebsd_base;
+mod fuchsia_base;
 mod haiku_base;
 mod hermit_base;
-mod linux_base;
-mod linux_musl_base;
-mod openbsd_base;
-mod netbsd_base;
-mod solaris_base;
-mod uefi_base;
-mod windows_base;
-mod windows_msvc_base;
-mod thumb_base;
+mod hermit_kernel_base;
+mod illumos_base;
 mod l4re_base;
-mod fuchsia_base;
+mod linux_base;
+mod linux_kernel_base;
+mod linux_musl_base;
+mod msvc_base;
+mod netbsd_base;
+mod openbsd_base;
 mod redox_base;
 mod riscv_base;
+mod solaris_base;
+mod thumb_base;
+mod uefi_msvc_base;
+mod vxworks_base;
 mod wasm32_base;
+mod windows_gnu_base;
+mod windows_msvc_base;
+mod windows_uwp_gnu_base;
+mod windows_uwp_msvc_base;
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Hash,
-         RustcEncodable, RustcDecodable)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum LinkerFlavor {
     Em,
     Gcc,
@@ -78,8 +88,7 @@ pub enum LinkerFlavor {
     PtxLinker,
 }
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Hash,
-         RustcEncodable, RustcDecodable)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum LldFlavor {
     Wasm,
     Ld64,
@@ -106,7 +115,8 @@ impl ToJson for LldFlavor {
             LldFlavor::Ld => "gnu",
             LldFlavor::Link => "link",
             LldFlavor::Wasm => "wasm",
-        }.to_json()
+        }
+        .to_json()
     }
 }
 
@@ -138,7 +148,6 @@ macro_rules! flavor_mappings {
     )
 }
 
-
 flavor_mappings! {
     ((LinkerFlavor::Em), "em"),
     ((LinkerFlavor::Gcc), "gcc"),
@@ -151,7 +160,7 @@ flavor_mappings! {
     ((LinkerFlavor::Lld(LldFlavor::Link)), "lld-link"),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Hash, RustcEncodable, RustcDecodable)]
+#[derive(Clone, Copy, Debug, PartialEq, Hash, RustcEncodable, RustcDecodable, HashStable_Generic)]
 pub enum PanicStrategy {
     Unwind,
     Abort,
@@ -223,7 +232,7 @@ impl ToJson for RelroLevel {
 pub enum MergeFunctions {
     Disabled,
     Trampolines,
-    Aliases
+    Aliases,
 }
 
 impl MergeFunctions {
@@ -259,6 +268,167 @@ impl ToJson for MergeFunctions {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Hash, Debug)]
+pub enum RelocModel {
+    Static,
+    Pic,
+    DynamicNoPic,
+    Ropi,
+    Rwpi,
+    RopiRwpi,
+}
+
+impl FromStr for RelocModel {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<RelocModel, ()> {
+        Ok(match s {
+            "static" => RelocModel::Static,
+            "pic" => RelocModel::Pic,
+            "dynamic-no-pic" => RelocModel::DynamicNoPic,
+            "ropi" => RelocModel::Ropi,
+            "rwpi" => RelocModel::Rwpi,
+            "ropi-rwpi" => RelocModel::RopiRwpi,
+            _ => return Err(()),
+        })
+    }
+}
+
+impl ToJson for RelocModel {
+    fn to_json(&self) -> Json {
+        match *self {
+            RelocModel::Static => "static",
+            RelocModel::Pic => "pic",
+            RelocModel::DynamicNoPic => "dynamic-no-pic",
+            RelocModel::Ropi => "ropi",
+            RelocModel::Rwpi => "rwpi",
+            RelocModel::RopiRwpi => "ropi-rwpi",
+        }
+        .to_json()
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Hash, Debug)]
+pub enum CodeModel {
+    Tiny,
+    Small,
+    Kernel,
+    Medium,
+    Large,
+}
+
+impl FromStr for CodeModel {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<CodeModel, ()> {
+        Ok(match s {
+            "tiny" => CodeModel::Tiny,
+            "small" => CodeModel::Small,
+            "kernel" => CodeModel::Kernel,
+            "medium" => CodeModel::Medium,
+            "large" => CodeModel::Large,
+            _ => return Err(()),
+        })
+    }
+}
+
+impl ToJson for CodeModel {
+    fn to_json(&self) -> Json {
+        match *self {
+            CodeModel::Tiny => "tiny",
+            CodeModel::Small => "small",
+            CodeModel::Kernel => "kernel",
+            CodeModel::Medium => "medium",
+            CodeModel::Large => "large",
+        }
+        .to_json()
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Hash, Debug)]
+pub enum TlsModel {
+    GeneralDynamic,
+    LocalDynamic,
+    InitialExec,
+    LocalExec,
+}
+
+impl FromStr for TlsModel {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<TlsModel, ()> {
+        Ok(match s {
+            // Note the difference "general" vs "global" difference. The model name is "general",
+            // but the user-facing option name is "global" for consistency with other compilers.
+            "global-dynamic" => TlsModel::GeneralDynamic,
+            "local-dynamic" => TlsModel::LocalDynamic,
+            "initial-exec" => TlsModel::InitialExec,
+            "local-exec" => TlsModel::LocalExec,
+            _ => return Err(()),
+        })
+    }
+}
+
+impl ToJson for TlsModel {
+    fn to_json(&self) -> Json {
+        match *self {
+            TlsModel::GeneralDynamic => "global-dynamic",
+            TlsModel::LocalDynamic => "local-dynamic",
+            TlsModel::InitialExec => "initial-exec",
+            TlsModel::LocalExec => "local-exec",
+        }
+        .to_json()
+    }
+}
+
+/// Everything is flattened to a single enum to make the json encoding/decoding less annoying.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub enum LinkOutputKind {
+    /// Dynamically linked non position-independent executable.
+    DynamicNoPicExe,
+    /// Dynamically linked position-independent executable.
+    DynamicPicExe,
+    /// Statically linked non position-independent executable.
+    StaticNoPicExe,
+    /// Statically linked position-independent executable.
+    StaticPicExe,
+    /// Regular dynamic library ("dynamically linked").
+    DynamicDylib,
+    /// Dynamic library with bundled libc ("statically linked").
+    StaticDylib,
+}
+
+impl LinkOutputKind {
+    fn as_str(&self) -> &'static str {
+        match self {
+            LinkOutputKind::DynamicNoPicExe => "dynamic-nopic-exe",
+            LinkOutputKind::DynamicPicExe => "dynamic-pic-exe",
+            LinkOutputKind::StaticNoPicExe => "static-nopic-exe",
+            LinkOutputKind::StaticPicExe => "static-pic-exe",
+            LinkOutputKind::DynamicDylib => "dynamic-dylib",
+            LinkOutputKind::StaticDylib => "static-dylib",
+        }
+    }
+
+    pub(super) fn from_str(s: &str) -> Option<LinkOutputKind> {
+        Some(match s {
+            "dynamic-nopic-exe" => LinkOutputKind::DynamicNoPicExe,
+            "dynamic-pic-exe" => LinkOutputKind::DynamicPicExe,
+            "static-nopic-exe" => LinkOutputKind::StaticNoPicExe,
+            "static-pic-exe" => LinkOutputKind::StaticPicExe,
+            "dynamic-dylib" => LinkOutputKind::DynamicDylib,
+            "static-dylib" => LinkOutputKind::StaticDylib,
+            _ => return None,
+        })
+    }
+}
+
+impl fmt::Display for LinkOutputKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 pub enum LoadTargetError {
     BuiltinTargetNotFound(String),
     Other(String),
@@ -286,7 +456,7 @@ macro_rules! supported_targets {
                         // run-time that the parser works correctly
                         t = Target::from_json(t.to_json())
                             .map_err(LoadTargetError::Other)?;
-                        debug!("Got builtin target: {:?}", t);
+                        debug!("got builtin target: {:?}", t);
                         Ok(t)
                     },
                 )+
@@ -304,23 +474,14 @@ macro_rules! supported_targets {
         }
 
         #[cfg(test)]
-        mod test_json_encode_decode {
-            use serialize::json::ToJson;
-            use super::Target;
-            $(use super::$module;)+
+        mod tests {
+            mod tests_impl;
 
+            // Cannot put this into a separate file without duplication, make an exception.
             $(
-                #[test]
+                #[test] // `#[test]`
                 fn $module() {
-                    // Grab the TargetResult struct. If we successfully retrieved
-                    // a Target, then the test JSON encoding/decoding can run for this
-                    // Target on this testing platform (i.e., checking the iOS targets
-                    // only on a Mac test platform).
-                    let _ = $module::target().map(|original| {
-                        let as_json = original.to_json();
-                        let parsed = Target::from_json(as_json).unwrap();
-                        assert_eq!(original, parsed);
-                    });
+                    tests_impl::test_target(super::$module::target());
                 }
             )+
         }
@@ -357,17 +518,22 @@ supported_targets! {
     ("armv4t-unknown-linux-gnueabi", armv4t_unknown_linux_gnueabi),
     ("armv5te-unknown-linux-gnueabi", armv5te_unknown_linux_gnueabi),
     ("armv5te-unknown-linux-musleabi", armv5te_unknown_linux_musleabi),
+    ("armv7-unknown-linux-gnueabi", armv7_unknown_linux_gnueabi),
     ("armv7-unknown-linux-gnueabihf", armv7_unknown_linux_gnueabihf),
     ("thumbv7neon-unknown-linux-gnueabihf", thumbv7neon_unknown_linux_gnueabihf),
+    ("thumbv7neon-unknown-linux-musleabihf", thumbv7neon_unknown_linux_musleabihf),
+    ("armv7-unknown-linux-musleabi", armv7_unknown_linux_musleabi),
     ("armv7-unknown-linux-musleabihf", armv7_unknown_linux_musleabihf),
     ("aarch64-unknown-linux-gnu", aarch64_unknown_linux_gnu),
-
     ("aarch64-unknown-linux-musl", aarch64_unknown_linux_musl),
     ("x86_64-unknown-linux-musl", x86_64_unknown_linux_musl),
     ("i686-unknown-linux-musl", i686_unknown_linux_musl),
     ("i586-unknown-linux-musl", i586_unknown_linux_musl),
     ("mips-unknown-linux-musl", mips_unknown_linux_musl),
     ("mipsel-unknown-linux-musl", mipsel_unknown_linux_musl),
+    ("mips64-unknown-linux-muslabi64", mips64_unknown_linux_muslabi64),
+    ("mips64el-unknown-linux-muslabi64", mips64el_unknown_linux_muslabi64),
+    ("hexagon-unknown-linux-musl", hexagon_unknown_linux_musl),
 
     ("mips-unknown-linux-uclibc", mips_unknown_linux_uclibc),
     ("mipsel-unknown-linux-uclibc", mipsel_unknown_linux_uclibc),
@@ -379,6 +545,8 @@ supported_targets! {
     ("thumbv7neon-linux-androideabi", thumbv7neon_linux_androideabi),
     ("aarch64-linux-android", aarch64_linux_android),
 
+    ("x86_64-linux-kernel", x86_64_linux_kernel),
+
     ("aarch64-unknown-freebsd", aarch64_unknown_freebsd),
     ("armv6-unknown-freebsd", armv6_unknown_freebsd),
     ("armv7-unknown-freebsd", armv7_unknown_freebsd),
@@ -386,11 +554,11 @@ supported_targets! {
     ("powerpc64-unknown-freebsd", powerpc64_unknown_freebsd),
     ("x86_64-unknown-freebsd", x86_64_unknown_freebsd),
 
-    ("i686-unknown-dragonfly", i686_unknown_dragonfly),
     ("x86_64-unknown-dragonfly", x86_64_unknown_dragonfly),
 
     ("aarch64-unknown-openbsd", aarch64_unknown_openbsd),
     ("i686-unknown-openbsd", i686_unknown_openbsd),
+    ("sparc64-unknown-openbsd", sparc64_unknown_openbsd),
     ("x86_64-unknown-openbsd", x86_64_unknown_openbsd),
 
     ("aarch64-unknown-netbsd", aarch64_unknown_netbsd),
@@ -413,6 +581,7 @@ supported_targets! {
 
     ("x86_64-unknown-l4re-uclibc", x86_64_unknown_l4re_uclibc),
 
+    ("aarch64-unknown-redox", aarch64_unknown_redox),
     ("x86_64-unknown-redox", x86_64_unknown_redox),
 
     ("i386-apple-ios", i386_apple_ios),
@@ -420,6 +589,9 @@ supported_targets! {
     ("aarch64-apple-ios", aarch64_apple_ios),
     ("armv7-apple-ios", armv7_apple_ios),
     ("armv7s-apple-ios", armv7s_apple_ios),
+    ("x86_64-apple-ios-macabi", x86_64_apple_ios_macabi),
+    ("aarch64-apple-tvos", aarch64_apple_tvos),
+    ("x86_64-apple-tvos", x86_64_apple_tvos),
 
     ("armebv7r-none-eabi", armebv7r_none_eabi),
     ("armebv7r-none-eabihf", armebv7r_none_eabihf),
@@ -431,20 +603,27 @@ supported_targets! {
     ("x86_64-sun-solaris", "x86_64-pc-solaris", x86_64_sun_solaris),
     ("sparcv9-sun-solaris", sparcv9_sun_solaris),
 
+    ("x86_64-unknown-illumos", x86_64_unknown_illumos),
+
     ("x86_64-pc-windows-gnu", x86_64_pc_windows_gnu),
     ("i686-pc-windows-gnu", i686_pc_windows_gnu),
+    ("i686-uwp-windows-gnu", i686_uwp_windows_gnu),
+    ("x86_64-uwp-windows-gnu", x86_64_uwp_windows_gnu),
 
     ("aarch64-pc-windows-msvc", aarch64_pc_windows_msvc),
+    ("aarch64-uwp-windows-msvc", aarch64_uwp_windows_msvc),
     ("x86_64-pc-windows-msvc", x86_64_pc_windows_msvc),
+    ("x86_64-uwp-windows-msvc", x86_64_uwp_windows_msvc),
     ("i686-pc-windows-msvc", i686_pc_windows_msvc),
+    ("i686-uwp-windows-msvc", i686_uwp_windows_msvc),
     ("i586-pc-windows-msvc", i586_pc_windows_msvc),
     ("thumbv7a-pc-windows-msvc", thumbv7a_pc_windows_msvc),
+    ("thumbv7a-uwp-windows-msvc", thumbv7a_uwp_windows_msvc),
 
     ("asmjs-unknown-emscripten", asmjs_unknown_emscripten),
     ("wasm32-unknown-emscripten", wasm32_unknown_emscripten),
     ("wasm32-unknown-unknown", wasm32_unknown_unknown),
     ("wasm32-wasi", wasm32_wasi),
-    ("wasm32-experimental-emscripten", wasm32_experimental_emscripten),
 
     ("thumbv6m-none-eabi", thumbv6m_none_eabi),
     ("thumbv7m-none-eabi", thumbv7m_none_eabi),
@@ -453,6 +632,9 @@ supported_targets! {
     ("thumbv8m.base-none-eabi", thumbv8m_base_none_eabi),
     ("thumbv8m.main-none-eabi", thumbv8m_main_none_eabi),
     ("thumbv8m.main-none-eabihf", thumbv8m_main_none_eabihf),
+
+    ("armv7a-none-eabi", armv7a_none_eabi),
+    ("armv7a-none-eabihf", armv7a_none_eabihf),
 
     ("msp430-none-elf", msp430_none_elf),
 
@@ -463,19 +645,34 @@ supported_targets! {
 
     ("aarch64-unknown-hermit", aarch64_unknown_hermit),
     ("x86_64-unknown-hermit", x86_64_unknown_hermit),
+    ("x86_64-unknown-hermit-kernel", x86_64_unknown_hermit_kernel),
 
+    ("riscv32i-unknown-none-elf", riscv32i_unknown_none_elf),
     ("riscv32imc-unknown-none-elf", riscv32imc_unknown_none_elf),
     ("riscv32imac-unknown-none-elf", riscv32imac_unknown_none_elf),
     ("riscv64imac-unknown-none-elf", riscv64imac_unknown_none_elf),
     ("riscv64gc-unknown-none-elf", riscv64gc_unknown_none_elf),
+    ("riscv64gc-unknown-linux-gnu", riscv64gc_unknown_linux_gnu),
 
     ("aarch64-unknown-none", aarch64_unknown_none),
+    ("aarch64-unknown-none-softfloat", aarch64_unknown_none_softfloat),
 
     ("x86_64-fortanix-unknown-sgx", x86_64_fortanix_unknown_sgx),
 
     ("x86_64-unknown-uefi", x86_64_unknown_uefi),
+    ("i686-unknown-uefi", i686_unknown_uefi),
 
     ("nvptx64-nvidia-cuda", nvptx64_nvidia_cuda),
+
+    ("i686-wrs-vxworks", i686_wrs_vxworks),
+    ("x86_64-wrs-vxworks", x86_64_wrs_vxworks),
+    ("armv7-wrs-vxworks-eabihf", armv7_wrs_vxworks_eabihf),
+    ("aarch64-wrs-vxworks", aarch64_wrs_vxworks),
+    ("powerpc-wrs-vxworks", powerpc_wrs_vxworks),
+    ("powerpc-wrs-vxworks-spe", powerpc_wrs_vxworks_spe),
+    ("powerpc64-wrs-vxworks", powerpc64_wrs_vxworks),
+
+    ("mipsel-sony-psp", mipsel_sony_psp),
 }
 
 /// Everything `rustc` knows about how to compile for a specific target.
@@ -502,7 +699,8 @@ pub struct Target {
     pub arch: String,
     /// [Data layout](http://llvm.org/docs/LangRef.html#data-layout) to pass to LLVM.
     pub data_layout: String,
-    /// Linker flavor
+    /// Default linker flavor used if `-C linker-flavor` or `-C linker` are not passed
+    /// on the command line.
     pub linker_flavor: LinkerFlavor,
     /// Optional settings with defaults.
     pub options: TargetOptions,
@@ -530,31 +728,46 @@ pub struct TargetOptions {
     /// Linker to invoke
     pub linker: Option<String>,
 
-    /// LLD flavor
+    /// LLD flavor used if `lld` (or `rust-lld`) is specified as a linker
+    /// without clarifying its flavor in any way.
     pub lld_flavor: LldFlavor,
 
     /// Linker arguments that are passed *before* any user-defined libraries.
     pub pre_link_args: LinkArgs, // ... unconditionally
     pub pre_link_args_crt: LinkArgs, // ... when linking with a bundled crt
-    /// Objects to link before all others, always found within the
-    /// sysroot folder.
-    pub pre_link_objects_exe: Vec<String>, // ... when linking an executable, unconditionally
-    pub pre_link_objects_exe_crt: Vec<String>, // ... when linking an executable with a bundled crt
-    pub pre_link_objects_dll: Vec<String>, // ... when linking a dylib
+    /// Objects to link before and after all other object code.
+    pub pre_link_objects: CrtObjects,
+    pub post_link_objects: CrtObjects,
+    /// Same as `(pre|post)_link_objects`, but when we fail to pull the objects with help of the
+    /// target's native gcc and fall back to the "self-contained" mode and pull them manually.
+    /// See `crt_objects.rs` for some more detailed documentation.
+    pub pre_link_objects_fallback: CrtObjects,
+    pub post_link_objects_fallback: CrtObjects,
+    /// Which logic to use to determine whether to fall back to the "self-contained" mode or not.
+    pub crt_objects_fallback: Option<CrtObjectsFallback>,
+
     /// Linker arguments that are unconditionally passed after any
-    /// user-defined but before post_link_objects. Standard platform
+    /// user-defined but before post-link objects. Standard platform
     /// libraries that should be always be linked to, usually go here.
     pub late_link_args: LinkArgs,
-    /// Objects to link after all others, always found within the
-    /// sysroot folder.
-    pub post_link_objects: Vec<String>, // ... unconditionally
-    pub post_link_objects_crt: Vec<String>, // ... when linking with a bundled crt
+    /// Linker arguments used in addition to `late_link_args` if at least one
+    /// Rust dependency is dynamically linked.
+    pub late_link_args_dynamic: LinkArgs,
+    /// Linker arguments used in addition to `late_link_args` if aall Rust
+    /// dependencies are statically linked.
+    pub late_link_args_static: LinkArgs,
     /// Linker arguments that are unconditionally passed *after* any
     /// user-defined libraries.
     pub post_link_args: LinkArgs,
+    /// Optional link script applied to `dylib` and `executable` crate types.
+    /// This is a string containing the script, not a path. Can only be applied
+    /// to linkers where `linker_is_gnu` is true.
+    pub link_script: Option<String>,
 
-    /// Environment variables to be set before invoking the linker.
+    /// Environment variables to be set for the linker invocation.
     pub link_env: Vec<(String, String)>,
+    /// Environment variables to be removed for the linker invocation.
+    pub link_env_remove: Vec<String>,
 
     /// Extra arguments to pass to the external assembler (when used)
     pub asm_args: Vec<String>,
@@ -574,13 +787,14 @@ pub struct TargetOptions {
     /// libraries. Defaults to false.
     pub executables: bool,
     /// Relocation model to use in object file. Corresponds to `llc
-    /// -relocation-model=$relocation_model`. Defaults to "pic".
-    pub relocation_model: String,
+    /// -relocation-model=$relocation_model`. Defaults to `Pic`.
+    pub relocation_model: RelocModel,
     /// Code model to use. Corresponds to `llc -code-model=$code_model`.
-    pub code_model: Option<String>,
+    /// Defaults to `None` which means "inherited from the base LLVM target".
+    pub code_model: Option<CodeModel>,
     /// TLS model to use. Options are "global-dynamic" (default), "local-dynamic", "initial-exec"
     /// and "local-exec". This is similar to the -ftls-model option in GCC/Clang.
-    pub tls_model: String,
+    pub tls_model: TlsModel,
     /// Do not emit code that uses the "red zone", if the ABI has one. Defaults to false.
     pub disable_redzone: bool,
     /// Eliminate frame pointers from stack frames if possible. Defaults to true.
@@ -656,11 +870,9 @@ pub struct TargetOptions {
     pub archive_format: String,
     /// Is asm!() allowed? Defaults to true.
     pub allow_asm: bool,
-    /// Whether the target uses a custom unwind resumption routine.
-    /// By default LLVM lowers `resume` instructions into calls to `_Unwind_Resume`
-    /// defined in libgcc. If this option is enabled, the target must provide
-    /// `eh_unwind_resume` lang item.
-    pub custom_unwind_resume: bool,
+    /// Whether the runtime startup code requires the `main` function be passed
+    /// `argc` and `argv` values.
+    pub main_needs_argc_argv: bool,
 
     /// Flag indicating whether ELF TLS (e.g., #[thread_local]) is available for
     /// this target.
@@ -669,11 +881,10 @@ pub struct TargetOptions {
     // If we give emcc .o files that are actually .bc files it
     // will 'just work'.
     pub obj_is_bitcode: bool,
-
-    // LLVM can't produce object files for this target. Instead, we'll make LLVM
-    // emit assembly and then use `gcc` to turn that assembly into an object
-    // file
-    pub no_integrated_as: bool,
+    /// Whether the target requires that emitted object code includes bitcode.
+    pub forces_embed_bitcode: bool,
+    /// Content of the LLVM cmdline section associated with embedded bitcode.
+    pub bitcode_llvm_cmdline: String,
 
     /// Don't use this field; instead use the `.min_atomic_width()` method.
     pub min_atomic_width: Option<u64>,
@@ -722,19 +933,12 @@ pub struct TargetOptions {
     /// for this target unconditionally.
     pub no_builtins: bool,
 
-    /// Whether to lower 128-bit operations to compiler_builtins calls. Use if
-    /// your backend only supports 64-bit and smaller math.
-    pub i128_lowering: bool,
-
     /// The codegen backend to use for this target, typically "llvm"
     pub codegen_backend: String,
 
     /// The default visibility for symbols in this target should be "hidden"
     /// rather than "default"
     pub default_hidden_visibility: bool,
-
-    /// Whether or not bitcode is embedded in object files
-    pub embed_bitcode: bool,
 
     /// Whether a .debug_gdb_scripts section will be added to the output object file
     pub emit_debug_gdb_scripts: bool,
@@ -766,7 +970,20 @@ pub struct TargetOptions {
     pub merge_functions: MergeFunctions,
 
     /// Use platform dependent mcount function
-    pub target_mcount: String
+    pub target_mcount: String,
+
+    /// LLVM ABI name, corresponds to the '-mabi' parameter available in multilib C compilers
+    pub llvm_abiname: String,
+
+    /// Whether or not RelaxElfRelocation flag will be passed to the linker
+    pub relax_elf_relocations: bool,
+
+    /// Additional arguments to pass to LLVM, similar to the `-C llvm-args` codegen option.
+    pub llvm_args: Vec<String>,
+
+    /// Whether to use legacy .ctors initialization hooks rather than .init_array. Defaults
+    /// to false (uses .init_array).
+    pub use_ctors_section: bool,
 }
 
 impl Default for TargetOptions {
@@ -780,15 +997,16 @@ impl Default for TargetOptions {
             pre_link_args: LinkArgs::new(),
             pre_link_args_crt: LinkArgs::new(),
             post_link_args: LinkArgs::new(),
+            link_script: None,
             asm_args: Vec::new(),
             cpu: "generic".to_string(),
             features: String::new(),
             dynamic_linking: false,
             only_cdylib: false,
             executables: false,
-            relocation_model: "pic".to_string(),
+            relocation_model: RelocModel::Pic,
             code_model: None,
-            tls_model: "global-dynamic".to_string(),
+            tls_model: TlsModel::GeneralDynamic,
             disable_redzone: false,
             eliminate_frame_pointer: true,
             function_sections: true,
@@ -813,19 +1031,23 @@ impl Default for TargetOptions {
             position_independent_executables: false,
             needs_plt: false,
             relro_level: RelroLevel::None,
-            pre_link_objects_exe: Vec::new(),
-            pre_link_objects_exe_crt: Vec::new(),
-            pre_link_objects_dll: Vec::new(),
-            post_link_objects: Vec::new(),
-            post_link_objects_crt: Vec::new(),
+            pre_link_objects: Default::default(),
+            post_link_objects: Default::default(),
+            pre_link_objects_fallback: Default::default(),
+            post_link_objects_fallback: Default::default(),
+            crt_objects_fallback: None,
             late_link_args: LinkArgs::new(),
+            late_link_args_dynamic: LinkArgs::new(),
+            late_link_args_static: LinkArgs::new(),
             link_env: Vec::new(),
+            link_env_remove: Vec::new(),
             archive_format: "gnu".to_string(),
-            custom_unwind_resume: false,
+            main_needs_argc_argv: true,
             allow_asm: true,
             has_elf_tls: false,
             obj_is_bitcode: false,
-            no_integrated_as: false,
+            forces_embed_bitcode: false,
+            bitcode_llvm_cmdline: String::new(),
             min_atomic_width: None,
             max_atomic_width: None,
             atomic_cas: true,
@@ -841,10 +1063,8 @@ impl Default for TargetOptions {
             requires_lto: false,
             singlethread: false,
             no_builtins: false,
-            i128_lowering: false,
             codegen_backend: "llvm".to_string(),
             default_hidden_visibility: false,
-            embed_bitcode: false,
             emit_debug_gdb_scripts: true,
             requires_uwtable: false,
             simd_types_indirect: true,
@@ -852,6 +1072,10 @@ impl Default for TargetOptions {
             override_export_symbols: None,
             merge_functions: MergeFunctions::Aliases,
             target_mcount: "mcount".to_string(),
+            llvm_abiname: "".to_string(),
+            relax_elf_relocations: false,
+            llvm_args: vec![],
+            use_ctors_section: false,
         }
     }
 }
@@ -866,18 +1090,21 @@ impl Target {
                 } else {
                     Abi::C
                 }
-            },
+            }
             // These ABI kinds are ignored on non-x86 Windows targets.
             // See https://docs.microsoft.com/en-us/cpp/cpp/argument-passing-and-naming-conventions
             // and the individual pages for __stdcall et al.
             Abi::Stdcall | Abi::Fastcall | Abi::Vectorcall | Abi::Thiscall => {
-                if self.options.is_like_windows && self.arch != "x86" {
-                    Abi::C
+                if self.options.is_like_windows && self.arch != "x86" { Abi::C } else { abi }
+            }
+            Abi::EfiApi => {
+                if self.arch == "x86_64" {
+                    Abi::Win64
                 } else {
-                    abi
+                    Abi::C
                 }
-            },
-            abi => abi
+            }
+            abi => abi,
         }
     }
 
@@ -908,15 +1135,16 @@ impl Target {
 
         let get_req_field = |name: &str| {
             obj.find(name)
-               .map(|s| s.as_string())
-               .and_then(|os| os.map(|s| s.to_string()))
-               .ok_or_else(|| format!("Field {} in target specification is required", name))
+                .map(|s| s.as_string())
+                .and_then(|os| os.map(|s| s.to_string()))
+                .ok_or_else(|| format!("Field {} in target specification is required", name))
         };
 
         let get_opt_field = |name: &str, default: &str| {
-            obj.find(name).and_then(|s| s.as_string())
-               .map(|s| s.to_string())
-               .unwrap_or_else(|| default.to_string())
+            obj.find(name)
+                .and_then(|s| s.as_string())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| default.to_string())
         };
 
         let mut base = Target {
@@ -930,29 +1158,28 @@ impl Target {
             target_env: get_opt_field("env", ""),
             target_vendor: get_opt_field("vendor", "unknown"),
             linker_flavor: LinkerFlavor::from_str(&*get_req_field("linker-flavor")?)
-                .ok_or_else(|| {
-                    format!("linker flavor must be {}", LinkerFlavor::one_of())
-                })?,
+                .ok_or_else(|| format!("linker flavor must be {}", LinkerFlavor::one_of()))?,
             options: Default::default(),
         };
 
         macro_rules! key {
             ($key_name:ident) => ( {
                 let name = (stringify!($key_name)).replace("_", "-");
-                obj.find(&name[..]).map(|o| o.as_string()
-                                    .map(|s| base.options.$key_name = s.to_string()));
+                if let Some(s) = obj.find(&name).and_then(Json::as_string) {
+                    base.options.$key_name = s.to_string();
+                }
             } );
             ($key_name:ident, bool) => ( {
                 let name = (stringify!($key_name)).replace("_", "-");
-                obj.find(&name[..])
-                    .map(|o| o.as_boolean()
-                         .map(|s| base.options.$key_name = s));
+                if let Some(s) = obj.find(&name).and_then(Json::as_boolean) {
+                    base.options.$key_name = s;
+                }
             } );
             ($key_name:ident, Option<u64>) => ( {
                 let name = (stringify!($key_name)).replace("_", "-");
-                obj.find(&name[..])
-                    .map(|o| o.as_u64()
-                         .map(|s| base.options.$key_name = Some(s)));
+                if let Some(s) = obj.find(&name).and_then(Json::as_u64) {
+                    base.options.$key_name = Some(s);
+                }
             } );
             ($key_name:ident, MergeFunctions) => ( {
                 let name = (stringify!($key_name)).replace("_", "-");
@@ -963,6 +1190,42 @@ impl Target {
                                                       merge-functions. Use 'disabled', \
                                                       'trampolines', or 'aliases'.",
                                                       s))),
+                    }
+                    Some(Ok(()))
+                })).unwrap_or(Ok(()))
+            } );
+            ($key_name:ident, RelocModel) => ( {
+                let name = (stringify!($key_name)).replace("_", "-");
+                obj.find(&name[..]).and_then(|o| o.as_string().and_then(|s| {
+                    match s.parse::<RelocModel>() {
+                        Ok(relocation_model) => base.options.$key_name = relocation_model,
+                        _ => return Some(Err(format!("'{}' is not a valid relocation model. \
+                                                      Run `rustc --print relocation-models` to \
+                                                      see the list of supported values.", s))),
+                    }
+                    Some(Ok(()))
+                })).unwrap_or(Ok(()))
+            } );
+            ($key_name:ident, CodeModel) => ( {
+                let name = (stringify!($key_name)).replace("_", "-");
+                obj.find(&name[..]).and_then(|o| o.as_string().and_then(|s| {
+                    match s.parse::<CodeModel>() {
+                        Ok(code_model) => base.options.$key_name = Some(code_model),
+                        _ => return Some(Err(format!("'{}' is not a valid code model. \
+                                                      Run `rustc --print code-models` to \
+                                                      see the list of supported values.", s))),
+                    }
+                    Some(Ok(()))
+                })).unwrap_or(Ok(()))
+            } );
+            ($key_name:ident, TlsModel) => ( {
+                let name = (stringify!($key_name)).replace("_", "-");
+                obj.find(&name[..]).and_then(|o| o.as_string().and_then(|s| {
+                    match s.parse::<TlsModel>() {
+                        Ok(tls_model) => base.options.$key_name = tls_model,
+                        _ => return Some(Err(format!("'{}' is not a valid TLS model. \
+                                                      Run `rustc --print tls-models` to \
+                                                      see the list of supported values.", s))),
                     }
                     Some(Ok(()))
                 })).unwrap_or(Ok(()))
@@ -994,19 +1257,19 @@ impl Target {
             } );
             ($key_name:ident, list) => ( {
                 let name = (stringify!($key_name)).replace("_", "-");
-                obj.find(&name[..]).map(|o| o.as_array()
-                    .map(|v| base.options.$key_name = v.iter()
-                        .map(|a| a.as_string().unwrap().to_string()).collect()
-                        )
-                    );
+                if let Some(v) = obj.find(&name).and_then(Json::as_array) {
+                    base.options.$key_name = v.iter()
+                        .map(|a| a.as_string().unwrap().to_string())
+                        .collect();
+                }
             } );
             ($key_name:ident, opt_list) => ( {
                 let name = (stringify!($key_name)).replace("_", "-");
-                obj.find(&name[..]).map(|o| o.as_array()
-                    .map(|v| base.options.$key_name = Some(v.iter()
-                        .map(|a| a.as_string().unwrap().to_string()).collect())
-                        )
-                    );
+                if let Some(v) = obj.find(&name).and_then(Json::as_array) {
+                    base.options.$key_name = Some(v.iter()
+                        .map(|a| a.as_string().unwrap().to_string())
+                        .collect());
+                }
             } );
             ($key_name:ident, optional) => ( {
                 let name = (stringify!($key_name)).replace("_", "-");
@@ -1038,6 +1301,45 @@ impl Target {
                                      Use 'em', 'gcc', 'ld' or 'msvc.", s))
                     })
                 })).unwrap_or(Ok(()))
+            } );
+            ($key_name:ident, crt_objects_fallback) => ( {
+                let name = (stringify!($key_name)).replace("_", "-");
+                obj.find(&name[..]).and_then(|o| o.as_string().and_then(|s| {
+                    match s.parse::<CrtObjectsFallback>() {
+                        Ok(fallback) => base.options.$key_name = Some(fallback),
+                        _ => return Some(Err(format!("'{}' is not a valid CRT objects fallback. \
+                                                      Use 'musl', 'mingw' or 'wasm'", s))),
+                    }
+                    Some(Ok(()))
+                })).unwrap_or(Ok(()))
+            } );
+            ($key_name:ident, link_objects) => ( {
+                let name = (stringify!($key_name)).replace("_", "-");
+                if let Some(val) = obj.find(&name[..]) {
+                    let obj = val.as_object().ok_or_else(|| format!("{}: expected a \
+                        JSON object with fields per CRT object kind.", name))?;
+                    let mut args = CrtObjects::new();
+                    for (k, v) in obj {
+                        let kind = LinkOutputKind::from_str(&k).ok_or_else(|| {
+                            format!("{}: '{}' is not a valid value for CRT object kind. \
+                                     Use '(dynamic,static)-(nopic,pic)-exe' or \
+                                     '(dynamic,static)-dylib'", name, k)
+                        })?;
+
+                        let v = v.as_array().ok_or_else(||
+                            format!("{}.{}: expected a JSON array", name, k)
+                        )?.iter().enumerate()
+                            .map(|(i,s)| {
+                                let s = s.as_string().ok_or_else(||
+                                    format!("{}.{}[{}]: expected a JSON string", name, k, i))?;
+                                Ok(s.to_owned())
+                            })
+                            .collect::<Result<Vec<_>, String>>()?;
+
+                        args.insert(kind, v);
+                    }
+                    base.options.$key_name = args;
+                }
             } );
             ($key_name:ident, link_args) => ( {
                 let name = (stringify!($key_name)).replace("_", "-");
@@ -1086,25 +1388,29 @@ impl Target {
         key!(is_builtin, bool);
         key!(linker, optional);
         key!(lld_flavor, LldFlavor)?;
+        key!(pre_link_objects, link_objects);
+        key!(post_link_objects, link_objects);
+        key!(pre_link_objects_fallback, link_objects);
+        key!(post_link_objects_fallback, link_objects);
+        key!(crt_objects_fallback, crt_objects_fallback)?;
         key!(pre_link_args, link_args);
         key!(pre_link_args_crt, link_args);
-        key!(pre_link_objects_exe, list);
-        key!(pre_link_objects_exe_crt, list);
-        key!(pre_link_objects_dll, list);
         key!(late_link_args, link_args);
-        key!(post_link_objects, list);
-        key!(post_link_objects_crt, list);
+        key!(late_link_args_dynamic, link_args);
+        key!(late_link_args_static, link_args);
         key!(post_link_args, link_args);
+        key!(link_script, optional);
         key!(link_env, env);
+        key!(link_env_remove, list);
         key!(asm_args, list);
         key!(cpu);
         key!(features);
         key!(dynamic_linking, bool);
         key!(only_cdylib, bool);
         key!(executables, bool);
-        key!(relocation_model);
-        key!(code_model, optional);
-        key!(tls_model);
+        key!(relocation_model, RelocModel)?;
+        key!(code_model, CodeModel)?;
+        key!(tls_model, TlsModel)?;
         key!(disable_redzone, bool);
         key!(eliminate_frame_pointer, bool);
         key!(function_sections, bool);
@@ -1131,10 +1437,11 @@ impl Target {
         key!(relro_level, RelroLevel)?;
         key!(archive_format);
         key!(allow_asm, bool);
-        key!(custom_unwind_resume, bool);
+        key!(main_needs_argc_argv, bool);
         key!(has_elf_tls, bool);
         key!(obj_is_bitcode, bool);
-        key!(no_integrated_as, bool);
+        key!(forces_embed_bitcode, bool);
+        key!(bitcode_llvm_cmdline);
         key!(max_atomic_width, Option<u64>);
         key!(min_atomic_width, Option<u64>);
         key!(atomic_cas, bool);
@@ -1151,7 +1458,6 @@ impl Target {
         key!(no_builtins, bool);
         key!(codegen_backend);
         key!(default_hidden_visibility, bool);
-        key!(embed_bitcode, bool);
         key!(emit_debug_gdb_scripts, bool);
         key!(requires_uwtable, bool);
         key!(simd_types_indirect, bool);
@@ -1159,19 +1465,28 @@ impl Target {
         key!(override_export_symbols, opt_list);
         key!(merge_functions, MergeFunctions)?;
         key!(target_mcount);
+        key!(llvm_abiname);
+        key!(relax_elf_relocations, bool);
+        key!(llvm_args, list);
+        key!(use_ctors_section, bool);
 
         if let Some(array) = obj.find("abi-blacklist").and_then(Json::as_array) {
             for name in array.iter().filter_map(|abi| abi.as_string()) {
                 match lookup_abi(name) {
                     Some(abi) => {
                         if abi.generic() {
-                            return Err(format!("The ABI \"{}\" is considered to be supported on \
-                                                all targets and cannot be blacklisted", abi))
+                            return Err(format!(
+                                "The ABI \"{}\" is considered to be supported on \
+                                                all targets and cannot be blacklisted",
+                                abi
+                            ));
                         }
 
                         base.options.abi_blacklist.push(abi)
                     }
-                    None => return Err(format!("Unknown ABI \"{}\" in target specification", name))
+                    None => {
+                        return Err(format!("Unknown ABI \"{}\" in target specification", name));
+                    }
                 }
             }
         }
@@ -1187,14 +1502,13 @@ impl Target {
     /// The error string could come from any of the APIs called, including
     /// filesystem access and JSON decoding.
     pub fn search(target_triple: &TargetTriple) -> Result<Target, String> {
+        use rustc_serialize::json;
         use std::env;
         use std::fs;
-        use serialize::json;
 
         fn load_file(path: &Path) -> Result<Target, String> {
             let contents = fs::read(path).map_err(|e| e.to_string())?;
-            let obj = json::from_reader(&mut &contents[..])
-                           .map_err(|e| e.to_string())?;
+            let obj = json::from_reader(&mut &contents[..]).map_err(|e| e.to_string())?;
             Target::from_json(obj)
         }
 
@@ -1219,7 +1533,7 @@ impl Target {
                 // FIXME 16351: add a sane default search path?
 
                 for dir in env::split_paths(&target_path) {
-                    let p =  dir.join(&path);
+                    let p = dir.join(&path);
                     if p.is_file() {
                         return load_file(&p);
                     }
@@ -1242,50 +1556,53 @@ impl ToJson for Target {
         let default: TargetOptions = Default::default();
 
         macro_rules! target_val {
-            ($attr:ident) => ( {
+            ($attr:ident) => {{
                 let name = (stringify!($attr)).replace("_", "-");
                 d.insert(name, self.$attr.to_json());
-            } );
-            ($attr:ident, $key_name:expr) => ( {
+            }};
+            ($attr:ident, $key_name:expr) => {{
                 let name = $key_name;
                 d.insert(name.to_string(), self.$attr.to_json());
-            } );
+            }};
         }
 
         macro_rules! target_option_val {
-            ($attr:ident) => ( {
+            ($attr:ident) => {{
                 let name = (stringify!($attr)).replace("_", "-");
                 if default.$attr != self.options.$attr {
                     d.insert(name, self.options.$attr.to_json());
                 }
-            } );
-            ($attr:ident, $key_name:expr) => ( {
+            }};
+            ($attr:ident, $key_name:expr) => {{
                 let name = $key_name;
                 if default.$attr != self.options.$attr {
                     d.insert(name.to_string(), self.options.$attr.to_json());
                 }
-            } );
-            (link_args - $attr:ident) => ( {
+            }};
+            (link_args - $attr:ident) => {{
                 let name = (stringify!($attr)).replace("_", "-");
                 if default.$attr != self.options.$attr {
-                    let obj = self.options.$attr
+                    let obj = self
+                        .options
+                        .$attr
                         .iter()
                         .map(|(k, v)| (k.desc().to_owned(), v.clone()))
                         .collect::<BTreeMap<_, _>>();
                     d.insert(name, obj.to_json());
                 }
-            } );
-            (env - $attr:ident) => ( {
+            }};
+            (env - $attr:ident) => {{
                 let name = (stringify!($attr)).replace("_", "-");
                 if default.$attr != self.options.$attr {
-                    let obj = self.options.$attr
+                    let obj = self
+                        .options
+                        .$attr
                         .iter()
                         .map(|&(ref k, ref v)| k.clone() + "=" + &v)
                         .collect::<Vec<_>>();
                     d.insert(name, obj.to_json());
                 }
-            } );
-
+            }};
         }
 
         target_val!(llvm_target);
@@ -1302,16 +1619,20 @@ impl ToJson for Target {
         target_option_val!(is_builtin);
         target_option_val!(linker);
         target_option_val!(lld_flavor);
+        target_option_val!(pre_link_objects);
+        target_option_val!(post_link_objects);
+        target_option_val!(pre_link_objects_fallback);
+        target_option_val!(post_link_objects_fallback);
+        target_option_val!(crt_objects_fallback);
         target_option_val!(link_args - pre_link_args);
         target_option_val!(link_args - pre_link_args_crt);
-        target_option_val!(pre_link_objects_exe);
-        target_option_val!(pre_link_objects_exe_crt);
-        target_option_val!(pre_link_objects_dll);
         target_option_val!(link_args - late_link_args);
-        target_option_val!(post_link_objects);
-        target_option_val!(post_link_objects_crt);
+        target_option_val!(link_args - late_link_args_dynamic);
+        target_option_val!(link_args - late_link_args_static);
         target_option_val!(link_args - post_link_args);
+        target_option_val!(link_script);
         target_option_val!(env - link_env);
+        target_option_val!(link_env_remove);
         target_option_val!(asm_args);
         target_option_val!(cpu);
         target_option_val!(features);
@@ -1347,10 +1668,11 @@ impl ToJson for Target {
         target_option_val!(relro_level);
         target_option_val!(archive_format);
         target_option_val!(allow_asm);
-        target_option_val!(custom_unwind_resume);
+        target_option_val!(main_needs_argc_argv);
         target_option_val!(has_elf_tls);
         target_option_val!(obj_is_bitcode);
-        target_option_val!(no_integrated_as);
+        target_option_val!(forces_embed_bitcode);
+        target_option_val!(bitcode_llvm_cmdline);
         target_option_val!(min_atomic_width);
         target_option_val!(max_atomic_width);
         target_option_val!(atomic_cas);
@@ -1367,7 +1689,6 @@ impl ToJson for Target {
         target_option_val!(no_builtins);
         target_option_val!(codegen_backend);
         target_option_val!(default_hidden_visibility);
-        target_option_val!(embed_bitcode);
         target_option_val!(emit_debug_gdb_scripts);
         target_option_val!(requires_uwtable);
         target_option_val!(simd_types_indirect);
@@ -1375,11 +1696,21 @@ impl ToJson for Target {
         target_option_val!(override_export_symbols);
         target_option_val!(merge_functions);
         target_option_val!(target_mcount);
+        target_option_val!(llvm_abiname);
+        target_option_val!(relax_elf_relocations);
+        target_option_val!(llvm_args);
+        target_option_val!(use_ctors_section);
 
         if default.abi_blacklist != self.options.abi_blacklist {
-            d.insert("abi-blacklist".to_string(), self.options.abi_blacklist.iter()
-                .map(|&name| Abi::name(name).to_json())
-                .collect::<Vec<_>>().to_json());
+            d.insert(
+                "abi-blacklist".to_string(),
+                self.options
+                    .abi_blacklist
+                    .iter()
+                    .map(|&name| Abi::name(name).to_json())
+                    .collect::<Vec<_>>()
+                    .to_json(),
+            );
         }
 
         Json::Object(d)
@@ -1411,10 +1742,11 @@ impl TargetTriple {
     pub fn triple(&self) -> &str {
         match *self {
             TargetTriple::TargetTriple(ref triple) => triple,
-            TargetTriple::TargetPath(ref path) => {
-                path.file_stem().expect("target path must not be empty").to_str()
-                    .expect("target path must be valid unicode")
-            }
+            TargetTriple::TargetPath(ref path) => path
+                .file_stem()
+                .expect("target path must not be empty")
+                .to_str()
+                .expect("target path must be valid unicode"),
         }
     }
 
@@ -1423,8 +1755,8 @@ impl TargetTriple {
     /// If this target is a path, a hash of the path is appended to the triple returned
     /// by `triple()`.
     pub fn debug_triple(&self) -> String {
-        use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
 
         let triple = self.triple();
         if let TargetTriple::TargetPath(ref path) = *self {

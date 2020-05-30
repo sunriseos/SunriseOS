@@ -3,18 +3,18 @@
 #![feature(plugin_registrar)]
 #![feature(box_syntax, rustc_private)]
 
-extern crate syntax;
+extern crate rustc_ast;
 
 // Load rustc as a plugin to get macros
-#[macro_use]
-extern crate rustc;
-extern crate rustc_plugin;
 extern crate rustc_driver;
+#[macro_use]
+extern crate rustc_lint;
+#[macro_use]
+extern crate rustc_session;
 
-use rustc::lint::{EarlyContext, LintContext, LintPass, EarlyLintPass,
-                  EarlyLintPassObject, LintArray};
-use rustc_plugin::Registry;
-use syntax::ast;
+use rustc_driver::plugin::Registry;
+use rustc_lint::{EarlyContext, EarlyLintPass, LintArray, LintContext, LintPass};
+use rustc_ast::ast;
 declare_lint!(TEST_LINT, Warn, "Warn about items named 'lintme'");
 
 declare_lint_pass!(Pass => [TEST_LINT]);
@@ -22,12 +22,15 @@ declare_lint_pass!(Pass => [TEST_LINT]);
 impl EarlyLintPass for Pass {
     fn check_item(&mut self, cx: &EarlyContext, it: &ast::Item) {
         if it.ident.name.as_str() == "lintme" {
-            cx.span_lint(TEST_LINT, it.span, "item is named 'lintme'");
+            cx.lint(TEST_LINT, |lint| {
+                lint.build("item is named 'lintme'").set_span(it.span).emit()
+            });
         }
     }
 }
 
 #[plugin_registrar]
 pub fn plugin_registrar(reg: &mut Registry) {
-    reg.register_early_lint_pass(box Pass as EarlyLintPassObject);
+    reg.lint_store.register_lints(&[&TEST_LINT]);
+    reg.lint_store.register_early_pass(|| box Pass);
 }

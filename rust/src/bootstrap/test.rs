@@ -19,11 +19,11 @@ use crate::compile;
 use crate::dist;
 use crate::flags::Subcommand;
 use crate::native;
-use crate::tool::{self, Tool, SourceType};
+use crate::tool::{self, SourceType, Tool};
 use crate::toolstate::ToolState;
-use crate::util::{self, dylib_path, dylib_path_var};
+use crate::util::{self, add_link_lib_path, dylib_path, dylib_path_var};
 use crate::Crate as CargoCrate;
-use crate::{DocTests, Mode, GitRepo};
+use crate::{envify, DocTests, GitRepo, Mode};
 
 const ADB_TEST_DIR: &str = "/data/tmp/work";
 
@@ -115,16 +115,13 @@ impl Step for Linkcheck {
         let _time = util::timeit(&builder);
         try_run(
             builder,
-            builder
-                .tool_cmd(Tool::Linkchecker)
-                .arg(builder.out.join(host).join("doc")),
+            builder.tool_cmd(Tool::Linkchecker).arg(builder.out.join(host).join("doc")),
         );
     }
 
     fn should_run(run: ShouldRun<'_>) -> ShouldRun<'_> {
         let builder = run.builder;
-        run.path("src/tools/linkchecker")
-            .default_condition(builder.config.docs)
+        run.path("src/tools/linkchecker").default_condition(builder.config.docs)
     }
 
     fn make_run(run: RunConfig<'_>) {
@@ -147,10 +144,7 @@ impl Step for Cargotest {
     }
 
     fn make_run(run: RunConfig<'_>) {
-        run.builder.ensure(Cargotest {
-            stage: run.builder.top_stage,
-            host: run.target,
-        });
+        run.builder.ensure(Cargotest { stage: run.builder.top_stage, host: run.target });
     }
 
     /// Runs the `cargotest` tool as compiled in `stage` by the `host` compiler.
@@ -159,10 +153,7 @@ impl Step for Cargotest {
     /// test` to ensure that we don't regress the test suites there.
     fn run(self, builder: &Builder<'_>) {
         let compiler = builder.compiler(self.stage, self.host);
-        builder.ensure(compile::Rustc {
-            compiler,
-            target: compiler.host,
-        });
+        builder.ensure(compile::Rustc { compiler, target: compiler.host });
 
         // Note that this is a short, cryptic, and not scoped directory name. This
         // is currently to minimize the length of path on Windows where we otherwise
@@ -197,28 +188,24 @@ impl Step for Cargo {
     }
 
     fn make_run(run: RunConfig<'_>) {
-        run.builder.ensure(Cargo {
-            stage: run.builder.top_stage,
-            host: run.target,
-        });
+        run.builder.ensure(Cargo { stage: run.builder.top_stage, host: run.target });
     }
 
     /// Runs `cargo test` for `cargo` packaged with Rust.
     fn run(self, builder: &Builder<'_>) {
         let compiler = builder.compiler(self.stage, self.host);
 
-        builder.ensure(tool::Cargo {
+        builder.ensure(tool::Cargo { compiler, target: self.host });
+        let mut cargo = tool::prepare_tool_cargo(
+            builder,
             compiler,
-            target: self.host,
-        });
-        let mut cargo = tool::prepare_tool_cargo(builder,
-                                                 compiler,
-                                                 Mode::ToolRustc,
-                                                 self.host,
-                                                 "test",
-                                                 "src/tools/cargo",
-                                                 SourceType::Submodule,
-                                                 &[]);
+            Mode::ToolRustc,
+            self.host,
+            "test",
+            "src/tools/cargo",
+            SourceType::Submodule,
+            &[],
+        );
 
         if !builder.fail_fast {
             cargo.arg("--no-fail-fast");
@@ -229,11 +216,13 @@ impl Step for Cargo {
         cargo.env("CFG_DISABLE_CROSS_TESTS", "1");
         // Disable a test that has issues with mingw.
         cargo.env("CARGO_TEST_DISABLE_GIT_CLI", "1");
+        // Forcibly disable tests using nightly features since any changes to
+        // those features won't be able to land.
+        cargo.env("CARGO_TEST_DISABLE_NIGHTLY", "1");
 
-        try_run(
-            builder,
-            cargo.env("PATH", &path_for_cargo(builder, compiler)),
-        );
+        cargo.env("PATH", &path_for_cargo(builder, compiler));
+
+        try_run(builder, &mut cargo.into());
     }
 }
 
@@ -252,10 +241,7 @@ impl Step for Rls {
     }
 
     fn make_run(run: RunConfig<'_>) {
-        run.builder.ensure(Rls {
-            stage: run.builder.top_stage,
-            host: run.target,
-        });
+        run.builder.ensure(Rls { stage: run.builder.top_stage, host: run.target });
     }
 
     /// Runs `cargo test` for the rls.
@@ -264,30 +250,28 @@ impl Step for Rls {
         let host = self.host;
         let compiler = builder.compiler(stage, host);
 
-        let build_result = builder.ensure(tool::Rls {
-            compiler,
-            target: self.host,
-            extra_features: Vec::new(),
-        });
+        let build_result =
+            builder.ensure(tool::Rls { compiler, target: self.host, extra_features: Vec::new() });
         if build_result.is_none() {
             eprintln!("failed to test rls: could not build");
             return;
         }
 
-        let mut cargo = tool::prepare_tool_cargo(builder,
-                                                 compiler,
-                                                 Mode::ToolRustc,
-                                                 host,
-                                                 "test",
-                                                 "src/tools/rls",
-                                                 SourceType::Submodule,
-                                                 &[]);
+        let mut cargo = tool::prepare_tool_cargo(
+            builder,
+            compiler,
+            Mode::ToolRustc,
+            host,
+            "test",
+            "src/tools/rls",
+            SourceType::Submodule,
+            &[],
+        );
 
         builder.add_rustc_lib_path(compiler, &mut cargo);
-        cargo.arg("--")
-            .args(builder.config.cmd.test_args());
+        cargo.arg("--").args(builder.config.cmd.test_args());
 
-        if try_run(builder, &mut cargo) {
+        if try_run(builder, &mut cargo.into()) {
             builder.save_toolstate("rls", ToolState::TestPass);
         }
     }
@@ -308,10 +292,7 @@ impl Step for Rustfmt {
     }
 
     fn make_run(run: RunConfig<'_>) {
-        run.builder.ensure(Rustfmt {
-            stage: run.builder.top_stage,
-            host: run.target,
-        });
+        run.builder.ensure(Rustfmt { stage: run.builder.top_stage, host: run.target });
     }
 
     /// Runs `cargo test` for rustfmt.
@@ -330,14 +311,16 @@ impl Step for Rustfmt {
             return;
         }
 
-        let mut cargo = tool::prepare_tool_cargo(builder,
-                                                 compiler,
-                                                 Mode::ToolRustc,
-                                                 host,
-                                                 "test",
-                                                 "src/tools/rustfmt",
-                                                 SourceType::Submodule,
-                                                 &[]);
+        let mut cargo = tool::prepare_tool_cargo(
+            builder,
+            compiler,
+            Mode::ToolRustc,
+            host,
+            "test",
+            "src/tools/rustfmt",
+            SourceType::Submodule,
+            &[],
+        );
 
         let dir = testdir(builder, compiler.host);
         t!(fs::create_dir_all(&dir));
@@ -345,7 +328,7 @@ impl Step for Rustfmt {
 
         builder.add_rustc_lib_path(compiler, &mut cargo);
 
-        if try_run(builder, &mut cargo) {
+        if try_run(builder, &mut cargo.into()) {
             builder.save_toolstate("rustfmt", ToolState::TestPass);
         }
     }
@@ -360,18 +343,13 @@ pub struct Miri {
 impl Step for Miri {
     type Output = ();
     const ONLY_HOSTS: bool = true;
-    const DEFAULT: bool = true;
 
     fn should_run(run: ShouldRun<'_>) -> ShouldRun<'_> {
-        let test_miri = run.builder.config.test_miri;
-        run.path("src/tools/miri").default_condition(test_miri)
+        run.path("src/tools/miri")
     }
 
     fn make_run(run: RunConfig<'_>) {
-        run.builder.ensure(Miri {
-            stage: run.builder.top_stage,
-            host: run.target,
-        });
+        run.builder.ensure(Miri { stage: run.builder.top_stage, host: run.target });
     }
 
     /// Runs `cargo test` for miri.
@@ -380,32 +358,97 @@ impl Step for Miri {
         let host = self.host;
         let compiler = builder.compiler(stage, host);
 
-        let miri = builder.ensure(tool::Miri {
-            compiler,
-            target: self.host,
-            extra_features: Vec::new(),
-        });
+        let miri =
+            builder.ensure(tool::Miri { compiler, target: self.host, extra_features: Vec::new() });
         if let Some(miri) = miri {
-            let mut cargo = tool::prepare_tool_cargo(builder,
-                                                 compiler,
-                                                 Mode::ToolRustc,
-                                                 host,
-                                                 "test",
-                                                 "src/tools/miri",
-                                                 SourceType::Submodule,
-                                                 &[]);
+            let mut cargo = builder.cargo(compiler, Mode::ToolRustc, host, "install");
+            cargo.arg("xargo");
+            // Configure `cargo install` path. cargo adds a `bin/`.
+            cargo.env("CARGO_INSTALL_ROOT", &builder.out);
+
+            let mut cargo = Command::from(cargo);
+            if !try_run(builder, &mut cargo) {
+                return;
+            }
+
+            // # Run `cargo miri setup`.
+            let mut cargo = tool::prepare_tool_cargo(
+                builder,
+                compiler,
+                Mode::ToolRustc,
+                host,
+                "run",
+                "src/tools/miri",
+                SourceType::Submodule,
+                &[],
+            );
+            cargo.arg("--bin").arg("cargo-miri").arg("--").arg("miri").arg("setup");
+
+            // Tell `cargo miri setup` where to find the sources.
+            cargo.env("XARGO_RUST_SRC", builder.src.join("src"));
+            // Debug things.
+            cargo.env("RUST_BACKTRACE", "1");
+            // Overwrite bootstrap's `rustc` wrapper overwriting our flags.
+            cargo.env("RUSTC_DEBUG_ASSERTIONS", "true");
+            // Let cargo-miri know where xargo ended up.
+            cargo.env("XARGO_CHECK", builder.out.join("bin").join("xargo-check"));
+
+            let mut cargo = Command::from(cargo);
+            if !try_run(builder, &mut cargo) {
+                return;
+            }
+
+            // # Determine where Miri put its sysroot.
+            // To this end, we run `cargo miri setup --print-sysroot` and capture the output.
+            // (We do this separately from the above so that when the setup actually
+            // happens we get some output.)
+            // We re-use the `cargo` from above.
+            cargo.arg("--print-sysroot");
+
+            // FIXME: Is there a way in which we can re-use the usual `run` helpers?
+            let miri_sysroot = if builder.config.dry_run {
+                String::new()
+            } else {
+                builder.verbose(&format!("running: {:?}", cargo));
+                let out = cargo
+                    .output()
+                    .expect("We already ran `cargo miri setup` before and that worked");
+                assert!(out.status.success(), "`cargo miri setup` returned with non-0 exit code");
+                // Output is "<sysroot>\n".
+                let stdout = String::from_utf8(out.stdout)
+                    .expect("`cargo miri setup` stdout is not valid UTF-8");
+                let sysroot = stdout.trim_end();
+                builder.verbose(&format!("`cargo miri setup --print-sysroot` said: {:?}", sysroot));
+                sysroot.to_owned()
+            };
+
+            // # Run `cargo test`.
+            let mut cargo = tool::prepare_tool_cargo(
+                builder,
+                compiler,
+                Mode::ToolRustc,
+                host,
+                "test",
+                "src/tools/miri",
+                SourceType::Submodule,
+                &[],
+            );
 
             // miri tests need to know about the stage sysroot
-            cargo.env("MIRI_SYSROOT", builder.sysroot(compiler));
-            cargo.env("RUSTC_TEST_SUITE", builder.rustc(compiler));
+            cargo.env("MIRI_SYSROOT", miri_sysroot);
             cargo.env("RUSTC_LIB_PATH", builder.rustc_libdir(compiler));
             cargo.env("MIRI_PATH", miri);
 
+            cargo.arg("--").args(builder.config.cmd.test_args());
+
             builder.add_rustc_lib_path(compiler, &mut cargo);
 
-            if try_run(builder, &mut cargo) {
-                builder.save_toolstate("miri", ToolState::TestPass);
+            if !try_run(builder, &mut cargo.into()) {
+                return;
             }
+
+            // # Done!
+            builder.save_toolstate("miri", ToolState::TestPass);
         } else {
             eprintln!("failed to test miri: could not build");
         }
@@ -425,9 +468,7 @@ impl Step for CompiletestTest {
     }
 
     fn make_run(run: RunConfig<'_>) {
-        run.builder.ensure(CompiletestTest {
-            host: run.target,
-        });
+        run.builder.ensure(CompiletestTest { host: run.target });
     }
 
     /// Runs `cargo test` for compiletest.
@@ -435,16 +476,18 @@ impl Step for CompiletestTest {
         let host = self.host;
         let compiler = builder.compiler(0, host);
 
-        let mut cargo = tool::prepare_tool_cargo(builder,
-                                                 compiler,
-                                                 Mode::ToolBootstrap,
-                                                 host,
-                                                 "test",
-                                                 "src/tools/compiletest",
-                                                 SourceType::InTree,
-                                                 &[]);
+        let cargo = tool::prepare_tool_cargo(
+            builder,
+            compiler,
+            Mode::ToolBootstrap,
+            host,
+            "test",
+            "src/tools/compiletest",
+            SourceType::InTree,
+            &[],
+        );
 
-        try_run(builder, &mut cargo);
+        try_run(builder, &mut cargo.into());
     }
 }
 
@@ -464,10 +507,7 @@ impl Step for Clippy {
     }
 
     fn make_run(run: RunConfig<'_>) {
-        run.builder.ensure(Clippy {
-            stage: run.builder.top_stage,
-            host: run.target,
-        });
+        run.builder.ensure(Clippy { stage: run.builder.top_stage, host: run.target });
     }
 
     /// Runs `cargo test` for clippy.
@@ -482,31 +522,36 @@ impl Step for Clippy {
             extra_features: Vec::new(),
         });
         if let Some(clippy) = clippy {
-            let mut cargo = tool::prepare_tool_cargo(builder,
-                                                 compiler,
-                                                 Mode::ToolRustc,
-                                                 host,
-                                                 "test",
-                                                 "src/tools/clippy",
-                                                 SourceType::Submodule,
-                                                 &[]);
+            let mut cargo = tool::prepare_tool_cargo(
+                builder,
+                compiler,
+                Mode::ToolRustc,
+                host,
+                "test",
+                "src/tools/clippy",
+                SourceType::InTree,
+                &[],
+            );
 
             // clippy tests need to know about the stage sysroot
             cargo.env("SYSROOT", builder.sysroot(compiler));
             cargo.env("RUSTC_TEST_SUITE", builder.rustc(compiler));
             cargo.env("RUSTC_LIB_PATH", builder.rustc_libdir(compiler));
-            let host_libs = builder
+            let host_libs = builder.stage_out(compiler, Mode::ToolRustc).join(builder.cargo_dir());
+            let target_libs = builder
                 .stage_out(compiler, Mode::ToolRustc)
+                .join(&self.host)
                 .join(builder.cargo_dir());
             cargo.env("HOST_LIBS", host_libs);
+            cargo.env("TARGET_LIBS", target_libs);
             // clippy tests need to find the driver
             cargo.env("CLIPPY_DRIVER_PATH", clippy);
 
+            cargo.arg("--").args(builder.config.cmd.test_args());
+
             builder.add_rustc_lib_path(compiler, &mut cargo);
 
-            if try_run(builder, &mut cargo) {
-                builder.save_toolstate("clippy-driver", ToolState::TestPass);
-            }
+            try_run(builder, &mut cargo.into());
         } else {
             eprintln!("failed to test clippy: could not build");
         }
@@ -546,24 +591,15 @@ impl Step for RustdocTheme {
         let rustdoc = builder.out.join("bootstrap/debug/rustdoc");
         let mut cmd = builder.tool_cmd(Tool::RustdocTheme);
         cmd.arg(rustdoc.to_str().unwrap())
-            .arg(
-                builder
-                    .src
-                    .join("src/librustdoc/html/static/themes")
-                    .to_str()
-                    .unwrap(),
-            )
+            .arg(builder.src.join("src/librustdoc/html/static/themes").to_str().unwrap())
             .env("RUSTC_STAGE", self.compiler.stage.to_string())
             .env("RUSTC_SYSROOT", builder.sysroot(self.compiler))
-            .env(
-                "RUSTDOC_LIBDIR",
-                builder.sysroot_libdir(self.compiler, self.compiler.host),
-            )
+            .env("RUSTDOC_LIBDIR", builder.sysroot_libdir(self.compiler, self.compiler.host))
             .env("CFG_RELEASE_CHANNEL", &builder.config.channel)
             .env("RUSTDOC_REAL", builder.rustdoc(self.compiler))
             .env("RUSTDOC_CRATE_VERSION", builder.rust_version())
             .env("RUSTC_BOOTSTRAP", "1");
-        if let Some(linker) = builder.linker(self.compiler.host) {
+        if let Some(linker) = builder.linker(self.compiler.host, true) {
             cmd.env("RUSTC_TARGET_LINKER", linker);
         }
         try_run(builder, &mut cmd);
@@ -572,7 +608,6 @@ impl Step for RustdocTheme {
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub struct RustdocJSStd {
-    pub host: Interned<String>,
     pub target: Interned<String>,
 }
 
@@ -586,25 +621,26 @@ impl Step for RustdocJSStd {
     }
 
     fn make_run(run: RunConfig<'_>) {
-        run.builder.ensure(RustdocJSStd {
-            host: run.host,
-            target: run.target,
-        });
+        run.builder.ensure(RustdocJSStd { target: run.target });
     }
 
     fn run(self, builder: &Builder<'_>) {
         if let Some(ref nodejs) = builder.config.nodejs {
             let mut command = Command::new(nodejs);
-            command.args(&["src/tools/rustdoc-js-std/tester.js", &*self.host]);
-            builder.ensure(crate::doc::Std {
-                target: self.target,
-                stage: builder.top_stage,
-            });
+            command
+                .arg(builder.src.join("src/tools/rustdoc-js/tester.js"))
+                .arg("--crate-name")
+                .arg("std")
+                .arg("--resource-suffix")
+                .arg(crate::channel::CFG_RELEASE_NUM)
+                .arg("--doc-folder")
+                .arg(builder.doc_out(self.target))
+                .arg("--test-folder")
+                .arg(builder.src.join("src/test/rustdoc-js-std"));
+            builder.ensure(crate::doc::Std { target: self.target, stage: builder.top_stage });
             builder.run(&mut command);
         } else {
-            builder.info(
-                "No nodejs found, skipping \"src/test/rustdoc-js-std\" tests"
-            );
+            builder.info("No nodejs found, skipping \"src/test/rustdoc-js-std\" tests");
         }
     }
 }
@@ -627,11 +663,7 @@ impl Step for RustdocJSNotStd {
 
     fn make_run(run: RunConfig<'_>) {
         let compiler = run.builder.compiler(run.builder.top_stage, run.host);
-        run.builder.ensure(RustdocJSNotStd {
-            host: run.host,
-            target: run.target,
-            compiler,
-        });
+        run.builder.ensure(RustdocJSNotStd { host: run.host, target: run.target, compiler });
     }
 
     fn run(self, builder: &Builder<'_>) {
@@ -641,13 +673,11 @@ impl Step for RustdocJSNotStd {
                 target: self.target,
                 mode: "js-doc-test",
                 suite: "rustdoc-js",
-                path: None,
+                path: "src/test/rustdoc-js",
                 compare_mode: None,
             });
         } else {
-            builder.info(
-                "No nodejs found, skipping \"src/test/rustdoc-js\" tests"
-            );
+            builder.info("No nodejs found, skipping \"src/test/rustdoc-js\" tests");
         }
     }
 }
@@ -670,11 +700,7 @@ impl Step for RustdocUi {
 
     fn make_run(run: RunConfig<'_>) {
         let compiler = run.builder.compiler(run.builder.top_stage, run.host);
-        run.builder.ensure(RustdocUi {
-            host: run.host,
-            target: run.target,
-            compiler,
-        });
+        run.builder.ensure(RustdocUi { host: run.host, target: run.target, compiler });
     }
 
     fn run(self, builder: &Builder<'_>) {
@@ -683,7 +709,7 @@ impl Step for RustdocUi {
             target: self.target,
             mode: "ui",
             suite: "rustdoc-ui",
-            path: Some("src/test/rustdoc-ui"),
+            path: "src/test/rustdoc-ui",
             compare_mode: None,
         })
     }
@@ -702,20 +728,24 @@ impl Step for Tidy {
     /// This tool in `src/tools` checks up on various bits and pieces of style and
     /// otherwise just implements a few lint-like checks that are specific to the
     /// compiler itself.
+    ///
+    /// Once tidy passes, this step also runs `fmt --check` if tests are being run
+    /// for the `dev` or `nightly` channels.
     fn run(self, builder: &Builder<'_>) {
         let mut cmd = builder.tool_cmd(Tool::Tidy);
         cmd.arg(builder.src.join("src"));
         cmd.arg(&builder.initial_cargo);
-        if !builder.config.vendor {
-            cmd.arg("--no-vendor");
-        }
         if builder.is_verbose() {
             cmd.arg("--verbose");
         }
 
-        let _folder = builder.fold_output(|| "tidy");
         builder.info("tidy check");
         try_run(builder, &mut cmd);
+
+        if builder.config.channel == "dev" || builder.config.channel == "nightly" {
+            builder.info("fmt check");
+            crate::format::format(&builder.build, !builder.config.cmd.bless());
+        }
     }
 
     fn should_run(run: ShouldRun<'_>) -> ShouldRun<'_> {
@@ -727,6 +757,35 @@ impl Step for Tidy {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct ExpandYamlAnchors;
+
+impl Step for ExpandYamlAnchors {
+    type Output = ();
+    const ONLY_HOSTS: bool = true;
+
+    /// Ensure the `generate-ci-config` tool was run locally.
+    ///
+    /// The tool in `src/tools` reads the CI definition in `src/ci/builders.yml` and generates the
+    /// appropriate configuration for all our CI providers. This step ensures the tool was called
+    /// by the user before committing CI changes.
+    fn run(self, builder: &Builder<'_>) {
+        builder.info("Ensuring the YAML anchors in the GitHub Actions config were expanded");
+        try_run(
+            builder,
+            &mut builder.tool_cmd(Tool::ExpandYamlAnchors).arg("check").arg(&builder.src),
+        );
+    }
+
+    fn should_run(run: ShouldRun<'_>) -> ShouldRun<'_> {
+        run.path("src/tools/expand-yaml-anchors")
+    }
+
+    fn make_run(run: RunConfig<'_>) {
+        run.builder.ensure(ExpandYamlAnchors);
+    }
+}
+
 fn testdir(builder: &Builder<'_>, host: Interned<String>) -> PathBuf {
     builder.out.join(host).join("test")
 }
@@ -734,37 +793,55 @@ fn testdir(builder: &Builder<'_>, host: Interned<String>) -> PathBuf {
 macro_rules! default_test {
     ($name:ident { path: $path:expr, mode: $mode:expr, suite: $suite:expr }) => {
         test!($name { path: $path, mode: $mode, suite: $suite, default: true, host: false });
-    }
+    };
 }
 
 macro_rules! default_test_with_compare_mode {
     ($name:ident { path: $path:expr, mode: $mode:expr, suite: $suite:expr,
                    compare_mode: $compare_mode:expr }) => {
-        test_with_compare_mode!($name { path: $path, mode: $mode, suite: $suite, default: true,
-                                        host: false, compare_mode: $compare_mode });
-    }
+        test_with_compare_mode!($name {
+            path: $path,
+            mode: $mode,
+            suite: $suite,
+            default: true,
+            host: false,
+            compare_mode: $compare_mode
+        });
+    };
 }
 
 macro_rules! host_test {
     ($name:ident { path: $path:expr, mode: $mode:expr, suite: $suite:expr }) => {
         test!($name { path: $path, mode: $mode, suite: $suite, default: true, host: true });
-    }
+    };
 }
 
 macro_rules! test {
     ($name:ident { path: $path:expr, mode: $mode:expr, suite: $suite:expr, default: $default:expr,
                    host: $host:expr }) => {
-        test_definitions!($name { path: $path, mode: $mode, suite: $suite, default: $default,
-                                  host: $host, compare_mode: None });
-    }
+        test_definitions!($name {
+            path: $path,
+            mode: $mode,
+            suite: $suite,
+            default: $default,
+            host: $host,
+            compare_mode: None
+        });
+    };
 }
 
 macro_rules! test_with_compare_mode {
     ($name:ident { path: $path:expr, mode: $mode:expr, suite: $suite:expr, default: $default:expr,
                    host: $host:expr, compare_mode: $compare_mode:expr }) => {
-        test_definitions!($name { path: $path, mode: $mode, suite: $suite, default: $default,
-                                  host: $host, compare_mode: Some($compare_mode) });
-    }
+        test_definitions!($name {
+            path: $path,
+            mode: $mode,
+            suite: $suite,
+            default: $default,
+            host: $host,
+            compare_mode: Some($compare_mode)
+        });
+    };
 }
 
 macro_rules! test_definitions {
@@ -794,10 +871,7 @@ macro_rules! test_definitions {
             fn make_run(run: RunConfig<'_>) {
                 let compiler = run.builder.compiler(run.builder.top_stage, run.host);
 
-                run.builder.ensure($name {
-                    compiler,
-                    target: run.target,
-                });
+                run.builder.ensure($name { compiler, target: run.target });
             }
 
             fn run(self, builder: &Builder<'_>) {
@@ -806,12 +880,12 @@ macro_rules! test_definitions {
                     target: self.target,
                     mode: $mode,
                     suite: $suite,
-                    path: Some($path),
+                    path: $path,
                     compare_mode: $compare_mode,
                 })
             }
         }
-    }
+    };
 }
 
 default_test_with_compare_mode!(Ui {
@@ -821,23 +895,10 @@ default_test_with_compare_mode!(Ui {
     compare_mode: "nll"
 });
 
-default_test_with_compare_mode!(RunPass {
-    path: "src/test/run-pass",
-    mode: "run-pass",
-    suite: "run-pass",
-    compare_mode: "nll"
-});
-
 default_test!(CompileFail {
     path: "src/test/compile-fail",
     mode: "compile-fail",
     suite: "compile-fail"
-});
-
-default_test!(RunFail {
-    path: "src/test/run-fail",
-    mode: "run-fail",
-    suite: "run-fail"
 });
 
 default_test!(RunPassValgrind {
@@ -846,17 +907,9 @@ default_test!(RunPassValgrind {
     suite: "run-pass-valgrind"
 });
 
-default_test!(MirOpt {
-    path: "src/test/mir-opt",
-    mode: "mir-opt",
-    suite: "mir-opt"
-});
+default_test!(MirOpt { path: "src/test/mir-opt", mode: "mir-opt", suite: "mir-opt" });
 
-default_test!(Codegen {
-    path: "src/test/codegen",
-    mode: "codegen",
-    suite: "codegen"
-});
+default_test!(Codegen { path: "src/test/codegen", mode: "codegen", suite: "codegen" });
 
 default_test!(CodegenUnits {
     path: "src/test/codegen-units",
@@ -870,49 +923,13 @@ default_test!(Incremental {
     suite: "incremental"
 });
 
-default_test!(Debuginfo {
-    path: "src/test/debuginfo",
-    mode: "debuginfo",
-    suite: "debuginfo"
-});
+default_test!(Debuginfo { path: "src/test/debuginfo", mode: "debuginfo", suite: "debuginfo" });
 
-host_test!(UiFullDeps {
-    path: "src/test/ui-fulldeps",
-    mode: "ui",
-    suite: "ui-fulldeps"
-});
+host_test!(UiFullDeps { path: "src/test/ui-fulldeps", mode: "ui", suite: "ui-fulldeps" });
 
-host_test!(RunPassFullDeps {
-    path: "src/test/run-pass-fulldeps",
-    mode: "run-pass",
-    suite: "run-pass-fulldeps"
-});
+host_test!(Rustdoc { path: "src/test/rustdoc", mode: "rustdoc", suite: "rustdoc" });
 
-host_test!(Rustdoc {
-    path: "src/test/rustdoc",
-    mode: "rustdoc",
-    suite: "rustdoc"
-});
-
-host_test!(Pretty {
-    path: "src/test/pretty",
-    mode: "pretty",
-    suite: "pretty"
-});
-test!(RunPassPretty {
-    path: "src/test/run-pass/pretty",
-    mode: "pretty",
-    suite: "run-pass",
-    default: false,
-    host: true
-});
-test!(RunFailPretty {
-    path: "src/test/run-fail/pretty",
-    mode: "pretty",
-    suite: "run-fail",
-    default: false,
-    host: true
-});
+host_test!(Pretty { path: "src/test/pretty", mode: "pretty", suite: "pretty" });
 test!(RunPassValgrindPretty {
     path: "src/test/run-pass-valgrind/pretty",
     mode: "pretty",
@@ -921,11 +938,7 @@ test!(RunPassValgrindPretty {
     host: true
 });
 
-default_test!(RunMake {
-    path: "src/test/run-make",
-    mode: "run-make",
-    suite: "run-make"
-});
+default_test!(RunMake { path: "src/test/run-make", mode: "run-make", suite: "run-make" });
 
 host_test!(RunMakeFullDeps {
     path: "src/test/run-make-fulldeps",
@@ -933,11 +946,7 @@ host_test!(RunMakeFullDeps {
     suite: "run-make-fulldeps"
 });
 
-default_test!(Assembly {
-    path: "src/test/assembly",
-    mode: "assembly",
-    suite: "assembly"
-});
+default_test!(Assembly { path: "src/test/assembly", mode: "assembly", suite: "assembly" });
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 struct Compiletest {
@@ -945,7 +954,7 @@ struct Compiletest {
     target: Interned<String>,
     mode: &'static str,
     suite: &'static str,
-    path: Option<&'static str>,
+    path: &'static str,
     compare_mode: Option<&'static str>,
 }
 
@@ -968,7 +977,7 @@ impl Step for Compiletest {
         let suite = self.suite;
 
         // Path for test suite
-        let suite_path = self.path.unwrap_or("");
+        let suite_path = self.path;
 
         // Skip codegen tests if they aren't enabled in configuration.
         if !builder.config.codegen_tests && suite == "codegen" {
@@ -976,46 +985,26 @@ impl Step for Compiletest {
         }
 
         if suite == "debuginfo" {
-            let msvc = builder.config.build.contains("msvc");
-            if mode == "debuginfo" {
-                return builder.ensure(Compiletest {
-                    mode: if msvc { "debuginfo-cdb" } else { "debuginfo-gdb+lldb" },
-                    ..self
-                });
-            }
-
-            builder.ensure(dist::DebuggerScripts {
-                sysroot: builder.sysroot(compiler),
-                host: target,
-            });
+            builder
+                .ensure(dist::DebuggerScripts { sysroot: builder.sysroot(compiler), host: target });
         }
 
         if suite.ends_with("fulldeps") {
             builder.ensure(compile::Rustc { compiler, target });
         }
 
-        if builder.no_std(target) == Some(true) {
-            // the `test` doesn't compile for no-std targets
-            builder.ensure(compile::Std { compiler, target });
-        } else {
-            builder.ensure(compile::Test { compiler, target });
-        }
+        builder.ensure(compile::Std { compiler, target });
+        // ensure that `libproc_macro` is available on the host.
+        builder.ensure(compile::Std { compiler, target: compiler.host });
 
-        if builder.no_std(target) == Some(true) {
-            // for no_std run-make (e.g., thumb*),
-            // we need a host compiler which is called by cargo.
-            builder.ensure(compile::Std { compiler, target: compiler.host });
-        }
-
-        // HACK(eddyb) ensure that `libproc_macro` is available on the host.
-        builder.ensure(compile::Test { compiler, target: compiler.host });
         // Also provide `rust_test_helpers` for the host.
         builder.ensure(native::TestHelpers { target: compiler.host });
 
-        // wasm32 can't build the test helpers
-        if !target.contains("wasm32") {
+        // As well as the target, except for plain wasm32, which can't build it
+        if !target.contains("wasm32") || target.contains("emscripten") {
             builder.ensure(native::TestHelpers { target });
         }
+
         builder.ensure(RemoteCopyLibs { compiler, target });
 
         let mut cmd = builder.tool_cmd(Tool::Compiletest);
@@ -1023,10 +1012,8 @@ impl Step for Compiletest {
         // compiletest currently has... a lot of arguments, so let's just pass all
         // of them!
 
-        cmd.arg("--compile-lib-path")
-            .arg(builder.rustc_libdir(compiler));
-        cmd.arg("--run-lib-path")
-            .arg(builder.sysroot_libdir(compiler, target));
+        cmd.arg("--compile-lib-path").arg(builder.rustc_libdir(compiler));
+        cmd.arg("--run-lib-path").arg(builder.sysroot_libdir(compiler, target));
         cmd.arg("--rustc-path").arg(builder.rustc(compiler));
 
         let is_rustdoc = suite.ends_with("rustdoc-ui") || suite.ends_with("rustdoc-js");
@@ -1037,33 +1024,25 @@ impl Step for Compiletest {
             || (mode == "ui" && is_rustdoc)
             || mode == "js-doc-test"
         {
-            cmd.arg("--rustdoc-path")
-                .arg(builder.rustdoc(compiler));
+            cmd.arg("--rustdoc-path").arg(builder.rustdoc(compiler));
         }
 
-        cmd.arg("--src-base")
-            .arg(builder.src.join("src/test").join(suite));
-        cmd.arg("--build-base")
-            .arg(testdir(builder, compiler.host).join(suite));
-        cmd.arg("--stage-id")
-            .arg(format!("stage{}-{}", compiler.stage, target));
+        cmd.arg("--src-base").arg(builder.src.join("src/test").join(suite));
+        cmd.arg("--build-base").arg(testdir(builder, compiler.host).join(suite));
+        cmd.arg("--stage-id").arg(format!("stage{}-{}", compiler.stage, target));
         cmd.arg("--mode").arg(mode);
         cmd.arg("--target").arg(target);
         cmd.arg("--host").arg(&*compiler.host);
-        cmd.arg("--llvm-filecheck")
-            .arg(builder.llvm_filecheck(builder.config.build));
+        cmd.arg("--llvm-filecheck").arg(builder.llvm_filecheck(builder.config.build));
 
         if builder.config.cmd.bless() {
             cmd.arg("--bless");
         }
 
-        let compare_mode = builder.config.cmd.compare_mode().or_else(|| {
-            if builder.config.test_compare_mode {
-                self.compare_mode
-            } else {
-                None
-            }
-        });
+        let compare_mode =
+            builder.config.cmd.compare_mode().or_else(|| {
+                if builder.config.test_compare_mode { self.compare_mode } else { None }
+            });
 
         if let Some(ref pass) = builder.config.cmd.pass() {
             cmd.arg("--pass");
@@ -1074,11 +1053,7 @@ impl Step for Compiletest {
             cmd.arg("--nodejs").arg(nodejs);
         }
 
-        let mut flags = if is_rustdoc {
-            Vec::new()
-        } else {
-            vec!["-Crpath".to_string()]
-        };
+        let mut flags = if is_rustdoc { Vec::new() } else { vec!["-Crpath".to_string()] };
         if !is_rustdoc {
             if builder.config.rust_optimize_tests {
                 flags.push("-O".to_string());
@@ -1088,31 +1063,26 @@ impl Step for Compiletest {
         flags.push("-Zunstable-options".to_string());
         flags.push(builder.config.cmd.rustc_args().join(" "));
 
-        if let Some(linker) = builder.linker(target) {
+        // Don't use LLD here since we want to test that rustc finds and uses a linker by itself.
+        if let Some(linker) = builder.linker(target, false) {
             cmd.arg("--linker").arg(linker);
         }
 
         let mut hostflags = flags.clone();
-        hostflags.push(format!(
-            "-Lnative={}",
-            builder.test_helpers_out(compiler.host).display()
-        ));
+        hostflags.push(format!("-Lnative={}", builder.test_helpers_out(compiler.host).display()));
         cmd.arg("--host-rustcflags").arg(hostflags.join(" "));
 
         let mut targetflags = flags;
-        targetflags.push(format!(
-            "-Lnative={}",
-            builder.test_helpers_out(target).display()
-        ));
+        targetflags.push(format!("-Lnative={}", builder.test_helpers_out(target).display()));
         cmd.arg("--target-rustcflags").arg(targetflags.join(" "));
 
         cmd.arg("--docck-python").arg(builder.python());
 
         if builder.config.build.ends_with("apple-darwin") {
-            // Force /usr/bin/python on macOS for LLDB tests because we're loading the
+            // Force /usr/bin/python3 on macOS for LLDB tests because we're loading the
             // LLDB plugin's compiled module which only works with the system python
             // (namely not Homebrew-installed python)
-            cmd.arg("--lldb-python").arg("/usr/bin/python");
+            cmd.arg("--lldb-python").arg("/usr/bin/python3");
         } else {
             cmd.arg("--lldb-python").arg(builder.python());
         }
@@ -1124,25 +1094,21 @@ impl Step for Compiletest {
         let run = |cmd: &mut Command| {
             cmd.output().map(|output| {
                 String::from_utf8_lossy(&output.stdout)
-                    .lines().next().unwrap_or_else(|| {
-                        panic!("{:?} failed {:?}", cmd, output)
-                    }).to_string()
+                    .lines()
+                    .next()
+                    .unwrap_or_else(|| panic!("{:?} failed {:?}", cmd, output))
+                    .to_string()
             })
         };
-        let lldb_exe = if builder.config.lldb_enabled && !target.contains("emscripten") {
-            // Test against the lldb that was just built.
-            builder.llvm_out(target).join("bin").join("lldb")
-        } else {
-            PathBuf::from("lldb")
-        };
-        let lldb_version = Command::new(&lldb_exe)
+        let lldb_exe = "lldb";
+        let lldb_version = Command::new(lldb_exe)
             .arg("--version")
             .output()
-            .map(|output| { String::from_utf8_lossy(&output.stdout).to_string() })
+            .map(|output| String::from_utf8_lossy(&output.stdout).to_string())
             .ok();
         if let Some(ref vers) = lldb_version {
             cmd.arg("--lldb-version").arg(vers);
-            let lldb_python_dir = run(Command::new(&lldb_exe).arg("-P")).ok();
+            let lldb_python_dir = run(Command::new(lldb_exe).arg("-P")).ok();
             if let Some(ref dir) = lldb_python_dir {
                 cmd.arg("--lldb-python-dir").arg(dir);
             }
@@ -1162,11 +1128,9 @@ impl Step for Compiletest {
         // Get test-args by striping suite path
         let mut test_args: Vec<&str> = paths
             .iter()
-            .map(|p| {
-                match p.strip_prefix(".") {
-                    Ok(path) => path,
-                    Err(_) => p,
-                }
+            .map(|p| match p.strip_prefix(".") {
+                Ok(path) => path,
+                Err(_) => p,
             })
             .filter(|p| p.starts_with(suite_path) && (p.is_dir() || p.is_file()))
             .filter_map(|p| {
@@ -1196,23 +1160,30 @@ impl Step for Compiletest {
         }
 
         if builder.config.llvm_enabled() {
-            let llvm_config = builder.ensure(native::Llvm {
-                target: builder.config.build,
-                emscripten: false,
-            });
+            let llvm_config = builder.ensure(native::Llvm { target: builder.config.build });
             if !builder.config.dry_run {
                 let llvm_version = output(Command::new(&llvm_config).arg("--version"));
+                // Remove trailing newline from llvm-config output.
+                let llvm_version = llvm_version.trim_end();
                 cmd.arg("--llvm-version").arg(llvm_version);
             }
             if !builder.is_rust_llvm(target) {
                 cmd.arg("--system-llvm");
             }
 
+            // Tests that use compiler libraries may inherit the `-lLLVM` link
+            // requirement, but the `-L` library path is not propagated across
+            // separate compilations. We can add LLVM's library path to the
+            // platform-specific environment variable as a workaround.
+            if !builder.config.dry_run && suite.ends_with("fulldeps") {
+                let llvm_libdir = output(Command::new(&llvm_config).arg("--libdir"));
+                add_link_lib_path(vec![llvm_libdir.trim().into()], &mut cmd);
+            }
+
             // Only pass correct values for these flags for the `run-make` suite as it
             // requires that a C++ compiler was configured which isn't always the case.
             if !builder.config.dry_run && suite == "run-make-fulldeps" {
                 let llvm_components = output(Command::new(&llvm_config).arg("--components"));
-                let llvm_cxxflags = output(Command::new(&llvm_config).arg("--cxxflags"));
                 cmd.arg("--cc")
                     .arg(builder.cc(target))
                     .arg("--cxx")
@@ -1220,32 +1191,31 @@ impl Step for Compiletest {
                     .arg("--cflags")
                     .arg(builder.cflags(target, GitRepo::Rustc).join(" "))
                     .arg("--llvm-components")
-                    .arg(llvm_components.trim())
-                    .arg("--llvm-cxxflags")
-                    .arg(llvm_cxxflags.trim());
+                    .arg(llvm_components.trim());
                 if let Some(ar) = builder.ar(target) {
                     cmd.arg("--ar").arg(ar);
                 }
 
                 // The llvm/bin directory contains many useful cross-platform
                 // tools. Pass the path to run-make tests so they can use them.
-                let llvm_bin_path = llvm_config.parent()
+                let llvm_bin_path = llvm_config
+                    .parent()
                     .expect("Expected llvm-config to be contained in directory");
                 assert!(llvm_bin_path.is_dir());
                 cmd.arg("--llvm-bin-dir").arg(llvm_bin_path);
 
                 // If LLD is available, add it to the PATH
                 if builder.config.lld_enabled {
-                    let lld_install_root = builder.ensure(native::Lld {
-                        target: builder.config.build,
-                    });
+                    let lld_install_root =
+                        builder.ensure(native::Lld { target: builder.config.build });
 
                     let lld_bin_path = lld_install_root.join("bin");
 
                     let old_path = env::var_os("PATH").unwrap_or_default();
-                    let new_path = env::join_paths(std::iter::once(lld_bin_path)
-                        .chain(env::split_paths(&old_path)))
-                        .expect("Could not add LLD bin path to PATH");
+                    let new_path = env::join_paths(
+                        std::iter::once(lld_bin_path).chain(env::split_paths(&old_path)),
+                    )
+                    .expect("Could not add LLD bin path to PATH");
                     cmd.env("PATH", new_path);
                 }
             }
@@ -1259,14 +1229,11 @@ impl Step for Compiletest {
                 .arg("--cflags")
                 .arg("")
                 .arg("--llvm-components")
-                .arg("")
-                .arg("--llvm-cxxflags")
                 .arg("");
         }
 
         if builder.remote_tested(target) {
-            cmd.arg("--remote-test-client")
-                .arg(builder.tool_exe(Tool::RemoteTestClient));
+            cmd.arg("--remote-test-client").arg(builder.tool_exe(Tool::RemoteTestClient));
         }
 
         // Running a C compiler on MSVC requires a few env vars to be set, to be
@@ -1292,7 +1259,9 @@ impl Step for Compiletest {
             cmd.env("RUSTC_PROFILER_SUPPORT", "1");
         }
 
-        cmd.env("RUST_TEST_TMPDIR", builder.out.join("tmp"));
+        let tmp = builder.out.join("tmp");
+        std::fs::create_dir_all(&tmp).unwrap();
+        cmd.env("RUST_TEST_TMPDIR", tmp);
 
         cmd.arg("--adb-path").arg("adb");
         cmd.arg("--adb-test-dir").arg(ADB_TEST_DIR);
@@ -1310,7 +1279,6 @@ impl Step for Compiletest {
 
         builder.ci_env.force_coloring_in_ci(&mut cmd);
 
-        let _folder = builder.fold_output(|| format!("test_{}", suite));
         builder.info(&format!(
             "Check compiletest suite={} mode={} ({} -> {})",
             suite, mode, &compiler.host, target
@@ -1320,7 +1288,6 @@ impl Step for Compiletest {
 
         if let Some(compare_mode) = compare_mode {
             cmd.arg("--compare-mode").arg(compare_mode);
-            let _folder = builder.fold_output(|| format!("test_{}_{}", suite, compare_mode));
             builder.info(&format!(
                 "Check compiletest suite={} mode={} compare_mode={} ({} -> {})",
                 suite, mode, compare_mode, &compiler.host, target
@@ -1331,15 +1298,15 @@ impl Step for Compiletest {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-struct DocTest {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct BookTest {
     compiler: Compiler,
-    path: &'static str,
+    path: PathBuf,
     name: &'static str,
     is_ext_doc: bool,
 }
 
-impl Step for DocTest {
+impl Step for BookTest {
     type Output = ();
     const ONLY_HOSTS: bool = true;
 
@@ -1347,25 +1314,67 @@ impl Step for DocTest {
         run.never()
     }
 
-    /// Runs `rustdoc --test` for all documentation in `src/doc`.
+    /// Runs the documentation tests for a book in `src/doc`.
     ///
-    /// This will run all tests in our markdown documentation (e.g., the book)
-    /// located in `src/doc`. The `rustdoc` that's run is the one that sits next to
-    /// `compiler`.
+    /// This uses the `rustdoc` that sits next to `compiler`.
     fn run(self, builder: &Builder<'_>) {
+        // External docs are different from local because:
+        // - Some books need pre-processing by mdbook before being tested.
+        // - They need to save their state to toolstate.
+        // - They are only tested on the "checktools" builders.
+        //
+        // The local docs are tested by default, and we don't want to pay the
+        // cost of building mdbook, so they use `rustdoc --test` directly.
+        // Also, the unstable book is special because SUMMARY.md is generated,
+        // so it is easier to just run `rustdoc` on its files.
+        if self.is_ext_doc {
+            self.run_ext_doc(builder);
+        } else {
+            self.run_local_doc(builder);
+        }
+    }
+}
+
+impl BookTest {
+    /// This runs the equivalent of `mdbook test` (via the rustbook wrapper)
+    /// which in turn runs `rustdoc --test` on each file in the book.
+    fn run_ext_doc(self, builder: &Builder<'_>) {
         let compiler = self.compiler;
 
-        builder.ensure(compile::Test {
-            compiler,
-            target: compiler.host,
-        });
+        builder.ensure(compile::Std { compiler, target: compiler.host });
+
+        // mdbook just executes a binary named "rustdoc", so we need to update
+        // PATH so that it points to our rustdoc.
+        let mut rustdoc_path = builder.rustdoc(compiler);
+        rustdoc_path.pop();
+        let old_path = env::var_os("PATH").unwrap_or_default();
+        let new_path = env::join_paths(iter::once(rustdoc_path).chain(env::split_paths(&old_path)))
+            .expect("could not add rustdoc to PATH");
+
+        let mut rustbook_cmd = builder.tool_cmd(Tool::Rustbook);
+        let path = builder.src.join(&self.path);
+        rustbook_cmd.env("PATH", new_path).arg("test").arg(path);
+        builder.add_rust_test_threads(&mut rustbook_cmd);
+        builder.info(&format!("Testing rustbook {}", self.path.display()));
+        let _time = util::timeit(&builder);
+        let toolstate = if try_run(builder, &mut rustbook_cmd) {
+            ToolState::TestPass
+        } else {
+            ToolState::TestFail
+        };
+        builder.save_toolstate(self.name, toolstate);
+    }
+
+    /// This runs `rustdoc --test` on all `.md` files in the path.
+    fn run_local_doc(self, builder: &Builder<'_>) {
+        let compiler = self.compiler;
+
+        builder.ensure(compile::Std { compiler, target: compiler.host });
 
         // Do a breadth-first traversal of the `src/doc` directory and just run
         // tests for all files that end in `*.md`
         let mut stack = vec![builder.src.join(self.path)];
         let _time = util::timeit(&builder);
-        let _folder = builder.fold_output(|| format!("test_{}", self.name));
-
         let mut files = Vec::new();
         while let Some(p) = stack.pop() {
             if p.is_dir() {
@@ -1377,25 +1386,13 @@ impl Step for DocTest {
                 continue;
             }
 
-            // The nostarch directory in the book is for no starch, and so isn't
-            // guaranteed to builder. We don't care if it doesn't build, so skip it.
-            if p.to_str().map_or(false, |p| p.contains("nostarch")) {
-                continue;
-            }
-
             files.push(p);
         }
 
         files.sort();
 
-        let mut toolstate = ToolState::TestPass;
         for file in files {
-            if !markdown_test(builder, compiler, &file) {
-                toolstate = ToolState::TestFail;
-            }
-        }
-        if self.is_ext_doc {
-            builder.save_toolstate(self.name, toolstate);
+            markdown_test(builder, compiler, &file);
         }
     }
 }
@@ -1424,9 +1421,9 @@ macro_rules! test_book {
                 }
 
                 fn run(self, builder: &Builder<'_>) {
-                    builder.ensure(DocTest {
+                    builder.ensure(BookTest {
                         compiler: self.compiler,
-                        path: $path,
+                        path: PathBuf::from($path),
                         name: $book_name,
                         is_ext_doc: !$default,
                     });
@@ -1463,9 +1460,8 @@ impl Step for ErrorIndex {
     }
 
     fn make_run(run: RunConfig<'_>) {
-        run.builder.ensure(ErrorIndex {
-            compiler: run.builder.compiler(run.builder.top_stage, run.host),
-        });
+        run.builder
+            .ensure(ErrorIndex { compiler: run.builder.compiler(run.builder.top_stage, run.host) });
     }
 
     /// Runs the error index generator tool to execute the tests located in the error
@@ -1477,10 +1473,7 @@ impl Step for ErrorIndex {
     fn run(self, builder: &Builder<'_>) {
         let compiler = self.compiler;
 
-        builder.ensure(compile::Std {
-            compiler,
-            target: compiler.host,
-        });
+        builder.ensure(compile::Std { compiler, target: compiler.host });
 
         let dir = testdir(builder, compiler.host);
         t!(fs::create_dir_all(&dir));
@@ -1490,27 +1483,20 @@ impl Step for ErrorIndex {
             builder,
             builder.compiler(compiler.stage, builder.config.build),
         );
-        tool.arg("markdown")
-            .arg(&output)
-            .env("CFG_BUILD", &builder.config.build)
-            .env("RUSTC_ERROR_METADATA_DST", builder.extended_error_dir());
+        tool.arg("markdown").arg(&output).env("CFG_BUILD", &builder.config.build);
 
-        let _folder = builder.fold_output(|| "test_error_index");
         builder.info(&format!("Testing error-index stage{}", compiler.stage));
         let _time = util::timeit(&builder);
-        builder.run(&mut tool);
+        builder.run_quiet(&mut tool);
         markdown_test(builder, compiler, &output);
     }
 }
 
 fn markdown_test(builder: &Builder<'_>, compiler: Compiler, markdown: &Path) -> bool {
-    match fs::read_to_string(markdown) {
-        Ok(contents) => {
-            if !contents.contains("```") {
-                return true;
-            }
+    if let Ok(contents) = fs::read_to_string(markdown) {
+        if !contents.contains("```") {
+            return true;
         }
-        Err(_) => {}
     }
 
     builder.info(&format!("doc tests for: {}", markdown.display()));
@@ -1539,7 +1525,7 @@ impl Step for RustcGuide {
     const ONLY_HOSTS: bool = true;
 
     fn should_run(run: ShouldRun<'_>) -> ShouldRun<'_> {
-        run.path("src/doc/rustc-guide")
+        run.path("src/doc/rustc-dev-guide")
     }
 
     fn make_run(run: RunConfig<'_>) {
@@ -1547,11 +1533,14 @@ impl Step for RustcGuide {
     }
 
     fn run(self, builder: &Builder<'_>) {
-        let src = builder.src.join("src/doc/rustc-guide");
+        let src = builder.src.join("src/doc/rustc-dev-guide");
         let mut rustbook_cmd = builder.tool_cmd(Tool::Rustbook);
-        builder.run(rustbook_cmd
-                       .arg("linkcheck")
-                       .arg(&src));
+        let toolstate = if try_run(builder, rustbook_cmd.arg("linkcheck").arg(&src)) {
+            ToolState::TestPass
+        } else {
+            ToolState::TestFail
+        };
+        builder.save_toolstate("rustc-dev-guide", toolstate);
     }
 }
 
@@ -1665,8 +1654,7 @@ impl Step for Crate {
 
     fn should_run(mut run: ShouldRun<'_>) -> ShouldRun<'_> {
         let builder = run.builder;
-        run = run.krate("test");
-        for krate in run.builder.in_tree_crates("std") {
+        for krate in run.builder.in_tree_crates("test") {
             if !(krate.name.starts_with("rustc_") && krate.name.ends_with("san")) {
                 run = run.path(krate.local_path(&builder).to_str().unwrap());
             }
@@ -1690,14 +1678,9 @@ impl Step for Crate {
             });
         };
 
-        for krate in builder.in_tree_crates("std") {
-            if run.path.ends_with(&krate.local_path(&builder)) {
-                make(Mode::Std, krate);
-            }
-        }
         for krate in builder.in_tree_crates("test") {
             if run.path.ends_with(&krate.local_path(&builder)) {
-                make(Mode::Test, krate);
+                make(Mode::Std, krate);
             }
         }
     }
@@ -1717,7 +1700,7 @@ impl Step for Crate {
         let test_kind = self.test_kind;
         let krate = self.krate;
 
-        builder.ensure(compile::Test { compiler, target });
+        builder.ensure(compile::Std { compiler, target });
         builder.ensure(RemoteCopyLibs { compiler, target });
 
         // If we're not doing a full bootstrap but we're testing a stage2
@@ -1729,14 +1712,11 @@ impl Step for Crate {
         let mut cargo = builder.cargo(compiler, mode, target, test_kind.subcommand());
         match mode {
             Mode::Std => {
-                compile::std_cargo(builder, &compiler, target, &mut cargo);
-            }
-            Mode::Test => {
-                compile::test_cargo(builder, &compiler, target, &mut cargo);
+                compile::std_cargo(builder, target, compiler.stage, &mut cargo);
             }
             Mode::Rustc => {
                 builder.ensure(compile::Rustc { compiler, target });
-                compile::rustc_cargo(builder, &mut cargo);
+                compile::rustc_cargo(builder, &mut cargo, target);
             }
             _ => panic!("can only test libraries"),
         };
@@ -1780,37 +1760,12 @@ impl Step for Crate {
         if target.contains("emscripten") {
             cargo.env(
                 format!("CARGO_TARGET_{}_RUNNER", envify(&target)),
-                builder
-                    .config
-                    .nodejs
-                    .as_ref()
-                    .expect("nodejs not configured"),
+                builder.config.nodejs.as_ref().expect("nodejs not configured"),
             );
         } else if target.starts_with("wasm32") {
-            // Warn about running tests without the `wasm_syscall` feature enabled.
-            // The javascript shim implements the syscall interface so that test
-            // output can be correctly reported.
-            if !builder.config.wasm_syscall {
-                builder.info(
-                    "Libstd was built without `wasm_syscall` feature enabled: \
-                     test output may not be visible."
-                );
-            }
-
-            // On the wasm32-unknown-unknown target we're using LTO which is
-            // incompatible with `-C prefer-dynamic`, so disable that here
-            cargo.env("RUSTC_NO_PREFER_DYNAMIC", "1");
-
-            let node = builder
-                .config
-                .nodejs
-                .as_ref()
-                .expect("nodejs not configured");
-            let runner = format!(
-                "{} {}/src/etc/wasm32-shim.js",
-                node.display(),
-                builder.src.display()
-            );
+            let node = builder.config.nodejs.as_ref().expect("nodejs not configured");
+            let runner =
+                format!("{} {}/src/etc/wasm32-shim.js", node.display(), builder.src.display());
             cargo.env(format!("CARGO_TARGET_{}_RUNNER", envify(&target)), &runner);
         } else if builder.remote_tested(target) {
             cargo.env(
@@ -1819,20 +1774,12 @@ impl Step for Crate {
             );
         }
 
-        let _folder = builder.fold_output(|| {
-            format!(
-                "{}_stage{}-{}",
-                test_kind.subcommand(),
-                compiler.stage,
-                krate
-            )
-        });
         builder.info(&format!(
             "{} {} stage{} ({} -> {})",
             test_kind, krate, compiler.stage, &compiler.host, target
         ));
         let _time = util::timeit(&builder);
-        try_run(builder, &mut cargo);
+        try_run(builder, &mut cargo.into());
     }
 }
 
@@ -1856,10 +1803,7 @@ impl Step for CrateRustdoc {
 
         let test_kind = builder.kind.into();
 
-        builder.ensure(CrateRustdoc {
-            host: run.host,
-            test_kind,
-        });
+        builder.ensure(CrateRustdoc { host: run.host, test_kind });
     }
 
     fn run(self, builder: &Builder<'_>) {
@@ -1869,14 +1813,16 @@ impl Step for CrateRustdoc {
         let target = compiler.host;
         builder.ensure(compile::Rustc { compiler, target });
 
-        let mut cargo = tool::prepare_tool_cargo(builder,
-                                                 compiler,
-                                                 Mode::ToolRustc,
-                                                 target,
-                                                 test_kind.subcommand(),
-                                                 "src/tools/rustdoc",
-                                                 SourceType::InTree,
-                                                 &[]);
+        let mut cargo = tool::prepare_tool_cargo(
+            builder,
+            compiler,
+            Mode::ToolRustc,
+            target,
+            test_kind.subcommand(),
+            "src/tools/rustdoc",
+            SourceType::InTree,
+            &[],
+        );
         if test_kind.subcommand() == "test" && !builder.fail_fast {
             cargo.arg("--no-fail-fast");
         }
@@ -1894,26 +1840,14 @@ impl Step for CrateRustdoc {
             cargo.arg("--quiet");
         }
 
-        let _folder = builder
-            .fold_output(|| format!("{}_stage{}-rustdoc", test_kind.subcommand(), compiler.stage));
         builder.info(&format!(
             "{} rustdoc stage{} ({} -> {})",
             test_kind, compiler.stage, &compiler.host, target
         ));
         let _time = util::timeit(&builder);
 
-        try_run(builder, &mut cargo);
+        try_run(builder, &mut cargo.into());
     }
-}
-
-fn envify(s: &str) -> String {
-    s.chars()
-        .map(|c| match c {
-            '-' => '_',
-            c => c,
-        })
-        .flat_map(|c| c.to_uppercase())
-        .collect()
 }
 
 /// Some test suites are run inside emulators or on remote devices, and most
@@ -1945,23 +1879,18 @@ impl Step for RemoteCopyLibs {
             return;
         }
 
-        builder.ensure(compile::Test { compiler, target });
+        builder.ensure(compile::Std { compiler, target });
 
         builder.info(&format!("REMOTE copy libs to emulator ({})", target));
         t!(fs::create_dir_all(builder.out.join("tmp")));
 
-        let server = builder.ensure(tool::RemoteTestServer {
-            compiler: compiler.with_stage(0),
-            target,
-        });
+        let server =
+            builder.ensure(tool::RemoteTestServer { compiler: compiler.with_stage(0), target });
 
         // Spawn the emulator and wait for it to come online
         let tool = builder.tool_exe(Tool::RemoteTestClient);
         let mut cmd = Command::new(&tool);
-        cmd.arg("spawn-emulator")
-            .arg(target)
-            .arg(&server)
-            .arg(builder.out.join("tmp"));
+        cmd.arg("spawn-emulator").arg(target).arg(&server).arg(builder.out.join("tmp"));
         if let Some(rootfs) = builder.qemu_rootfs(target) {
             cmd.arg(rootfs);
         }
@@ -2016,9 +1945,7 @@ impl Step for Distcheck {
                 .current_dir(&dir),
         );
         builder.run(
-            Command::new(build_helper::make(&builder.config.build))
-                .arg("check")
-                .current_dir(&dir),
+            Command::new(build_helper::make(&builder.config.build)).arg("check").current_dir(&dir),
         );
 
         // Now make sure that rust-src has all of libstd's dependencies

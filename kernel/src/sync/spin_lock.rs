@@ -133,13 +133,13 @@ impl<T: ?Sized> SpinLock<T> {
         self.0.lock()
     }
 
-    /// Force unlock the spinlock.
+    /// Force unlock the spinlock. If the lock isn't held, this is a no-op.
+    ///
+    /// # Safety
     ///
     /// This is *extremely* unsafe if the lock is not held by the current
     /// thread. However, this can be useful in some instances for exposing the
     /// lock to FFI that doesn't know how to deal with RAII.
-    ///
-    /// If the lock isn't held, this is a no-op.
     pub unsafe fn force_unlock(&self) {
         self.0.force_unlock()
     }

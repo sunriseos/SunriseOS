@@ -4,13 +4,13 @@ struct Foo<'a> {
 
 impl <'a> Foo<'a>{
     fn bar(self: &mut Foo) {
-    //~^ mismatched method receiver
-    //~| expected type `Foo<'a>`
-    //~| found type `Foo<'_>`
+    //~^ mismatched `self` parameter type
+    //~| expected struct `Foo<'a>`
+    //~| found struct `Foo<'_>`
     //~| lifetime mismatch
-    //~| mismatched method receiver
-    //~| expected type `Foo<'a>`
-    //~| found type `Foo<'_>`
+    //~| mismatched `self` parameter type
+    //~| expected struct `Foo<'a>`
+    //~| found struct `Foo<'_>`
     //~| lifetime mismatch
     }
 }

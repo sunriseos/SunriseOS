@@ -5,7 +5,6 @@ use crate::LibUserResult;
 use crate::interface::driver::FileSystemDriver;
 use crate::interface::filesystem::FileSystemOperations;
 
-use libfat;
 use libfat::FatFsType;
 
 mod directory;
@@ -31,11 +30,11 @@ impl FileSystemDriver for FATDriver {
     }
 
     fn probe(&self, storage: &mut (dyn StorageDevice<Error = Error> + Send)) -> Option<FileSystemType> {
-        libfat::get_fat_type(storage, 0).ok().and_then(|filesytem_type| {
+        libfat::get_fat_type(storage, 0).ok().map(|filesytem_type| {
             match filesytem_type {
-                FatFsType::Fat12 => Some(FileSystemType::FAT12),
-                FatFsType::Fat16 => Some(FileSystemType::FAT16),
-                FatFsType::Fat32 => Some(FileSystemType::FAT32)
+                FatFsType::Fat12 => FileSystemType::FAT12,
+                FatFsType::Fat16 => FileSystemType::FAT16,
+                FatFsType::Fat32 => FileSystemType::FAT32
             }
         })
     }

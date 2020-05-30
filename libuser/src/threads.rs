@@ -52,9 +52,9 @@
 //! [`svcExitThread`]: crate::syscalls::exit_thread
 //! [Thread Local Storage region]: sunrise_libkern::TLS
 //! [IpcBuffer]: sunrise_libkern::IpcBuffer
-//! [ThreadContext]: self::threads::ThreadContext
-//! [`Thread`]: self::threads::Thread
-//! [`thread_trampoline`]: self::threads::thread_trampoline
+//! [ThreadContext]: ThreadContext
+//! [`Thread`]: Thread
+//! [`thread_trampoline`]: thread_trampoline
 
 use crate::types::{Thread as ThreadHandle};
 
@@ -198,7 +198,7 @@ fn get_my_tls_region() -> *mut TLS {
     unsafe {
         // get the address of the TLS region from fs:0x00 translated to the flat model
         // safe: fs:0x00 is guaranteed by the kernel to hold a valid pointer to itself.
-        asm!("mov $0, fs:0x00" : "=r" (tls) ::: "intel");
+        llvm_asm!("mov $0, fs:0x00" : "=r" (tls) ::: "intel");
     }
     tls
 }
@@ -382,7 +382,7 @@ impl Drop for Thread {
 /// * save a pointer to it in its [TLS].
 /// * perform copy of `.tdata` and `.tbss` for the main thread.
 #[no_mangle] // called from asm
-#[cfg(any(not(feature = "build-for-std-app"), rustdoc))]
+#[cfg(any(not(feature = "build-for-std-app"), doc))]
 pub extern fn init_main_thread(handle: u32) {
     let handle = ThreadHandle(Handle::new(handle));
 

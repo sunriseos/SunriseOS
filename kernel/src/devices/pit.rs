@@ -199,6 +199,11 @@ pub fn spin_wait_ms(ms: usize) {
 }
 
 /// Initialize the channel 0 to send recurring irqs.
+///
+/// # Safety
+///
+/// May only be called once. May not be called after [disable] has been
+/// called.
 pub unsafe fn init_channel_0() {
     let mut ports = PIT_PORTS.lock();
     ports.port_cmd.write(
@@ -210,6 +215,11 @@ pub unsafe fn init_channel_0() {
 }
 
 /// Prevent the PIT from generating interrupts.
+///
+/// # Safety
+///
+/// May only be called once. May not be called after [init_channel_0] has
+/// been called.
 pub unsafe fn disable() {
     let mut ports = PIT_PORTS.lock();
     ports.port_cmd.write(0b00110010); // channel 0, lobyte/hibyte, one-shot

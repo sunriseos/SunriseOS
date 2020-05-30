@@ -1,130 +1,140 @@
-#![deny(rust_2018_idioms)]
-
-use clap::{crate_version};
+use clap::crate_version;
 
 use std::env;
 use std::path::{Path, PathBuf};
 
-use clap::{App, ArgMatches, SubCommand, AppSettings};
+use clap::{App, AppSettings, ArgMatches, SubCommand};
 
-use mdbook_1::{MDBook as MDBook1};
-use mdbook_1::errors::{Result as Result1};
-
+use mdbook::errors::Result as Result3;
 use mdbook::MDBook;
-use mdbook::errors::{Result as Result3};
-
-#[cfg(all(target_arch = "x86_64", target_os = "linux"))]
-use mdbook::renderer::RenderContext;
-
-#[cfg(all(target_arch = "x86_64", target_os = "linux"))]
-use mdbook_linkcheck::{self, errors::BrokenLinks};
-use failure::Error;
 
 fn main() {
     let d_message = "-d, --dest-dir=[dest-dir]
 'The output directory for your book{n}(Defaults to ./book when omitted)'";
     let dir_message = "[dir]
 'A directory for your book{n}(Defaults to Current Directory when omitted)'";
-    let vers_message = "-m, --mdbook-vers=[md-version]
-'The version of mdbook to use for your book{n}(Defaults to 1 when omitted)'";
 
     let matches = App::new("rustbook")
-                    .about("Build a book with mdBook")
-                    .author("Steve Klabnik <steve@steveklabnik.com>")
-                    .version(&*format!("v{}", crate_version!()))
-                    .setting(AppSettings::SubcommandRequired)
-                    .subcommand(SubCommand::with_name("build")
-                        .about("Build the book from the markdown files")
-                        .arg_from_usage(d_message)
-                        .arg_from_usage(dir_message)
-                        .arg_from_usage(vers_message))
-                    .subcommand(SubCommand::with_name("linkcheck")
-                        .about("Run linkcheck with mdBook 3")
-                        .arg_from_usage(dir_message))
-                    .get_matches();
+        .about("Build a book with mdBook")
+        .author("Steve Klabnik <steve@steveklabnik.com>")
+        .version(&*format!("v{}", crate_version!()))
+        .setting(AppSettings::SubcommandRequired)
+        .subcommand(
+            SubCommand::with_name("build")
+                .about("Build the book from the markdown files")
+                .arg_from_usage(d_message)
+                .arg_from_usage(dir_message),
+        )
+        .subcommand(
+            SubCommand::with_name("test")
+                .about("Tests that a book's Rust code samples compile")
+                .arg_from_usage(dir_message),
+        )
+        .subcommand(
+            SubCommand::with_name("linkcheck")
+                .about("Run linkcheck with mdBook 3")
+                .arg_from_usage(dir_message),
+        )
+        .get_matches();
 
     // Check which subcomamnd the user ran...
     match matches.subcommand() {
         ("build", Some(sub_matches)) => {
-            match sub_matches.value_of("mdbook-vers") {
-                None | Some("1") => {
-                    if let Err(e) = build_1(sub_matches) {
-                        eprintln!("Error: {}", e);
-
-                        for cause in e.iter().skip(1) {
-                            eprintln!("\tCaused By: {}", cause);
-                        }
-
-                        ::std::process::exit(101);
-                    }
-                }
-                Some("2") | Some("3") => {
-                    if let Err(e) = build(sub_matches) {
-                        eprintln!("Error: {}", e);
-
-                        for cause in e.iter().skip(1) {
-                            eprintln!("\tCaused By: {}", cause);
-                        }
-
-                        ::std::process::exit(101);
-                    }
-                }
-                _ => {
-                    panic!("Invalid mdBook version! Select '1' or '2' or '3'");
-                }
-            };
-        },
-        ("linkcheck", Some(sub_matches)) => {
-            if let Err(err) = linkcheck(sub_matches) {
-                eprintln!("Error: {}", err);
-
-                #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
-                {
-                    if let Ok(broken_links) = err.downcast::<BrokenLinks>() {
-                        for cause in broken_links.links().iter() {
-                            eprintln!("\tCaused By: {}", cause);
-                        }
-                    }
-                }
-
-                ::std::process::exit(101);
+            if let Err(e) = build(sub_matches) {
+                handle_error(e);
             }
-        },
+        }
+        ("test", Some(sub_matches)) => {
+            if let Err(e) = test(sub_matches) {
+                handle_error(e);
+            }
+        }
+        ("linkcheck", Some(sub_matches)) => {
+            #[cfg(feature = "linkcheck")]
+            {
+                let (diags, files) = linkcheck(sub_matches).expect("Error while linkchecking.");
+                if !diags.is_empty() {
+                    let color = codespan_reporting::term::termcolor::ColorChoice::Auto;
+                    let mut writer =
+                        codespan_reporting::term::termcolor::StandardStream::stderr(color);
+                    let cfg = codespan_reporting::term::Config::default();
+
+                    for diag in diags {
+                        codespan_reporting::term::emit(&mut writer, &cfg, &files, &diag)
+                            .expect("Unable to emit linkcheck error.");
+                    }
+
+                    std::process::exit(101);
+                }
+            }
+
+            #[cfg(not(feature = "linkcheck"))]
+            {
+                // This avoids the `unused_binding` lint.
+                println!(
+                    "mdbook-linkcheck is disabled, but arguments were passed: {:?}",
+                    sub_matches
+                );
+            }
+        }
         (_, _) => unreachable!(),
     };
 }
 
-#[cfg(all(target_arch = "x86_64", target_os = "linux"))]
-pub fn linkcheck(args: &ArgMatches<'_>) -> Result<(), Error> {
+#[cfg(feature = "linkcheck")]
+pub fn linkcheck(
+    args: &ArgMatches<'_>,
+) -> Result<(Vec<codespan_reporting::diagnostic::Diagnostic>, codespan::Files), failure::Error> {
+    use mdbook_linkcheck::Reason;
+
     let book_dir = get_book_dir(args);
+    let src_dir = book_dir.join("src");
     let book = MDBook::load(&book_dir).unwrap();
-    let cfg = book.config;
-    let render_ctx = RenderContext::new(&book_dir, book.book, cfg, &book_dir);
+    let linkck_cfg = mdbook_linkcheck::get_config(&book.config)?;
+    let mut files = codespan::Files::new();
+    let target_files = mdbook_linkcheck::load_files_into_memory(&book.book, &mut files);
+    let cache = mdbook_linkcheck::Cache::default();
 
-    mdbook_linkcheck::check_links(&render_ctx)
-}
+    let (links, incomplete) = mdbook_linkcheck::extract_links(target_files, &files);
 
-#[cfg(not(all(target_arch = "x86_64", target_os = "linux")))]
-pub fn linkcheck(_args: &ArgMatches<'_>) -> Result<(), Error> {
-    println!("mdbook-linkcheck only works on x86_64 linux targets.");
-    Ok(())
-}
+    let outcome =
+        mdbook_linkcheck::validate(&links, &linkck_cfg, &src_dir, &cache, &files, incomplete)?;
 
-// Build command implementation
-pub fn build_1(args: &ArgMatches<'_>) -> Result1<()> {
-    let book_dir = get_book_dir(args);
-    let mut book = MDBook1::load(&book_dir)?;
+    let mut is_real_error = false;
 
-    // Set this to allow us to catch bugs in advance.
-    book.config.build.create_missing = false;
-
-    if let Some(dest_dir) = args.value_of("dest-dir") {
-        book.config.build.build_dir = PathBuf::from(dest_dir);
+    for link in outcome.invalid_links.iter() {
+        match &link.reason {
+            Reason::FileNotFound | Reason::TraversesParentDirectories => {
+                is_real_error = true;
+            }
+            Reason::UnsuccessfulServerResponse(status) => {
+                if status.as_u16() == 429 {
+                    eprintln!("Received 429 (TOO_MANY_REQUESTS) for link `{}`", link.link.uri);
+                } else if status.is_client_error() {
+                    is_real_error = true;
+                } else {
+                    eprintln!("Unsuccessful server response for link `{}`", link.link.uri);
+                }
+            }
+            Reason::Client(err) => {
+                if err.is_timeout() {
+                    eprintln!("Timeout for link `{}`", link.link.uri);
+                } else if err.is_server_error() {
+                    eprintln!("Server error for link `{}`", link.link.uri);
+                } else if !err.is_http() {
+                    eprintln!("Non-HTTP-related error for link: {} {}", link.link.uri, err);
+                } else {
+                    is_real_error = true;
+                }
+            }
+        }
     }
 
-    book.build()?;
-
-    Ok(())
+    if is_real_error {
+        Ok((outcome.generate_diagnostics(&files, linkck_cfg.warning_policy), files))
+    } else {
+        Ok((vec![], files))
+    }
 }
 
 // Build command implementation
@@ -144,16 +154,28 @@ pub fn build(args: &ArgMatches<'_>) -> Result3<()> {
     Ok(())
 }
 
+fn test(args: &ArgMatches<'_>) -> Result3<()> {
+    let book_dir = get_book_dir(args);
+    let mut book = MDBook::load(&book_dir)?;
+    book.test(vec![])
+}
+
 fn get_book_dir(args: &ArgMatches<'_>) -> PathBuf {
     if let Some(dir) = args.value_of("dir") {
         // Check if path is relative from current dir, or absolute...
         let p = Path::new(dir);
-        if p.is_relative() {
-            env::current_dir().unwrap().join(dir)
-        } else {
-            p.to_path_buf()
-        }
+        if p.is_relative() { env::current_dir().unwrap().join(dir) } else { p.to_path_buf() }
     } else {
         env::current_dir().unwrap()
     }
+}
+
+fn handle_error(error: mdbook::errors::Error) -> ! {
+    eprintln!("Error: {}", error);
+
+    for cause in error.iter().skip(1) {
+        eprintln!("\tCaused By: {}", cause);
+    }
+
+    ::std::process::exit(101);
 }

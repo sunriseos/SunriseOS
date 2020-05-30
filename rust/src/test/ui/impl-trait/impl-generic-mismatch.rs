@@ -1,6 +1,3 @@
-// ignore-musl
-// ignore-x86
-
 use std::fmt::Debug;
 
 trait Foo {

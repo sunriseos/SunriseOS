@@ -16,11 +16,18 @@ for example:
 
 Images will output artifacts in an `obj` dir at the root of a repository.
 
+**NOTE**: Re-using the same `obj` dir with different docker images with
+the same target triple (e.g. `dist-x86_64-linux` and `dist-various-1`)
+may result in strange linker errors, due shared library versions differing between platforms.
+
+If you encounter any issues when using multiple Docker images, try deleting your `obj` directory
+before running your command.
+
 ## Filesystem layout
 
 - Each directory, excluding `scripts` and `disabled`, corresponds to a docker image
 - `scripts` contains files shared by docker images
-- `disabled` contains images that are not built on travis
+- `disabled` contains images that are not built on CI
 
 ## Docker Toolbox on Windows
 
@@ -131,15 +138,14 @@ $category > $option = $value -- $comment
 For targets: `arm-unknown-linux-gnueabi`
 
 - Path and misc options > Prefix directory = /x-tools/${CT\_TARGET}
-- Path and misc options > Patches origin = Bundled, then local
-- Path and misc options > Local patch directory = /tmp/patches
+- Path and misc options > Patches origin = Bundled only
 - Target options > Target Architecture = arm
 - Target options > Architecture level = armv6 -- (+)
 - Target options > Floating point = software (no FPU) -- (\*)
 - Operating System > Target OS = linux
-- Operating System > Linux kernel version = 3.2.72 -- Precise kernel
-- C-library > glibc version = 2.16.0
-- C compiler > gcc version = 5.2.0
+- Operating System > Linux kernel version = 3.2.101
+- C-library > glibc version = 2.17.0
+- C compiler > gcc version = 8.3.0
 - C compiler > C++ = ENABLE -- to cross compile LLVM
 
 ### `arm-linux-gnueabihf.config`
@@ -147,17 +153,16 @@ For targets: `arm-unknown-linux-gnueabi`
 For targets: `arm-unknown-linux-gnueabihf`
 
 - Path and misc options > Prefix directory = /x-tools/${CT\_TARGET}
-- Path and misc options > Patches origin = Bundled, then local
-- Path and misc options > Local patch directory = /tmp/patches
+- Path and misc options > Patches origin = Bundled only
 - Target options > Target Architecture = arm
 - Target options > Architecture level = armv6 -- (+)
 - Target options > Use specific FPU = vfp -- (+)
 - Target options > Floating point = hardware (FPU) -- (\*)
 - Target options > Default instruction set mode = arm -- (+)
 - Operating System > Target OS = linux
-- Operating System > Linux kernel version = 3.2.72 -- Precise kernel
-- C-library > glibc version = 2.16.0
-- C compiler > gcc version = 5.2.0
+- Operating System > Linux kernel version = 3.2.101
+- C-library > glibc version = 2.17.0
+- C compiler > gcc version = 8.3.0
 - C compiler > C++ = ENABLE -- to cross compile LLVM
 
 ### `armv7-linux-gnueabihf.config`
@@ -165,8 +170,7 @@ For targets: `arm-unknown-linux-gnueabihf`
 For targets: `armv7-unknown-linux-gnueabihf`
 
 - Path and misc options > Prefix directory = /x-tools/${CT\_TARGET}
-- Path and misc options > Patches origin = Bundled, then local
-- Path and misc options > Local patch directory = /tmp/patches
+- Path and misc options > Patches origin = Bundled only
 - Target options > Target Architecture = arm
 - Target options > Suffix to the arch-part = v7
 - Target options > Architecture level = armv7-a -- (+)
@@ -174,9 +178,9 @@ For targets: `armv7-unknown-linux-gnueabihf`
 - Target options > Floating point = hardware (FPU) -- (\*)
 - Target options > Default instruction set mode = thumb -- (\*)
 - Operating System > Target OS = linux
-- Operating System > Linux kernel version = 3.2.72 -- Precise kernel
-- C-library > glibc version = 2.16.0
-- C compiler > gcc version = 5.2.0
+- Operating System > Linux kernel version = 3.2.101
+- C-library > glibc version = 2.17.0
+- C compiler > gcc version = 8.3.0
 - C compiler > C++ = ENABLE -- to cross compile LLVM
 
 (\*) These options have been selected to match the configuration of the arm

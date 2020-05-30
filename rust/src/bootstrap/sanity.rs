@@ -10,13 +10,14 @@
 
 use std::collections::HashMap;
 use std::env;
-use std::ffi::{OsString, OsStr};
+use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
 use build_helper::{output, t};
 
+use crate::config::Target;
 use crate::Build;
 
 struct Finder {
@@ -26,30 +27,31 @@ struct Finder {
 
 impl Finder {
     fn new() -> Self {
-        Self {
-            cache: HashMap::new(),
-            path: env::var_os("PATH").unwrap_or_default()
-        }
+        Self { cache: HashMap::new(), path: env::var_os("PATH").unwrap_or_default() }
     }
 
     fn maybe_have<S: AsRef<OsStr>>(&mut self, cmd: S) -> Option<PathBuf> {
         let cmd: OsString = cmd.as_ref().into();
         let path = &self.path;
-        self.cache.entry(cmd.clone()).or_insert_with(|| {
-            for path in env::split_paths(path) {
-                let target = path.join(&cmd);
-                let mut cmd_exe = cmd.clone();
-                cmd_exe.push(".exe");
+        self.cache
+            .entry(cmd.clone())
+            .or_insert_with(|| {
+                for path in env::split_paths(path) {
+                    let target = path.join(&cmd);
+                    let mut cmd_exe = cmd.clone();
+                    cmd_exe.push(".exe");
 
-                if target.is_file()                   // some/path/git
+                    if target.is_file()                   // some/path/git
                     || path.join(&cmd_exe).exists()   // some/path/git.exe
-                    || target.join(&cmd_exe).exists() // some/path/git/git.exe
-                {
-                    return Some(target);
+                    || target.join(&cmd_exe).exists()
+                    // some/path/git/git.exe
+                    {
+                        return Some(target);
+                    }
                 }
-            }
-            None
-        }).clone()
+                None
+            })
+            .clone()
     }
 
     fn must_have<S: AsRef<OsStr>>(&mut self, cmd: S) -> PathBuf {
@@ -77,9 +79,18 @@ pub fn check(build: &mut Build) {
     }
 
     // We need cmake, but only if we're actually building LLVM or sanitizers.
-    let building_llvm = build.hosts.iter()
-        .filter_map(|host| build.config.target_config.get(host))
-        .any(|config| config.llvm_config.is_none());
+    let building_llvm = build
+        .hosts
+        .iter()
+        .map(|host| {
+            build
+                .config
+                .target_config
+                .get(host)
+                .map(|config| config.llvm_config.is_none())
+                .unwrap_or(true)
+        })
+        .any(|build_llvm_ourselves| build_llvm_ourselves);
     if building_llvm || build.config.sanitizers {
         cmd_finder.must_have("cmake");
     }
@@ -108,17 +119,27 @@ pub fn check(build: &mut Build) {
         }
     }
 
-    build.config.python = build.config.python.take().map(|p| cmd_finder.must_have(p))
-        .or_else(|| cmd_finder.maybe_have("python2.7"))
-        .or_else(|| cmd_finder.maybe_have("python2"))
+    build.config.python = build
+        .config
+        .python
+        .take()
+        .map(|p| cmd_finder.must_have(p))
         .or_else(|| env::var_os("BOOTSTRAP_PYTHON").map(PathBuf::from)) // set by bootstrap.py
         .or_else(|| Some(cmd_finder.must_have("python")));
 
-    build.config.nodejs = build.config.nodejs.take().map(|p| cmd_finder.must_have(p))
+    build.config.nodejs = build
+        .config
+        .nodejs
+        .take()
+        .map(|p| cmd_finder.must_have(p))
         .or_else(|| cmd_finder.maybe_have("node"))
         .or_else(|| cmd_finder.maybe_have("nodejs"));
 
-    build.config.gdb = build.config.gdb.take().map(|p| cmd_finder.must_have(p))
+    build.config.gdb = build
+        .config
+        .gdb
+        .take()
+        .map(|p| cmd_finder.must_have(p))
         .or_else(|| cmd_finder.maybe_have("gdb"));
 
     // We're gonna build some custom C code here and there, host triples
@@ -158,19 +179,13 @@ pub fn check(build: &mut Build) {
 
     for target in &build.targets {
         // Can't compile for iOS unless we're on macOS
-        if target.contains("apple-ios") &&
-           !build.build.contains("apple-darwin") {
+        if target.contains("apple-ios") && !build.build.contains("apple-darwin") {
             panic!("the iOS target is only supported on macOS");
         }
 
+        build.config.target_config.entry(target.clone()).or_insert(Target::from_triple(target));
+
         if target.contains("-none-") || target.contains("nvptx") {
-            if build.no_std(*target).is_none() {
-                let target = build.config.target_config.entry(target.clone())
-                    .or_default();
-
-                target.no_std = true;
-            }
-
             if build.no_std(*target) == Some(false) {
                 panic!("All the *-none-* and nvptx* targets are no-std targets")
             }
@@ -181,26 +196,20 @@ pub fn check(build: &mut Build) {
             // If this is a native target (host is also musl) and no musl-root is given,
             // fall back to the system toolchain in /usr before giving up
             if build.musl_root(*target).is_none() && build.config.build == *target {
-                let target = build.config.target_config.entry(target.clone())
-                    .or_default();
+                let target = build.config.target_config.entry(target.clone()).or_default();
                 target.musl_root = Some("/usr".into());
             }
             match build.musl_root(*target) {
                 Some(root) => {
                     if fs::metadata(root.join("lib/libc.a")).is_err() {
-                        panic!("couldn't find libc.a in musl dir: {}",
-                               root.join("lib").display());
-                    }
-                    if fs::metadata(root.join("lib/libunwind.a")).is_err() {
-                        panic!("couldn't find libunwind.a in musl dir: {}",
-                               root.join("lib").display());
+                        panic!("couldn't find libc.a in musl dir: {}", root.join("lib").display());
                     }
                 }
-                None => {
-                    panic!("when targeting MUSL either the rust.musl-root \
+                None => panic!(
+                    "when targeting MUSL either the rust.musl-root \
                             option or the target.$TARGET.musl-root option must \
-                            be specified in config.toml")
-                }
+                            be specified in config.toml"
+                ),
             }
         }
 
@@ -210,7 +219,8 @@ pub fn check(build: &mut Build) {
             // Studio, so detect that here and error.
             let out = output(Command::new("cmake").arg("--help"));
             if !out.contains("Visual Studio") {
-                panic!("
+                panic!(
+                    "
 cmake does not support Visual Studio generators.
 
 This is likely due to it being an msys/cygwin build of cmake,
@@ -221,7 +231,8 @@ If you are building under msys2 try installing the mingw-w64-x86_64-cmake
 package instead of cmake:
 
 $ pacman -R cmake && pacman -S mingw-w64-x86_64-cmake
-");
+"
+                );
             }
         }
     }
@@ -233,8 +244,10 @@ $ pacman -R cmake && pacman -S mingw-w64-x86_64-cmake
     if build.config.channel == "stable" {
         let stage0 = t!(fs::read_to_string(build.src.join("src/stage0.txt")));
         if stage0.contains("\ndev:") {
-            panic!("bootstrapping from a dev compiler in a stable release, but \
-                    should only be bootstrapping from a released compiler!");
+            panic!(
+                "bootstrapping from a dev compiler in a stable release, but \
+                    should only be bootstrapping from a released compiler!"
+            );
         }
     }
 }

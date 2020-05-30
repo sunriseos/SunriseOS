@@ -263,11 +263,18 @@ LL |     match r {
    |           ^
 LL |
 LL |         &Either::One(_t)
-   |         ----------------
-   |         |            |
-   |         |            data moved here
-   |         |            move occurs because `_t` has type `X`, which does not implement the `Copy` trait
-   |         help: consider removing the `&`: `Either::One(_t)`
+   |                      --
+   |                      |
+   |                      data moved here
+   |                      move occurs because `_t` has type `X`, which does not implement the `Copy` trait
+   |
+help: consider removing the `&`
+   |
+LL |         Either::One(_t)
+LL |
+LL |
+LL |         | &Either::Two(_t) => (),
+   |
 
 error[E0507]: cannot move out of `r.0` which is behind a shared reference
   --> $DIR/simple.rs:188:11
@@ -337,14 +344,7 @@ LL |         &mut Either::One(_t) => (),
 LL |         &mut Either::Two(_t) => (),
    |                          -- ...and here
    |
-note: move occurs because these variables have types that don't implement the `Copy` trait
-  --> $DIR/simple.rs:221:26
-   |
-LL |         &mut Either::One(_t) => (),
-   |                          ^^
-...
-LL |         &mut Either::Two(_t) => (),
-   |                          ^^
+   = note: move occurs because these variables have types that don't implement the `Copy` trait
 help: consider removing the `&mut`
    |
 LL |         Either::One(_t) => (),
@@ -470,13 +470,7 @@ LL |         (&mut Either::One(_t),) => (),
 LL |         (&mut Either::Two(_t),) => (),
    |                           -- ...and here
    |
-note: move occurs because these variables have types that don't implement the `Copy` trait
-  --> $DIR/simple.rs:280:27
-   |
-LL |         (&mut Either::One(_t),) => (),
-   |                           ^^
-LL |         (&mut Either::Two(_t),) => (),
-   |                           ^^
+   = note: move occurs because these variables have types that don't implement the `Copy` trait
 
 error[E0507]: cannot move out of a shared reference
   --> $DIR/simple.rs:288:18
@@ -515,11 +509,18 @@ LL |     match &e {
    |           ^^
 LL |
 LL |         &Either::One(_t)
-   |         ----------------
-   |         |            |
-   |         |            data moved here
-   |         |            move occurs because `_t` has type `X`, which does not implement the `Copy` trait
-   |         help: consider removing the `&`: `Either::One(_t)`
+   |                      --
+   |                      |
+   |                      data moved here
+   |                      move occurs because `_t` has type `X`, which does not implement the `Copy` trait
+   |
+help: consider removing the `&`
+   |
+LL |         Either::One(_t)
+LL |
+LL |
+LL |         | &Either::Two(_t) => (),
+   |
 
 error[E0507]: cannot move out of a shared reference
   --> $DIR/simple.rs:308:11
@@ -584,11 +585,18 @@ LL |     match &mut em {
    |           ^^^^^^^
 LL |
 LL |         &mut Either::One(_t)
-   |         --------------------
-   |         |                |
-   |         |                data moved here
-   |         |                move occurs because `_t` has type `X`, which does not implement the `Copy` trait
-   |         help: consider removing the `&mut`: `Either::One(_t)`
+   |                          --
+   |                          |
+   |                          data moved here
+   |                          move occurs because `_t` has type `X`, which does not implement the `Copy` trait
+   |
+help: consider removing the `&mut`
+   |
+LL |         Either::One(_t)
+LL |
+LL |
+LL |         | &mut Either::Two(_t) => (),
+   |
 
 error[E0507]: cannot move out of a mutable reference
   --> $DIR/simple.rs:343:11

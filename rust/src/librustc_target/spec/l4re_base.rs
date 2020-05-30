@@ -1,5 +1,4 @@
 use crate::spec::{LinkArgs, LinkerFlavor, PanicStrategy, TargetOptions};
-use std::default::Default;
 //use std::process::Command;
 
 // Use GCC to locate code for crt* libraries from the host, not from L4Re. Note
@@ -24,6 +23,6 @@ pub fn opts() -> TargetOptions {
         linker: Some("ld".to_string()),
         pre_link_args: args,
         target_family: Some("unix".to_string()),
-        .. Default::default()
+        ..Default::default()
     }
 }

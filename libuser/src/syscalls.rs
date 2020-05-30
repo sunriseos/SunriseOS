@@ -117,7 +117,7 @@ unsafe fn syscall(nr: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize,
 ///
 /// * `new_size` must be PAGE_SIZE aligned.
 ///
-/// # Unsafety
+/// # Safety
 ///
 /// This function can free memory, potentially invalidating references to structs that were in it.
 pub unsafe fn set_heap_size(new_size: usize) -> Result<usize, KernelError> {
@@ -155,7 +155,7 @@ pub fn exit_process() -> ! {
 
 /// Creates a thread in the current process.
 ///
-/// # Unsafety
+/// # Safety
 ///
 /// `sp` must a valid pointer to a stack that is uniquely owned, as the thread will write to it.
 pub unsafe fn create_thread(ip: extern "fastcall" fn(usize) -> !, arg: usize, sp: *const u8, priority: u32, processor_id: u32) -> Result<Thread, KernelError> {

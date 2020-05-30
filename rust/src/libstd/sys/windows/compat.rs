@@ -28,8 +28,7 @@ pub fn lookup(module: &str, symbol: &str) -> Option<usize> {
     }
 }
 
-pub fn store_func(ptr: &AtomicUsize, module: &str, symbol: &str,
-                  fallback: usize) -> usize {
+pub fn store_func(ptr: &AtomicUsize, module: &str, symbol: &str, fallback: usize) -> usize {
     let value = lookup(module, symbol).unwrap_or(fallback);
     ptr.store(value, Ordering::SeqCst);
     value
@@ -37,12 +36,14 @@ pub fn store_func(ptr: &AtomicUsize, module: &str, symbol: &str,
 
 macro_rules! compat_fn {
     ($module:ident: $(
+        $(#[$meta:meta])*
         pub fn $symbol:ident($($argname:ident: $argtype:ty),*)
                                   -> $rettype:ty {
             $($body:expr);*
         }
     )*) => ($(
         #[allow(unused_variables)]
+        $(#[$meta])*
         pub unsafe fn $symbol($($argname: $argtype),*) -> $rettype {
             use crate::sync::atomic::{AtomicUsize, Ordering};
             use crate::mem;

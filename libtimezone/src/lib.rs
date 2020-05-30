@@ -674,15 +674,17 @@ impl TimeZoneRule {
 
             let direction;
             let res = self.to_calendar_time(t);
-            if res.is_err() {
-                if t > 0 {
-                    direction = Ordering::Greater;
-                } else {
-                    direction = Ordering::Less;
+            match res {
+                Err(_) => {
+                    if t > 0 {
+                        direction = Ordering::Greater;
+                    } else {
+                        direction = Ordering::Less;
+                    }
+                },
+                Ok(calendar_time) => {
+                    direction = calendar_time.time.partial_cmp(&tmp_calendar).expect("CalendarTime aren't comparable??!");
                 }
-            } else {
-                let calendar_time = res.unwrap();
-                direction = calendar_time.time.partial_cmp(&tmp_calendar).expect("CalendarTime aren't comparable??!");
             }
 
             // We have a match

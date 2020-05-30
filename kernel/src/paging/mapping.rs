@@ -179,6 +179,9 @@ impl Mapping {
             }
         }
 
+        // We default to creating an empty range, that will get replaced during
+        // iteration.
+        #[allow(clippy::reversed_empty_ranges)]
         let it = match self.frames() {
             MappingFrames::Owned(frames) => MappingFramesIt::Owned(&frames[..], 0, (0..0).step_by(1)),
             MappingFrames::Shared(frames) => MappingFramesIt::Shared(frames, frames.read(), 0, (0..0).step_by(1)),

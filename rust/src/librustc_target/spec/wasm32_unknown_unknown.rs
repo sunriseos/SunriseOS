@@ -10,8 +10,8 @@
 //! This target is more or less managed by the Rust and WebAssembly Working
 //! Group nowadays at https://github.com/rustwasm.
 
-use super::{LldFlavor, LinkerFlavor, Target};
 use super::wasm32_base;
+use super::{LinkerFlavor, LldFlavor, Target};
 
 pub fn target() -> Result<Target, String> {
     let mut options = wasm32_base::options();
@@ -21,14 +21,12 @@ pub fn target() -> Result<Target, String> {
     // otherwise
     clang_args.push("--target=wasm32-unknown-unknown".to_string());
 
-    // Disable attempting to link crt1.o since it typically isn't present and
-    // isn't needed currently.
-    clang_args.push("-nostdlib".to_string());
-
     // For now this target just never has an entry symbol no matter the output
     // type, so unconditionally pass this.
     clang_args.push("-Wl,--no-entry".to_string());
-    options.pre_link_args.get_mut(&LinkerFlavor::Lld(LldFlavor::Wasm))
+    options
+        .pre_link_args
+        .get_mut(&LinkerFlavor::Lld(LldFlavor::Wasm))
         .unwrap()
         .push("--no-entry".to_string());
 

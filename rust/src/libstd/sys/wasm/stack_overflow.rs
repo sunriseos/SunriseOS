@@ -1,13 +1,3 @@
-pub struct Handler;
+pub unsafe fn init() {}
 
-impl Handler {
-    pub unsafe fn new() -> Handler {
-        Handler
-    }
-}
-
-pub unsafe fn init() {
-}
-
-pub unsafe fn cleanup() {
-}
+pub unsafe fn cleanup() {}

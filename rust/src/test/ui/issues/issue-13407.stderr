@@ -2,22 +2,27 @@ error[E0603]: unit struct `C` is private
   --> $DIR/issue-13407.rs:6:8
    |
 LL |     A::C = 1;
-   |        ^
+   |        ^ private unit struct
+   |
+note: the unit struct `C` is defined here
+  --> $DIR/issue-13407.rs:2:5
+   |
+LL |     struct C;
+   |     ^^^^^^^^^
 
 error[E0308]: mismatched types
   --> $DIR/issue-13407.rs:6:12
    |
 LL |     A::C = 1;
    |            ^ expected struct `A::C`, found integer
-   |
-   = note: expected type `A::C`
-              found type `{integer}`
 
-error[E0070]: invalid left-hand side expression
-  --> $DIR/issue-13407.rs:6:5
+error[E0070]: invalid left-hand side of assignment
+  --> $DIR/issue-13407.rs:6:10
    |
 LL |     A::C = 1;
-   |     ^^^^^^^^ left-hand of expression not valid
+   |     ---- ^
+   |     |
+   |     cannot assign to this expression
 
 error: aborting due to 3 previous errors
 

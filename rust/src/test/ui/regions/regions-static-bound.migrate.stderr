@@ -5,7 +5,7 @@ LL |     t
    |     ^
    |
    = note: ...the reference is valid for the static lifetime...
-note: ...but the borrowed content is only valid for the lifetime 'a as defined on the function body at 8:24
+note: ...but the borrowed content is only valid for the lifetime `'a` as defined on the function body at 8:24
   --> $DIR/regions-static-bound.rs:8:24
    |
 LL | fn static_id_wrong_way<'a>(t: &'a ()) -> &'static () where 'static: 'a {
@@ -30,4 +30,5 @@ LL |     static_id_indirect(&v);
 
 error: aborting due to 3 previous errors
 
-For more information about this error, try `rustc --explain E0621`.
+Some errors have detailed explanations: E0312, E0621.
+For more information about an error, try `rustc --explain E0312`.

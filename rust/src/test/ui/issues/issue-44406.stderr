@@ -3,6 +3,7 @@ error: expected identifier, found keyword `true`
    |
 LL |     foo!(true);
    |          ^^^^ expected identifier, found keyword
+   |
 help: you can escape reserved keywords to use them as identifiers
    |
 LL |     foo!(r#true);
@@ -15,7 +16,10 @@ LL |         bar(baz: $rest)
    |                - help: try using a semicolon: `;`
 ...
 LL |     foo!(true);
-   |          ^^^^ expecting a type here because of type ascription
+   |          ^^^^ expected type
+   |
+   = note: `#![feature(type_ascription)]` lets you annotate an expression with a type: `<expr>: <type>`
+   = note: see issue #23416 <https://github.com/rust-lang/rust/issues/23416> for more information
 
 error: aborting due to 2 previous errors
 

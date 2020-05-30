@@ -15,7 +15,7 @@ use crate::frame_alloc::FrameAllocator;
 /// Returns address of entry point
 pub fn load_kernel(page_table: &mut PagingOffPageSet, multiboot_info: &BootInformation) -> usize {
     let module = multiboot_info.module_tags()
-        .nth(0).expect("Multiboot module tag for kernel not found");
+        .next().expect("Multiboot module tag for kernel not found");
 
     let kernel_ptr = module.start_address();
     let kernel_len = module.end_address() - module.start_address();

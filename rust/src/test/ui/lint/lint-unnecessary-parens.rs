@@ -13,6 +13,34 @@ fn bar(y: bool) -> X {
     return (X { y }); //~ ERROR unnecessary parentheses around `return` value
 }
 
+fn unused_parens_around_return_type() -> (u32) { //~ ERROR unnecessary parentheses around type
+    panic!()
+}
+
+fn unused_parens_around_block_return() -> u32 {
+    let foo = {
+        (5) //~ ERROR unnecessary parentheses around block return value
+    };
+    (5) //~ ERROR unnecessary parentheses around block return value
+}
+
+trait Trait {
+    fn test(&self);
+}
+
+fn passes_unused_parens_lint() -> &'static (dyn Trait) {
+    panic!()
+}
+
+macro_rules! baz {
+    ($($foo:expr),+) => {
+        ($($foo),*)
+    }
+}
+
+const CONST_ITEM: usize = (10); //~ ERROR unnecessary parentheses around assigned value
+static STATIC_ITEM: usize = (10); //~ ERROR unnecessary parentheses around assigned value
+
 fn main() {
     foo();
     bar((true)); //~ ERROR unnecessary parentheses around function argument
@@ -20,11 +48,11 @@ fn main() {
     if (true) {} //~ ERROR unnecessary parentheses around `if` condition
     while (true) {} //~ ERROR unnecessary parentheses around `while` condition
     //~^ WARN denote infinite loops with
-    match (true) { //~ ERROR unnecessary parentheses around `match` head expression
+    match (true) { //~ ERROR unnecessary parentheses around `match` scrutinee expression
         _ => {}
     }
-    if let 1 = (1) {} //~ ERROR unnecessary parentheses around `let` head expression
-    while let 1 = (2) {} //~ ERROR unnecessary parentheses around `let` head expression
+    if let 1 = (1) {} //~ ERROR unnecessary parentheses around `let` scrutinee expression
+    while let 1 = (2) {} //~ ERROR unnecessary parentheses around `let` scrutinee expression
     let v = X { y: false };
     // struct lits needs parens, so these shouldn't warn.
     if (v == X { y: true }) {}
@@ -43,4 +71,7 @@ fn main() {
     let mut _a = (0); //~ ERROR unnecessary parentheses around assigned value
     _a = (0); //~ ERROR unnecessary parentheses around assigned value
     _a += (1); //~ ERROR unnecessary parentheses around assigned value
+
+    let _a = baz!(3, 4);
+    let _b = baz!(3);
 }

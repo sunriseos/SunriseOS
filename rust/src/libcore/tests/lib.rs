@@ -1,27 +1,27 @@
+#![feature(alloc_layout_extra)]
+#![feature(bool_to_option)]
 #![feature(bound_cloned)]
 #![feature(box_syntax)]
 #![feature(cell_update)]
 #![feature(core_private_bignum)]
 #![feature(core_private_diy_float)]
-#![feature(debug_map_key_value)]
+#![feature(debug_non_exhaustive)]
 #![feature(dec2flt)]
-#![feature(euclidean_division)]
 #![feature(exact_size_is_empty)]
 #![feature(fixed_size_array)]
 #![feature(flt2dec)]
 #![feature(fmt_internals)]
 #![feature(hashmap_internals)]
+#![feature(try_find)]
 #![feature(is_sorted)]
-#![feature(iter_once_with)]
 #![feature(pattern)]
 #![feature(range_is_empty)]
 #![feature(raw)]
-#![feature(saturating_neg)]
-#![feature(slice_patterns)]
 #![feature(sort_internals)]
 #![feature(slice_partition_at_index)]
 #![feature(specialization)]
 #![feature(step_trait)]
+#![feature(step_trait_ext)]
 #![feature(str_internals)]
 #![feature(test)]
 #![feature(trusted_len)]
@@ -30,10 +30,19 @@
 #![feature(slice_internals)]
 #![feature(slice_partition_dedup)]
 #![feature(int_error_matching)]
-#![feature(const_fn)]
+#![feature(array_value_iter)]
 #![feature(iter_partition_in_place)]
 #![feature(iter_is_partitioned)]
-#![warn(rust_2018_idioms)]
+#![feature(iter_order_by)]
+#![feature(cmp_min_max_by)]
+#![feature(iter_map_while)]
+#![feature(const_slice_from_raw_parts)]
+#![feature(const_raw_ptr_deref)]
+#![feature(never_type)]
+#![feature(unwrap_infallible)]
+#![feature(leading_trailing_ones)]
+#![feature(const_forget)]
+#![feature(option_unwrap_none)]
 
 extern crate test;
 
@@ -42,6 +51,7 @@ mod any;
 mod array;
 mod ascii;
 mod atomic;
+mod bool;
 mod cell;
 mod char;
 mod clone;

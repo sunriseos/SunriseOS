@@ -15,7 +15,6 @@ use std::path::{Path, PathBuf};
 
 use storage_device::storage_device::{StorageDevice, StorageBlockDevice};
 
-use libfat;
 use libfat::FatFileSystemResult;
 use libfat::filesystem::FatFileSystem;
 use libfat::FatFsType;
@@ -103,7 +102,7 @@ fn main() {
     let mut partition_iterator = PartitionIterator::new(&mut system_device).expect("Invalid GPT");
 
     // Now get the first partition and format it to FAT32
-    let partition_option = partition_iterator.nth(0).unwrap();
+    let partition_option = partition_iterator.next().unwrap();
 
     let partition = partition_option.expect("Invalid partition while iterating");
     let partition_start = partition.first_lba * BLOCK_SIZE_U64;

@@ -14,7 +14,7 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends \
       libc6-dev \
       libc6-dev-armhf-cross \
       make \
-      python2.7 \
+      python3 \
       qemu-system-arm \
       xz-utils
 
@@ -72,12 +72,12 @@ RUN arm-linux-gnueabihf-gcc addentropy.c -o rootfs/addentropy -static
 
 # TODO: What is this?!
 # Source of the file: https://github.com/vfdev-5/qemu-rpi2-vexpress/raw/master/vexpress-v2p-ca15-tc1.dtb
-RUN curl -O https://rust-lang-ci2.s3.amazonaws.com/rust-ci-mirror/vexpress-v2p-ca15-tc1.dtb
+RUN curl -O https://ci-mirrors.rust-lang.org/rustc/vexpress-v2p-ca15-tc1.dtb
 
 COPY scripts/sccache.sh /scripts/
 RUN sh /scripts/sccache.sh
 
 ENV RUST_CONFIGURE_ARGS --qemu-armhf-rootfs=/tmp/rootfs
-ENV SCRIPT python2.7 ../x.py test --target arm-unknown-linux-gnueabihf
+ENV SCRIPT python3 ../x.py test --target arm-unknown-linux-gnueabihf
 
 ENV NO_CHANGE_USER=1

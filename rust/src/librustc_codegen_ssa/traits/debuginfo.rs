@@ -1,11 +1,11 @@
 use super::BackendTypes;
-use crate::debuginfo::{FunctionDebugContext, MirDebugScope, VariableAccess, VariableKind};
-use rustc::hir::def_id::CrateNum;
-use rustc::mir;
-use rustc::ty::{self, Ty, Instance};
-use rustc_data_structures::indexed_vec::IndexVec;
-use syntax::ast::Name;
-use syntax_pos::{SourceFile, Span};
+use crate::mir::debuginfo::{FunctionDebugContext, VariableKind};
+use rustc_hir::def_id::CrateNum;
+use rustc_middle::mir;
+use rustc_middle::ty::{Instance, Ty};
+use rustc_span::{SourceFile, Span, Symbol};
+use rustc_target::abi::call::FnAbi;
+use rustc_target::abi::Size;
 
 pub trait DebugInfoMethods<'tcx>: BackendTypes {
     fn create_vtable_metadata(&self, ty: Ty<'tcx>, vtable: Self::Value);
@@ -13,22 +13,15 @@ pub trait DebugInfoMethods<'tcx>: BackendTypes {
     /// Creates the function-specific debug context.
     ///
     /// Returns the FunctionDebugContext for the function which holds state needed
-    /// for debug info creation. The function may also return another variant of the
-    /// FunctionDebugContext enum which indicates why no debuginfo should be created
-    /// for the function.
+    /// for debug info creation, if it is enabled.
     fn create_function_debug_context(
         &self,
         instance: Instance<'tcx>,
-        sig: ty::FnSig<'tcx>,
-        llfn: Self::Value,
+        fn_abi: &FnAbi<'tcx, Ty<'tcx>>,
+        llfn: Self::Function,
         mir: &mir::Body<'_>,
-    ) -> FunctionDebugContext<Self::DIScope>;
+    ) -> Option<FunctionDebugContext<Self::DIScope>>;
 
-    fn create_mir_scopes(
-        &self,
-        mir: &mir::Body<'_>,
-        debug_context: &mut FunctionDebugContext<Self::DIScope>,
-    ) -> IndexVec<mir::SourceScope, MirDebugScope<Self::DIScope>>;
     fn extend_scope_to_file(
         &self,
         scope_metadata: Self::DIScope,
@@ -36,26 +29,34 @@ pub trait DebugInfoMethods<'tcx>: BackendTypes {
         defining_crate: CrateNum,
     ) -> Self::DIScope;
     fn debuginfo_finalize(&self);
-    fn debuginfo_upvar_ops_sequence(&self, byte_offset_of_var_in_env: u64) -> [i64; 4];
-}
 
-pub trait DebugInfoBuilderMethods<'tcx>: BackendTypes {
-    fn declare_local(
-        &mut self,
+    // FIXME(eddyb) find a common convention for all of the debuginfo-related
+    // names (choose between `dbg`, `debug`, `debuginfo`, `debug_info` etc.).
+    fn create_dbg_var(
+        &self,
         dbg_context: &FunctionDebugContext<Self::DIScope>,
-        variable_name: Name,
+        variable_name: Symbol,
         variable_type: Ty<'tcx>,
         scope_metadata: Self::DIScope,
-        variable_access: VariableAccess<'_, Self::Value>,
         variable_kind: VariableKind,
         span: Span,
-    );
-    fn set_source_location(
+    ) -> Self::DIVariable;
+}
+
+pub trait DebugInfoBuilderMethods: BackendTypes {
+    // FIXME(eddyb) find a common convention for all of the debuginfo-related
+    // names (choose between `dbg`, `debug`, `debuginfo`, `debug_info` etc.).
+    fn dbg_var_addr(
         &mut self,
-        debug_context: &mut FunctionDebugContext<Self::DIScope>,
-        scope: Option<Self::DIScope>,
+        dbg_var: Self::DIVariable,
+        scope_metadata: Self::DIScope,
+        variable_alloca: Self::Value,
+        direct_offset: Size,
+        // NB: each offset implies a deref (i.e. they're steps in a pointer chain).
+        indirect_offsets: &[Size],
         span: Span,
     );
+    fn set_source_location(&mut self, scope: Self::DIScope, span: Span);
     fn insert_reference_to_gdb_debug_scripts_section_global(&mut self);
-    fn set_value_name(&mut self, value: Self::Value, name: &str);
+    fn set_var_name(&mut self, value: Self::Value, name: &str);
 }

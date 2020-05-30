@@ -1,12 +1,12 @@
 error: rustc_outlives
-  --> $DIR/nested-union.rs:6:1
+  --> $DIR/nested-union.rs:5:1
    |
-LL | / union Foo<'a, T> {
+LL | / union Foo<'a, T: Copy> {
 LL | |     field1: Bar<'a, T>
 LL | | }
    | |_^
    |
-   = note: T : 'a
+   = note: T: 'a
 
 error: aborting due to previous error
 

@@ -21,9 +21,7 @@
 //!   - flags/
 //!     - boot.flag
 
-#![feature(async_await)]
 #![no_std]
-
 #[macro_use]
 extern crate log;
 #[macro_use]

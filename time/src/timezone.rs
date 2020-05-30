@@ -140,11 +140,7 @@ impl TimeZoneManager {
 
         let tzdata = file.read_full();
 
-        let timezone_rule = if timezone_rule.is_some() {
-            timezone_rule.unwrap()
-        } else {
-            &mut self.my_rules
-        };
+        let timezone_rule = timezone_rule.unwrap_or(&mut self.my_rules);
 
         // Before anything else, clear the buffer
 

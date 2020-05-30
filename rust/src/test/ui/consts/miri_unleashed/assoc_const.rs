@@ -1,4 +1,6 @@
+// build-fail
 // compile-flags: -Zunleash-the-miri-inside-of-you
+
 #![allow(const_err)]
 
 // a test demonstrating why we do need to run static const qualification on associated constants
@@ -9,7 +11,7 @@ trait Foo<T> {
 }
 
 trait Bar<T, U: Foo<T>> {
-    const F: u32 = (U::X, 42).1; //~ WARN skipping const checks
+    const F: u32 = (U::X, 42).1;
 }
 
 impl Foo<u32> for () {

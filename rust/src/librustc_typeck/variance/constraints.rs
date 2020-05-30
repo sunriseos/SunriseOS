@@ -3,14 +3,14 @@
 //! The second pass over the AST determines the set of constraints.
 //! We walk the set of items and, for each member, generate new constraints.
 
-use hir::def_id::DefId;
-use rustc::ty::subst::{SubstsRef, UnpackedKind};
-use rustc::ty::{self, Ty, TyCtxt};
-use rustc::hir;
-use rustc::hir::itemlikevisit::ItemLikeVisitor;
+use hir::def_id::{DefId, LocalDefId};
+use rustc_hir as hir;
+use rustc_hir::itemlikevisit::ItemLikeVisitor;
+use rustc_middle::ty::subst::{GenericArgKind, SubstsRef};
+use rustc_middle::ty::{self, Ty, TyCtxt};
 
-use super::terms::*;
 use super::terms::VarianceTerm::*;
+use super::terms::*;
 
 pub struct ConstraintContext<'a, 'tcx> {
     pub terms_cx: TermsContext<'a, 'tcx>,
@@ -45,8 +45,9 @@ pub struct CurrentItem {
     inferred_start: InferredIndex,
 }
 
-pub fn add_constraints_from_crate<'a, 'tcx>(terms_cx: TermsContext<'a, 'tcx>)
-                                            -> ConstraintContext<'a, 'tcx> {
+pub fn add_constraints_from_crate<'a, 'tcx>(
+    terms_cx: TermsContext<'a, 'tcx>,
+) -> ConstraintContext<'a, 'tcx> {
     let tcx = terms_cx.tcx;
     let covariant = terms_cx.arena.alloc(ConstantTerm(ty::Covariant));
     let contravariant = terms_cx.arena.alloc(ConstantTerm(ty::Contravariant));
@@ -67,10 +68,9 @@ pub fn add_constraints_from_crate<'a, 'tcx>(terms_cx: TermsContext<'a, 'tcx>)
 }
 
 impl<'a, 'tcx, 'v> ItemLikeVisitor<'v> for ConstraintContext<'a, 'tcx> {
-    fn visit_item(&mut self, item: &hir::Item) {
-        match item.node {
-            hir::ItemKind::Struct(ref struct_def, _) |
-            hir::ItemKind::Union(ref struct_def, _) => {
+    fn visit_item(&mut self, item: &hir::Item<'_>) {
+        match item.kind {
+            hir::ItemKind::Struct(ref struct_def, _) | hir::ItemKind::Union(ref struct_def, _) => {
                 self.visit_node_helper(item.hir_id);
 
                 if let hir::VariantData::Tuple(..) = *struct_def {
@@ -81,9 +81,9 @@ impl<'a, 'tcx, 'v> ItemLikeVisitor<'v> for ConstraintContext<'a, 'tcx> {
             hir::ItemKind::Enum(ref enum_def, _) => {
                 self.visit_node_helper(item.hir_id);
 
-                for variant in &enum_def.variants {
-                    if let hir::VariantData::Tuple(..) = variant.node.data {
-                        self.visit_node_helper(variant.node.data.ctor_hir_id().unwrap());
+                for variant in enum_def.variants {
+                    if let hir::VariantData::Tuple(..) = variant.data {
+                        self.visit_node_helper(variant.data.ctor_hir_id().unwrap());
                     }
                 }
             }
@@ -93,8 +93,8 @@ impl<'a, 'tcx, 'v> ItemLikeVisitor<'v> for ConstraintContext<'a, 'tcx> {
             }
 
             hir::ItemKind::ForeignMod(ref foreign_mod) => {
-                for foreign_item in &foreign_mod.items {
-                    if let hir::ForeignItemKind::Fn(..) = foreign_item.node {
+                for foreign_item in foreign_mod.items {
+                    if let hir::ForeignItemKind::Fn(..) = foreign_item.kind {
                         self.visit_node_helper(foreign_item.hir_id);
                     }
                 }
@@ -104,14 +104,14 @@ impl<'a, 'tcx, 'v> ItemLikeVisitor<'v> for ConstraintContext<'a, 'tcx> {
         }
     }
 
-    fn visit_trait_item(&mut self, trait_item: &hir::TraitItem) {
-        if let hir::TraitItemKind::Method(..) = trait_item.node {
+    fn visit_trait_item(&mut self, trait_item: &hir::TraitItem<'_>) {
+        if let hir::TraitItemKind::Fn(..) = trait_item.kind {
             self.visit_node_helper(trait_item.hir_id);
         }
     }
 
-    fn visit_impl_item(&mut self, impl_item: &hir::ImplItem) {
-        if let hir::ImplItemKind::Method(..) = impl_item.node {
+    fn visit_impl_item(&mut self, impl_item: &hir::ImplItem<'_>) {
+        if let hir::ImplItemKind::Fn(..) = impl_item.kind {
             self.visit_node_helper(impl_item.hir_id);
         }
     }
@@ -128,19 +128,19 @@ impl<'a, 'tcx> ConstraintContext<'a, 'tcx> {
         self.terms_cx.tcx
     }
 
-    fn build_constraints_for_item(&mut self, def_id: DefId) {
+    fn build_constraints_for_item(&mut self, def_id: LocalDefId) {
         let tcx = self.tcx();
-        debug!("build_constraints_for_item({})", tcx.def_path_str(def_id));
+        debug!("build_constraints_for_item({})", tcx.def_path_str(def_id.to_def_id()));
 
         // Skip items with no generics - there's nothing to infer in them.
         if tcx.generics_of(def_id).count() == 0 {
             return;
         }
 
-        let id = tcx.hir().as_local_hir_id(def_id).unwrap();
+        let id = tcx.hir().as_local_hir_id(def_id);
         let inferred_start = self.terms_cx.inferred_starts[&id];
         let current_item = &CurrentItem { inferred_start };
-        match tcx.type_of(def_id).sty {
+        match tcx.type_of(def_id).kind {
             ty::Adt(def, _) => {
                 // Not entirely obvious: constraints on structs/enums do not
                 // affect the variance of their type parameters. See discussion
@@ -149,29 +149,28 @@ impl<'a, 'tcx> ConstraintContext<'a, 'tcx> {
                 // self.add_constraints_from_generics(generics);
 
                 for field in def.all_fields() {
-                    self.add_constraints_from_ty(current_item,
-                                                 tcx.type_of(field.did),
-                                                 self.covariant);
+                    self.add_constraints_from_ty(
+                        current_item,
+                        tcx.type_of(field.did),
+                        self.covariant,
+                    );
                 }
             }
 
             ty::FnDef(..) => {
-                self.add_constraints_from_sig(current_item,
-                                              tcx.fn_sig(def_id),
-                                              self.covariant);
+                self.add_constraints_from_sig(current_item, tcx.fn_sig(def_id), self.covariant);
             }
 
             _ => {
-                span_bug!(tcx.def_span(def_id),
-                          "`build_constraints_for_item` unsupported for this item");
+                span_bug!(
+                    tcx.def_span(def_id),
+                    "`build_constraints_for_item` unsupported for this item"
+                );
             }
         }
     }
 
-    fn add_constraint(&mut self,
-                      current: &CurrentItem,
-                      index: u32,
-                      variance: VarianceTermPtr<'a>) {
+    fn add_constraint(&mut self, current: &CurrentItem, index: u32, variance: VarianceTermPtr<'a>) {
         debug!("add_constraint(index={}, variance={:?})", index, variance);
         self.constraints.push(Constraint {
             inferred: InferredIndex(current.inferred_start.0 + index as usize),
@@ -209,36 +208,37 @@ impl<'a, 'tcx> ConstraintContext<'a, 'tcx> {
         }
     }
 
-    fn add_constraints_from_trait_ref(&mut self,
-                                      current: &CurrentItem,
-                                      trait_ref: ty::TraitRef<'tcx>,
-                                      variance: VarianceTermPtr<'a>) {
-        debug!("add_constraints_from_trait_ref: trait_ref={:?} variance={:?}",
-               trait_ref,
-               variance);
+    fn add_constraints_from_trait_ref(
+        &mut self,
+        current: &CurrentItem,
+        trait_ref: ty::TraitRef<'tcx>,
+        variance: VarianceTermPtr<'a>,
+    ) {
+        debug!("add_constraints_from_trait_ref: trait_ref={:?} variance={:?}", trait_ref, variance);
         self.add_constraints_from_invariant_substs(current, trait_ref.substs, variance);
     }
 
-    fn add_constraints_from_invariant_substs(&mut self,
-                                             current: &CurrentItem,
-                                             substs: SubstsRef<'tcx>,
-                                             variance: VarianceTermPtr<'a>) {
-        debug!("add_constraints_from_invariant_substs: substs={:?} variance={:?}",
-               substs,
-               variance);
+    fn add_constraints_from_invariant_substs(
+        &mut self,
+        current: &CurrentItem,
+        substs: SubstsRef<'tcx>,
+        variance: VarianceTermPtr<'a>,
+    ) {
+        debug!(
+            "add_constraints_from_invariant_substs: substs={:?} variance={:?}",
+            substs, variance
+        );
 
         // Trait are always invariant so we can take advantage of that.
         let variance_i = self.invariant(variance);
 
         for k in substs {
             match k.unpack() {
-                UnpackedKind::Lifetime(lt) => {
+                GenericArgKind::Lifetime(lt) => {
                     self.add_constraints_from_region(current, lt, variance_i)
                 }
-                UnpackedKind::Type(ty) => {
-                    self.add_constraints_from_ty(current, ty, variance_i)
-                }
-                UnpackedKind::Const(_) => {
+                GenericArgKind::Type(ty) => self.add_constraints_from_ty(current, ty, variance_i),
+                GenericArgKind::Const(_) => {
                     // Consts impose no constraints.
                 }
             }
@@ -248,23 +248,27 @@ impl<'a, 'tcx> ConstraintContext<'a, 'tcx> {
     /// Adds constraints appropriate for an instance of `ty` appearing
     /// in a context with the generics defined in `generics` and
     /// ambient variance `variance`
-    fn add_constraints_from_ty(&mut self,
-                               current: &CurrentItem,
-                               ty: Ty<'tcx>,
-                               variance: VarianceTermPtr<'a>) {
-        debug!("add_constraints_from_ty(ty={:?}, variance={:?})",
-               ty,
-               variance);
+    fn add_constraints_from_ty(
+        &mut self,
+        current: &CurrentItem,
+        ty: Ty<'tcx>,
+        variance: VarianceTermPtr<'a>,
+    ) {
+        debug!("add_constraints_from_ty(ty={:?}, variance={:?})", ty, variance);
 
-        match ty.sty {
-            ty::Bool | ty::Char | ty::Int(_) | ty::Uint(_) | ty::Float(_) |
-            ty::Str | ty::Never | ty::Foreign(..) => {
+        match ty.kind {
+            ty::Bool
+            | ty::Char
+            | ty::Int(_)
+            | ty::Uint(_)
+            | ty::Float(_)
+            | ty::Str
+            | ty::Never
+            | ty::Foreign(..) => {
                 // leaf type -- noop
             }
 
-            ty::FnDef(..) |
-            ty::Generator(..) |
-            ty::Closure(..) => {
+            ty::FnDef(..) | ty::Generator(..) | ty::Closure(..) => {
                 bug!("Unexpected closure type in variance computation");
             }
 
@@ -311,15 +315,19 @@ impl<'a, 'tcx> ConstraintContext<'a, 'tcx> {
                 self.add_constraints_from_region(current, r, contra);
 
                 if let Some(poly_trait_ref) = data.principal() {
-                    let poly_trait_ref =
-                        poly_trait_ref.with_self_ty(self.tcx(), self.tcx().types.err);
-                    self.add_constraints_from_trait_ref(
-                        current, *poly_trait_ref.skip_binder(), variance);
+                    self.add_constraints_from_invariant_substs(
+                        current,
+                        poly_trait_ref.skip_binder().substs,
+                        variance,
+                    );
                 }
 
                 for projection in data.projection_bounds() {
                     self.add_constraints_from_ty(
-                        current, projection.skip_binder().ty, self.invariant);
+                        current,
+                        projection.skip_binder().ty,
+                        self.invariant,
+                    );
                 }
             }
 
@@ -336,36 +344,37 @@ impl<'a, 'tcx> ConstraintContext<'a, 'tcx> {
                 // types, where we use Error as the Self type
             }
 
-            ty::Placeholder(..) |
-            ty::UnnormalizedProjection(..) |
-            ty::GeneratorWitness(..) |
-            ty::Bound(..) |
-            ty::Infer(..) => {
-                bug!("unexpected type encountered in \
+            ty::Placeholder(..) | ty::GeneratorWitness(..) | ty::Bound(..) | ty::Infer(..) => {
+                bug!(
+                    "unexpected type encountered in \
                       variance inference: {}",
-                     ty);
+                    ty
+                );
             }
         }
     }
 
     /// Adds constraints appropriate for a nominal type (enum, struct,
     /// object, etc) appearing in a context with ambient variance `variance`
-    fn add_constraints_from_substs(&mut self,
-                                   current: &CurrentItem,
-                                   def_id: DefId,
-                                   substs: SubstsRef<'tcx>,
-                                   variance: VarianceTermPtr<'a>) {
-        debug!("add_constraints_from_substs(def_id={:?}, substs={:?}, variance={:?})",
-               def_id,
-               substs,
-               variance);
+    fn add_constraints_from_substs(
+        &mut self,
+        current: &CurrentItem,
+        def_id: DefId,
+        substs: SubstsRef<'tcx>,
+        variance: VarianceTermPtr<'a>,
+    ) {
+        debug!(
+            "add_constraints_from_substs(def_id={:?}, substs={:?}, variance={:?})",
+            def_id, substs, variance
+        );
 
         // We don't record `inferred_starts` entries for empty generics.
         if substs.is_empty() {
             return;
         }
 
-        let (local, remote) = if let Some(id) = self.tcx().hir().as_local_hir_id(def_id) {
+        let (local, remote) = if let Some(def_id) = def_id.as_local() {
+            let id = self.tcx().hir().as_local_hir_id(def_id);
             (Some(self.terms_cx.inferred_starts[&id]), None)
         } else {
             (None, Some(self.tcx().variances_of(def_id)))
@@ -383,17 +392,16 @@ impl<'a, 'tcx> ConstraintContext<'a, 'tcx> {
                 self.constant_term(remote.as_ref().unwrap()[i])
             };
             let variance_i = self.xform(variance, variance_decl);
-            debug!("add_constraints_from_substs: variance_decl={:?} variance_i={:?}",
-                   variance_decl,
-                   variance_i);
+            debug!(
+                "add_constraints_from_substs: variance_decl={:?} variance_i={:?}",
+                variance_decl, variance_i
+            );
             match k.unpack() {
-                UnpackedKind::Lifetime(lt) => {
+                GenericArgKind::Lifetime(lt) => {
                     self.add_constraints_from_region(current, lt, variance_i)
                 }
-                UnpackedKind::Type(ty) => {
-                    self.add_constraints_from_ty(current, ty, variance_i)
-                }
-                UnpackedKind::Const(_) => {
+                GenericArgKind::Type(ty) => self.add_constraints_from_ty(current, ty, variance_i),
+                GenericArgKind::Const(_) => {
                     // Consts impose no constraints.
                 }
             }
@@ -402,10 +410,12 @@ impl<'a, 'tcx> ConstraintContext<'a, 'tcx> {
 
     /// Adds constraints appropriate for a function with signature
     /// `sig` appearing in a context with ambient variance `variance`
-    fn add_constraints_from_sig(&mut self,
-                                current: &CurrentItem,
-                                sig: ty::PolyFnSig<'tcx>,
-                                variance: VarianceTermPtr<'a>) {
+    fn add_constraints_from_sig(
+        &mut self,
+        current: &CurrentItem,
+        sig: ty::PolyFnSig<'tcx>,
+        variance: VarianceTermPtr<'a>,
+    ) {
         let contra = self.contravariant(variance);
         for &input in sig.skip_binder().inputs() {
             self.add_constraints_from_ty(current, input, contra);
@@ -415,10 +425,12 @@ impl<'a, 'tcx> ConstraintContext<'a, 'tcx> {
 
     /// Adds constraints appropriate for a region appearing in a
     /// context with ambient variance `variance`
-    fn add_constraints_from_region(&mut self,
-                                   current: &CurrentItem,
-                                   region: ty::Region<'tcx>,
-                                   variance: VarianceTermPtr<'a>) {
+    fn add_constraints_from_region(
+        &mut self,
+        current: &CurrentItem,
+        region: ty::Region<'tcx>,
+        variance: VarianceTermPtr<'a>,
+    ) {
         match *region {
             ty::ReEarlyBound(ref data) => {
                 self.add_constraint(current, data.index, variance);
@@ -431,35 +443,37 @@ impl<'a, 'tcx> ConstraintContext<'a, 'tcx> {
                 // way early-bound regions do, so we skip them here.
             }
 
-            ty::ReFree(..) |
-            ty::ReClosureBound(..) |
-            ty::ReScope(..) |
-            ty::ReVar(..) |
-            ty::RePlaceholder(..) |
-            ty::ReEmpty |
-            ty::ReErased => {
+            ty::ReFree(..)
+            | ty::ReVar(..)
+            | ty::RePlaceholder(..)
+            | ty::ReEmpty(_)
+            | ty::ReErased => {
                 // We don't expect to see anything but 'static or bound
                 // regions when visiting member types or method types.
-                bug!("unexpected region encountered in variance \
+                bug!(
+                    "unexpected region encountered in variance \
                       inference: {:?}",
-                     region);
+                    region
+                );
             }
         }
     }
 
     /// Adds constraints appropriate for a mutability-type pair
     /// appearing in a context with ambient variance `variance`
-    fn add_constraints_from_mt(&mut self,
-                               current: &CurrentItem,
-                               mt: &ty::TypeAndMut<'tcx>,
-                               variance: VarianceTermPtr<'a>) {
+    fn add_constraints_from_mt(
+        &mut self,
+        current: &CurrentItem,
+        mt: &ty::TypeAndMut<'tcx>,
+        variance: VarianceTermPtr<'a>,
+    ) {
         match mt.mutbl {
-            hir::MutMutable => {
+            hir::Mutability::Mut => {
                 let invar = self.invariant(variance);
                 self.add_constraints_from_ty(current, mt.ty, invar);
             }
 
-            hir::MutImmutable => {
+            hir::Mutability::Not => {
                 self.add_constraints_from_ty(current, mt.ty, variance);
             }
         }

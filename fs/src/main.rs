@@ -59,7 +59,7 @@ fn main() {
     //fs_proxy.format_disk_partition(0, 0, FileSystemType::FAT32).unwrap();
 
     let mut man = WaitableManager::new();
-    let handler = port_handler(man.work_queue(), "fsp-srv\0", ipc::FileSystemService::dispatch).unwrap();;
+    let handler = port_handler(man.work_queue(), "fsp-srv\0", ipc::FileSystemService::dispatch).unwrap();
     man.work_queue().spawn(FutureObj::new(Box::new(handler)));
     man.run();
 }

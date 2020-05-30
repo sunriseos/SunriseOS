@@ -1,8 +1,13 @@
-error: cannot find macro `macro_two!` in this scope
+error: cannot find macro `macro_two` in this scope
   --> $DIR/macro-use-wrong-name.rs:7:5
    |
 LL |     macro_two!();
-   |     ^^^^^^^^^ help: you could try the macro: `macro_one`
+   |     ^^^^^^^^^ help: a macro with a similar name exists: `macro_one`
+   | 
+  ::: $DIR/auxiliary/two_macros.rs:2:1
+   |
+LL | macro_rules! macro_one { () => ("one") }
+   | ---------------------- similarly named macro `macro_one` defined here
 
 error: aborting due to previous error
 

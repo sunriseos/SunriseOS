@@ -1,27 +1,8 @@
-fn foo() {
+fn main() {
     (0..13).collect<Vec<i32>>();
-    //~^ ERROR chained comparison
-    //~| ERROR expected value, found struct `Vec`
-    //~| ERROR expected value, found builtin type `i32`
-    //~| ERROR attempted to take value of method `collect`
-}
-
-fn bar() {
+    //~^ ERROR comparison operators cannot be chained
     Vec<i32>::new();
-    //~^ ERROR chained comparison
-    //~| ERROR expected value, found struct `Vec`
-    //~| ERROR expected value, found builtin type `i32`
-    //~| ERROR cannot find function `new` in the crate root
-}
-
-fn qux() {
+    //~^ ERROR comparison operators cannot be chained
     (0..13).collect<Vec<i32>();
-    //~^ ERROR chained comparison
-    //~| ERROR chained comparison
-    //~| ERROR expected value, found struct `Vec`
-    //~| ERROR expected value, found builtin type `i32`
-    //~| ERROR attempted to take value of method `collect`
-    //~| ERROR mismatched types
+    //~^ ERROR comparison operators cannot be chained
 }
-
-fn main() {}

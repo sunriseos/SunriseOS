@@ -8,6 +8,11 @@ LL | |
 LL | |         ""
 LL | |     }
    | |_____^
+...
+LL |       format_args!(hang!());
+   |                    ------- in this macro invocation
+   |
+   = note: this error originates in a macro (in Nightly builds, run with -Z macro-backtrace for more info)
 help: you might be missing a string literal to format with
    |
 LL |     format_args!("{}", hang!());

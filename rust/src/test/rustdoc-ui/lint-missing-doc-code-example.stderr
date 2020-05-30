@@ -1,17 +1,17 @@
-error: Missing code example in this documentation
+error: missing code example in this documentation
   --> $DIR/lint-missing-doc-code-example.rs:19:1
    |
 LL | / mod module1 {
 LL | | }
    | |_^
    |
-note: lint level defined here
+note: the lint level is defined here
   --> $DIR/lint-missing-doc-code-example.rs:2:9
    |
 LL | #![deny(missing_doc_code_examples)]
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-error: Missing code example in this documentation
+error: missing code example in this documentation
   --> $DIR/lint-missing-doc-code-example.rs:37:3
    |
 LL |   /// doc

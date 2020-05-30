@@ -9,25 +9,26 @@
 //! needs to read-after-write from a file, then it would be added to this
 //! abstraction.
 
-use errors;
-
 use std::fs;
 use std::io;
 use std::path::Path;
-use std::sync::Arc;
+use std::string::ToString;
 use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::Arc;
 
 macro_rules! try_err {
-    ($e:expr, $file:expr) => {{
+    ($e:expr, $file:expr) => {
         match $e {
             Ok(e) => e,
             Err(e) => return Err(E::new(e, $file)),
         }
-    }};
+    };
 }
 
 pub trait PathError {
-    fn new<P: AsRef<Path>>(e: io::Error, path: P) -> Self;
+    fn new<S, P: AsRef<Path>>(e: S, path: P) -> Self
+    where
+        S: ToString + Sized;
 }
 
 pub struct ErrorStorage {
@@ -38,14 +39,11 @@ pub struct ErrorStorage {
 impl ErrorStorage {
     pub fn new() -> ErrorStorage {
         let (sender, receiver) = channel();
-        ErrorStorage {
-            sender: Some(sender),
-            receiver,
-        }
+        ErrorStorage { sender: Some(sender), receiver }
     }
 
     /// Prints all stored errors. Returns the number of printed errors.
-    pub fn write_errors(&mut self, diag: &errors::Handler) -> usize {
+    pub fn write_errors(&mut self, diag: &rustc_errors::Handler) -> usize {
         let mut printed = 0;
         // In order to drop the sender part of the channel.
         self.sender = None;
@@ -67,10 +65,7 @@ pub struct DocFS {
 
 impl DocFS {
     pub fn new(errors: &Arc<ErrorStorage>) -> DocFS {
-        DocFS {
-            sync_only: false,
-            errors: Arc::clone(errors),
-        }
+        DocFS { sync_only: false, errors: Arc::clone(errors) }
     }
 
     pub fn set_sync_only(&mut self, sync_only: bool) {
@@ -96,16 +91,16 @@ impl DocFS {
             let contents = contents.as_ref().to_vec();
             let path = path.as_ref().to_path_buf();
             let sender = self.errors.sender.clone().unwrap();
-            rayon::spawn(move || {
-                match fs::write(&path, &contents) {
-                    Ok(_) => {
-                        sender.send(None)
-                            .expect(&format!("failed to send error on \"{}\"", path.display()));
-                    }
-                    Err(e) => {
-                        sender.send(Some(format!("\"{}\": {}", path.display(), e)))
-                            .expect(&format!("failed to send non-error on \"{}\"", path.display()));
-                    }
+            rayon::spawn(move || match fs::write(&path, &contents) {
+                Ok(_) => {
+                    sender.send(None).unwrap_or_else(|_| {
+                        panic!("failed to send error on \"{}\"", path.display())
+                    });
+                }
+                Err(e) => {
+                    sender.send(Some(format!("\"{}\": {}", path.display(), e))).unwrap_or_else(
+                        |_| panic!("failed to send non-error on \"{}\"", path.display()),
+                    );
                 }
             });
             Ok(())

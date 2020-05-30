@@ -1,7 +1,5 @@
 // edition:2018
 
-#![feature(async_await)]
-
 // @has async_fn/fn.foo.html '//pre[@class="rust fn"]' 'pub async fn foo() -> Option<Foo>'
 pub async fn foo() -> Option<Foo> {
     None
@@ -17,6 +15,11 @@ pub async fn baz<T>(a: T) -> T {
     a
 }
 
+// @has async_fn/fn.qux.html '//pre[@class="rust fn"]' 'pub async unsafe fn qux() -> char'
+pub async unsafe fn qux() -> char {
+    '⚠'
+}
+
 trait Bar {}
 
 impl Bar for () {}
@@ -28,8 +31,10 @@ pub async fn quux() -> impl Bar {
 
 // @has async_fn/struct.Foo.html
 // @matches - '//code' 'pub async fn f\(\)$'
+// @matches - '//code' 'pub async unsafe fn g\(\)$'
 pub struct Foo;
 
 impl Foo {
     pub async fn f() {}
+    pub async unsafe fn g() {}
 }

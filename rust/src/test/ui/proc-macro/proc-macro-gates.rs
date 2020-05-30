@@ -10,15 +10,11 @@ fn _test_inner() {
     #![empty_attr] //~ ERROR: non-builtin inner attributes are unstable
 }
 
-#[empty_attr] //~ ERROR: custom attributes cannot be applied to modules
-mod _test2 {}
-
 mod _test2_inner {
-    #![empty_attr] //~ ERROR: custom attributes cannot be applied to modules
-          //~| ERROR: non-builtin inner attributes are unstable
+    #![empty_attr] //~ ERROR: non-builtin inner attributes are unstable
 }
 
-#[empty_attr = "y"] //~ ERROR: must only be followed by a delimiter token
+#[empty_attr = "y"] //~ ERROR: key-value macro attributes are not supported
 fn _test3() {}
 
 fn attrs() {
@@ -49,14 +45,4 @@ fn attrs() {
     //~^ ERROR: custom attributes cannot be applied to expressions
 }
 
-fn main() {
-    let _x: identity!(u32) = 3; //~ ERROR: procedural macros cannot be expanded to types
-    if let identity!(Some(_x)) = Some(3) {}
-    //~^ ERROR: procedural macros cannot be expanded to patterns
-
-    empty!(struct S;); //~ ERROR: procedural macros cannot be expanded to statements
-    empty!(let _x = 3;); //~ ERROR: procedural macros cannot be expanded to statements
-
-    let _x = identity!(3); //~ ERROR: procedural macros cannot be expanded to expressions
-    let _x = [empty!(3)]; //~ ERROR: procedural macros cannot be expanded to expressions
-}
+fn main() {}

@@ -223,7 +223,7 @@ pub fn wait_synchronization(handles_ptr: UserSpacePtr<[u32]>, timeout_ns: usize)
 
         // Figure out which waitable got triggered.
         for (idx, handle) in waitables.enumerate() {
-            if handle as *const _ == val as *const _ {
+            if handle as *const dyn Waitable as *const u8 == val as *const dyn Waitable as *const _ {
                 if idx == handle_arr.len() {
                     return Err(UserspaceError::Timeout);
                 } else {

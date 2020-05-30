@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   file \
   curl \
   ca-certificates \
-  python2.7 \
+  python3 \
   git \
   cmake \
   xz-utils \
@@ -32,7 +32,6 @@ RUN sh /scripts/sccache.sh
 ENV RUST_CONFIGURE_ARGS \
       --musl-root-i586=/musl-i586 \
       --musl-root-i686=/musl-i686 \
-      --enable-extended \
       --disable-docs
 
 # Newer binutils broke things on some vms/distros (i.e., linking against
@@ -47,5 +46,5 @@ ENV CFLAGS_i586_unknown_linux_musl=-Wa,-mrelax-relocations=no
 ENV TARGETS=i586-unknown-linux-gnu,i686-unknown-linux-musl
 
 ENV SCRIPT \
-      python2.7 ../x.py test --target $TARGETS && \
-      python2.7 ../x.py dist --target $TARGETS,i586-unknown-linux-musl
+      python3 ../x.py test --target $TARGETS && \
+      python3 ../x.py dist --target $TARGETS,i586-unknown-linux-musl

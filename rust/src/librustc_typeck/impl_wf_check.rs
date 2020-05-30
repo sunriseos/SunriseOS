@@ -9,15 +9,20 @@
 //! fixed, but for the moment it's easier to do these checks early.
 
 use crate::constrained_generic_params as cgp;
-use rustc::hir;
-use rustc::hir::itemlikevisit::ItemLikeVisitor;
-use rustc::hir::def_id::DefId;
-use rustc::ty::{self, TyCtxt};
-use rustc::ty::query::Providers;
-use rustc::util::nodemap::{FxHashMap, FxHashSet};
+use min_specialization::check_min_specialization;
+
+use rustc_data_structures::fx::{FxHashMap, FxHashSet};
+use rustc_errors::struct_span_err;
+use rustc_hir as hir;
+use rustc_hir::def_id::{DefId, LocalDefId};
+use rustc_hir::itemlikevisit::ItemLikeVisitor;
+use rustc_middle::ty::query::Providers;
+use rustc_middle::ty::{self, TyCtxt, TypeFoldable};
+use rustc_span::Span;
+
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 
-use syntax_pos::Span;
+mod min_specialization;
 
 /// Checks that all the type/lifetime parameters on an impl also
 /// appear in the trait ref or self type (or are constrained by a
@@ -54,69 +59,98 @@ pub fn impl_wf_check(tcx: TyCtxt<'_>) {
     // but it's one that we must perform earlier than the rest of
     // WfCheck.
     for &module in tcx.hir().krate().modules.keys() {
-        tcx.ensure().check_mod_impl_wf(tcx.hir().local_def_id_from_node_id(module));
+        tcx.ensure().check_mod_impl_wf(tcx.hir().local_def_id(module).to_def_id());
     }
 }
 
 fn check_mod_impl_wf(tcx: TyCtxt<'_>, module_def_id: DefId) {
-    tcx.hir().visit_item_likes_in_module(
-        module_def_id,
-        &mut ImplWfCheck { tcx }
-    );
+    let min_specialization = tcx.features().min_specialization;
+    tcx.hir()
+        .visit_item_likes_in_module(module_def_id, &mut ImplWfCheck { tcx, min_specialization });
 }
 
 pub fn provide(providers: &mut Providers<'_>) {
-    *providers = Providers {
-        check_mod_impl_wf,
-        ..*providers
-    };
+    *providers = Providers { check_mod_impl_wf, ..*providers };
 }
 
 struct ImplWfCheck<'tcx> {
     tcx: TyCtxt<'tcx>,
+    min_specialization: bool,
 }
 
 impl ItemLikeVisitor<'tcx> for ImplWfCheck<'tcx> {
-    fn visit_item(&mut self, item: &'tcx hir::Item) {
-        if let hir::ItemKind::Impl(.., ref impl_item_refs) = item.node {
+    fn visit_item(&mut self, item: &'tcx hir::Item<'tcx>) {
+        if let hir::ItemKind::Impl { ref items, .. } = item.kind {
             let impl_def_id = self.tcx.hir().local_def_id(item.hir_id);
-            enforce_impl_params_are_constrained(self.tcx,
-                                                impl_def_id,
-                                                impl_item_refs);
-            enforce_impl_items_are_distinct(self.tcx, impl_item_refs);
+            enforce_impl_params_are_constrained(self.tcx, impl_def_id, items);
+            enforce_impl_items_are_distinct(self.tcx, items);
+            if self.min_specialization {
+                check_min_specialization(self.tcx, impl_def_id.to_def_id(), item.span);
+            }
         }
     }
 
-    fn visit_trait_item(&mut self, _trait_item: &'tcx hir::TraitItem) { }
+    fn visit_trait_item(&mut self, _trait_item: &'tcx hir::TraitItem<'tcx>) {}
 
-    fn visit_impl_item(&mut self, _impl_item: &'tcx hir::ImplItem) { }
+    fn visit_impl_item(&mut self, _impl_item: &'tcx hir::ImplItem<'tcx>) {}
 }
 
 fn enforce_impl_params_are_constrained(
     tcx: TyCtxt<'_>,
-    impl_def_id: DefId,
-    impl_item_refs: &[hir::ImplItemRef],
+    impl_def_id: LocalDefId,
+    impl_item_refs: &[hir::ImplItemRef<'_>],
 ) {
     // Every lifetime used in an associated type must be constrained.
     let impl_self_ty = tcx.type_of(impl_def_id);
+    if impl_self_ty.references_error() {
+        // Don't complain about unconstrained type params when self ty isn't known due to errors.
+        // (#36836)
+        tcx.sess.delay_span_bug(
+            tcx.def_span(impl_def_id),
+            &format!(
+                "potentially unconstrained type parameters weren't evaluated: {:?}",
+                impl_self_ty,
+            ),
+        );
+        return;
+    }
     let impl_generics = tcx.generics_of(impl_def_id);
     let impl_predicates = tcx.predicates_of(impl_def_id);
     let impl_trait_ref = tcx.impl_trait_ref(impl_def_id);
 
     let mut input_parameters = cgp::parameters_for_impl(impl_self_ty, impl_trait_ref);
     cgp::identify_constrained_generic_params(
-        tcx, &impl_predicates, impl_trait_ref, &mut input_parameters);
+        tcx,
+        impl_predicates,
+        impl_trait_ref,
+        &mut input_parameters,
+    );
 
     // Disallow unconstrained lifetimes, but only if they appear in assoc types.
-    let lifetimes_in_associated_types: FxHashSet<_> = impl_item_refs.iter()
+    let lifetimes_in_associated_types: FxHashSet<_> = impl_item_refs
+        .iter()
         .map(|item_ref| tcx.hir().local_def_id(item_ref.id.hir_id))
-        .filter(|&def_id| {
-            let item = tcx.associated_item(def_id);
-            item.kind == ty::AssocKind::Type && item.defaultness.has_value()
-        })
         .flat_map(|def_id| {
-            cgp::parameters_for(&tcx.type_of(def_id), true)
-        }).collect();
+            let item = tcx.associated_item(def_id);
+            match item.kind {
+                ty::AssocKind::Type => {
+                    if item.defaultness.has_value() {
+                        cgp::parameters_for(&tcx.type_of(def_id), true)
+                    } else {
+                        Vec::new()
+                    }
+                }
+                ty::AssocKind::OpaqueTy => {
+                    // We don't know which lifetimes appear in the actual
+                    // opaque type, so use all of the lifetimes that appear
+                    // in the type's predicates.
+                    let predicates = tcx.predicates_of(def_id).instantiate_identity(tcx);
+                    cgp::parameters_for(&predicates, true)
+                }
+                ty::AssocKind::Fn | ty::AssocKind::Const => Vec::new(),
+            }
+        })
+        .collect();
 
     for param in &impl_generics.params {
         match param.kind {
@@ -124,29 +158,36 @@ fn enforce_impl_params_are_constrained(
             ty::GenericParamDefKind::Type { .. } => {
                 let param_ty = ty::ParamTy::for_def(param);
                 if !input_parameters.contains(&cgp::Parameter::from(param_ty)) {
-                    report_unused_parameter(tcx,
-                                            tcx.def_span(param.def_id),
-                                            "type",
-                                            &param_ty.to_string());
+                    report_unused_parameter(
+                        tcx,
+                        tcx.def_span(param.def_id),
+                        "type",
+                        &param_ty.to_string(),
+                    );
                 }
             }
             ty::GenericParamDefKind::Lifetime => {
                 let param_lt = cgp::Parameter::from(param.to_early_bound_region_data());
                 if lifetimes_in_associated_types.contains(&param_lt) && // (*)
-                    !input_parameters.contains(&param_lt) {
-                    report_unused_parameter(tcx,
-                                            tcx.def_span(param.def_id),
-                                            "lifetime",
-                                            &param.name.to_string());
+                    !input_parameters.contains(&param_lt)
+                {
+                    report_unused_parameter(
+                        tcx,
+                        tcx.def_span(param.def_id),
+                        "lifetime",
+                        &param.name.to_string(),
+                    );
                 }
             }
             ty::GenericParamDefKind::Const => {
                 let param_ct = ty::ParamConst::for_def(param);
                 if !input_parameters.contains(&cgp::Parameter::from(param_ct)) {
-                    report_unused_parameter(tcx,
-                                           tcx.def_span(param.def_id),
-                                           "const",
-                                           &param_ct.to_string());
+                    report_unused_parameter(
+                        tcx,
+                        tcx.def_span(param.def_id),
+                        "const",
+                        &param_ct.to_string(),
+                    );
                 }
             }
         }
@@ -174,32 +215,41 @@ fn enforce_impl_params_are_constrained(
 
 fn report_unused_parameter(tcx: TyCtxt<'_>, span: Span, kind: &str, name: &str) {
     struct_span_err!(
-        tcx.sess, span, E0207,
+        tcx.sess,
+        span,
+        E0207,
         "the {} parameter `{}` is not constrained by the \
         impl trait, self type, or predicates",
-        kind, name)
-        .span_label(span, format!("unconstrained {} parameter", kind))
-        .emit();
+        kind,
+        name
+    )
+    .span_label(span, format!("unconstrained {} parameter", kind))
+    .emit();
 }
 
 /// Enforce that we do not have two items in an impl with the same name.
-fn enforce_impl_items_are_distinct(tcx: TyCtxt<'_>, impl_item_refs: &[hir::ImplItemRef]) {
+fn enforce_impl_items_are_distinct(tcx: TyCtxt<'_>, impl_item_refs: &[hir::ImplItemRef<'_>]) {
     let mut seen_type_items = FxHashMap::default();
     let mut seen_value_items = FxHashMap::default();
     for impl_item_ref in impl_item_refs {
         let impl_item = tcx.hir().impl_item(impl_item_ref.id);
-        let seen_items = match impl_item.node {
-            hir::ImplItemKind::Type(_) => &mut seen_type_items,
-            _                          => &mut seen_value_items,
+        let seen_items = match impl_item.kind {
+            hir::ImplItemKind::TyAlias(_) => &mut seen_type_items,
+            _ => &mut seen_value_items,
         };
-        match seen_items.entry(impl_item.ident.modern()) {
+        match seen_items.entry(impl_item.ident.normalize_to_macros_2_0()) {
             Occupied(entry) => {
-                let mut err = struct_span_err!(tcx.sess, impl_item.span, E0201,
-                                               "duplicate definitions with name `{}`:",
-                                               impl_item.ident);
-                err.span_label(*entry.get(),
-                               format!("previous definition of `{}` here",
-                                       impl_item.ident));
+                let mut err = struct_span_err!(
+                    tcx.sess,
+                    impl_item.span,
+                    E0201,
+                    "duplicate definitions with name `{}`:",
+                    impl_item.ident
+                );
+                err.span_label(
+                    *entry.get(),
+                    format!("previous definition of `{}` here", impl_item.ident),
+                );
                 err.span_label(impl_item.span, "duplicate definition");
                 err.emit();
             }

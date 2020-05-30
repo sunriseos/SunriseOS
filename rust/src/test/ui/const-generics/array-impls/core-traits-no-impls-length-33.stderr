@@ -6,12 +6,13 @@ LL |     println!("{:?}", [0_usize; 33]);
    |
    = note: required because of the requirements on the impl of `std::fmt::Debug` for `[usize; 33]`
    = note: required by `std::fmt::Debug::fmt`
+   = note: this error originates in a macro (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: arrays only have std trait implementations for lengths 0..=32
-  --> $DIR/core-traits-no-impls-length-33.rs:9:9
+  --> $DIR/core-traits-no-impls-length-33.rs:9:16
    |
 LL |     set.insert([0_usize; 33]);
-   |         ^^^^^^ the trait `std::array::LengthAtMost32` is not implemented for `[usize; 33]`
+   |                ^^^^^^^^^^^^^ the trait `std::array::LengthAtMost32` is not implemented for `[usize; 33]`
    |
    = note: required because of the requirements on the impl of `std::cmp::Eq` for `[usize; 33]`
 
@@ -22,8 +23,6 @@ LL |     [0_usize; 33] == [1_usize; 33]
    |     ------------- ^^ ------------- [usize; 33]
    |     |
    |     [usize; 33]
-   |
-   = note: an implementation of `std::cmp::PartialEq` might be missing for `[usize; 33]`
 
 error[E0369]: binary operation `<` cannot be applied to type `[usize; 33]`
   --> $DIR/core-traits-no-impls-length-33.rs:19:19
@@ -32,8 +31,6 @@ LL |     [0_usize; 33] < [1_usize; 33]
    |     ------------- ^ ------------- [usize; 33]
    |     |
    |     [usize; 33]
-   |
-   = note: an implementation of `std::cmp::PartialOrd` might be missing for `[usize; 33]`
 
 error[E0277]: the trait bound `&[usize; 33]: std::iter::IntoIterator` is not satisfied
   --> $DIR/core-traits-no-impls-length-33.rs:24:14
@@ -42,9 +39,9 @@ LL |     for _ in &[0_usize; 33] {
    |              ^^^^^^^^^^^^^^ the trait `std::iter::IntoIterator` is not implemented for `&[usize; 33]`
    |
    = help: the following implementations were found:
-             <&'a [T; _] as std::iter::IntoIterator>
+             <&'a [T; N] as std::iter::IntoIterator>
              <&'a [T] as std::iter::IntoIterator>
-             <&'a mut [T; _] as std::iter::IntoIterator>
+             <&'a mut [T; N] as std::iter::IntoIterator>
              <&'a mut [T] as std::iter::IntoIterator>
    = note: required by `std::iter::IntoIterator::into_iter`
 

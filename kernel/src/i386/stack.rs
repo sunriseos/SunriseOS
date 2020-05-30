@@ -98,7 +98,7 @@ impl KernelStack {
     // extern "C" to make sure it is called with a sane ABI
     extern "C" fn get_current_stack_bottom() -> usize {
         let esp_ptr: usize;
-        unsafe { asm!("mov $0, esp" : "=r"(esp_ptr) ::: "intel" ) };
+        unsafe { llvm_asm!("mov $0, esp" : "=r"(esp_ptr) ::: "intel" ) };
         Self::align_to_stack_bottom(esp_ptr)
     }
 
@@ -153,7 +153,7 @@ impl KernelStack {
         let esp;
         let eip;
         unsafe {
-            asm!("
+            llvm_asm!("
                 mov $0, ebp
                 mov $1, esp
 

@@ -2,10 +2,14 @@ error: expected one of `)` or `,`, found `(`
   --> $DIR/test3.rs:5:27
    |
 LL |         struct S3(pub($t) ());
-   |                           ^ expected one of `)` or `,` here
+   |                          -^ expected one of `)` or `,`
+   |                          |
+   |                          help: missing `,`
 ...
 LL |     define_struct! { foo }
    |     ---------------------- in this macro invocation
+   |
+   = note: this error originates in a macro (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0412]: cannot find type `foo` in this scope
   --> $DIR/test3.rs:11:22
@@ -13,6 +17,12 @@ error[E0412]: cannot find type `foo` in this scope
 LL |     define_struct! { foo }
    |                      ^^^ not found in this scope
 
-error: aborting due to 2 previous errors
+error[E0412]: cannot find type `foo` in this scope
+  --> $DIR/test3.rs:11:22
+   |
+LL |     define_struct! { foo }
+   |                      ^^^ not found in this scope
+
+error: aborting due to 3 previous errors
 
 For more information about this error, try `rustc --explain E0412`.

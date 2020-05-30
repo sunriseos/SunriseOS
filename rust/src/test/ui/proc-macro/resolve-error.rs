@@ -21,26 +21,30 @@ macro_rules! attr_proc_mac {
 
 #[derive(FooWithLongNan)]
 //~^ ERROR cannot find
+//~| ERROR cannot find
 struct Foo;
 
-// Interpreted as a feature gated custom attribute
-#[attr_proc_macra] //~ ERROR attribute `attr_proc_macra` is currently unknown
+// Interpreted as an unstable custom attribute
+#[attr_proc_macra] //~ ERROR cannot find attribute `attr_proc_macra` in this scope
 struct Bar;
 
-// Interpreted as a feature gated custom attribute
-#[FooWithLongNan] //~ ERROR attribute `FooWithLongNan` is currently unknown
+// Interpreted as an unstable custom attribute
+#[FooWithLongNan] //~ ERROR cannot find attribute `FooWithLongNan` in this scope
 struct Asdf;
 
 #[derive(Dlone)]
 //~^ ERROR cannot find
+//~| ERROR cannot find
 struct A;
 
 #[derive(Dlona)]
 //~^ ERROR cannot find
+//~| ERROR cannot find
 struct B;
 
 #[derive(attr_proc_macra)]
 //~^ ERROR cannot find
+//~| ERROR cannot find
 struct C;
 
 fn main() {

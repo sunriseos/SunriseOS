@@ -26,23 +26,35 @@ pub fn opts() -> TargetOptions {
         has_rpath: true,
         dll_prefix: "lib".to_string(),
         dll_suffix: ".dylib".to_string(),
-        archive_format: "bsd".to_string(),
+        archive_format: "darwin".to_string(),
         pre_link_args: LinkArgs::new(),
         has_elf_tls: version >= (10, 7),
         abi_return_struct_as_int: true,
         emit_debug_gdb_scripts: false,
-        .. Default::default()
+
+        // This environment variable is pretty magical but is intended for
+        // producing deterministic builds. This was first discovered to be used
+        // by the `ar` tool as a way to control whether or not mtime entries in
+        // the archive headers were set to zero or not. It appears that
+        // eventually the linker got updated to do the same thing and now reads
+        // this environment variable too in recent versions.
+        //
+        // For some more info see the commentary on #47086
+        link_env: vec![("ZERO_AR_DATE".to_string(), "1".to_string())],
+
+        ..Default::default()
     }
 }
 
 fn macos_deployment_target() -> (u32, u32) {
     let deployment_target = env::var("MACOSX_DEPLOYMENT_TARGET").ok();
-    let version = deployment_target.as_ref().and_then(|s| {
-        let mut i = s.splitn(2, '.');
-        i.next().and_then(|a| i.next().map(|b| (a, b)))
-    }).and_then(|(a, b)| {
-        a.parse::<u32>().and_then(|a| b.parse::<u32>().map(|b| (a, b))).ok()
-    });
+    let version = deployment_target
+        .as_ref()
+        .and_then(|s| {
+            let mut i = s.splitn(2, '.');
+            i.next().and_then(|a| i.next().map(|b| (a, b)))
+        })
+        .and_then(|(a, b)| a.parse::<u32>().and_then(|a| b.parse::<u32>().map(|b| (a, b))).ok());
 
     version.unwrap_or((10, 7))
 }
@@ -50,4 +62,20 @@ fn macos_deployment_target() -> (u32, u32) {
 pub fn macos_llvm_target(arch: &str) -> String {
     let (major, minor) = macos_deployment_target();
     format!("{}-apple-macosx{}.{}.0", arch, major, minor)
+}
+
+pub fn macos_link_env_remove() -> Vec<String> {
+    let mut env_remove = Vec::with_capacity(2);
+    // Remove the `SDKROOT` environment variable if it's clearly set for the wrong platform, which
+    // may occur when we're linking a custom build script while targeting iOS for example.
+    if let Ok(sdkroot) = env::var("SDKROOT") {
+        if sdkroot.contains("iPhoneOS.platform") || sdkroot.contains("iPhoneSimulator.platform") {
+            env_remove.push("SDKROOT".to_string())
+        }
+    }
+    // Additionally, `IPHONEOS_DEPLOYMENT_TARGET` must not be set when using the Xcode linker at
+    // "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld",
+    // although this is apparently ignored when using the linker at "/usr/bin/ld".
+    env_remove.push("IPHONEOS_DEPLOYMENT_TARGET".to_string());
+    env_remove
 }

@@ -1,5 +1,4 @@
-use crate::spec::{TargetOptions, RelroLevel};
-use std::default::Default;
+use crate::spec::{RelroLevel, TargetOptions};
 
 pub fn opts() -> TargetOptions {
     TargetOptions {
@@ -9,6 +8,6 @@ pub fn opts() -> TargetOptions {
         target_family: Some("unix".to_string()),
         relro_level: RelroLevel::Full,
         linker_is_gnu: true,
-        .. Default::default()
+        ..Default::default()
     }
 }

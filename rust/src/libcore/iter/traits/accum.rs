@@ -1,5 +1,6 @@
-use crate::ops::{Mul, Add};
+use crate::iter;
 use crate::num::Wrapping;
+use crate::ops::{Add, Mul};
 
 /// Trait to represent types that can be created by summing up an iterator.
 ///
@@ -16,7 +17,7 @@ pub trait Sum<A = Self>: Sized {
     /// Method which takes an iterator and generates `Self` from the elements by
     /// "summing up" the items.
     #[stable(feature = "iter_arith_traits", since = "1.12.0")]
-    fn sum<I: Iterator<Item=A>>(iter: I) -> Self;
+    fn sum<I: Iterator<Item = A>>(iter: I) -> Self;
 }
 
 /// Trait to represent types that can be created by multiplying elements of an
@@ -35,7 +36,7 @@ pub trait Product<A = Self>: Sized {
     /// Method which takes an iterator and generates `Self` from the elements by
     /// multiplying the items.
     #[stable(feature = "iter_arith_traits", since = "1.12.0")]
-    fn product<I: Iterator<Item=A>>(iter: I) -> Self;
+    fn product<I: Iterator<Item = A>>(iter: I) -> Self;
 }
 
 // N.B., explicitly use Add and Mul here to inherit overflow checks
@@ -43,28 +44,28 @@ macro_rules! integer_sum_product {
     (@impls $zero:expr, $one:expr, #[$attr:meta], $($a:ty)*) => ($(
         #[$attr]
         impl Sum for $a {
-            fn sum<I: Iterator<Item=$a>>(iter: I) -> $a {
+            fn sum<I: Iterator<Item=Self>>(iter: I) -> Self {
                 iter.fold($zero, Add::add)
             }
         }
 
         #[$attr]
         impl Product for $a {
-            fn product<I: Iterator<Item=$a>>(iter: I) -> $a {
+            fn product<I: Iterator<Item=Self>>(iter: I) -> Self {
                 iter.fold($one, Mul::mul)
             }
         }
 
         #[$attr]
         impl<'a> Sum<&'a $a> for $a {
-            fn sum<I: Iterator<Item=&'a $a>>(iter: I) -> $a {
+            fn sum<I: Iterator<Item=&'a Self>>(iter: I) -> Self {
                 iter.fold($zero, Add::add)
             }
         }
 
         #[$attr]
         impl<'a> Product<&'a $a> for $a {
-            fn product<I: Iterator<Item=&'a $a>>(iter: I) -> $a {
+            fn product<I: Iterator<Item=&'a Self>>(iter: I) -> Self {
                 iter.fold($one, Mul::mul)
             }
         }
@@ -83,29 +84,29 @@ macro_rules! float_sum_product {
     ($($a:ident)*) => ($(
         #[stable(feature = "iter_arith_traits", since = "1.12.0")]
         impl Sum for $a {
-            fn sum<I: Iterator<Item=$a>>(iter: I) -> $a {
-                iter.fold(0.0, |a, b| a + b)
+            fn sum<I: Iterator<Item=Self>>(iter: I) -> Self {
+                iter.fold(0.0, Add::add)
             }
         }
 
         #[stable(feature = "iter_arith_traits", since = "1.12.0")]
         impl Product for $a {
-            fn product<I: Iterator<Item=$a>>(iter: I) -> $a {
-                iter.fold(1.0, |a, b| a * b)
+            fn product<I: Iterator<Item=Self>>(iter: I) -> Self {
+                iter.fold(1.0, Mul::mul)
             }
         }
 
         #[stable(feature = "iter_arith_traits", since = "1.12.0")]
         impl<'a> Sum<&'a $a> for $a {
-            fn sum<I: Iterator<Item=&'a $a>>(iter: I) -> $a {
-                iter.fold(0.0, |a, b| a + *b)
+            fn sum<I: Iterator<Item=&'a Self>>(iter: I) -> Self {
+                iter.fold(0.0, Add::add)
             }
         }
 
         #[stable(feature = "iter_arith_traits", since = "1.12.0")]
         impl<'a> Product<&'a $a> for $a {
-            fn product<I: Iterator<Item=&'a $a>>(iter: I) -> $a {
-                iter.fold(1.0, |a, b| a * *b)
+            fn product<I: Iterator<Item=&'a Self>>(iter: I) -> Self {
+                iter.fold(1.0, Mul::mul)
             }
         }
     )*)
@@ -114,77 +115,10 @@ macro_rules! float_sum_product {
 integer_sum_product! { i8 i16 i32 i64 i128 isize u8 u16 u32 u64 u128 usize }
 float_sum_product! { f32 f64 }
 
-/// An iterator adapter that produces output as long as the underlying
-/// iterator produces `Result::Ok` values.
-///
-/// If an error is encountered, the iterator stops and the error is
-/// stored. The error may be recovered later via `reconstruct`.
-struct ResultShunt<I, E> {
-    iter: I,
-    error: Option<E>,
-}
-
-impl<I, T, E> ResultShunt<I, E>
-    where I: Iterator<Item = Result<T, E>>
-{
-    /// Process the given iterator as if it yielded a `T` instead of a
-    /// `Result<T, _>`. Any errors will stop the inner iterator and
-    /// the overall result will be an error.
-    pub fn process<F, U>(iter: I, mut f: F) -> Result<U, E>
-        where F: FnMut(&mut Self) -> U
-    {
-        let mut shunt = ResultShunt::new(iter);
-        let value = f(shunt.by_ref());
-        shunt.reconstruct(value)
-    }
-
-    fn new(iter: I) -> Self {
-        ResultShunt {
-            iter,
-            error: None,
-        }
-    }
-
-    /// Consume the adapter and rebuild a `Result` value. This should
-    /// *always* be called, otherwise any potential error would be
-    /// lost.
-    fn reconstruct<U>(self, val: U) -> Result<U, E> {
-        match self.error {
-            None => Ok(val),
-            Some(e) => Err(e),
-        }
-    }
-}
-
-impl<I, T, E> Iterator for ResultShunt<I, E>
-    where I: Iterator<Item = Result<T, E>>
-{
-    type Item = T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.iter.next() {
-            Some(Ok(v)) => Some(v),
-            Some(Err(e)) => {
-                self.error = Some(e);
-                None
-            }
-            None => None,
-        }
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        if self.error.is_some() {
-            (0, Some(0))
-        } else {
-            let (_, upper) = self.iter.size_hint();
-            (0, upper)
-        }
-    }
-}
-
-#[stable(feature = "iter_arith_traits_result", since="1.16.0")]
+#[stable(feature = "iter_arith_traits_result", since = "1.16.0")]
 impl<T, U, E> Sum<Result<U, E>> for Result<T, E>
-    where T: Sum<U>,
+where
+    T: Sum<U>,
 {
     /// Takes each element in the `Iterator`: if it is an `Err`, no further
     /// elements are taken, and the `Err` is returned. Should no `Err` occur,
@@ -204,90 +138,26 @@ impl<T, U, E> Sum<Result<U, E>> for Result<T, E>
     /// assert_eq!(res, Ok(3));
     /// ```
     fn sum<I>(iter: I) -> Result<T, E>
-        where I: Iterator<Item = Result<U, E>>,
+    where
+        I: Iterator<Item = Result<U, E>>,
     {
-        ResultShunt::process(iter, |i| i.sum())
+        iter::process_results(iter, |i| i.sum())
     }
 }
 
-#[stable(feature = "iter_arith_traits_result", since="1.16.0")]
+#[stable(feature = "iter_arith_traits_result", since = "1.16.0")]
 impl<T, U, E> Product<Result<U, E>> for Result<T, E>
-    where T: Product<U>,
+where
+    T: Product<U>,
 {
     /// Takes each element in the `Iterator`: if it is an `Err`, no further
     /// elements are taken, and the `Err` is returned. Should no `Err` occur,
     /// the product of all elements is returned.
     fn product<I>(iter: I) -> Result<T, E>
-        where I: Iterator<Item = Result<U, E>>,
-    {
-        ResultShunt::process(iter, |i| i.product())
-    }
-}
-
-/// An iterator adapter that produces output as long as the underlying
-/// iterator produces `Option::Some` values.
-struct OptionShunt<I> {
-    iter: I,
-    exited_early: bool,
-}
-
-impl<I, T> OptionShunt<I>
-where
-    I: Iterator<Item = Option<T>>,
-{
-    /// Process the given iterator as if it yielded a `T` instead of a
-    /// `Option<T>`. Any `None` value will stop the inner iterator and
-    /// the overall result will be a `None`.
-    pub fn process<F, U>(iter: I, mut f: F) -> Option<U>
     where
-        F: FnMut(&mut Self) -> U,
+        I: Iterator<Item = Result<U, E>>,
     {
-        let mut shunt = OptionShunt::new(iter);
-        let value = f(shunt.by_ref());
-        shunt.reconstruct(value)
-    }
-
-    fn new(iter: I) -> Self {
-        OptionShunt {
-            iter,
-            exited_early: false,
-        }
-    }
-
-    /// Consume the adapter and rebuild a `Option` value.
-    fn reconstruct<U>(self, val: U) -> Option<U> {
-        if self.exited_early {
-            None
-        } else {
-            Some(val)
-        }
-    }
-}
-
-impl<I, T> Iterator for OptionShunt<I>
-where
-    I: Iterator<Item = Option<T>>,
-{
-    type Item = T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.iter.next() {
-            Some(Some(v)) => Some(v),
-            Some(None) => {
-                self.exited_early = true;
-                None
-            }
-            None => None,
-        }
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        if self.exited_early {
-            (0, Some(0))
-        } else {
-            let (_, upper) = self.iter.size_hint();
-            (0, upper)
-        }
+        iter::process_results(iter, |i| i.product())
     }
 }
 
@@ -314,7 +184,7 @@ where
     where
         I: Iterator<Item = Option<U>>,
     {
-        OptionShunt::process(iter, |i| i.sum())
+        iter.map(|x| x.ok_or(())).sum::<Result<_, _>>().ok()
     }
 }
 
@@ -330,6 +200,6 @@ where
     where
         I: Iterator<Item = Option<U>>,
     {
-        OptionShunt::process(iter, |i| i.product())
+        iter.map(|x| x.ok_or(())).product::<Result<_, _>>().ok()
     }
 }

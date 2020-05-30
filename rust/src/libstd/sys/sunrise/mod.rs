@@ -40,7 +40,7 @@ pub fn init() {
     use core::intrinsics::abort;
     if let Err(err) = stdio::init() {
         log::error!("Error initializing stdio! {:?}", err);
-        unsafe { abort(); }
+        abort();
     }
     fs::init();
 }
@@ -72,7 +72,7 @@ pub unsafe fn strlen(mut s: *const c_char) -> usize {
     return n
 }
 
-pub unsafe fn abort_internal() -> ! {
+pub fn abort_internal() -> ! {
     core::intrinsics::abort();
 }
 

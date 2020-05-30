@@ -80,7 +80,7 @@ pub fn new(_max_sessions: u32) -> (ServerPort, ClientPort) {
         incoming_connections: SpinLock::new(Vec::new()),
         accepters: SpinLock::new(Vec::new())
     });
-    (Port::server(port.clone()), Port::client(port.clone()))
+    (Port::server(port.clone()), Port::client(port))
 }
 
 // Wait for a connection to become available.

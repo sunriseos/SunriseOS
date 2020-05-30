@@ -64,14 +64,14 @@
 //! This might change in the future when we will want to support dynamic loading.
 //!
 //! [`init_main_thread`]: crate::threads::init_main_thread
-//! [`ARE_CPU_LOCALS_INITIALIZED_YET`]: self::cpu_locals::ARE_CPU_LOCALS_INITIALIZED_YET
+//! [`ARE_CPU_LOCALS_INITIALIZED_YET`]: crate::cpu_locals::ARE_CPU_LOCALS_INITIALIZED_YET
 //! [Ulrich Drepper's paper on TLS]: https://web.archive.org/web/20190710135250/https://akkadia.org/drepper/tls.pdf
 //! [`set_thread_area`]: crate::syscalls::set_thread_area
 //! [#\[thread_local\] attribute]: https://github.com/rust-lang/rust/issues/10310
-//! [`__tls_init_image_addr__`]: self::thread_local_storage::__tls_init_image_addr__
-//! [`__tls_file_size__`]: self::thread_local_storage::__tls_file_size__
-//! [`__tls_mem_size__`]: self::thread_local_storage::__tls_mem_size__
-//! [`__tls_align__`]: self::thread_local_storage::__tls_align__
+//! [`__tls_init_image_addr__`]: __tls_init_image_addr__
+//! [`__tls_file_size__`]: __tls_file_size__
+//! [`__tls_mem_size__`]: __tls_mem_size__
+//! [`__tls_align__`]: __tls_align__
 
 use crate::syscalls;
 use sunrise_libutils::div_ceil;

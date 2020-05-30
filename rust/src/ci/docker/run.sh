@@ -17,8 +17,7 @@ dist=$objdir/build/dist
 
 source "$ci_dir/shared.sh"
 
-travis_fold start build_docker
-travis_time_start
+CACHE_DOMAIN="${CACHE_DOMAIN:-ci-caches.rust-lang.org}"
 
 if [ -f "$docker_dir/$image/Dockerfile" ]; then
     if [ "$CI" != "" ]; then
@@ -41,9 +40,7 @@ if [ -f "$docker_dir/$image/Dockerfile" ]; then
       cksum=$(sha512sum $hash_key | \
         awk '{print $1}')
 
-      s3url="s3://$SCCACHE_BUCKET/docker/$cksum"
-      url="https://$SCCACHE_BUCKET.s3.amazonaws.com/docker/$cksum"
-      upload="aws s3 cp - $s3url"
+      url="https://$CACHE_DOMAIN/docker/$cksum"
 
       echo "Attempting to download $url"
       rm -f /tmp/rustci_docker_cache
@@ -68,7 +65,9 @@ if [ -f "$docker_dir/$image/Dockerfile" ]; then
       -f "$dockerfile" \
       "$context"
 
-    if [ "$upload" != "" ]; then
+    if [ "$CI" != "" ]; then
+      s3url="s3://$SCCACHE_BUCKET/docker/$cksum"
+      upload="aws s3 cp - $s3url"
       digest=$(docker inspect rust-ci --format '{{.Id}}')
       echo "Built container $digest"
       if ! grep -q "$digest" <(echo "$loaded_images"); then
@@ -94,7 +93,6 @@ elif [ -f "$docker_dir/disabled/$image/Dockerfile" ]; then
         echo Cannot run disabled images on CI!
         exit 1
     fi
-    # retry messes with the pipe from tar to docker. Not needed on non-travis
     # Transform changes the context of disabled Dockerfiles to match the enabled ones
     tar --transform 's#^./disabled/#./#' -C $docker_dir -c . | docker \
       build \
@@ -107,12 +105,10 @@ else
     exit 1
 fi
 
-travis_fold end build_docker
-travis_time_finish
-
 mkdir -p $HOME/.cargo
 mkdir -p $objdir/tmp
 mkdir -p $objdir/cores
+mkdir -p /tmp/toolstate
 
 args=
 if [ "$SCCACHE_BUCKET" != "" ]; then
@@ -132,28 +128,64 @@ fi
 # goes ahead and sets it for all builders.
 args="$args --privileged"
 
-exec docker \
+# Things get a little weird if this script is already running in a docker
+# container. If we're already in a docker container then we assume it's set up
+# to do docker-in-docker where we have access to a working `docker` command.
+#
+# If this is the case (we check via the presence of `/.dockerenv`)
+# then we can't actually use the `--volume` argument. Typically we use
+# `--volume` to efficiently share the build and source directory between this
+# script and the container we're about to spawn. If we're inside docker already
+# though the `--volume` argument maps the *host's* folder to the container we're
+# about to spawn, when in fact we want the folder in this container itself. To
+# work around this we use a recipe cribbed from
+# https://circleci.com/docs/2.0/building-docker-images/#mounting-folders to
+# create a temporary container with a volume. We then copy the entire source
+# directory into this container, and then use that copy in the container we're
+# about to spawn. Finally after the build finishes we re-extract the object
+# directory.
+#
+# Note that none of this is necessary if we're *not* in a docker-in-docker
+# scenario. If this script is run on a bare metal host then we share a bunch of
+# data directories to share as much data as possible. Note that we also use
+# `LOCAL_USER_ID` (recognized in `src/ci/run.sh`) to ensure that files are all
+# read/written as the same user as the bare-metal user.
+if [ -f /.dockerenv ]; then
+  docker create -v /checkout --name checkout alpine:3.4 /bin/true
+  docker cp . checkout:/checkout
+  args="$args --volumes-from checkout"
+else
+  args="$args --volume $root_dir:/checkout:ro"
+  args="$args --volume $objdir:/checkout/obj"
+  args="$args --volume $HOME/.cargo:/cargo"
+  args="$args --volume $HOME/rustsrc:$HOME/rustsrc"
+  args="$args --volume /tmp/toolstate:/tmp/toolstate"
+  args="$args --env LOCAL_USER_ID=`id -u`"
+fi
+
+docker \
   run \
-  --volume "$root_dir:/checkout:ro" \
-  --volume "$objdir:/checkout/obj" \
   --workdir /checkout/obj \
   --env SRC=/checkout \
   $args \
   --env CARGO_HOME=/cargo \
   --env DEPLOY \
   --env DEPLOY_ALT \
-  --env LOCAL_USER_ID=`id -u` \
   --env CI \
-  --env TRAVIS \
-  --env TRAVIS_BRANCH \
   --env TF_BUILD \
   --env BUILD_SOURCEBRANCHNAME \
+  --env GITHUB_ACTIONS \
+  --env GITHUB_REF \
   --env TOOLSTATE_REPO_ACCESS_TOKEN \
   --env TOOLSTATE_REPO \
+  --env TOOLSTATE_PUBLISH \
   --env CI_JOB_NAME="${CI_JOB_NAME-$IMAGE}" \
-  --volume "$HOME/.cargo:/cargo" \
-  --volume "$HOME/rustsrc:$HOME/rustsrc" \
   --init \
   --rm \
   rust-ci \
   /checkout/src/ci/run.sh
+
+if [ -f /.dockerenv ]; then
+  rm -rf $objdir
+  docker cp checkout:/checkout/obj $objdir
+fi

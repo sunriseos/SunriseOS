@@ -1,3 +1,4 @@
+// build-fail
 // normalize-stderr-test "S32" -> "SXX"
 // normalize-stderr-test "S1M" -> "SXX"
 // error-pattern: too big for the current
@@ -47,4 +48,6 @@ struct S1M<T> { val: S1k<S1k<T>> }
 
 fn main() {
     let fat: Option<S1M<S1M<S1M<u32>>>> = None;
+    //~^ ERROR is too big for the current architecture
+
 }

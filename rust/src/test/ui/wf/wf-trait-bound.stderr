@@ -1,18 +1,16 @@
 error[E0277]: the trait bound `U: std::marker::Copy` is not satisfied
-  --> $DIR/wf-trait-bound.rs:9:1
-   |
-LL | / trait SomeTrait<T,U>
-LL | |     where T: ExtraCopy<U>
-LL | | {
-LL | | }
-   | |_^ the trait `std::marker::Copy` is not implemented for `U`
-   |
-   = help: consider adding a `where U: std::marker::Copy` bound
-note: required by `ExtraCopy`
-  --> $DIR/wf-trait-bound.rs:7:1
+  --> $DIR/wf-trait-bound.rs:10:14
    |
 LL | trait ExtraCopy<T:Copy> { }
-   | ^^^^^^^^^^^^^^^^^^^^^^^
+   |                   ---- required by this bound in `ExtraCopy`
+...
+LL |     where T: ExtraCopy<U>
+   |              ^^^^^^^^^^^^ the trait `std::marker::Copy` is not implemented for `U`
+   |
+help: consider further restricting type parameter `U`
+   |
+LL |     where T: ExtraCopy<U>, U: std::marker::Copy
+   |                          ^^^^^^^^^^^^^^^^^^^^^^
 
 error: aborting due to previous error
 

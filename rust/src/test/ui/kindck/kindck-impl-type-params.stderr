@@ -5,9 +5,12 @@ LL |     let a = &t as &dyn Gettable<T>;
    |             ^^ `T` cannot be sent between threads safely
    |
    = help: the trait `std::marker::Send` is not implemented for `T`
-   = help: consider adding a `where T: std::marker::Send` bound
    = note: required because of the requirements on the impl of `Gettable<T>` for `S<T>`
    = note: required for the cast to the object type `dyn Gettable<T>`
+help: consider restricting type parameter `T`
+   |
+LL | fn f<T: std::marker::Send>(val: T) {
+   |       ^^^^^^^^^^^^^^^^^^^
 
 error[E0277]: the trait bound `T: std::marker::Copy` is not satisfied
   --> $DIR/kindck-impl-type-params.rs:18:13
@@ -15,9 +18,12 @@ error[E0277]: the trait bound `T: std::marker::Copy` is not satisfied
 LL |     let a = &t as &dyn Gettable<T>;
    |             ^^ the trait `std::marker::Copy` is not implemented for `T`
    |
-   = help: consider adding a `where T: std::marker::Copy` bound
    = note: required because of the requirements on the impl of `Gettable<T>` for `S<T>`
    = note: required for the cast to the object type `dyn Gettable<T>`
+help: consider restricting type parameter `T`
+   |
+LL | fn f<T: std::marker::Copy>(val: T) {
+   |       ^^^^^^^^^^^^^^^^^^^
 
 error[E0277]: `T` cannot be sent between threads safely
   --> $DIR/kindck-impl-type-params.rs:25:31
@@ -26,9 +32,12 @@ LL |     let a: &dyn Gettable<T> = &t;
    |                               ^^ `T` cannot be sent between threads safely
    |
    = help: the trait `std::marker::Send` is not implemented for `T`
-   = help: consider adding a `where T: std::marker::Send` bound
    = note: required because of the requirements on the impl of `Gettable<T>` for `S<T>`
    = note: required for the cast to the object type `dyn Gettable<T>`
+help: consider restricting type parameter `T`
+   |
+LL | fn g<T: std::marker::Send>(val: T) {
+   |       ^^^^^^^^^^^^^^^^^^^
 
 error[E0277]: the trait bound `T: std::marker::Copy` is not satisfied
   --> $DIR/kindck-impl-type-params.rs:25:31
@@ -36,9 +45,12 @@ error[E0277]: the trait bound `T: std::marker::Copy` is not satisfied
 LL |     let a: &dyn Gettable<T> = &t;
    |                               ^^ the trait `std::marker::Copy` is not implemented for `T`
    |
-   = help: consider adding a `where T: std::marker::Copy` bound
    = note: required because of the requirements on the impl of `Gettable<T>` for `S<T>`
    = note: required for the cast to the object type `dyn Gettable<T>`
+help: consider restricting type parameter `T`
+   |
+LL | fn g<T: std::marker::Copy>(val: T) {
+   |       ^^^^^^^^^^^^^^^^^^^
 
 error[E0477]: the type `&'a isize` does not fulfill the required lifetime
   --> $DIR/kindck-impl-type-params.rs:32:13
@@ -68,4 +80,5 @@ LL |     let a: Box<dyn Gettable<Foo>> = t;
 
 error: aborting due to 7 previous errors
 
-For more information about this error, try `rustc --explain E0277`.
+Some errors have detailed explanations: E0277, E0477.
+For more information about an error, try `rustc --explain E0277`.

@@ -10,16 +10,16 @@ use crate::i386::pio::Pio;
 pub struct ComPort(u16);
 
 /// COM1: I/O port 0x3F8, IRQ 4
-#[cfg(any(all(target_arch="x86", not(test)), rustdoc))]
+#[cfg(any(all(target_arch="x86", not(test)), doc))]
 const COM1: ComPort = ComPort(0x3F8);
 /// COM2: I/O port 0x2F8, IRQ 3
-#[cfg(any(all(target_arch="x86", not(test)), rustdoc))]
+#[cfg(any(all(target_arch="x86", not(test)), doc))]
 const COM2: ComPort = ComPort(0x2F8);
 /// COM3: I/O port 0x3E8, IRQ 4
-#[cfg(any(all(target_arch="x86", not(test)), rustdoc))]
+#[cfg(any(all(target_arch="x86", not(test)), doc))]
 const COM3: ComPort = ComPort(0x3E8);
 /// COM4: I/O port 0x2E8, IRQ 3
-#[cfg(any(all(target_arch="x86", not(test)), rustdoc))]
+#[cfg(any(all(target_arch="x86", not(test)), doc))]
 const COM4: ComPort = ComPort(0x2E8);
 
 // TODO: device drivers should be compiled only for i386
@@ -110,7 +110,7 @@ struct SerialInternal<T> {
 
 impl SerialInternal<Pio<u8>> {
     /// Creates a COM port from it's base IO address.
-    #[cfg(any(all(target_arch="x86", not(test)), rustdoc))]
+    #[cfg(any(all(target_arch="x86", not(test)), doc))]
     #[allow(unused)]
     pub fn new(com_port: ComPort) -> SerialInternal<Pio<u8>> {
         let mut data_port       = Pio::<u8>::new(com_port.0 + 0);

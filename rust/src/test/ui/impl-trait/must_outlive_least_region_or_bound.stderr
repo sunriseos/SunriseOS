@@ -11,7 +11,7 @@ note: ...can't outlive the anonymous lifetime #1 defined on the function body at
    |
 LL | fn elided(x: &i32) -> impl Copy { x }
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-help: you can add a constraint to the return type to make it last less than `'static` and match the anonymous lifetime #1 defined on the function body at 3:1
+help: you can add a bound to the return type to make it last less than `'static` and match the anonymous lifetime #1 defined on the function body at 3:1
    |
 LL | fn elided(x: &i32) -> impl Copy + '_ { x }
    |                       ^^^^^^^^^^^^^^
@@ -24,12 +24,12 @@ LL | fn explicit<'a>(x: &'a i32) -> impl Copy { x }
    |                                |
    |                                this return type evaluates to the `'static` lifetime...
    |
-note: ...can't outlive the lifetime 'a as defined on the function body at 6:13
+note: ...can't outlive the lifetime `'a` as defined on the function body at 6:13
   --> $DIR/must_outlive_least_region_or_bound.rs:6:13
    |
 LL | fn explicit<'a>(x: &'a i32) -> impl Copy { x }
    |             ^^
-help: you can add a constraint to the return type to make it last less than `'static` and match the lifetime 'a as defined on the function body at 6:13
+help: you can add a bound to the return type to make it last less than `'static` and match the lifetime `'a` as defined on the function body at 6:13
    |
 LL | fn explicit<'a>(x: &'a i32) -> impl Copy + 'a { x }
    |                                ^^^^^^^^^^^^^^
@@ -42,12 +42,12 @@ LL | fn with_bound<'a>(x: &'a i32) -> impl LifetimeTrait<'a> + 'static { x }
    |                                  |
    |                                  this return type evaluates to the `'static` lifetime...
    |
-note: ...can't outlive the lifetime 'a as defined on the function body at 12:15
+note: ...can't outlive the lifetime `'a` as defined on the function body at 12:15
   --> $DIR/must_outlive_least_region_or_bound.rs:12:15
    |
 LL | fn with_bound<'a>(x: &'a i32) -> impl LifetimeTrait<'a> + 'static { x }
    |               ^^
-help: you can add a constraint to the return type to make it last less than `'static` and match the lifetime 'a as defined on the function body at 12:15
+help: you can add a bound to the return type to make it last less than `'static` and match the lifetime `'a` as defined on the function body at 12:15
    |
 LL | fn with_bound<'a>(x: &'a i32) -> impl LifetimeTrait<'a> + 'static + 'a { x }
    |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -67,7 +67,7 @@ error[E0310]: the parameter type `T` may not live long enough
 LL | fn ty_param_wont_outlive_static<T:Debug>(x: T) -> impl Debug + 'static {
    |                                 --                ^^^^^^^^^^^^^^^^^^^^
    |                                 |
-   |                                 help: consider adding an explicit lifetime bound `T: 'static`...
+   |                                 help: consider adding an explicit lifetime bound...: `T: 'static +`
    |
 note: ...so that the type `T` will meet its required lifetime bounds
   --> $DIR/must_outlive_least_region_or_bound.rs:22:51
@@ -77,4 +77,5 @@ LL | fn ty_param_wont_outlive_static<T:Debug>(x: T) -> impl Debug + 'static {
 
 error: aborting due to 5 previous errors
 
-For more information about this error, try `rustc --explain E0310`.
+Some errors have detailed explanations: E0310, E0623.
+For more information about an error, try `rustc --explain E0310`.

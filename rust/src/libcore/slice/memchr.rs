@@ -1,6 +1,8 @@
 // Original implementation taken from rust-memchr.
 // Copyright 2015 Andrew Gallant, bluss and Nicolas Koch
 
+// ignore-tidy-undocumented-unsafe
+
 use crate::cmp;
 use crate::mem;
 
@@ -32,7 +34,7 @@ fn repeat_byte(b: u8) -> usize {
 #[cfg(not(target_pointer_width = "16"))]
 #[inline]
 fn repeat_byte(b: u8) -> usize {
-    (b as usize) * (crate::usize::MAX / 255)
+    (b as usize) * (usize::MAX / 255)
 }
 
 /// Returns the first index matching the byte `x` in `text`.

@@ -8,6 +8,10 @@
 const COM1: u16 = 0x3F8;
 
 /// Init the rs232 COM1. Must be called before logging anything.
+///
+/// # Safety
+///
+/// May only be called once.
 pub unsafe fn init_bootstrap_log() {
     let _data_port      = COM1 + 0;
     let interrupt_port  = COM1 + 1;
@@ -42,12 +46,12 @@ pub fn bootstrap_log(string: &str) {
 
 unsafe fn bootstrap_inb(port: u16) -> u8 {
     let value: u8;
-    asm!("in $0, $1" : "={al}"(value) : "{dx}"(port) : "memory" : "intel", "volatile");
+    llvm_asm!("in $0, $1" : "={al}"(value) : "{dx}"(port) : "memory" : "intel", "volatile");
     value
 }
 
 unsafe fn bootstrap_outb(port: u16, value: u8) {
-    asm!("out $1, $0" : : "{al}"(value), "{dx}"(port) : "memory" : "intel", "volatile");
+    llvm_asm!("out $1, $0" : : "{al}"(value), "{dx}"(port) : "memory" : "intel", "volatile");
 }
 
 /// A logger that sends its output to COM1.

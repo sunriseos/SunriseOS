@@ -1,12 +1,58 @@
-use crate::bench;
-use crate::test::{
-    filter_tests, parse_opts, run_test, DynTestFn, DynTestName, MetricMap, RunIgnored,
-    ShouldPanic, StaticTestName, TestDesc, TestDescAndFn, TestOpts, TrFailed, TrFailedMsg,
-    TrIgnored, TrOk,
+use super::*;
+
+use crate::{
+    bench::Bencher,
+    console::OutputLocation,
+    formatters::PrettyFormatter,
+    options::OutputFormat,
+    test::{
+        filter_tests,
+        parse_opts,
+        run_test,
+        DynTestFn,
+        DynTestName,
+        MetricMap,
+        RunIgnored,
+        RunStrategy,
+        ShouldPanic,
+        StaticTestName,
+        TestDesc,
+        TestDescAndFn,
+        TestOpts,
+        TrIgnored,
+        TrOk,
+        // FIXME (introduced by #65251)
+        // ShouldPanic, StaticTestName, TestDesc, TestDescAndFn, TestOpts, TestTimeOptions,
+        // TestType, TrFailedMsg, TrIgnored, TrOk,
+    },
+    time::{TestTimeOptions, TimeThreshold},
 };
-use crate::Bencher;
-use crate::Concurrent;
+use std::any::TypeId;
 use std::sync::mpsc::channel;
+use std::time::Duration;
+
+impl TestOpts {
+    fn new() -> TestOpts {
+        TestOpts {
+            list: false,
+            filter: None,
+            filter_exact: false,
+            force_run_in_process: false,
+            exclude_should_panic: false,
+            run_ignored: RunIgnored::No,
+            run_tests: false,
+            bench_benchmarks: false,
+            logfile: None,
+            nocapture: false,
+            color: AutoColor,
+            format: OutputFormat::Pretty,
+            test_threads: None,
+            skip: vec![],
+            time_options: None,
+            options: Options::new(),
+        }
+    }
+}
 
 fn one_ignored_one_unignored_test() -> Vec<TestDescAndFn> {
     vec![
@@ -16,6 +62,7 @@ fn one_ignored_one_unignored_test() -> Vec<TestDescAndFn> {
                 ignore: true,
                 should_panic: ShouldPanic::No,
                 allow_fail: false,
+                test_type: TestType::Unknown,
             },
             testfn: DynTestFn(Box::new(move || {})),
         },
@@ -25,6 +72,7 @@ fn one_ignored_one_unignored_test() -> Vec<TestDescAndFn> {
                 ignore: false,
                 should_panic: ShouldPanic::No,
                 allow_fail: false,
+                test_type: TestType::Unknown,
             },
             testfn: DynTestFn(Box::new(move || {})),
         },
@@ -42,13 +90,14 @@ pub fn do_not_run_ignored_tests() {
             ignore: true,
             should_panic: ShouldPanic::No,
             allow_fail: false,
+            test_type: TestType::Unknown,
         },
         testfn: DynTestFn(Box::new(f)),
     };
     let (tx, rx) = channel();
-    run_test(&TestOpts::new(), false, desc, tx, Concurrent::No);
-    let (_, res, _) = rx.recv().unwrap();
-    assert!(res != TrOk);
+    run_test(&TestOpts::new(), false, desc, RunStrategy::InProcess, tx, Concurrent::No);
+    let result = rx.recv().unwrap().result;
+    assert_ne!(result, TrOk);
 }
 
 #[test]
@@ -60,16 +109,19 @@ pub fn ignored_tests_result_in_ignored() {
             ignore: true,
             should_panic: ShouldPanic::No,
             allow_fail: false,
+            test_type: TestType::Unknown,
         },
         testfn: DynTestFn(Box::new(f)),
     };
     let (tx, rx) = channel();
-    run_test(&TestOpts::new(), false, desc, tx, Concurrent::No);
-    let (_, res, _) = rx.recv().unwrap();
-    assert!(res == TrIgnored);
+    run_test(&TestOpts::new(), false, desc, RunStrategy::InProcess, tx, Concurrent::No);
+    let result = rx.recv().unwrap().result;
+    assert_eq!(result, TrIgnored);
 }
 
+// FIXME: Re-enable emscripten once it can catch panics again (introduced by #65251)
 #[test]
+#[cfg(not(target_os = "emscripten"))]
 fn test_should_panic() {
     fn f() {
         panic!();
@@ -80,16 +132,19 @@ fn test_should_panic() {
             ignore: false,
             should_panic: ShouldPanic::Yes,
             allow_fail: false,
+            test_type: TestType::Unknown,
         },
         testfn: DynTestFn(Box::new(f)),
     };
     let (tx, rx) = channel();
-    run_test(&TestOpts::new(), false, desc, tx, Concurrent::No);
-    let (_, res, _) = rx.recv().unwrap();
-    assert!(res == TrOk);
+    run_test(&TestOpts::new(), false, desc, RunStrategy::InProcess, tx, Concurrent::No);
+    let result = rx.recv().unwrap().result;
+    assert_eq!(result, TrOk);
 }
 
+// FIXME: Re-enable emscripten once it can catch panics again (introduced by #65251)
 #[test]
+#[cfg(not(target_os = "emscripten"))]
 fn test_should_panic_good_message() {
     fn f() {
         panic!("an error message");
@@ -100,38 +155,78 @@ fn test_should_panic_good_message() {
             ignore: false,
             should_panic: ShouldPanic::YesWithMessage("error message"),
             allow_fail: false,
+            test_type: TestType::Unknown,
         },
         testfn: DynTestFn(Box::new(f)),
     };
     let (tx, rx) = channel();
-    run_test(&TestOpts::new(), false, desc, tx, Concurrent::No);
-    let (_, res, _) = rx.recv().unwrap();
-    assert!(res == TrOk);
+    run_test(&TestOpts::new(), false, desc, RunStrategy::InProcess, tx, Concurrent::No);
+    let result = rx.recv().unwrap().result;
+    assert_eq!(result, TrOk);
 }
 
+// FIXME: Re-enable emscripten once it can catch panics again (introduced by #65251)
 #[test]
+#[cfg(not(target_os = "emscripten"))]
 fn test_should_panic_bad_message() {
+    use crate::tests::TrFailedMsg;
     fn f() {
         panic!("an error message");
     }
     let expected = "foobar";
-    let failed_msg = "panic did not include expected string";
+    let failed_msg = r#"panic did not contain expected string
+      panic message: `"an error message"`,
+ expected substring: `"foobar"`"#;
     let desc = TestDescAndFn {
         desc: TestDesc {
             name: StaticTestName("whatever"),
             ignore: false,
             should_panic: ShouldPanic::YesWithMessage(expected),
             allow_fail: false,
+            test_type: TestType::Unknown,
         },
         testfn: DynTestFn(Box::new(f)),
     };
     let (tx, rx) = channel();
-    run_test(&TestOpts::new(), false, desc, tx, Concurrent::No);
-    let (_, res, _) = rx.recv().unwrap();
-    assert!(res == TrFailedMsg(format!("{} '{}'", failed_msg, expected)));
+    run_test(&TestOpts::new(), false, desc, RunStrategy::InProcess, tx, Concurrent::No);
+    let result = rx.recv().unwrap().result;
+    assert_eq!(result, TrFailedMsg(failed_msg.to_string()));
 }
 
+// FIXME: Re-enable emscripten once it can catch panics again (introduced by #65251)
 #[test]
+#[cfg(not(target_os = "emscripten"))]
+fn test_should_panic_non_string_message_type() {
+    use crate::tests::TrFailedMsg;
+    fn f() {
+        panic!(1i32);
+    }
+    let expected = "foobar";
+    let failed_msg = format!(
+        r#"expected panic with string value,
+ found non-string value: `{:?}`
+     expected substring: `"foobar"`"#,
+        TypeId::of::<i32>()
+    );
+    let desc = TestDescAndFn {
+        desc: TestDesc {
+            name: StaticTestName("whatever"),
+            ignore: false,
+            should_panic: ShouldPanic::YesWithMessage(expected),
+            allow_fail: false,
+            test_type: TestType::Unknown,
+        },
+        testfn: DynTestFn(Box::new(f)),
+    };
+    let (tx, rx) = channel();
+    run_test(&TestOpts::new(), false, desc, RunStrategy::InProcess, tx, Concurrent::No);
+    let result = rx.recv().unwrap().result;
+    assert_eq!(result, TrFailedMsg(failed_msg));
+}
+
+// FIXME: Re-enable emscripten once it can catch panics again (introduced by #65251)
+#[test]
+#[cfg(not(target_os = "emscripten"))]
 fn test_should_panic_but_succeeds() {
     fn f() {}
     let desc = TestDescAndFn {
@@ -140,24 +235,149 @@ fn test_should_panic_but_succeeds() {
             ignore: false,
             should_panic: ShouldPanic::Yes,
             allow_fail: false,
+            test_type: TestType::Unknown,
         },
         testfn: DynTestFn(Box::new(f)),
     };
     let (tx, rx) = channel();
-    run_test(&TestOpts::new(), false, desc, tx, Concurrent::No);
-    let (_, res, _) = rx.recv().unwrap();
-    assert!(res == TrFailed);
+    run_test(&TestOpts::new(), false, desc, RunStrategy::InProcess, tx, Concurrent::No);
+    let result = rx.recv().unwrap().result;
+    assert_eq!(result, TrFailedMsg("test did not panic as expected".to_string()));
+}
+
+fn report_time_test_template(report_time: bool) -> Option<TestExecTime> {
+    fn f() {}
+    let desc = TestDescAndFn {
+        desc: TestDesc {
+            name: StaticTestName("whatever"),
+            ignore: false,
+            should_panic: ShouldPanic::No,
+            allow_fail: false,
+            test_type: TestType::Unknown,
+        },
+        testfn: DynTestFn(Box::new(f)),
+    };
+    let time_options = if report_time { Some(TestTimeOptions::default()) } else { None };
+
+    let test_opts = TestOpts { time_options, ..TestOpts::new() };
+    let (tx, rx) = channel();
+    run_test(&test_opts, false, desc, RunStrategy::InProcess, tx, Concurrent::No);
+    let exec_time = rx.recv().unwrap().exec_time;
+    exec_time
+}
+
+#[test]
+fn test_should_not_report_time() {
+    let exec_time = report_time_test_template(false);
+    assert!(exec_time.is_none());
+}
+
+#[test]
+fn test_should_report_time() {
+    let exec_time = report_time_test_template(true);
+    assert!(exec_time.is_some());
+}
+
+fn time_test_failure_template(test_type: TestType) -> TestResult {
+    fn f() {}
+    let desc = TestDescAndFn {
+        desc: TestDesc {
+            name: StaticTestName("whatever"),
+            ignore: false,
+            should_panic: ShouldPanic::No,
+            allow_fail: false,
+            test_type,
+        },
+        testfn: DynTestFn(Box::new(f)),
+    };
+    // `Default` will initialize all the thresholds to 0 milliseconds.
+    let mut time_options = TestTimeOptions::default();
+    time_options.error_on_excess = true;
+
+    let test_opts = TestOpts { time_options: Some(time_options), ..TestOpts::new() };
+    let (tx, rx) = channel();
+    run_test(&test_opts, false, desc, RunStrategy::InProcess, tx, Concurrent::No);
+    let result = rx.recv().unwrap().result;
+
+    result
+}
+
+#[test]
+fn test_error_on_exceed() {
+    let types = [TestType::UnitTest, TestType::IntegrationTest, TestType::DocTest];
+
+    for test_type in types.iter() {
+        let result = time_test_failure_template(*test_type);
+
+        assert_eq!(result, TestResult::TrTimedFail);
+    }
+
+    // Check that for unknown tests thresholds aren't applied.
+    let result = time_test_failure_template(TestType::Unknown);
+    assert_eq!(result, TestResult::TrOk);
+}
+
+fn typed_test_desc(test_type: TestType) -> TestDesc {
+    TestDesc {
+        name: StaticTestName("whatever"),
+        ignore: false,
+        should_panic: ShouldPanic::No,
+        allow_fail: false,
+        test_type,
+    }
+}
+
+fn test_exec_time(millis: u64) -> TestExecTime {
+    TestExecTime(Duration::from_millis(millis))
+}
+
+#[test]
+fn test_time_options_threshold() {
+    let unit = TimeThreshold::new(Duration::from_millis(50), Duration::from_millis(100));
+    let integration = TimeThreshold::new(Duration::from_millis(500), Duration::from_millis(1000));
+    let doc = TimeThreshold::new(Duration::from_millis(5000), Duration::from_millis(10000));
+
+    let options = TestTimeOptions {
+        error_on_excess: false,
+        colored: false,
+        unit_threshold: unit.clone(),
+        integration_threshold: integration.clone(),
+        doctest_threshold: doc.clone(),
+    };
+
+    let test_vector = [
+        (TestType::UnitTest, unit.warn.as_millis() - 1, false, false),
+        (TestType::UnitTest, unit.warn.as_millis(), true, false),
+        (TestType::UnitTest, unit.critical.as_millis(), true, true),
+        (TestType::IntegrationTest, integration.warn.as_millis() - 1, false, false),
+        (TestType::IntegrationTest, integration.warn.as_millis(), true, false),
+        (TestType::IntegrationTest, integration.critical.as_millis(), true, true),
+        (TestType::DocTest, doc.warn.as_millis() - 1, false, false),
+        (TestType::DocTest, doc.warn.as_millis(), true, false),
+        (TestType::DocTest, doc.critical.as_millis(), true, true),
+    ];
+
+    for (test_type, time, expected_warn, expected_critical) in test_vector.iter() {
+        let test_desc = typed_test_desc(*test_type);
+        let exec_time = test_exec_time(*time as u64);
+
+        assert_eq!(options.is_warn(&test_desc, &exec_time), *expected_warn);
+        assert_eq!(options.is_critical(&test_desc, &exec_time), *expected_critical);
+    }
 }
 
 #[test]
 fn parse_ignored_flag() {
-    let args = vec![
-        "progname".to_string(),
-        "filter".to_string(),
-        "--ignored".to_string(),
-    ];
+    let args = vec!["progname".to_string(), "filter".to_string(), "--ignored".to_string()];
     let opts = parse_opts(&args).unwrap().unwrap();
     assert_eq!(opts.run_ignored, RunIgnored::Only);
+}
+
+#[test]
+fn parse_show_output_flag() {
+    let args = vec!["progname".to_string(), "filter".to_string(), "--show-output".to_string()];
+    let opts = parse_opts(&args).unwrap().unwrap();
+    assert!(opts.options.display_output);
 }
 
 #[test]
@@ -219,6 +439,7 @@ pub fn exclude_should_panic_option() {
             ignore: false,
             should_panic: ShouldPanic::Yes,
             allow_fail: false,
+            test_type: TestType::Unknown,
         },
         testfn: DynTestFn(Box::new(move || {})),
     });
@@ -240,84 +461,48 @@ pub fn exact_filter_match() {
                     ignore: false,
                     should_panic: ShouldPanic::No,
                     allow_fail: false,
+                    test_type: TestType::Unknown,
                 },
                 testfn: DynTestFn(Box::new(move || {})),
             })
             .collect()
     }
 
-    let substr = filter_tests(
-        &TestOpts {
-            filter: Some("base".into()),
-            ..TestOpts::new()
-        },
-        tests(),
-    );
+    let substr =
+        filter_tests(&TestOpts { filter: Some("base".into()), ..TestOpts::new() }, tests());
     assert_eq!(substr.len(), 4);
 
-    let substr = filter_tests(
-        &TestOpts {
-            filter: Some("bas".into()),
-            ..TestOpts::new()
-        },
-        tests(),
-    );
+    let substr = filter_tests(&TestOpts { filter: Some("bas".into()), ..TestOpts::new() }, tests());
     assert_eq!(substr.len(), 4);
 
-    let substr = filter_tests(
-        &TestOpts {
-            filter: Some("::test".into()),
-            ..TestOpts::new()
-        },
-        tests(),
-    );
+    let substr =
+        filter_tests(&TestOpts { filter: Some("::test".into()), ..TestOpts::new() }, tests());
     assert_eq!(substr.len(), 3);
 
-    let substr = filter_tests(
-        &TestOpts {
-            filter: Some("base::test".into()),
-            ..TestOpts::new()
-        },
-        tests(),
-    );
+    let substr =
+        filter_tests(&TestOpts { filter: Some("base::test".into()), ..TestOpts::new() }, tests());
     assert_eq!(substr.len(), 3);
 
     let exact = filter_tests(
-        &TestOpts {
-            filter: Some("base".into()),
-            filter_exact: true,
-            ..TestOpts::new()
-        },
+        &TestOpts { filter: Some("base".into()), filter_exact: true, ..TestOpts::new() },
         tests(),
     );
     assert_eq!(exact.len(), 1);
 
     let exact = filter_tests(
-        &TestOpts {
-            filter: Some("bas".into()),
-            filter_exact: true,
-            ..TestOpts::new()
-        },
+        &TestOpts { filter: Some("bas".into()), filter_exact: true, ..TestOpts::new() },
         tests(),
     );
     assert_eq!(exact.len(), 0);
 
     let exact = filter_tests(
-        &TestOpts {
-            filter: Some("::test".into()),
-            filter_exact: true,
-            ..TestOpts::new()
-        },
+        &TestOpts { filter: Some("::test".into()), filter_exact: true, ..TestOpts::new() },
         tests(),
     );
     assert_eq!(exact.len(), 0);
 
     let exact = filter_tests(
-        &TestOpts {
-            filter: Some("base::test".into()),
-            filter_exact: true,
-            ..TestOpts::new()
-        },
+        &TestOpts { filter: Some("base::test".into()), filter_exact: true, ..TestOpts::new() },
         tests(),
     );
     assert_eq!(exact.len(), 1);
@@ -351,6 +536,7 @@ pub fn sort_tests() {
                     ignore: false,
                     should_panic: ShouldPanic::No,
                     allow_fail: false,
+                    test_type: TestType::Unknown,
                 },
                 testfn: DynTestFn(Box::new(testfn)),
             };
@@ -375,7 +561,7 @@ pub fn sort_tests() {
     ];
 
     for (a, b) in expected.iter().zip(filtered) {
-        assert!(*a == b.desc.name.to_string());
+        assert_eq!(*a, b.desc.name.to_string());
     }
 }
 
@@ -427,6 +613,7 @@ pub fn test_bench_no_iter() {
         ignore: false,
         should_panic: ShouldPanic::No,
         allow_fail: false,
+        test_type: TestType::Unknown,
     };
 
     crate::bench::benchmark(desc, tx, true, f);
@@ -446,8 +633,56 @@ pub fn test_bench_iter() {
         ignore: false,
         should_panic: ShouldPanic::No,
         allow_fail: false,
+        test_type: TestType::Unknown,
     };
 
     crate::bench::benchmark(desc, tx, true, f);
     rx.recv().unwrap();
+}
+
+#[test]
+fn should_sort_failures_before_printing_them() {
+    let test_a = TestDesc {
+        name: StaticTestName("a"),
+        ignore: false,
+        should_panic: ShouldPanic::No,
+        allow_fail: false,
+        test_type: TestType::Unknown,
+    };
+
+    let test_b = TestDesc {
+        name: StaticTestName("b"),
+        ignore: false,
+        should_panic: ShouldPanic::No,
+        allow_fail: false,
+        test_type: TestType::Unknown,
+    };
+
+    let mut out = PrettyFormatter::new(OutputLocation::Raw(Vec::new()), false, 10, false, None);
+
+    let st = console::ConsoleTestState {
+        log_out: None,
+        total: 0,
+        passed: 0,
+        failed: 0,
+        ignored: 0,
+        allowed_fail: 0,
+        filtered_out: 0,
+        measured: 0,
+        metrics: MetricMap::new(),
+        failures: vec![(test_b, Vec::new()), (test_a, Vec::new())],
+        options: Options::new(),
+        not_failures: Vec::new(),
+        time_failures: Vec::new(),
+    };
+
+    out.write_failures(&st).unwrap();
+    let s = match out.output_location() {
+        &OutputLocation::Raw(ref m) => String::from_utf8_lossy(&m[..]),
+        &OutputLocation::Pretty(_) => unreachable!(),
+    };
+
+    let apos = s.find("a").unwrap();
+    let bpos = s.find("b").unwrap();
+    assert!(apos < bpos);
 }

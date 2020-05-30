@@ -1,15 +1,13 @@
 use proc_macro::TokenStream;
-use proc_macro2::{TokenTree, Delimiter};
-use syn::{
-    Token, Ident, Type, Attribute, ReturnType, Expr, Block, Error,
-    braced, parenthesized, parse_macro_input,
-};
-use syn::spanned::Spanned;
-use syn::parse::{Result, Parse, ParseStream};
-use syn::punctuated::Punctuated;
-use syn;
+use proc_macro2::{Delimiter, TokenTree};
 use quote::quote;
-use itertools::Itertools;
+use syn::parse::{Parse, ParseStream, Result};
+use syn::punctuated::Punctuated;
+use syn::spanned::Spanned;
+use syn::{
+    braced, parenthesized, parse_macro_input, Attribute, Block, Error, Expr, Ident, ReturnType,
+    Token, Type,
+};
 
 #[allow(non_camel_case_types)]
 mod kw {
@@ -35,6 +33,9 @@ enum QueryModifier {
     /// The description of the query.
     Desc(Option<Ident>, Punctuated<Expr, Token![,]>),
 
+    /// Use this type for the in-memory cache.
+    Storage(Type),
+
     /// Cache the query to disk if the `Expr` returns true.
     Cache(Option<(IdentOrWild, IdentOrWild)>, Block),
 
@@ -50,13 +51,10 @@ enum QueryModifier {
     /// Don't hash the result, instead just mark a query red if it runs
     NoHash,
 
-    /// Don't force the query
-    NoForce,
-
     /// Generate a dep node based on the dependencies of the query
     Anon,
 
-    /// Always evaluate the query, ignoring its depdendencies
+    /// Always evaluate the query, ignoring its dependencies
     EvalAlways,
 }
 
@@ -108,14 +106,17 @@ impl Parse for QueryModifier {
             let id = args.parse()?;
             let block = input.parse()?;
             Ok(QueryModifier::LoadCached(tcx, id, block))
+        } else if modifier == "storage" {
+            let args;
+            parenthesized!(args in input);
+            let ty = args.parse()?;
+            Ok(QueryModifier::Storage(ty))
         } else if modifier == "fatal_cycle" {
             Ok(QueryModifier::FatalCycle)
         } else if modifier == "cycle_delay_bug" {
             Ok(QueryModifier::CycleDelayBug)
         } else if modifier == "no_hash" {
             Ok(QueryModifier::NoHash)
-        } else if modifier == "no_force" {
-            Ok(QueryModifier::NoForce)
         } else if modifier == "anon" {
             Ok(QueryModifier::Anon)
         } else if modifier == "eval_always" {
@@ -164,13 +165,7 @@ impl Parse for Query {
         braced!(content in input);
         let modifiers = content.parse()?;
 
-        Ok(Query {
-            modifiers,
-            name,
-            key,
-            arg,
-            result,
-        })
+        Ok(Query { modifiers, name, key, arg, result })
     }
 }
 
@@ -198,16 +193,16 @@ impl Parse for Group {
         let name: Ident = input.parse()?;
         let content;
         braced!(content in input);
-        Ok(Group {
-            name,
-            queries: content.parse()?,
-        })
+        Ok(Group { name, queries: content.parse()? })
     }
 }
 
 struct QueryModifiers {
     /// The description of the query.
     desc: Option<(Option<Ident>, Punctuated<Expr, Token![,]>)>,
+
+    /// Use this type for the in-memory cache.
+    storage: Option<Type>,
 
     /// Cache the query to disk if the `Block` returns true.
     cache: Option<(Option<(IdentOrWild, IdentOrWild)>, Block)>,
@@ -224,25 +219,22 @@ struct QueryModifiers {
     /// Don't hash the result, instead just mark a query red if it runs
     no_hash: bool,
 
-    /// Don't force the query
-    no_force: bool,
-
     /// Generate a dep node based on the dependencies of the query
     anon: bool,
 
-    // Always evaluate the query, ignoring its depdendencies
+    // Always evaluate the query, ignoring its dependencies
     eval_always: bool,
 }
 
 /// Process query modifiers into a struct, erroring on duplicates
 fn process_modifiers(query: &mut Query) -> QueryModifiers {
     let mut load_cached = None;
+    let mut storage = None;
     let mut cache = None;
     let mut desc = None;
     let mut fatal_cycle = false;
     let mut cycle_delay_bug = false;
     let mut no_hash = false;
-    let mut no_force = false;
     let mut anon = false;
     let mut eval_always = false;
     for modifier in query.modifiers.0.drain(..) {
@@ -252,6 +244,12 @@ fn process_modifiers(query: &mut Query) -> QueryModifiers {
                     panic!("duplicate modifier `load_cached` for query `{}`", query.name);
                 }
                 load_cached = Some((tcx, id, block));
+            }
+            QueryModifier::Storage(ty) => {
+                if storage.is_some() {
+                    panic!("duplicate modifier `storage` for query `{}`", query.name);
+                }
+                storage = Some(ty);
             }
             QueryModifier::Cache(args, expr) => {
                 if cache.is_some() {
@@ -283,12 +281,6 @@ fn process_modifiers(query: &mut Query) -> QueryModifiers {
                 }
                 no_hash = true;
             }
-            QueryModifier::NoForce => {
-                if no_force {
-                    panic!("duplicate modifier `no_force` for query `{}`", query.name);
-                }
-                no_force = true;
-            }
             QueryModifier::Anon => {
                 if anon {
                     panic!("duplicate modifier `anon` for query `{}`", query.name);
@@ -305,12 +297,12 @@ fn process_modifiers(query: &mut Query) -> QueryModifiers {
     }
     QueryModifiers {
         load_cached,
+        storage,
         cache,
         desc,
         fatal_cycle,
         cycle_delay_bug,
         no_hash,
-        no_force,
         anon,
         eval_always,
     }
@@ -352,20 +344,28 @@ fn add_query_description_impl(
             }
         };
 
-        let tcx = args.as_ref().map(|t| {
-            let t = &(t.0).0;
-            quote! { #t }
-        }).unwrap_or(quote! { _ });
-        let value = args.as_ref().map(|t| {
-            let t = &(t.1).0;
-            quote! { #t }
-        }).unwrap_or(quote! { _ });
+        let tcx = args
+            .as_ref()
+            .map(|t| {
+                let t = &(t.0).0;
+                quote! { #t }
+            })
+            .unwrap_or(quote! { _ });
+        let value = args
+            .as_ref()
+            .map(|t| {
+                let t = &(t.1).0;
+                quote! { #t }
+            })
+            .unwrap_or(quote! { _ });
+        // expr is a `Block`, meaning that `{ #expr }` gets expanded
+        // to `{ { stmts... } }`, which triggers the `unused_braces` lint.
         quote! {
             #[inline]
-            #[allow(unused_variables)]
+            #[allow(unused_variables, unused_braces)]
             fn cache_on_disk(
                 #tcx: TyCtxt<'tcx>,
-                #key: Self::Key,
+                #key: &Self::Key,
                 #value: Option<&Self::Value>
             ) -> bool {
                 #expr
@@ -384,7 +384,7 @@ fn add_query_description_impl(
         quote! {
             #[allow(unused_variables)]
             fn describe(
-                #tcx: TyCtxt<'_>,
+                #tcx: TyCtxt<'tcx>,
                 #key: #arg,
             ) -> Cow<'static, str> {
                 format!(#desc).into()
@@ -397,7 +397,7 @@ fn add_query_description_impl(
         let desc = desc.unwrap_or(quote! {});
 
         impls.extend(quote! {
-            impl<'tcx> QueryDescription<'tcx> for queries::#name<'tcx> {
+            impl<'tcx> QueryDescription<TyCtxt<'tcx>> for queries::#name<'tcx> {
                 #desc
                 #cache
             }
@@ -413,7 +413,6 @@ pub fn rustc_queries(input: TokenStream) -> TokenStream {
     let mut dep_node_def_stream = quote! {};
     let mut dep_node_force_stream = quote! {};
     let mut try_load_from_on_disk_cache_stream = quote! {};
-    let mut no_force_queries = Vec::new();
     let mut cached_queries = quote! {};
 
     for group in groups.0 {
@@ -432,19 +431,19 @@ pub fn rustc_queries(input: TokenStream) -> TokenStream {
                 cached_queries.extend(quote! {
                     #name,
                 });
-            }
 
-            if modifiers.cache.is_some() && !modifiers.no_force {
                 try_load_from_on_disk_cache_stream.extend(quote! {
-                    DepKind::#name => {
-                        debug_assert!(tcx.dep_graph
-                                         .node_color(self)
-                                         .map(|c| c.is_green())
-                                         .unwrap_or(false));
+                    ::rustc_middle::dep_graph::DepKind::#name => {
+                        if <#arg as DepNodeParams<TyCtxt<'_>>>::CAN_RECONSTRUCT_QUERY_KEY {
+                            debug_assert!($tcx.dep_graph
+                                            .node_color($dep_node)
+                                            .map(|c| c.is_green())
+                                            .unwrap_or(false));
 
-                        let key = RecoverKey::recover(tcx.global_tcx(), self).unwrap();
-                        if queries::#name::cache_on_disk(tcx.global_tcx(), key, None) {
-                            let _ = tcx.#name(key);
+                            let key = <#arg as DepNodeParams<TyCtxt<'_>>>::recover($tcx, $dep_node).unwrap();
+                            if queries::#name::cache_on_disk($tcx, &key, None) {
+                                let _ = $tcx.#name(key);
+                            }
                         }
                     }
                 });
@@ -455,6 +454,10 @@ pub fn rustc_queries(input: TokenStream) -> TokenStream {
             // Pass on the fatal_cycle modifier
             if modifiers.fatal_cycle {
                 attributes.push(quote! { fatal_cycle });
+            };
+            // Pass on the storage modifier
+            if let Some(ref ty) = modifiers.storage {
+                attributes.push(quote! { storage(#ty) });
             };
             // Pass on the cycle_delay_bug modifier
             if modifiers.cycle_delay_bug {
@@ -473,10 +476,7 @@ pub fn rustc_queries(input: TokenStream) -> TokenStream {
                 attributes.push(quote! { eval_always });
             };
 
-            let mut attribute_stream = quote! {};
-            for e in attributes.into_iter().intersperse(quote! {,}) {
-                attribute_stream.extend(e);
-            }
+            let attribute_stream = quote! {#(#attributes),*};
 
             // Add the query to the group
             group_stream.extend(quote! {
@@ -488,26 +488,24 @@ pub fn rustc_queries(input: TokenStream) -> TokenStream {
                 [#attribute_stream] #name(#arg),
             });
 
-            if modifiers.no_force {
-                no_force_queries.push(name.clone());
-            } else {
-                // Add a match arm to force the query given the dep node
-                dep_node_force_stream.extend(quote! {
-                    DepKind::#name => {
-                        if let Some(key) = RecoverKey::recover($tcx, $dep_node) {
-                            force_ex!($tcx, #name, key);
-                        } else {
-                            return false;
+            // Add a match arm to force the query given the dep node
+            dep_node_force_stream.extend(quote! {
+                ::rustc_middle::dep_graph::DepKind::#name => {
+                    if <#arg as DepNodeParams<TyCtxt<'_>>>::CAN_RECONSTRUCT_QUERY_KEY {
+                        if let Some(key) = <#arg as DepNodeParams<TyCtxt<'_>>>::recover($tcx, $dep_node) {
+                            force_query::<crate::ty::query::queries::#name<'_>, _>(
+                                $tcx,
+                                key,
+                                DUMMY_SP,
+                                *$dep_node
+                            );
+                            return true;
                         }
                     }
-                });
-            }
+                }
+            });
 
-            add_query_description_impl(
-                &query,
-                modifiers,
-                &mut query_description_stream,
-            );
+            add_query_description_impl(&query, modifiers, &mut query_description_stream);
         }
         let name = &group.name;
         query_stream.extend(quote! {
@@ -515,14 +513,8 @@ pub fn rustc_queries(input: TokenStream) -> TokenStream {
         });
     }
 
-    // Add an arm for the no force queries to panic when trying to force them
-    for query in no_force_queries {
-        dep_node_force_stream.extend(quote! {
-            DepKind::#query |
-        });
-    }
     dep_node_force_stream.extend(quote! {
-        DepKind::Null => {
+        ::rustc_middle::dep_graph::DepKind::Null => {
             bug!("Cannot force dep node: {:?}", $dep_node)
         }
     });
@@ -564,14 +556,9 @@ pub fn rustc_queries(input: TokenStream) -> TokenStream {
 
         #query_description_stream
 
-        impl DepNode {
-            /// Check whether the query invocation corresponding to the given
-            /// DepNode is eligible for on-disk-caching. If so, this is method
-            /// will execute the query corresponding to the given DepNode.
-            /// Also, as a sanity check, it expects that the corresponding query
-            /// invocation has been marked as green already.
-            pub fn try_load_from_on_disk_cache(&self, tcx: TyCtxt<'_>) {
-                match self.kind {
+        macro_rules! rustc_dep_node_try_load_from_on_disk_cache {
+            ($dep_node:expr, $tcx:expr) => {
+                match $dep_node.kind {
                     #try_load_from_on_disk_cache_stream
                     _ => (),
                 }

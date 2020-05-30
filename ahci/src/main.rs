@@ -39,7 +39,7 @@
 //! simultaneously. Unfortunately we can't take advantage of that until we manage to
 //! make command-completion interrupts work.
 
-#![feature(box_syntax, untagged_unions, const_vec_new)]
+#![feature(box_syntax, untagged_unions)]
 #![no_std]
 
 // rustc warnings

@@ -12,10 +12,12 @@ doctest = false
 [dependencies]
 graphviz = { path = "../libgraphviz" }
 log = "0.4"
-rand = "0.6"
-rustc = { path = "../librustc" }
+rand = "0.7"
+rustc_middle = { path = "../librustc_middle" }
 rustc_data_structures = { path = "../librustc_data_structures" }
-serialize = { path = "../libserialize" }
-syntax = { path = "../libsyntax" }
-syntax_pos = { path = "../libsyntax_pos" }
+rustc_hir = { path = "../librustc_hir" }
+rustc_serialize = { path = "../libserialize", package = "serialize" }
+rustc_ast = { path = "../librustc_ast" }
+rustc_span = { path = "../librustc_span" }
 rustc_fs_util = { path = "../librustc_fs_util" }
+rustc_session = { path = "../librustc_session" }

@@ -4,12 +4,12 @@ error: unused attribute
 LL | #[cfg_attr(FALSE,)]
    | ^^^^^^^^^^^^^^^^^^^
    |
-note: lint level defined here
+note: the lint level is defined here
   --> $DIR/cfg-attr-empty-is-unused.rs:5:9
    |
 LL | #![deny(unused)]
    |         ^^^^^^
-   = note: #[deny(unused_attributes)] implied by #[deny(unused)]
+   = note: `#[deny(unused_attributes)]` implied by `#[deny(unused)]`
 
 error: unused attribute
   --> $DIR/cfg-attr-empty-is-unused.rs:10:1

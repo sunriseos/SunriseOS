@@ -1,0 +1,87 @@
+error[E0277]: `impl Sized` doesn't implement `std::fmt::Debug`
+  --> $DIR/bound-suggestions.rs:5:22
+   |
+LL |     println!("{:?}", t);
+   |                      ^ `impl Sized` cannot be formatted using `{:?}` because it doesn't implement `std::fmt::Debug`
+   |
+   = help: the trait `std::fmt::Debug` is not implemented for `impl Sized`
+   = note: required by `std::fmt::Debug::fmt`
+   = note: this error originates in a macro (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider further restricting this bound
+   |
+LL | fn test_impl(t: impl Sized + std::fmt::Debug) {
+   |                            ^^^^^^^^^^^^^^^^^
+
+error[E0277]: `T` doesn't implement `std::fmt::Debug`
+  --> $DIR/bound-suggestions.rs:11:22
+   |
+LL |     println!("{:?}", t);
+   |                      ^ `T` cannot be formatted using `{:?}` because it doesn't implement `std::fmt::Debug`
+   |
+   = help: the trait `std::fmt::Debug` is not implemented for `T`
+   = note: required by `std::fmt::Debug::fmt`
+   = note: this error originates in a macro (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider restricting type parameter `T`
+   |
+LL | fn test_no_bounds<T: std::fmt::Debug>(t: T) {
+   |                    ^^^^^^^^^^^^^^^^^
+
+error[E0277]: `T` doesn't implement `std::fmt::Debug`
+  --> $DIR/bound-suggestions.rs:17:22
+   |
+LL |     println!("{:?}", t);
+   |                      ^ `T` cannot be formatted using `{:?}` because it doesn't implement `std::fmt::Debug`
+   |
+   = help: the trait `std::fmt::Debug` is not implemented for `T`
+   = note: required by `std::fmt::Debug::fmt`
+   = note: this error originates in a macro (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider further restricting this bound
+   |
+LL | fn test_one_bound<T: Sized + std::fmt::Debug>(t: T) {
+   |                            ^^^^^^^^^^^^^^^^^
+
+error[E0277]: `Y` doesn't implement `std::fmt::Debug`
+  --> $DIR/bound-suggestions.rs:23:30
+   |
+LL |     println!("{:?} {:?}", x, y);
+   |                              ^ `Y` cannot be formatted using `{:?}` because it doesn't implement `std::fmt::Debug`
+   |
+   = help: the trait `std::fmt::Debug` is not implemented for `Y`
+   = note: required by `std::fmt::Debug::fmt`
+   = note: this error originates in a macro (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider further restricting type parameter `Y`
+   |
+LL | fn test_no_bounds_where<X, Y>(x: X, y: Y) where X: std::fmt::Debug, Y: std::fmt::Debug {
+   |                                                                   ^^^^^^^^^^^^^^^^^^^^
+
+error[E0277]: `X` doesn't implement `std::fmt::Debug`
+  --> $DIR/bound-suggestions.rs:29:22
+   |
+LL |     println!("{:?}", x);
+   |                      ^ `X` cannot be formatted using `{:?}` because it doesn't implement `std::fmt::Debug`
+   |
+   = help: the trait `std::fmt::Debug` is not implemented for `X`
+   = note: required by `std::fmt::Debug::fmt`
+   = note: this error originates in a macro (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider further restricting this bound
+   |
+LL | fn test_one_bound_where<X>(x: X) where X: Sized + std::fmt::Debug {
+   |                                                 ^^^^^^^^^^^^^^^^^
+
+error[E0277]: `X` doesn't implement `std::fmt::Debug`
+  --> $DIR/bound-suggestions.rs:35:22
+   |
+LL |     println!("{:?}", x);
+   |                      ^ `X` cannot be formatted using `{:?}` because it doesn't implement `std::fmt::Debug`
+   |
+   = help: the trait `std::fmt::Debug` is not implemented for `X`
+   = note: required by `std::fmt::Debug::fmt`
+   = note: this error originates in a macro (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider further restricting type parameter `X`
+   |
+LL | fn test_many_bounds_where<X>(x: X) where X: Sized, X: Sized, X: std::fmt::Debug {
+   |                                                            ^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 6 previous errors
+
+For more information about this error, try `rustc --explain E0277`.

@@ -11,8 +11,8 @@
 //! it at any moment by calling [`get_boot_information`].
 //!
 //! [multiboot information structure]: https://www.gnu.org/software/grub/manual/multiboot2/multiboot.html#Boot-information-format
-//! [`BOOT_INFO`]: self::multiboot::BOOT_INFO
-//! [`get_boot_information`]: self::multiboot::get_boot_information
+//! [`BOOT_INFO`]: self::BOOT_INFO
+//! [`get_boot_information`]: self::get_boot_information
 
 use crate::sync::Once;
 use multiboot2::BootInformation;

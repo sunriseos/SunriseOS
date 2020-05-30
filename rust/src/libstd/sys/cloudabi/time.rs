@@ -10,18 +10,16 @@ pub struct Instant {
 }
 
 pub fn checked_dur2intervals(dur: &Duration) -> Option<abi::timestamp> {
-    dur.as_secs()
-        .checked_mul(NSEC_PER_SEC)?
-        .checked_add(dur.subsec_nanos() as abi::timestamp)
+    dur.as_secs().checked_mul(NSEC_PER_SEC)?.checked_add(dur.subsec_nanos() as abi::timestamp)
 }
 
 impl Instant {
     pub fn now() -> Instant {
         unsafe {
-            let mut t = mem::uninitialized();
-            let ret = abi::clock_time_get(abi::clockid::MONOTONIC, 0, &mut t);
+            let mut t: mem::MaybeUninit<abi::timestamp> = mem::MaybeUninit::uninit();
+            let ret = abi::clock_time_get(abi::clockid::MONOTONIC, 0, t.as_mut_ptr());
             assert_eq!(ret, abi::errno::SUCCESS);
-            Instant { t }
+            Instant { t: t.assume_init() }
         }
     }
 
@@ -39,15 +37,11 @@ impl Instant {
     }
 
     pub fn checked_add_duration(&self, other: &Duration) -> Option<Instant> {
-        Some(Instant {
-            t: self.t.checked_add(checked_dur2intervals(other)?)?,
-        })
+        Some(Instant { t: self.t.checked_add(checked_dur2intervals(other)?)? })
     }
 
     pub fn checked_sub_duration(&self, other: &Duration) -> Option<Instant> {
-        Some(Instant {
-            t: self.t.checked_sub(checked_dur2intervals(other)?)?,
-        })
+        Some(Instant { t: self.t.checked_sub(checked_dur2intervals(other)?)? })
     }
 }
 
@@ -59,39 +53,29 @@ pub struct SystemTime {
 impl SystemTime {
     pub fn now() -> SystemTime {
         unsafe {
-            let mut t = mem::uninitialized();
-            let ret = abi::clock_time_get(abi::clockid::REALTIME, 0, &mut t);
+            let mut t: mem::MaybeUninit<abi::timestamp> = mem::MaybeUninit::uninit();
+            let ret = abi::clock_time_get(abi::clockid::REALTIME, 0, t.as_mut_ptr());
             assert_eq!(ret, abi::errno::SUCCESS);
-            SystemTime { t }
+            SystemTime { t: t.assume_init() }
         }
     }
 
     pub fn sub_time(&self, other: &SystemTime) -> Result<Duration, Duration> {
         if self.t >= other.t {
             let diff = self.t - other.t;
-            Ok(Duration::new(
-                diff / NSEC_PER_SEC,
-                (diff % NSEC_PER_SEC) as u32,
-            ))
+            Ok(Duration::new(diff / NSEC_PER_SEC, (diff % NSEC_PER_SEC) as u32))
         } else {
             let diff = other.t - self.t;
-            Err(Duration::new(
-                diff / NSEC_PER_SEC,
-                (diff % NSEC_PER_SEC) as u32,
-            ))
+            Err(Duration::new(diff / NSEC_PER_SEC, (diff % NSEC_PER_SEC) as u32))
         }
     }
 
     pub fn checked_add_duration(&self, other: &Duration) -> Option<SystemTime> {
-        Some(SystemTime {
-            t: self.t.checked_add(checked_dur2intervals(other)?)?,
-        })
+        Some(SystemTime { t: self.t.checked_add(checked_dur2intervals(other)?)? })
     }
 
     pub fn checked_sub_duration(&self, other: &Duration) -> Option<SystemTime> {
-        Some(SystemTime {
-            t: self.t.checked_sub(checked_dur2intervals(other)?)?,
-        })
+        Some(SystemTime { t: self.t.checked_sub(checked_dur2intervals(other)?)? })
     }
 }
 

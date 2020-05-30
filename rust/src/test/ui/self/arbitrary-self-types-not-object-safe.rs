@@ -1,4 +1,6 @@
-#![feature(arbitrary_self_types)]
+// revisions: curr object_safe_for_dispatch
+
+#![cfg_attr(object_safe_for_dispatch, feature(object_safe_for_dispatch))]
 
 use std::rc::Rc;
 
@@ -29,8 +31,9 @@ impl Bar for usize {
 
 fn make_foo() {
     let x = Rc::new(5usize) as Rc<dyn Foo>;
-    //~^ ERROR E0038
-    //~| ERROR E0038
+    //[curr]~^ ERROR E0038
+    //[curr]~| ERROR E0038
+    //[object_safe_for_dispatch]~^^^ ERROR E0038
 }
 
 fn make_bar() {

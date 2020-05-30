@@ -1,6 +1,5 @@
 #![feature(box_patterns)]
 #![feature(box_syntax)]
-#![feature(slice_patterns)]
 
 fn a() {
     let mut vec = [box 1, box 2, box 3];
@@ -19,7 +18,7 @@ fn b() {
     let mut vec = vec![box 1, box 2, box 3];
     let vec: &mut [Box<isize>] = &mut vec;
     match vec {
-        &mut [ref _b..] => {
+        &mut [ref _b @ ..] => {
         //~^ borrow of `vec[_]` occurs here
             vec[0] = box 4; //~ ERROR cannot assign
             //~^ NOTE assignment to borrowed `vec[_]` occurs here
@@ -75,12 +74,12 @@ fn e() {
     match vec {
         //~^ ERROR cannot move out
         //~| NOTE cannot move out
+        //~| NOTE move occurs because these variables have types
         &mut [_a, _b, _c] => {}
         //~^ NOTE data moved here
         //~| NOTE and here
         //~| NOTE and here
         //~| HELP consider removing the `&mut`
-        //~| NOTE move occurs because these variables have types
         _ => {}
     }
     let a = vec[0]; //~ ERROR cannot move out

@@ -1,9 +1,9 @@
+use crate::convert::TryFrom;
 use crate::fmt;
 use crate::io::{self, IoSlice, IoSliceMut};
-use crate::net::{SocketAddr, Shutdown, Ipv4Addr, Ipv6Addr};
-use crate::time::Duration;
+use crate::net::{Ipv4Addr, Ipv6Addr, Shutdown, SocketAddr};
 use crate::sys::{unsupported, Void};
-use crate::convert::TryFrom;
+use crate::time::Duration;
 
 pub struct TcpStream(Void);
 
@@ -44,11 +44,19 @@ impl TcpStream {
         match self.0 {}
     }
 
+    pub fn is_read_vectored(&self) -> bool {
+        match self.0 {}
+    }
+
     pub fn write(&self, _: &[u8]) -> io::Result<usize> {
         match self.0 {}
     }
 
     pub fn write_vectored(&self, _: &[IoSlice<'_>]) -> io::Result<usize> {
+        match self.0 {}
+    }
+
+    pub fn is_write_vectored(&self) -> bool {
         match self.0 {}
     }
 
@@ -228,23 +236,19 @@ impl UdpSocket {
         match self.0 {}
     }
 
-    pub fn join_multicast_v4(&self, _: &Ipv4Addr, _: &Ipv4Addr)
-                         -> io::Result<()> {
+    pub fn join_multicast_v4(&self, _: &Ipv4Addr, _: &Ipv4Addr) -> io::Result<()> {
         match self.0 {}
     }
 
-    pub fn join_multicast_v6(&self, _: &Ipv6Addr, _: u32)
-                         -> io::Result<()> {
+    pub fn join_multicast_v6(&self, _: &Ipv6Addr, _: u32) -> io::Result<()> {
         match self.0 {}
     }
 
-    pub fn leave_multicast_v4(&self, _: &Ipv4Addr, _: &Ipv4Addr)
-                          -> io::Result<()> {
+    pub fn leave_multicast_v4(&self, _: &Ipv4Addr, _: &Ipv4Addr) -> io::Result<()> {
         match self.0 {}
     }
 
-    pub fn leave_multicast_v6(&self, _: &Ipv6Addr, _: u32)
-                          -> io::Result<()> {
+    pub fn leave_multicast_v6(&self, _: &Ipv6Addr, _: u32) -> io::Result<()> {
         match self.0 {}
     }
 
@@ -351,8 +355,7 @@ pub mod netc {
     }
 
     #[derive(Copy, Clone)]
-    pub struct sockaddr {
-    }
+    pub struct sockaddr {}
 
     pub type socklen_t = usize;
 }

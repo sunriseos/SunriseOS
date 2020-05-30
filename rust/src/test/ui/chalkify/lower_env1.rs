@@ -1,12 +1,12 @@
-#![feature(rustc_attrs)]
+// check-pass
+// compile-flags: -Z chalk
+
 #![allow(dead_code)]
 
 trait Foo { }
 
-#[rustc_dump_program_clauses] //~ ERROR program clause dump
 trait Bar where Self: Foo { }
 
-#[rustc_dump_env_program_clauses] //~ ERROR program clause dump
 fn bar<T: Bar + ?Sized>() {
 }
 

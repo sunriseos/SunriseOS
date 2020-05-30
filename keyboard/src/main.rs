@@ -2,7 +2,7 @@
 //!
 //! This service takes care of anything related to keyboard inputs.
 
-#![feature(untagged_unions, async_await)]
+#![feature(untagged_unions)]
 #![no_std]
 
 // rustc warnings
@@ -162,11 +162,11 @@ struct StaticService;
 
 impl sunrise_libuser::keyboard::StaticService for StaticService {
     fn get_keyboard_event(&mut self, _manager: WorkQueue) -> Result<HandleRef<'static>, Error> {
-        Ok(KEYBOARD_INSTANCE.r#try().and_then(|x| Some(x.lock())).expect("Keyboard instance not initialized").get_readable_event())
+        Ok(KEYBOARD_INSTANCE.r#try().map(|x| x.lock()).expect("Keyboard instance not initialized").get_readable_event())
     }
 
     fn read_keyboard_states(&mut self,  _manager: WorkQueue, states: &mut [HidKeyboardState]) -> Result<u64, Error> {
-        KEYBOARD_INSTANCE.r#try().and_then(|x| Some(x.lock())).expect("Keyboard instance not initialized").read_keyboard_states(states)
+        KEYBOARD_INSTANCE.r#try().map(|x| x.lock()).expect("Keyboard instance not initialized").read_keyboard_states(states)
     }
 }
 
@@ -180,7 +180,7 @@ async fn update_keyboard(work_queue: WorkQueue<'_>) {
 
     loop {
         irq_event.wait_async_cb(work_queue.clone(), move || {
-                KEYBOARD_INSTANCE.r#try().and_then(|x| Some(x.lock())).expect("Keyboard instance not initialized").handle_ps2_irq()
+                KEYBOARD_INSTANCE.r#try().map(|x| x.lock()).expect("Keyboard instance not initialized").handle_ps2_irq()
             }).await;
         let _ = writable_event.signal();
         let _ = sunrise_libuser::syscalls::sleep_thread(0);

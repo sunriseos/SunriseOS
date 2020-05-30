@@ -1,8 +1,47 @@
 [relabel]
 allow-unauthenticated = [
-    "C-*", "A-*", "E-*", "NLL-*", "O-*", "S-*", "T-*", "WG-*",
+    "C-*", "A-*", "E-*", "NLL-*", "O-*", "S-*", "T-*", "WG-*", "F-*",
+    "D-*",
+    "requires-nightly",
     # I-* without I-nominated
-    "I-compilemem", "I-compiletime", "I-crash", "I-hang", "I-ICE", "I-slow",
+    "I-*", "!I-nominated",
+    "AsyncAwait-OnDeck",
 ]
 
 [assign]
+
+[glacier]
+
+[ping.icebreakers-llvm]
+alias = ["llvm", "llvms"]
+message = """\
+Hey LLVM ICE-breakers! This bug has been identified as a good
+"LLVM ICE-breaking candidate". In case it's useful, here are some
+[instructions] for tackling these sorts of bugs. Maybe take a look?
+Thanks! <3
+
+[instructions]: https://rustc-dev-guide.rust-lang.org/ice-breaker/llvm.html
+"""
+label = "ICEBreaker-LLVM"
+
+[ping.icebreakers-cleanup-crew]
+alias = ["cleanup", "cleanups", "cleanup-crew", "shrink", "reduce", "bisect"]
+message = """\
+Hey Cleanup Crew ICE-breakers! This bug has been identified as a good
+"Cleanup ICE-breaking candidate". In case it's useful, here are some
+[instructions] for tackling these sorts of bugs. Maybe take a look?
+Thanks! <3
+
+[instructions]: https://rustc-dev-guide.rust-lang.org/ice-breaker/cleanup-crew.html
+"""
+label = "ICEBreaker-Cleanup-Crew"
+
+[prioritize]
+label = "I-prioritize"
+prioritize_on = ["regression-from-stable-to-stable", "regression-from-stable-to-beta", "regression-from-stable-to-nightly"]
+exclude_labels = [
+    "P-*",
+    "T-infra",
+    "T-release",
+]
+zulip_stream = 227806

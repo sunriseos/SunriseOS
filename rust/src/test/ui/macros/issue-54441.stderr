@@ -1,11 +1,13 @@
-error: expected one of `crate`, `fn`, `pub`, `static`, or `type`, found `let`
-  --> $DIR/issue-54441.rs:5:9
+error: macro expansion ignores token `let` and any following
+  --> $DIR/issue-54441.rs:3:9
    |
 LL |         let
-   |         ^^^ unexpected token
+   |         ^^^
 ...
 LL |     m!();
-   |     ----- in this macro invocation
+   |     ----- caused by the macro expansion here
+   |
+   = note: the usage of `m!` is likely invalid in foreign item context
 
 error: aborting due to previous error
 

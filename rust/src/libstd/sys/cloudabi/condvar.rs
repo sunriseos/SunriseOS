@@ -18,9 +18,8 @@ pub struct Condvar {
 unsafe impl Send for Condvar {}
 unsafe impl Sync for Condvar {}
 
-const NEW: Condvar = Condvar {
-    condvar: UnsafeCell::new(AtomicU32::new(abi::CONDVAR_HAS_NO_WAITERS.0)),
-};
+const NEW: Condvar =
+    Condvar { condvar: UnsafeCell::new(AtomicU32::new(abi::CONDVAR_HAS_NO_WAITERS.0)) };
 
 impl Condvar {
     pub const fn new() -> Condvar {
@@ -33,11 +32,7 @@ impl Condvar {
         let condvar = self.condvar.get();
         if (*condvar).load(Ordering::Relaxed) != abi::CONDVAR_HAS_NO_WAITERS.0 {
             let ret = abi::condvar_signal(condvar as *mut abi::condvar, abi::scope::PRIVATE, 1);
-            assert_eq!(
-                ret,
-                abi::errno::SUCCESS,
-                "Failed to signal on condition variable"
-            );
+            assert_eq!(ret, abi::errno::SUCCESS, "Failed to signal on condition variable");
         }
     }
 
@@ -49,11 +44,7 @@ impl Condvar {
                 abi::scope::PRIVATE,
                 abi::nthreads::max_value(),
             );
-            assert_eq!(
-                ret,
-                abi::errno::SUCCESS,
-                "Failed to broadcast on condition variable"
-            );
+            assert_eq!(ret, abi::errno::SUCCESS, "Failed to broadcast on condition variable");
         }
     }
 
@@ -79,16 +70,12 @@ impl Condvar {
             },
             ..mem::zeroed()
         };
-        let mut event: abi::event = mem::uninitialized();
-        let mut nevents: usize = mem::uninitialized();
-        let ret = abi::poll(&subscription, &mut event, 1, &mut nevents);
+        let mut event: mem::MaybeUninit<abi::event> = mem::MaybeUninit::uninit();
+        let mut nevents: mem::MaybeUninit<usize> = mem::MaybeUninit::uninit();
+        let ret = abi::poll(&subscription, event.as_mut_ptr(), 1, nevents.as_mut_ptr());
+        assert_eq!(ret, abi::errno::SUCCESS, "Failed to wait on condition variable");
         assert_eq!(
-            ret,
-            abi::errno::SUCCESS,
-            "Failed to wait on condition variable"
-        );
-        assert_eq!(
-            event.error,
+            event.assume_init().error,
             abi::errno::SUCCESS,
             "Failed to wait on condition variable"
         );
@@ -104,8 +91,8 @@ impl Condvar {
 
         // Call into the kernel to wait on the condition variable.
         let condvar = self.condvar.get();
-        let timeout = checked_dur2intervals(&dur)
-            .expect("overflow converting duration to nanoseconds");
+        let timeout =
+            checked_dur2intervals(&dur).expect("overflow converting duration to nanoseconds");
         let subscriptions = [
             abi::subscription {
                 type_: abi::eventtype::CONDVAR,
@@ -131,21 +118,23 @@ impl Condvar {
                 ..mem::zeroed()
             },
         ];
-        let mut events: [abi::event; 2] = mem::uninitialized();
-        let mut nevents: usize = mem::uninitialized();
-        let ret = abi::poll(subscriptions.as_ptr(), events.as_mut_ptr(), 2, &mut nevents);
-        assert_eq!(
-            ret,
-            abi::errno::SUCCESS,
-            "Failed to wait on condition variable"
+        let mut events: [mem::MaybeUninit<abi::event>; 2] = [mem::MaybeUninit::uninit(); 2];
+        let mut nevents: mem::MaybeUninit<usize> = mem::MaybeUninit::uninit();
+        let ret = abi::poll(
+            subscriptions.as_ptr(),
+            mem::MaybeUninit::first_ptr_mut(&mut events),
+            2,
+            nevents.as_mut_ptr(),
         );
+        assert_eq!(ret, abi::errno::SUCCESS, "Failed to wait on condition variable");
+        let nevents = nevents.assume_init();
         for i in 0..nevents {
             assert_eq!(
-                events[i].error,
+                events[i].assume_init().error,
                 abi::errno::SUCCESS,
                 "Failed to wait on condition variable"
             );
-            if events[i].type_ == abi::eventtype::CONDVAR {
+            if events[i].assume_init().type_ == abi::eventtype::CONDVAR {
                 return true;
             }
         }

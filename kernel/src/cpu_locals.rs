@@ -80,8 +80,8 @@
 //! function.
 //!
 //! [`CURRENT_THREAD`]: crate::scheduler::CURRENT_THREAD
-//! [`init_cpu_locals`]: crate::cpu_locals::init_cpu_locals
-//! [`ARE_CPU_LOCALS_INITIALIZED_YET`]: self::cpu_locals::ARE_CPU_LOCALS_INITIALIZED_YET
+//! [`init_cpu_locals`]: init_cpu_locals
+//! [`ARE_CPU_LOCALS_INITIALIZED_YET`]: ARE_CPU_LOCALS_INITIALIZED_YET
 //! [Ulrich Drepper's paper on TLS]: https://web.archive.org/web/20190710135250/https://akkadia.org/drepper/tls.pdf
 //! [`CPU_LOCAL_REGIONS`]: crate::cpu_locals::CPU_LOCAL_REGIONS
 //! [GDT]: crate::i386::gdt
@@ -146,7 +146,7 @@ pub fn init_cpu_locals(cpu_count: usize) {
     CPU_LOCAL_REGIONS.call_once(|| {
         // map our own ELF so that we can access our PT_TLS
         let mapped_kernel_elf = multiboot::try_get_boot_information()
-            .and_then(|info| info.module_tags().nth(0))
+            .and_then(|info| info.module_tags().next())
             .and_then(|module| map_grub_module(module).ok())
             .expect("cpu_locals: cannot get kernel elf");
         let kernel_elf = mapped_kernel_elf.elf.as_ref()

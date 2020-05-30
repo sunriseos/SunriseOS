@@ -3,7 +3,7 @@
 
 // Local js definitions:
 /* global addClass, getCurrentValue, hasClass */
-/* global isHidden onEach, removeClass, updateLocalStorage */
+/* global onEach, removeClass, updateLocalStorage */
 
 if (!String.prototype.startsWith) {
     String.prototype.startsWith = function(searchString, position) {
@@ -39,6 +39,14 @@ if (!DOMTokenList.prototype.remove) {
     };
 }
 
+function getSearchInput() {
+    return document.getElementsByClassName("search-input")[0];
+}
+
+function getSearchElement() {
+    return document.getElementById("search");
+}
+
 (function() {
     "use strict";
 
@@ -71,7 +79,8 @@ if (!DOMTokenList.prototype.remove) {
                      "derive",
                      "traitalias"];
 
-    var search_input = document.getElementsByClassName("search-input")[0];
+    var disableShortcuts = getCurrentValue("rustdoc-disable-shortcuts") === "true";
+    var search_input = getSearchInput();
 
     // On the search screen, so you remain on the last tab you opened.
     //
@@ -105,9 +114,9 @@ if (!DOMTokenList.prototype.remove) {
                 sidebar.appendChild(div);
             }
         }
-        var themePicker = document.getElementsByClassName("theme-picker");
-        if (themePicker && themePicker.length > 0) {
-            themePicker[0].style.display = "none";
+        var themePickers = document.getElementsByClassName("theme-picker");
+        if (themePickers && themePickers.length > 0) {
+            themePickers[0].style.display = "none";
         }
     }
 
@@ -123,19 +132,31 @@ if (!DOMTokenList.prototype.remove) {
             filler.remove();
         }
         document.getElementsByTagName("body")[0].style.marginTop = "";
-        var themePicker = document.getElementsByClassName("theme-picker");
-        if (themePicker && themePicker.length > 0) {
-            themePicker[0].style.display = null;
+        var themePickers = document.getElementsByClassName("theme-picker");
+        if (themePickers && themePickers.length > 0) {
+            themePickers[0].style.display = null;
         }
+    }
+
+    function showSearchResults(search) {
+        if (search === null || typeof search === 'undefined') {
+            search = getSearchElement();
+        }
+        addClass(main, "hidden");
+        removeClass(search, "hidden");
+    }
+
+    function hideSearchResults(search) {
+        if (search === null || typeof search === 'undefined') {
+            search = getSearchElement();
+        }
+        addClass(search, "hidden");
+        removeClass(main, "hidden");
     }
 
     // used for special search precedence
     var TY_PRIMITIVE = itemTypes.indexOf("primitive");
     var TY_KEYWORD = itemTypes.indexOf("keyword");
-
-    onEachLazy(document.getElementsByClassName("js-only"), function(e) {
-        removeClass(e, "js-only");
-    });
 
     function getQueryStringParams() {
         var params = {};
@@ -152,59 +173,110 @@ if (!DOMTokenList.prototype.remove) {
         return window.history && typeof window.history.pushState === "function";
     }
 
-    var main = document.getElementById("main");
+    function isHidden(elem) {
+        return elem.offsetHeight === 0;
+    }
 
-    function highlightSourceLines(ev) {
-        // If we're in mobile mode, we should add the sidebar in any case.
-        hideSidebar();
-        var elem;
-        var search = document.getElementById("search");
-        var i, from, to, match = window.location.hash.match(/^#?(\d+)(?:-(\d+))?$/);
-        if (match) {
-            from = parseInt(match[1], 10);
-            to = from;
-            if (typeof match[2] !== "undefined") {
-                to = parseInt(match[2], 10);
-            }
-            if (to < from) {
-                var tmp = to;
-                to = from;
-                from = tmp;
-            }
-            elem = document.getElementById(from);
-            if (!elem) {
-                return;
-            }
-            if (ev === null) {
-                var x = document.getElementById(from);
-                if (x) {
-                    x.scrollIntoView();
-                }
-            }
-            onEachLazy(document.getElementsByClassName("line-numbers"), function(e) {
-                onEachLazy(e.getElementsByTagName("span"), function(i_e) {
-                    removeClass(i_e, "line-highlighted");
-                });
-            });
-            for (i = from; i <= to; ++i) {
-                elem = document.getElementById(i);
-                if (!elem) {
-                    break;
-                }
-                addClass(elem, "line-highlighted");
-            }
-        } else if (ev !== null && search && !hasClass(search, "hidden") && ev.newURL) {
-            addClass(search, "hidden");
-            removeClass(main, "hidden");
+    var main = document.getElementById("main");
+    var savedHash = "";
+
+    function handleHashes(ev) {
+        var search = getSearchElement();
+        if (ev !== null && search && !hasClass(search, "hidden") && ev.newURL) {
+            // This block occurs when clicking on an element in the navbar while
+            // in a search.
+            hideSearchResults(search);
             var hash = ev.newURL.slice(ev.newURL.indexOf("#") + 1);
             if (browserSupportsHistoryApi()) {
                 history.replaceState(hash, "", "?search=#" + hash);
             }
-            elem = document.getElementById(hash);
+            var elem = document.getElementById(hash);
             if (elem) {
                 elem.scrollIntoView();
             }
         }
+        // This part is used in case an element is not visible.
+        if (savedHash !== window.location.hash) {
+            savedHash = window.location.hash;
+            if (savedHash.length === 0) {
+                return;
+            }
+            var elem = document.getElementById(savedHash.slice(1)); // we remove the '#'
+            if (!elem || !isHidden(elem)) {
+                return;
+            }
+            var parent = elem.parentNode;
+            if (parent && hasClass(parent, "impl-items")) {
+                // In case this is a trait implementation item, we first need to toggle
+                // the "Show hidden undocumented items".
+                onEachLazy(parent.getElementsByClassName("collapsed"), function(e) {
+                    if (e.parentNode === parent) {
+                        // Only click on the toggle we're looking for.
+                        e.click();
+                        return true;
+                    }
+                });
+                if (isHidden(elem)) {
+                    // The whole parent is collapsed. We need to click on its toggle as well!
+                    if (hasClass(parent.lastElementChild, "collapse-toggle")) {
+                        parent.lastElementChild.click();
+                    }
+                }
+            }
+        }
+    }
+
+    function highlightSourceLines(match, ev) {
+        if (typeof match === "undefined") {
+            // If we're in mobile mode, we should hide the sidebar in any case.
+            hideSidebar();
+            match = window.location.hash.match(/^#?(\d+)(?:-(\d+))?$/);
+        }
+        if (!match) {
+            return;
+        }
+        var from = parseInt(match[1], 10);
+        var to = from;
+        if (typeof match[2] !== "undefined") {
+            to = parseInt(match[2], 10);
+        }
+        if (to < from) {
+            var tmp = to;
+            to = from;
+            from = tmp;
+        }
+        var elem = document.getElementById(from);
+        if (!elem) {
+            return;
+        }
+        if (!ev) {
+            var x = document.getElementById(from);
+            if (x) {
+                x.scrollIntoView();
+            }
+        }
+        onEachLazy(document.getElementsByClassName("line-numbers"), function(e) {
+            onEachLazy(e.getElementsByTagName("span"), function(i_e) {
+                removeClass(i_e, "line-highlighted");
+            });
+        });
+        for (var i = from; i <= to; ++i) {
+            elem = document.getElementById(i);
+            if (!elem) {
+                break;
+            }
+            addClass(elem, "line-highlighted");
+        }
+    }
+
+    function onHashChange(ev) {
+        // If we're in mobile mode, we should hide the sidebar in any case.
+        hideSidebar();
+        var match = window.location.hash.match(/^#?(\d+)(?:-(\d+))?$/);
+        if (match) {
+            return highlightSourceLines(match, ev);
+        }
+        handleHashes(ev);
     }
 
     function expandSection(id) {
@@ -224,9 +296,6 @@ if (!DOMTokenList.prototype.remove) {
             }
         }
     }
-
-    highlightSourceLines(null);
-    window.onhashchange = highlightSourceLines;
 
     // Gets the human-readable string for the virtual-key code of the
     // given KeyboardEvent, ev.
@@ -250,7 +319,12 @@ if (!DOMTokenList.prototype.remove) {
         return String.fromCharCode(c);
     }
 
+    function getHelpElement() {
+        return document.getElementById("help");
+    }
+
     function displayHelp(display, ev, help) {
+        var help = help ? help : getHelpElement();
         if (display === true) {
             if (hasClass(help, "hidden")) {
                 ev.preventDefault();
@@ -264,15 +338,14 @@ if (!DOMTokenList.prototype.remove) {
         }
     }
 
-    function handleEscape(ev, help) {
-        hideModal();
-        var search = document.getElementById("search");
+    function handleEscape(ev) {
+        var help = getHelpElement();
+        var search = getSearchElement();
         if (hasClass(help, "hidden") === false) {
             displayHelp(false, ev, help);
         } else if (hasClass(search, "hidden") === false) {
             ev.preventDefault();
-            addClass(search, "hidden");
-            removeClass(main, "hidden");
+            hideSearchResults(search);
             document.title = titleBeforeSearch;
         }
         defocusSearchBar();
@@ -280,27 +353,25 @@ if (!DOMTokenList.prototype.remove) {
 
     function handleShortcut(ev) {
         // Don't interfere with browser shortcuts
-        if (ev.ctrlKey || ev.altKey || ev.metaKey) {
+        if (ev.ctrlKey || ev.altKey || ev.metaKey || disableShortcuts === true) {
             return;
         }
 
-        var help = document.getElementById("help");
         if (document.activeElement.tagName === "INPUT") {
             switch (getVirtualKey(ev)) {
             case "Escape":
-                handleEscape(ev, help);
+                handleEscape(ev);
                 break;
             }
         } else {
             switch (getVirtualKey(ev)) {
             case "Escape":
-                handleEscape(ev, help);
+                handleEscape(ev);
                 break;
 
             case "s":
             case "S":
-                displayHelp(false, ev, help);
-                hideModal();
+                displayHelp(false, ev);
                 ev.preventDefault();
                 focusSearchBar();
                 break;
@@ -313,8 +384,7 @@ if (!DOMTokenList.prototype.remove) {
 
             case "?":
                 if (ev.shiftKey) {
-                    hideModal();
-                    displayHelp(true, ev, help);
+                    displayHelp(true, ev);
                 }
                 break;
             }
@@ -331,43 +401,60 @@ if (!DOMTokenList.prototype.remove) {
         return null;
     }
 
-    document.onkeypress = handleShortcut;
-    document.onkeydown = handleShortcut;
-    document.onclick = function(ev) {
+    document.addEventListener("keypress", handleShortcut);
+    document.addEventListener("keydown", handleShortcut);
+
+    var handleSourceHighlight = (function() {
+        var prev_line_id = 0;
+
+        var set_fragment = function(name) {
+            var x = window.scrollX,
+                y = window.scrollY;
+            if (browserSupportsHistoryApi()) {
+                history.replaceState(null, null, "#" + name);
+                highlightSourceLines();
+            } else {
+                location.replace("#" + name);
+            }
+            // Prevent jumps when selecting one or many lines
+            window.scrollTo(x, y);
+        };
+
+        return function(ev) {
+            var cur_line_id = parseInt(ev.target.id, 10);
+            ev.preventDefault();
+
+            if (ev.shiftKey && prev_line_id) {
+                // Swap selection if needed
+                if (prev_line_id > cur_line_id) {
+                    var tmp = prev_line_id;
+                    prev_line_id = cur_line_id;
+                    cur_line_id = tmp;
+                }
+
+                set_fragment(prev_line_id + "-" + cur_line_id);
+            } else {
+                prev_line_id = cur_line_id;
+
+                set_fragment(cur_line_id);
+            }
+        }
+    })();
+
+    document.addEventListener("click", function(ev) {
         if (hasClass(ev.target, "collapse-toggle")) {
             collapseDocs(ev.target, "toggle");
         } else if (hasClass(ev.target.parentNode, "collapse-toggle")) {
             collapseDocs(ev.target.parentNode, "toggle");
         } else if (ev.target.tagName === "SPAN" && hasClass(ev.target.parentNode, "line-numbers")) {
-            var prev_id = 0;
-
-            var set_fragment = function(name) {
-                if (browserSupportsHistoryApi()) {
-                    history.replaceState(null, null, "#" + name);
-                    window.hashchange();
-                } else {
-                    location.replace("#" + name);
-                }
-            };
-
-            var cur_id = parseInt(ev.target.id, 10);
-
-            if (ev.shiftKey && prev_id) {
-                if (prev_id > cur_id) {
-                    var tmp = prev_id;
-                    prev_id = cur_id;
-                    cur_id = tmp;
-                }
-
-                set_fragment(prev_id + "-" + cur_id);
-            } else {
-                prev_id = cur_id;
-
-                set_fragment(cur_id);
+            handleSourceHighlight(ev);
+        } else if (hasClass(getHelpElement(), "hidden") === false) {
+            var help = getHelpElement();
+            var is_inside_help_popup = ev.target !== help && help.contains(ev.target);
+            if (is_inside_help_popup === false) {
+                addClass(help, "hidden");
+                removeClass(document.body, "blur");
             }
-        } else if (hasClass(document.getElementById("help"), "hidden") === false) {
-            addClass(document.getElementById("help"), "hidden");
-            removeClass(document.body, "blur");
         } else {
             // Making a collapsed element visible on onhashchange seems
             // too late
@@ -376,7 +463,7 @@ if (!DOMTokenList.prototype.remove) {
                 expandSection(a.hash.replace(/^#/, ""));
             }
         }
-    };
+    });
 
     var x = document.getElementsByClassName("version-selector");
     if (x.length > 0) {
@@ -436,13 +523,15 @@ if (!DOMTokenList.prototype.remove) {
     }
 
     function initSearch(rawSearchIndex) {
-        var currentResults, index, searchIndex;
         var MAX_LEV_DISTANCE = 3;
         var MAX_RESULTS = 200;
         var GENERICS_DATA = 1;
         var NAME = 0;
         var INPUTS_DATA = 0;
         var OUTPUT_DATA = 1;
+        var NO_TYPE_FILTER = -1;
+        var currentResults, index, searchIndex;
+        var ALIASES = {};
         var params = getQueryStringParams();
 
         // Populate search bar with query string search term when provided,
@@ -469,7 +558,7 @@ if (!DOMTokenList.prototype.remove) {
                         return i;
                     }
                 }
-                return -1;
+                return NO_TYPE_FILTER;
             }
 
             var valLower = query.query.toLowerCase(),
@@ -532,6 +621,11 @@ if (!DOMTokenList.prototype.remove) {
                 results.sort(function(aaa, bbb) {
                     var a, b;
 
+                    // sort by exact match with regard to the last word (mismatch goes later)
+                    a = (aaa.word !== val);
+                    b = (bbb.word !== val);
+                    if (a !== b) { return a - b; }
+
                     // Sort by non levenshtein results and then levenshtein results by the distance
                     // (less changes required to match means higher rankings)
                     a = (aaa.lev);
@@ -541,11 +635,6 @@ if (!DOMTokenList.prototype.remove) {
                     // sort by crate (non-current crate goes later)
                     a = (aaa.item.crate !== window.currentCrate);
                     b = (bbb.item.crate !== window.currentCrate);
-                    if (a !== b) { return a - b; }
-
-                    // sort by exact match (mismatch goes later)
-                    a = (aaa.word !== valLower);
-                    b = (bbb.word !== valLower);
                     if (a !== b) { return a - b; }
 
                     // sort by item name length (longer goes later)
@@ -632,6 +721,13 @@ if (!DOMTokenList.prototype.remove) {
                 };
             }
 
+            function getObjectFromId(id) {
+                if (typeof id === "number") {
+                    return searchIndex[id];
+                }
+                return {'name': id};
+            }
+
             function checkGenerics(obj, val) {
                 // The names match, but we need to be sure that all generics kinda
                 // match as well.
@@ -648,8 +744,10 @@ if (!DOMTokenList.prototype.remove) {
                         for (var y = 0; y < vlength; ++y) {
                             var lev = { pos: -1, lev: MAX_LEV_DISTANCE + 1};
                             var elength = elems.length;
+                            var firstGeneric = getObjectFromId(val.generics[y]).name;
                             for (var x = 0; x < elength; ++x) {
-                                var tmp_lev = levenshtein(elems[x], val.generics[y]);
+                                var tmp_lev = levenshtein(getObjectFromId(elems[x]).name,
+                                                          firstGeneric);
                                 if (tmp_lev < lev.lev) {
                                     lev.lev = tmp_lev;
                                     lev.pos = x;
@@ -684,8 +782,9 @@ if (!DOMTokenList.prototype.remove) {
 
                                 for (var y = 0; allFound === true && y < val.generics.length; ++y) {
                                     allFound = false;
+                                    var firstGeneric = getObjectFromId(val.generics[y]).name;
                                     for (x = 0; allFound === false && x < elems.length; ++x) {
-                                        allFound = elems[x] === val.generics[y];
+                                        allFound = getObjectFromId(elems[x]).name === firstGeneric;
                                     }
                                     if (allFound === true) {
                                         elems.splice(x - 1, 1);
@@ -742,16 +841,22 @@ if (!DOMTokenList.prototype.remove) {
                 return lev_distance + 1;
             }
 
-            function findArg(obj, val, literalSearch) {
+            function findArg(obj, val, literalSearch, typeFilter) {
                 var lev_distance = MAX_LEV_DISTANCE + 1;
 
-                if (obj && obj.type && obj.type[INPUTS_DATA] &&
-                      obj.type[INPUTS_DATA].length > 0) {
+                if (obj && obj.type && obj.type[INPUTS_DATA] && obj.type[INPUTS_DATA].length > 0) {
                     var length = obj.type[INPUTS_DATA].length;
                     for (var i = 0; i < length; i++) {
-                        var tmp = checkType(obj.type[INPUTS_DATA][i], val, literalSearch);
-                        if (literalSearch === true && tmp === true) {
-                            return true;
+                        var tmp = obj.type[INPUTS_DATA][i];
+                        if (typePassesFilter(typeFilter, tmp[1]) === false) {
+                            continue;
+                        }
+                        tmp = checkType(tmp, val, literalSearch);
+                        if (literalSearch === true) {
+                            if (tmp === true) {
+                                return true;
+                            }
+                            continue;
                         }
                         lev_distance = Math.min(tmp, lev_distance);
                         if (lev_distance === 0) {
@@ -762,20 +867,20 @@ if (!DOMTokenList.prototype.remove) {
                 return literalSearch === true ? false : lev_distance;
             }
 
-            function checkReturned(obj, val, literalSearch) {
+            function checkReturned(obj, val, literalSearch, typeFilter) {
                 var lev_distance = MAX_LEV_DISTANCE + 1;
 
                 if (obj && obj.type && obj.type.length > OUTPUT_DATA) {
                     var ret = obj.type[OUTPUT_DATA];
-                    if (!obj.type[OUTPUT_DATA].length) {
+                    if (typeof ret[0] === "string") {
                         ret = [ret];
                     }
                     for (var x = 0; x < ret.length; ++x) {
-                        var r = ret[x];
-                        if (typeof r === "string") {
-                            r = [r];
+                        var tmp = ret[x];
+                        if (typePassesFilter(typeFilter, tmp[1]) === false) {
+                            continue;
                         }
-                        var tmp = checkType(r, val, literalSearch);
+                        tmp = checkType(tmp, val, literalSearch);
                         if (literalSearch === true) {
                             if (tmp === true) {
                                 return true;
@@ -830,7 +935,7 @@ if (!DOMTokenList.prototype.remove) {
 
             function typePassesFilter(filter, type) {
                 // No filter
-                if (filter < 0) return true;
+                if (filter <= NO_TYPE_FILTER) return true;
 
                 // Exact match
                 if (filter === type) return true;
@@ -839,11 +944,13 @@ if (!DOMTokenList.prototype.remove) {
                 var name = itemTypes[type];
                 switch (itemTypes[filter]) {
                     case "constant":
-                        return (name == "associatedconstant");
+                        return name === "associatedconstant";
                     case "fn":
-                        return (name == "method" || name == "tymethod");
+                        return name === "method" || name === "tymethod";
                     case "type":
-                        return (name == "primitive" || name == "keyword");
+                        return name === "primitive" || name === "associatedtype";
+                    case "trait":
+                        return name === "traitalias";
                 }
 
                 // No match
@@ -855,6 +962,72 @@ if (!DOMTokenList.prototype.remove) {
                     return itemTypes[ty.ty] + ty.path + ty.parent.name + ty.name;
                 }
                 return itemTypes[ty.ty] + ty.path + ty.name;
+            }
+
+            function createAliasFromItem(item) {
+                return {
+                    crate: item.crate,
+                    name: item.name,
+                    path: item.path,
+                    desc: item.desc,
+                    ty: item.ty,
+                    parent: item.parent,
+                    type: item.type,
+                    is_alias: true,
+                };
+            }
+
+            function handleAliases(ret, query, filterCrates) {
+                // We separate aliases and crate aliases because we want to have current crate
+                // aliases to be before the others in the displayed results.
+                var aliases = [];
+                var crateAliases = [];
+                var i;
+                if (filterCrates !== undefined &&
+                        ALIASES[filterCrates] &&
+                        ALIASES[filterCrates][query.search]) {
+                    for (i = 0; i < ALIASES[crate][query.search].length; ++i) {
+                        aliases.push(
+                            createAliasFromItem(searchIndex[ALIASES[filterCrates][query.search]]));
+                    }
+                } else {
+                    Object.keys(ALIASES).forEach(function(crate) {
+                        if (ALIASES[crate][query.search]) {
+                            var pushTo = crate === window.currentCrate ? crateAliases : aliases;
+                            for (i = 0; i < ALIASES[crate][query.search].length; ++i) {
+                                pushTo.push(
+                                    createAliasFromItem(
+                                        searchIndex[ALIASES[crate][query.search][i]]));
+                            }
+                        }
+                    });
+                }
+
+                var sortFunc = function(aaa, bbb) {
+                    if (aaa.path < bbb.path) {
+                        return 1;
+                    } else if (aaa.path === bbb.path) {
+                        return 0;
+                    }
+                    return -1;
+                };
+                crateAliases.sort(sortFunc);
+                aliases.sort(sortFunc);
+
+                var pushFunc = function(alias) {
+                    alias.alias = query.raw;
+                    var res = buildHrefAndPath(alias);
+                    alias.displayPath = pathSplitter(res[0]);
+                    alias.fullPath = alias.displayPath + alias.name;
+                    alias.href = res[1];
+
+                    ret.others.unshift(alias);
+                    if (ret.others.length > MAX_RESULTS) {
+                        ret.others.pop();
+                    }
+                };
+                onEach(aliases, pushFunc);
+                onEach(crateAliases, pushFunc);
             }
 
             // quoted values mean literal search
@@ -872,42 +1045,33 @@ if (!DOMTokenList.prototype.remove) {
                     if (filterCrates !== undefined && searchIndex[i].crate !== filterCrates) {
                         continue;
                     }
-                    in_args = findArg(searchIndex[i], val, true);
-                    returned = checkReturned(searchIndex[i], val, true);
+                    in_args = findArg(searchIndex[i], val, true, typeFilter);
+                    returned = checkReturned(searchIndex[i], val, true, typeFilter);
                     ty = searchIndex[i];
                     fullId = generateId(ty);
 
-                    if (searchWords[i] === val.name) {
-                        // filter type: ... queries
-                        if (typePassesFilter(typeFilter, searchIndex[i].ty) &&
-                            results[fullId] === undefined)
-                        {
-                            results[fullId] = {id: i, index: -1};
-                        }
-                    } else if ((in_args === true || returned === true) &&
-                               typePassesFilter(typeFilter, searchIndex[i].ty)) {
-                        if (in_args === true || returned === true) {
-                            if (in_args === true) {
-                                results_in_args[fullId] = {
-                                    id: i,
-                                    index: -1,
-                                    dontValidate: true,
-                                };
-                            }
-                            if (returned === true) {
-                                results_returned[fullId] = {
-                                    id: i,
-                                    index: -1,
-                                    dontValidate: true,
-                                };
-                            }
-                        } else {
-                            results[fullId] = {
-                                id: i,
-                                index: -1,
-                                dontValidate: true,
-                            };
-                        }
+                    if (searchWords[i] === val.name
+                        && typePassesFilter(typeFilter, searchIndex[i].ty)
+                        && results[fullId] === undefined) {
+                        results[fullId] = {
+                            id: i,
+                            index: -1,
+                            dontValidate: true,
+                        };
+                    }
+                    if (in_args === true && results_in_args[fullId] === undefined) {
+                        results_in_args[fullId] = {
+                            id: i,
+                            index: -1,
+                            dontValidate: true,
+                        };
+                    }
+                    if (returned === true && results_returned[fullId] === undefined) {
+                        results_returned[fullId] = {
+                            id: i,
+                            index: -1,
+                            dontValidate: true,
+                        };
                     }
                 }
                 query.inputs = [val];
@@ -938,7 +1102,7 @@ if (!DOMTokenList.prototype.remove) {
 
                     // allow searching for void (no output) functions as well
                     var typeOutput = type.length > OUTPUT_DATA ? type[OUTPUT_DATA].name : "";
-                    returned = checkReturned(ty, output, true);
+                    returned = checkReturned(ty, output, true, NO_TYPE_FILTER);
                     if (output.name === "*" || returned === true) {
                         in_args = false;
                         var is_module = false;
@@ -999,21 +1163,20 @@ if (!DOMTokenList.prototype.remove) {
                 val = paths[paths.length - 1];
                 var contains = paths.slice(0, paths.length > 1 ? paths.length - 1 : 1);
 
+                var lev;
+                var lev_distance;
                 for (j = 0; j < nSearchWords; ++j) {
-                    var lev;
-                    var lev_distance;
                     ty = searchIndex[j];
                     if (!ty || (filterCrates !== undefined && ty.crate !== filterCrates)) {
                         continue;
                     }
-                    var lev_distance;
                     var lev_add = 0;
                     if (paths.length > 1) {
                         lev = checkPath(contains, paths[paths.length - 1], ty);
                         if (lev > MAX_LEV_DISTANCE) {
                             continue;
                         } else if (lev > 0) {
-                            lev_add = 1;
+                            lev_add = lev / 10;
                         }
                     }
 
@@ -1040,16 +1203,8 @@ if (!DOMTokenList.prototype.remove) {
                             lev += 1;
                         }
                     }
-                    if ((in_args = findArg(ty, valGenerics)) <= MAX_LEV_DISTANCE) {
-                        if (typePassesFilter(typeFilter, ty.ty) === false) {
-                            in_args = MAX_LEV_DISTANCE + 1;
-                        }
-                    }
-                    if ((returned = checkReturned(ty, valGenerics)) <= MAX_LEV_DISTANCE) {
-                        if (typePassesFilter(typeFilter, ty.ty) === false) {
-                            returned = MAX_LEV_DISTANCE + 1;
-                        }
-                    }
+                    in_args = findArg(ty, valGenerics, false, typeFilter);
+                    returned = checkReturned(ty, valGenerics, false, typeFilter);
 
                     lev += lev_add;
                     if (lev > 0 && val.length > 3 && searchWords[j].indexOf(val) > -1) {
@@ -1084,10 +1239,6 @@ if (!DOMTokenList.prototype.remove) {
                     if (index !== -1 || lev <= MAX_LEV_DISTANCE) {
                         if (index !== -1 && paths.length < 2) {
                             lev = 0;
-                        } else if (searchWords[j] === val) {
-                            // Small trick to fix when you're looking for a one letter type
-                            // and there are other short named types.
-                            lev = -1;
                         }
                         if (results[fullId] === undefined) {
                             results[fullId] = {
@@ -1106,23 +1257,7 @@ if (!DOMTokenList.prototype.remove) {
                 "returned": sortResults(results_returned, true),
                 "others": sortResults(results),
             };
-            if (ALIASES && ALIASES[window.currentCrate] &&
-                    ALIASES[window.currentCrate][query.raw]) {
-                var aliases = ALIASES[window.currentCrate][query.raw];
-                for (i = 0; i < aliases.length; ++i) {
-                    aliases[i].is_alias = true;
-                    aliases[i].alias = query.raw;
-                    aliases[i].path = aliases[i].p;
-                    var res = buildHrefAndPath(aliases[i]);
-                    aliases[i].displayPath = pathSplitter(res[0]);
-                    aliases[i].fullPath = aliases[i].displayPath + aliases[i].name;
-                    aliases[i].href = res[1];
-                    ret.others.unshift(aliases[i]);
-                    if (ret.others.length > MAX_RESULTS) {
-                        ret.others.pop();
-                    }
-                }
-            }
+            handleAliases(ret, query, filterCrates);
             return ret;
         }
 
@@ -1150,7 +1285,7 @@ if (!DOMTokenList.prototype.remove) {
                     // then an exact path match
                     path.indexOf(keys[i]) > -1 ||
                     // next if there is a parent, check for exact parent match
-                    (parent !== undefined &&
+                    (parent !== undefined && parent.name !== undefined &&
                         parent.name.toLowerCase().indexOf(keys[i]) > -1) ||
                     // lastly check to see if the name was a levenshtein match
                     levenshtein(name, keys[i]) <= MAX_LEV_DISTANCE)) {
@@ -1193,8 +1328,7 @@ if (!DOMTokenList.prototype.remove) {
                 }
                 dst = dst[0];
                 if (window.location.pathname === dst.pathname) {
-                    addClass(document.getElementById("search"), "hidden");
-                    removeClass(main, "hidden");
+                    hideSearchResults();
                     document.location.href = dst.href;
                 }
             };
@@ -1269,10 +1403,6 @@ if (!DOMTokenList.prototype.remove) {
                     e.preventDefault();
                 } else if (e.which === 16) { // shift
                     // Does nothing, it's just to avoid losing "focus" on the highlighted element.
-                } else if (e.which === 27) { // escape
-                    removeClass(actives[currentTab][0], "highlighted");
-                    search_input.value = "";
-                    defocusSearchBar();
                 } else if (actives[currentTab].length > 0) {
                     removeClass(actives[currentTab][0], "highlighted");
                 }
@@ -1284,14 +1414,15 @@ if (!DOMTokenList.prototype.remove) {
             var href;
             var type = itemTypes[item.ty];
             var name = item.name;
+            var path = item.path;
 
             if (type === "mod") {
-                displayPath = item.path + "::";
-                href = rootPath + item.path.replace(/::/g, "/") + "/" +
+                displayPath = path + "::";
+                href = rootPath + path.replace(/::/g, "/") + "/" +
                        name + "/index.html";
             } else if (type === "primitive" || type === "keyword") {
                 displayPath = "";
-                href = rootPath + item.path.replace(/::/g, "/") +
+                href = rootPath + path.replace(/::/g, "/") +
                        "/" + type + "." + name + ".html";
             } else if (type === "externcrate") {
                 displayPath = "";
@@ -1300,14 +1431,27 @@ if (!DOMTokenList.prototype.remove) {
                 var myparent = item.parent;
                 var anchor = "#" + type + "." + name;
                 var parentType = itemTypes[myparent.ty];
+                var pageType = parentType;
+                var pageName = myparent.name;
+
                 if (parentType === "primitive") {
                     displayPath = myparent.name + "::";
+                } else if (type === "structfield" && parentType === "variant") {
+                    // Structfields belonging to variants are special: the
+                    // final path element is the enum name.
+                    var splitPath = item.path.split("::");
+                    var enumName = splitPath.pop();
+                    path = splitPath.join("::");
+                    displayPath = path + "::" + enumName + "::" + myparent.name + "::";
+                    anchor = "#variant." + myparent.name + ".field." + name;
+                    pageType = "enum";
+                    pageName = enumName;
                 } else {
-                    displayPath = item.path + "::" + myparent.name + "::";
+                    displayPath = path + "::" + myparent.name + "::";
                 }
-                href = rootPath + item.path.replace(/::/g, "/") +
-                       "/" + parentType +
-                       "." + myparent.name +
+                href = rootPath + path.replace(/::/g, "/") +
+                       "/" + pageType +
+                       "." + pageName +
                        ".html" + anchor;
             } else {
                 displayPath = item.path + "::";
@@ -1422,10 +1566,9 @@ if (!DOMTokenList.prototype.remove) {
                 "</div><div id=\"results\">" +
                 ret_others[0] + ret_in_args[0] + ret_returned[0] + "</div>";
 
-            addClass(main, "hidden");
-            var search = document.getElementById("search");
-            removeClass(search, "hidden");
+            var search = getSearchElement();
             search.innerHTML = output;
+            showSearchResults(search);
             var tds = search.getElementsByTagName("td");
             var td_width = 0;
             if (tds.length > 0) {
@@ -1507,13 +1650,12 @@ if (!DOMTokenList.prototype.remove) {
                     "returned": mergeArrays(results.returned),
                     "others": mergeArrays(results.others),
                 };
-            } else {
-                return {
-                    "in_args": results.in_args[0],
-                    "returned": results.returned[0],
-                    "others": results.others[0],
-                };
             }
+            return {
+                "in_args": results.in_args[0],
+                "returned": results.returned[0],
+                "others": results.others[0],
+            };
         }
 
         function getFilterCrates() {
@@ -1557,16 +1699,19 @@ if (!DOMTokenList.prototype.remove) {
             }
 
             var filterCrates = getFilterCrates();
-            showResults(execSearch(query, index, filterCrates), filterCrates);
+            showResults(execSearch(query, index, filterCrates));
         }
 
         function buildIndex(rawSearchIndex) {
             searchIndex = [];
             var searchWords = [];
             var i;
+            var currentIndex = 0;
 
             for (var crate in rawSearchIndex) {
                 if (!rawSearchIndex.hasOwnProperty(crate)) { continue; }
+
+                var crateSize = 0;
 
                 searchWords.push(crate);
                 searchIndex.push({
@@ -1577,6 +1722,7 @@ if (!DOMTokenList.prototype.remove) {
                     desc: rawSearchIndex[crate].doc,
                     type: null,
                 });
+                currentIndex += 1;
 
                 // an array of [(Number) item type,
                 //              (String) name,
@@ -1588,8 +1734,11 @@ if (!DOMTokenList.prototype.remove) {
                 // an array of [(Number) item type,
                 //              (String) name]
                 var paths = rawSearchIndex[crate].p;
+                // a array of [(String) alias name
+                //             [Number] index to items]
+                var aliases = rawSearchIndex[crate].a;
 
-                // convert `paths` into an object form
+                // convert `rawPaths` entries into object form
                 var len = paths.length;
                 for (i = 0; i < len; ++i) {
                     paths[i] = {ty: paths[i][0], name: paths[i][1]};
@@ -1606,9 +1755,18 @@ if (!DOMTokenList.prototype.remove) {
                 var lastPath = "";
                 for (i = 0; i < len; ++i) {
                     var rawRow = items[i];
-                    var row = {crate: crate, ty: rawRow[0], name: rawRow[1],
-                               path: rawRow[2] || lastPath, desc: rawRow[3],
-                               parent: paths[rawRow[4]], type: rawRow[5]};
+                    if (!rawRow[2]) {
+                        rawRow[2] = lastPath;
+                    }
+                    var row = {
+                        crate: crate,
+                        ty: rawRow[0],
+                        name: rawRow[1],
+                        path: rawRow[2],
+                        desc: rawRow[3],
+                        parent: paths[rawRow[4]],
+                        type: rawRow[5],
+                    };
                     searchIndex.push(row);
                     if (typeof row.name === "string") {
                         var word = row.name.toLowerCase();
@@ -1617,7 +1775,25 @@ if (!DOMTokenList.prototype.remove) {
                         searchWords.push("");
                     }
                     lastPath = row.path;
+                    crateSize += 1;
                 }
+
+                if (aliases) {
+                    ALIASES[crate] = {};
+                    var j, local_aliases;
+                    for (var alias_name in aliases) {
+                        if (!aliases.hasOwnProperty(alias_name)) { continue; }
+
+                        if (!ALIASES[crate].hasOwnProperty(alias_name)) {
+                            ALIASES[crate][alias_name] = [];
+                        }
+                        local_aliases = aliases[alias_name];
+                        for (j = 0; j < local_aliases.length; ++j) {
+                            ALIASES[crate][alias_name].push(local_aliases[j] + currentIndex);
+                        }
+                    }
+                }
+                currentIndex += crateSize;
             }
             return searchWords;
         }
@@ -1630,13 +1806,7 @@ if (!DOMTokenList.prototype.remove) {
                     if (browserSupportsHistoryApi()) {
                         history.replaceState("", window.currentCrate + " - Rust", "?search=");
                     }
-                    if (hasClass(main, "content")) {
-                        removeClass(main, "hidden");
-                    }
-                    var search_c = document.getElementById("search");
-                    if (hasClass(search_c, "content")) {
-                        addClass(search_c, "hidden");
-                    }
+                    hideSearchResults();
                 } else {
                     searchTimeout = setTimeout(search, 500);
                 }
@@ -1649,6 +1819,10 @@ if (!DOMTokenList.prototype.remove) {
                 search();
             };
             search_input.onchange = function(e) {
+                if (e.target !== document.activeElement) {
+                    // To prevent doing anything when it's from a blur event.
+                    return;
+                }
                 // Do NOT e.preventDefault() here. It will prevent pasting.
                 clearTimeout(searchTimeout);
                 // zero-timeout necessary here because at the time of event handler execution the
@@ -1658,9 +1832,10 @@ if (!DOMTokenList.prototype.remove) {
             };
             search_input.onpaste = search_input.onchange;
 
-            var selectCrate = document.getElementById('crate-search');
+            var selectCrate = document.getElementById("crate-search");
             if (selectCrate) {
                 selectCrate.onchange = function() {
+                    updateLocalStorage("rustdoc-saved-filter-crate", selectCrate.value);
                     search(undefined, true);
                 };
             }
@@ -1671,19 +1846,8 @@ if (!DOMTokenList.prototype.remove) {
                 // Store the previous <title> so we can revert back to it later.
                 var previousTitle = document.title;
 
-                window.onpopstate = function(e) {
+                window.addEventListener("popstate", function(e) {
                     var params = getQueryStringParams();
-                    // When browsing back from search results the main page
-                    // visibility must be reset.
-                    if (!params.search) {
-                        if (hasClass(main, "content")) {
-                            removeClass(main, "hidden");
-                        }
-                        var search_c = document.getElementById("search");
-                        if (hasClass(search_c, "content")) {
-                            addClass(search_c, "hidden");
-                        }
-                    }
                     // Revert to the previous title manually since the History
                     // API ignores the title parameter.
                     document.title = previousTitle;
@@ -1695,18 +1859,21 @@ if (!DOMTokenList.prototype.remove) {
                     // perform the search. This will empty the bar if there's
                     // nothing there, which lets you really go back to a
                     // previous state with nothing in the bar.
-                    if (params.search) {
+                    if (params.search && params.search.length > 0) {
                         search_input.value = params.search;
+                        // Some browsers fire "onpopstate" for every page load
+                        // (Chrome), while others fire the event only when actually
+                        // popping a state (Firefox), which is why search() is
+                        // called both here and at the end of the startSearch()
+                        // function.
+                        search(e);
                     } else {
                         search_input.value = "";
+                        // When browsing back from search results the main page
+                        // visibility must be reset.
+                        hideSearchResults();
                     }
-                    // Some browsers fire "onpopstate" for every page load
-                    // (Chrome), while others fire the event only when actually
-                    // popping a state (Firefox), which is why search() is
-                    // called both here and at the end of the startSearch()
-                    // function.
-                    search();
-                };
+                });
             }
             search();
         }
@@ -1825,6 +1992,24 @@ if (!DOMTokenList.prototype.remove) {
         var implementors = document.getElementById("implementors-list");
         var synthetic_implementors = document.getElementById("synthetic-implementors-list");
 
+        if (synthetic_implementors) {
+            // This `inlined_types` variable is used to avoid having the same implementation
+            // showing up twice. For example "String" in the "Sync" doc page.
+            //
+            // By the way, this is only used by and useful for traits implemented automatically
+            // (like "Send" and "Sync").
+            var inlined_types = new Set();
+            onEachLazy(synthetic_implementors.getElementsByClassName("impl"), function(el) {
+                var aliases = el.getAttribute("aliases");
+                if (!aliases) {
+                    return;
+                }
+                aliases.split(",").forEach(function(alias) {
+                    inlined_types.add(alias);
+                });
+            });
+        }
+
         var libs = Object.getOwnPropertyNames(imp);
         var llength = libs.length;
         for (var i = 0; i < llength; ++i) {
@@ -1841,10 +2026,10 @@ if (!DOMTokenList.prototype.remove) {
                 if (struct.synthetic) {
                     var stlength = struct.types.length;
                     for (var k = 0; k < stlength; k++) {
-                        if (window.inlined_types.has(struct.types[k])) {
+                        if (inlined_types.has(struct.types[k])) {
                             continue struct_loop;
                         }
-                        window.inlined_types.add(struct.types[k]);
+                        inlined_types.add(struct.types[k]);
                     }
                 }
 
@@ -2078,8 +2263,8 @@ if (!DOMTokenList.prototype.remove) {
     function autoCollapse(pageId, collapse) {
         if (collapse) {
             toggleAllDocs(pageId, true);
-        } else if (getCurrentValue("rustdoc-trait-implementations") !== "false") {
-            var impl_list = document.getElementById("implementations-list");
+        } else if (getCurrentValue("rustdoc-auto-hide-trait-implementations") !== "false") {
+            var impl_list = document.getElementById("trait-implementations-list");
 
             if (impl_list !== null) {
                 onEachLazy(impl_list.getElementsByClassName("collapse-toggle"), function(e) {
@@ -2116,7 +2301,7 @@ if (!DOMTokenList.prototype.remove) {
     }
 
     var toggle = createSimpleToggle(false);
-    var hideMethodDocs = getCurrentValue("rustdoc-method-docs") === "true";
+    var hideMethodDocs = getCurrentValue("rustdoc-auto-hide-method-docs") === "true";
     var pageId = getPageId();
 
     var func = function(e) {
@@ -2246,7 +2431,31 @@ if (!DOMTokenList.prototype.remove) {
         return wrapper;
     }
 
-    var showItemDeclarations = getCurrentValue("rustdoc-item-declarations") === "false";
+    var currentType = document.getElementsByClassName("type-decl")[0];
+    var className = null;
+    if (currentType) {
+        currentType = currentType.getElementsByClassName("rust")[0];
+        if (currentType) {
+            currentType.classList.forEach(function(item) {
+                if (item !== "main") {
+                    className = item;
+                    return true;
+                }
+            });
+        }
+    }
+    var showItemDeclarations = getCurrentValue("rustdoc-auto-hide-" + className);
+    if (showItemDeclarations === null) {
+        if (className === "enum" || className === "macro") {
+            showItemDeclarations = "false";
+        } else if (className === "struct" || className === "union" || className === "trait") {
+            showItemDeclarations = "true";
+        } else {
+            // In case we found an unknown type, we just use the "parent" value.
+            showItemDeclarations = getCurrentValue("rustdoc-auto-hide-declarations");
+        }
+    }
+    showItemDeclarations = showItemDeclarations === "false";
     function buildToggleWrapper(e) {
         if (hasClass(e, "autohide")) {
             var wrap = e.previousElementSibling;
@@ -2329,7 +2538,7 @@ if (!DOMTokenList.prototype.remove) {
 
     // To avoid checking on "rustdoc-item-attributes" value on every loop...
     var itemAttributesFunc = function() {};
-    if (getCurrentValue("rustdoc-item-attributes") !== "false") {
+    if (getCurrentValue("rustdoc-auto-hide-attributes") !== "false") {
         itemAttributesFunc = function(x) {
             collapseDocs(x.previousSibling.childNodes[0], "toggle");
         };
@@ -2378,31 +2587,6 @@ if (!DOMTokenList.prototype.remove) {
         lineNumbersFunc(e);
     });
 
-    function showModal(content) {
-        var modal = document.createElement("div");
-        modal.id = "important";
-        addClass(modal, "modal");
-        modal.innerHTML = "<div class=\"modal-content\"><div class=\"close\" id=\"modal-close\">✕" +
-                          "</div><div class=\"whiter\"></div><span class=\"docblock\">" + content +
-                          "</span></div>";
-        document.getElementsByTagName("body")[0].appendChild(modal);
-        document.getElementById("modal-close").onclick = hideModal;
-        modal.onclick = hideModal;
-    }
-
-    function hideModal() {
-        var modal = document.getElementById("important");
-        if (modal) {
-            modal.parentNode.removeChild(modal);
-        }
-    }
-
-    onEachLazy(document.getElementsByClassName("important-traits"), function(e) {
-        e.onclick = function() {
-            showModal(e.lastElementChild.innerHTML);
-        };
-    });
-
     // In the search display, allows to switch between tabs.
     function printTab(nb) {
         if (nb === 0 || nb === 1 || nb === 2) {
@@ -2428,9 +2612,9 @@ if (!DOMTokenList.prototype.remove) {
     }
 
     function putBackSearch(search_input) {
-        if (search_input.value !== "") {
-            addClass(main, "hidden");
-            removeClass(document.getElementById("search"), "hidden");
+        var search = getSearchElement();
+        if (search_input.value !== "" && hasClass(search, "hidden")) {
+            showSearchResults(search);
             if (browserSupportsHistoryApi()) {
                 history.replaceState(search_input.value,
                                      "",
@@ -2447,10 +2631,9 @@ if (!DOMTokenList.prototype.remove) {
 
     var params = getQueryStringParams();
     if (params && params.search) {
-        addClass(main, "hidden");
-        var search = document.getElementById("search");
-        removeClass(search, "hidden");
+        var search = getSearchElement();
         search.innerHTML = "<h3 style=\"text-align: center;\">Loading search results...</h3>";
+        showSearchResults(search);
     }
 
     var sidebar_menu = document.getElementsByClassName("sidebar-menu")[0];
@@ -2496,7 +2679,7 @@ if (!DOMTokenList.prototype.remove) {
     }
 
     function addSearchOptions(crates) {
-        var elem = document.getElementById('crate-search');
+        var elem = document.getElementById("crate-search");
 
         if (!elem) {
             return;
@@ -2520,23 +2703,93 @@ if (!DOMTokenList.prototype.remove) {
             }
             return 0;
         });
+        var savedCrate = getCurrentValue("rustdoc-saved-filter-crate");
         for (var i = 0; i < crates_text.length; ++i) {
             var option = document.createElement("option");
             option.value = crates_text[i];
             option.innerText = crates_text[i];
             elem.appendChild(option);
+            // Set the crate filter from saved storage, if the current page has the saved crate
+            // filter.
+            //
+            // If not, ignore the crate filter -- we want to support filtering for crates on sites
+            // like doc.rust-lang.org where the crates may differ from page to page while on the
+            // same domain.
+            if (crates_text[i] === savedCrate) {
+                elem.value = savedCrate;
+            }
         }
+
+        if (search_input) {
+            search_input.removeAttribute('disabled');
+        };
     }
 
     window.addSearchOptions = addSearchOptions;
+
+    function buildHelperPopup() {
+        var popup = document.createElement("aside");
+        addClass(popup, "hidden");
+        popup.id = "help";
+
+        var container = document.createElement("div");
+        var shortcuts = [
+            ["?", "Show this help dialog"],
+            ["S", "Focus the search field"],
+            ["↑", "Move up in search results"],
+            ["↓", "Move down in search results"],
+            ["↹", "Switch tab"],
+            ["&#9166;", "Go to active search result"],
+            ["+", "Expand all sections"],
+            ["-", "Collapse all sections"],
+        ].map(x => "<dt><kbd>" + x[0] + "</kbd></dt><dd>" + x[1] + "</dd>").join("");
+        var div_shortcuts = document.createElement("div");
+        addClass(div_shortcuts, "shortcuts");
+        div_shortcuts.innerHTML = "<h2>Keyboard Shortcuts</h2><dl>" + shortcuts + "</dl></div>";
+
+        var infos = [
+            "Prefix searches with a type followed by a colon (e.g., <code>fn:</code>) to \
+             restrict the search to a given type.",
+            "Accepted types are: <code>fn</code>, <code>mod</code>, <code>struct</code>, \
+             <code>enum</code>, <code>trait</code>, <code>type</code>, <code>macro</code>, \
+             and <code>const</code>.",
+            "Search functions by type signature (e.g., <code>vec -&gt; usize</code> or \
+             <code>* -&gt; vec</code>)",
+            "Search multiple things at once by splitting your query with comma (e.g., \
+             <code>str,u8</code> or <code>String,struct:Vec,test</code>)",
+            "You can look for items with an exact name by putting double quotes around \
+             your request: <code>\"string\"</code>",
+            "Look for items inside another one by searching for a path: <code>vec::Vec</code>",
+        ].map(x => "<p>" + x + "</p>").join("");
+        var div_infos = document.createElement("div");
+        addClass(div_infos, "infos");
+        div_infos.innerHTML = "<h2>Search Tricks</h2>" + infos;
+
+        container.appendChild(div_shortcuts);
+        container.appendChild(div_infos);
+
+        popup.appendChild(container);
+        insertAfter(popup, getSearchElement());
+    }
+
+    onHashChange(null);
+    window.onhashchange = onHashChange;
+
+    buildHelperPopup();
 }());
 
 // Sets the focus on the search bar at the top of the page
 function focusSearchBar() {
-    document.getElementsByClassName("search-input")[0].focus();
+    getSearchInput().focus();
 }
 
 // Removes the focus from the search bar
 function defocusSearchBar() {
-    document.getElementsByClassName("search-input")[0].blur();
+    getSearchInput().blur();
 }
+
+// This is required in firefox. Explanations: when going back in the history, firefox doesn't re-run
+// the JS, therefore preventing rustdoc from setting a few things required to be able to reload the
+// previous search results (if you navigated to a search result with the keyboard, pressed enter on
+// it to navigate to that result, and then came back to this page).
+window.onunload = function(){};

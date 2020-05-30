@@ -1,7 +1,5 @@
 // run-pass
 
-#![feature(non_exhaustive)]
-
 pub enum NonExhaustiveVariants {
     #[non_exhaustive] Unit,
     #[non_exhaustive] Tuple(u32),
@@ -10,11 +8,11 @@ pub enum NonExhaustiveVariants {
 
 fn main() {
     let variant_tuple = NonExhaustiveVariants::Tuple(340);
-    let variant_struct = NonExhaustiveVariants::Struct { field: 340 };
+    let _variant_struct = NonExhaustiveVariants::Struct { field: 340 };
 
     match variant_tuple {
         NonExhaustiveVariants::Unit => "",
-        NonExhaustiveVariants::Tuple(fe_tpl) => "",
-        NonExhaustiveVariants::Struct { field } => ""
+        NonExhaustiveVariants::Tuple(_fe_tpl) => "",
+        NonExhaustiveVariants::Struct { field: _ } => ""
     };
 }

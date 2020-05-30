@@ -10,10 +10,14 @@ path = "lib.rs"
 
 [dependencies]
 log = "0.4"
-rustc = { path = "../librustc" }
-rustc_mir = { path = "../librustc_mir"}
+rustc_middle = { path = "../librustc_middle" }
+rustc_attr = { path = "../librustc_attr" }
 rustc_data_structures = { path = "../librustc_data_structures" }
-syntax = { path = "../libsyntax" }
-syntax_ext = { path = "../libsyntax_ext" }
-syntax_pos = { path = "../libsyntax_pos" }
-errors = { path = "../librustc_errors", package = "rustc_errors" }
+rustc_errors = { path = "../librustc_errors" }
+rustc_hir = { path = "../librustc_hir" }
+rustc_index = { path = "../librustc_index" }
+rustc_session = { path = "../librustc_session" }
+rustc_target = { path = "../librustc_target" }
+rustc_ast = { path = "../librustc_ast" }
+rustc_span = { path = "../librustc_span" }
+rustc_trait_selection = { path = "../librustc_trait_selection" }

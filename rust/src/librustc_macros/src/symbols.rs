@@ -1,12 +1,8 @@
 use proc_macro::TokenStream;
-use syn::{
-    Token, Ident, LitStr,
-    braced, parse_macro_input,
-};
-use syn::parse::{Result, Parse, ParseStream};
-use syn;
-use std::collections::HashSet;
 use quote::quote;
+use std::collections::HashSet;
+use syn::parse::{Parse, ParseStream, Result};
+use syn::{braced, parse_macro_input, Ident, LitStr, Token};
 
 #[allow(non_camel_case_types)]
 mod kw {
@@ -26,10 +22,7 @@ impl Parse for Keyword {
         let value = input.parse()?;
         input.parse::<Token![,]>()?;
 
-        Ok(Keyword {
-            name,
-            value,
-        })
+        Ok(Keyword { name, value })
     }
 }
 
@@ -47,10 +40,7 @@ impl Parse for Symbol {
         };
         input.parse::<Token![,]>()?;
 
-        Ok(Symbol {
-            name,
-            value,
-        })
+        Ok(Symbol { name, value })
     }
 }
 
@@ -84,10 +74,7 @@ impl Parse for Input {
         braced!(content in input);
         let symbols = content.parse()?;
 
-        Ok(Input {
-            keywords,
-            symbols,
-        })
+        Ok(Input { keywords, symbols })
     }
 }
 
@@ -116,6 +103,7 @@ pub fn symbols(input: TokenStream) -> TokenStream {
             #value,
         });
         keyword_stream.extend(quote! {
+            #[allow(non_upper_case_globals)]
             pub const #name: Symbol = Symbol::new(#counter);
         });
         counter += 1;
@@ -133,6 +121,8 @@ pub fn symbols(input: TokenStream) -> TokenStream {
             #value,
         });
         symbols_stream.extend(quote! {
+            #[allow(rustc::default_hash_types)]
+            #[allow(non_upper_case_globals)]
             pub const #name: Symbol = Symbol::new(#counter);
         });
         counter += 1;
@@ -162,6 +152,7 @@ pub fn symbols(input: TokenStream) -> TokenStream {
             () => {
                 #symbols_stream
 
+                #[allow(non_upper_case_globals)]
                 pub const digits_array: &[Symbol; 10] = &[
                     #digits_stream
                 ];

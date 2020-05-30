@@ -1,9 +1,9 @@
+use crate::convert::TryFrom;
 use crate::fmt;
 use crate::io::{self, IoSlice, IoSliceMut};
 use crate::net::{Ipv4Addr, Ipv6Addr, Shutdown, SocketAddr};
-use crate::time::Duration;
 use crate::sys::{unsupported, Void};
-use crate::convert::TryFrom;
+use crate::time::Duration;
 
 #[allow(unused_extern_crates)]
 pub extern crate libc as netc;
@@ -47,11 +47,19 @@ impl TcpStream {
         match self.0 {}
     }
 
+    pub fn is_read_vectored(&self) -> bool {
+        match self.0 {}
+    }
+
     pub fn write(&self, _: &[u8]) -> io::Result<usize> {
         match self.0 {}
     }
 
     pub fn write_vectored(&self, _: &[IoSlice<'_>]) -> io::Result<usize> {
+        match self.0 {}
+    }
+
+    pub fn is_write_vectored(&self) -> bool {
         match self.0 {}
     }
 

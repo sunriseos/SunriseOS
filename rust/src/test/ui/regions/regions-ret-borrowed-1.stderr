@@ -9,10 +9,14 @@ note: first, the lifetime cannot outlive the anonymous lifetime #2 defined on th
    |
 LL |     with(|o| o)
    |          ^^^^^
-   = note: ...so that the expression is assignable:
-           expected &isize
-              found &isize
-note: but, the lifetime must be valid for the lifetime 'a as defined on the function body at 9:14...
+note: ...so that the expression is assignable
+  --> $DIR/regions-ret-borrowed-1.rs:10:14
+   |
+LL |     with(|o| o)
+   |              ^
+   = note: expected  `&isize`
+              found  `&isize`
+note: but, the lifetime must be valid for the lifetime `'a` as defined on the function body at 9:14...
   --> $DIR/regions-ret-borrowed-1.rs:9:14
    |
 LL | fn return_it<'a>() -> &'a isize {
@@ -25,3 +29,4 @@ LL |     with(|o| o)
 
 error: aborting due to previous error
 
+For more information about this error, try `rustc --explain E0495`.

@@ -4,7 +4,7 @@ warning: trait objects without an explicit `dyn` are deprecated
 LL | fn foo(_x: Foo + Send) {
    |            ^^^^^^^^^^ help: use `dyn`: `dyn Foo + Send`
    |
-   = note: #[warn(bare_trait_objects)] on by default
+   = note: `#[warn(bare_trait_objects)]` on by default
 
 error[E0277]: the size for values of type `(dyn Foo + std::marker::Send + 'static)` cannot be known at compilation time
   --> $DIR/trait-bounds-not-on-bare-trait.rs:7:8
@@ -17,6 +17,6 @@ LL | fn foo(_x: Foo + Send) {
    = note: all local variables must have a statically known size
    = help: unsized locals are gated as an unstable feature
 
-error: aborting due to previous error
+error: aborting due to previous error; 1 warning emitted
 
 For more information about this error, try `rustc --explain E0277`.

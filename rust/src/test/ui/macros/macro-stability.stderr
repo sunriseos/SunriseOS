@@ -28,7 +28,7 @@ warning: use of deprecated item 'deprecated_macro': deprecation reason
 LL |     deprecated_macro!();
    |     ^^^^^^^^^^^^^^^^
    |
-   = note: #[warn(deprecated)] on by default
+   = note: `#[warn(deprecated)]` on by default
 
 warning: use of deprecated item 'local_deprecated': local deprecation reason
   --> $DIR/macro-stability.rs:26:5
@@ -36,6 +36,6 @@ warning: use of deprecated item 'local_deprecated': local deprecation reason
 LL |     local_deprecated!();
    |     ^^^^^^^^^^^^^^^^
 
-error: aborting due to 3 previous errors
+error: aborting due to 3 previous errors; 2 warnings emitted
 
 For more information about this error, try `rustc --explain E0658`.

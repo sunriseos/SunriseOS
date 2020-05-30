@@ -1,16 +1,16 @@
 //! Contains information about "passes", used to modify crate information during the documentation
 //! process.
 
-use rustc::hir::def_id::DefId;
-use rustc::lint as lint;
-use rustc::middle::privacy::AccessLevels;
-use rustc::util::nodemap::DefIdSet;
+use rustc_hir::def_id::{DefId, DefIdSet};
+use rustc_middle::middle::privacy::AccessLevels;
+use rustc_session::lint;
+use rustc_span::{InnerSpan, Span, DUMMY_SP};
 use std::mem;
-use syntax_pos::{DUMMY_SP, InnerSpan, Span};
 use std::ops::Range;
 
+use self::Condition::*;
 use crate::clean::{self, GetDefId, Item};
-use crate::core::{DocContext, DocAccessLevels};
+use crate::core::DocContext;
 use crate::fold::{DocFolder, StripItem};
 use crate::html::markdown::{find_testable_code, ErrorCodes, LangString};
 
@@ -53,12 +53,31 @@ pub use self::calculate_doc_coverage::CALCULATE_DOC_COVERAGE;
 #[derive(Copy, Clone)]
 pub struct Pass {
     pub name: &'static str,
-    pub pass: fn(clean::Crate, &DocContext<'_>) -> clean::Crate,
+    pub run: fn(clean::Crate, &DocContext<'_>) -> clean::Crate,
     pub description: &'static str,
 }
 
+/// In a list of passes, a pass that may or may not need to be run depending on options.
+#[derive(Copy, Clone)]
+pub struct ConditionalPass {
+    pub pass: Pass,
+    pub condition: Condition,
+}
+
+/// How to decide whether to run a conditional pass.
+#[derive(Copy, Clone)]
+pub enum Condition {
+    Always,
+    /// When `--document-private-items` is passed.
+    WhenDocumentPrivate,
+    /// When `--document-private-items` is not passed.
+    WhenNotDocumentPrivate,
+    /// When `--document-hidden-items` is not passed.
+    WhenNotDocumentHidden,
+}
+
 /// The full list of passes.
-pub const PASSES: &'static [Pass] = &[
+pub const PASSES: &[Pass] = &[
     CHECK_PRIVATE_ITEMS_DOC_TESTS,
     STRIP_HIDDEN,
     UNINDENT_COMMENTS,
@@ -73,70 +92,58 @@ pub const PASSES: &'static [Pass] = &[
 ];
 
 /// The list of passes run by default.
-pub const DEFAULT_PASSES: &[&str] = &[
-    "collect-trait-impls",
-    "collapse-docs",
-    "unindent-comments",
-    "check-private-items-doc-tests",
-    "strip-hidden",
-    "strip-private",
-    "collect-intra-doc-links",
-    "check-code-block-syntax",
-    "propagate-doc-cfg",
-];
-
-/// The list of default passes run with `--document-private-items` is passed to rustdoc.
-pub const DEFAULT_PRIVATE_PASSES: &[&str] = &[
-    "collect-trait-impls",
-    "collapse-docs",
-    "unindent-comments",
-    "check-private-items-doc-tests",
-    "strip-priv-imports",
-    "collect-intra-doc-links",
-    "check-code-block-syntax",
-    "propagate-doc-cfg",
+pub const DEFAULT_PASSES: &[ConditionalPass] = &[
+    ConditionalPass::always(COLLECT_TRAIT_IMPLS),
+    ConditionalPass::always(COLLAPSE_DOCS),
+    ConditionalPass::always(UNINDENT_COMMENTS),
+    ConditionalPass::always(CHECK_PRIVATE_ITEMS_DOC_TESTS),
+    ConditionalPass::new(STRIP_HIDDEN, WhenNotDocumentHidden),
+    ConditionalPass::new(STRIP_PRIVATE, WhenNotDocumentPrivate),
+    ConditionalPass::new(STRIP_PRIV_IMPORTS, WhenDocumentPrivate),
+    ConditionalPass::always(COLLECT_INTRA_DOC_LINKS),
+    ConditionalPass::always(CHECK_CODE_BLOCK_SYNTAX),
+    ConditionalPass::always(PROPAGATE_DOC_CFG),
 ];
 
 /// The list of default passes run when `--doc-coverage` is passed to rustdoc.
-pub const DEFAULT_COVERAGE_PASSES: &'static [&'static str] = &[
-    "collect-trait-impls",
-    "strip-hidden",
-    "strip-private",
-    "calculate-doc-coverage",
+pub const COVERAGE_PASSES: &[ConditionalPass] = &[
+    ConditionalPass::always(COLLECT_TRAIT_IMPLS),
+    ConditionalPass::new(STRIP_HIDDEN, WhenNotDocumentHidden),
+    ConditionalPass::new(STRIP_PRIVATE, WhenNotDocumentPrivate),
+    ConditionalPass::always(CALCULATE_DOC_COVERAGE),
 ];
 
-/// The list of default passes run when `--doc-coverage --document-private-items` is passed to
-/// rustdoc.
-pub const PRIVATE_COVERAGE_PASSES: &'static [&'static str] = &[
-    "collect-trait-impls",
-    "calculate-doc-coverage",
-];
+impl ConditionalPass {
+    pub const fn always(pass: Pass) -> Self {
+        Self::new(pass, Always)
+    }
+
+    pub const fn new(pass: Pass, condition: Condition) -> Self {
+        ConditionalPass { pass, condition }
+    }
+}
 
 /// A shorthand way to refer to which set of passes to use, based on the presence of
-/// `--no-defaults` or `--document-private-items`.
+/// `--no-defaults` and `--show-coverage`.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum DefaultPassOption {
     Default,
-    Private,
     Coverage,
-    PrivateCoverage,
     None,
 }
 
 /// Returns the given default set of passes.
-pub fn defaults(default_set: DefaultPassOption) -> &'static [&'static str] {
+pub fn defaults(default_set: DefaultPassOption) -> &'static [ConditionalPass] {
     match default_set {
         DefaultPassOption::Default => DEFAULT_PASSES,
-        DefaultPassOption::Private => DEFAULT_PRIVATE_PASSES,
-        DefaultPassOption::Coverage => DEFAULT_COVERAGE_PASSES,
-        DefaultPassOption::PrivateCoverage => PRIVATE_COVERAGE_PASSES,
+        DefaultPassOption::Coverage => COVERAGE_PASSES,
         DefaultPassOption::None => &[],
     }
 }
 
 /// If the given name matches a known pass, returns its information.
-pub fn find_pass(pass_name: &str) -> Option<&'static Pass> {
-    PASSES.iter().find(|p| p.name == pass_name)
+pub fn find_pass(pass_name: &str) -> Option<Pass> {
+    PASSES.iter().find(|p| p.name == pass_name).copied()
 }
 
 struct Stripper<'a> {
@@ -152,14 +159,14 @@ impl<'a> DocFolder for Stripper<'a> {
                 // We need to recurse into stripped modules to strip things
                 // like impl methods but when doing so we must not add any
                 // items to the `retained` set.
-                debug!("Stripper: recursing into stripped {} {:?}", i.type_(), i.name);
+                debug!("Stripper: recursing into stripped {:?} {:?}", i.type_(), i.name);
                 let old = mem::replace(&mut self.update_retained, false);
                 let ret = self.fold_item_recur(i);
                 self.update_retained = old;
                 return ret;
             }
             // These items can all get re-exported
-            clean::ExistentialItem(..)
+            clean::OpaqueTyItem(..)
             | clean::TypedefItem(..)
             | clean::StaticItem(..)
             | clean::StructItem(..)
@@ -177,20 +184,20 @@ impl<'a> DocFolder for Stripper<'a> {
             | clean::ForeignTypeItem => {
                 if i.def_id.is_local() {
                     if !self.access_levels.is_exported(i.def_id) {
-                        debug!("Stripper: stripping {} {:?}", i.type_(), i.name);
+                        debug!("Stripper: stripping {:?} {:?}", i.type_(), i.name);
                         return None;
                     }
                 }
             }
 
             clean::StructFieldItem(..) => {
-                if i.visibility != Some(clean::Public) {
+                if i.visibility != clean::Public {
                     return StripItem(i).strip();
                 }
             }
 
             clean::ModuleItem(..) => {
-                if i.def_id.is_local() && i.visibility != Some(clean::Public) {
+                if i.def_id.is_local() && i.visibility != clean::Public {
                     debug!("Stripper: stripping module {:?}", i.name);
                     let old = mem::replace(&mut self.update_retained, false);
                     let ret = StripItem(self.fold_item_recur(i).unwrap()).strip();
@@ -228,9 +235,7 @@ impl<'a> DocFolder for Stripper<'a> {
             // implementations of traits are always public.
             clean::ImplItem(ref imp) if imp.trait_.is_some() => true,
             // Struct variant fields have inherited visibility
-            clean::VariantItem(clean::Variant {
-                kind: clean::VariantKind::Struct(..),
-            }) => true,
+            clean::VariantItem(clean::Variant { kind: clean::VariantKind::Struct(..) }) => true,
             _ => false,
         };
 
@@ -280,8 +285,10 @@ impl<'a> DocFolder for ImplStripper<'a> {
                 for typaram in generics {
                     if let Some(did) = typaram.def_id() {
                         if did.is_local() && !self.retained.contains(&did) {
-                            debug!("ImplStripper: stripped item in trait's generics; \
-                                    removing impl");
+                            debug!(
+                                "ImplStripper: stripped item in trait's generics; \
+                                    removing impl"
+                            );
                             return None;
                         }
                     }
@@ -297,9 +304,7 @@ struct ImportStripper;
 impl DocFolder for ImportStripper {
     fn fold_item(&mut self, i: Item) -> Option<Item> {
         match i.inner {
-            clean::ExternCrateItem(..) | clean::ImportItem(..)
-                if i.visibility != Some(clean::Public) =>
-            {
+            clean::ExternCrateItem(..) | clean::ImportItem(..) if i.visibility != clean::Public => {
                 None
             }
             _ => self.fold_item_recur(i),
@@ -331,40 +336,39 @@ pub fn look_for_tests<'tcx>(
         }
     }
 
-    let mut tests = Tests {
-        found_tests: 0,
-    };
+    let mut tests = Tests { found_tests: 0 };
 
-    find_testable_code(&dox, &mut tests, ErrorCodes::No);
+    find_testable_code(&dox, &mut tests, ErrorCodes::No, false, None);
 
-    if check_missing_code == true && tests.found_tests == 0 {
-        let sp = span_of_attrs(&item.attrs).substitute_dummy(item.source.span());
-        let mut diag = cx.tcx.struct_span_lint_hir(
-            lint::builtin::MISSING_DOC_CODE_EXAMPLES,
-            hir_id,
-            sp,
-            "Missing code example in this documentation");
-        diag.emit();
-    } else if check_missing_code == false &&
-              tests.found_tests > 0 &&
-              !cx.renderinfo.borrow().access_levels.is_doc_reachable(item.def_id) {
-        let mut diag = cx.tcx.struct_span_lint_hir(
+    if check_missing_code && tests.found_tests == 0 {
+        let sp = span_of_attrs(&item.attrs).unwrap_or(item.source.span());
+        cx.tcx.struct_span_lint_hir(lint::builtin::MISSING_DOC_CODE_EXAMPLES, hir_id, sp, |lint| {
+            lint.build("missing code example in this documentation").emit()
+        });
+    } else if !check_missing_code
+        && tests.found_tests > 0
+        && !cx.renderinfo.borrow().access_levels.is_public(item.def_id)
+    {
+        cx.tcx.struct_span_lint_hir(
             lint::builtin::PRIVATE_DOC_TESTS,
             hir_id,
-            span_of_attrs(&item.attrs),
-            "Documentation test in private item");
-        diag.emit();
+            span_of_attrs(&item.attrs).unwrap_or(item.source.span()),
+            |lint| lint.build("documentation test in private item").emit(),
+        );
     }
 }
 
 /// Returns a span encompassing all the given attributes.
-crate fn span_of_attrs(attrs: &clean::Attributes) -> Span {
+crate fn span_of_attrs(attrs: &clean::Attributes) -> Option<Span> {
     if attrs.doc_strings.is_empty() {
-        return DUMMY_SP;
+        return None;
     }
     let start = attrs.doc_strings[0].span();
-    let end = attrs.doc_strings.last().expect("No doc strings provided").span();
-    start.to(end)
+    if start == DUMMY_SP {
+        return None;
+    }
+    let end = attrs.doc_strings.last().expect("no doc strings provided").span();
+    Some(start.to(end))
 }
 
 /// Attempts to match a range of bytes from parsed markdown to a `Span` in the source code.
@@ -387,11 +391,7 @@ crate fn source_span_for_markdown_range(
         return None;
     }
 
-    let snippet = cx
-        .sess()
-        .source_map()
-        .span_to_snippet(span_of_attrs(attrs))
-        .ok()?;
+    let snippet = cx.sess().source_map().span_to_snippet(span_of_attrs(attrs)?).ok()?;
 
     let starting_line = markdown[..md_range.start].matches('\n').count();
     let ending_line = starting_line + markdown[md_range.start..md_range.end].matches('\n').count();
@@ -440,10 +440,8 @@ crate fn source_span_for_markdown_range(
         }
     }
 
-    let sp = span_of_attrs(attrs).from_inner(InnerSpan::new(
+    Some(span_of_attrs(attrs)?.from_inner(InnerSpan::new(
         md_range.start + start_bytes,
         md_range.end + start_bytes + end_bytes,
-    ));
-
-    Some(sp)
+    )))
 }

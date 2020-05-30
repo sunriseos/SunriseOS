@@ -13,10 +13,16 @@ doctest = false
 [dependencies]
 arena = { path = "../libarena" }
 log = "0.4"
-rustc = { path = "../librustc" }
+rustc_middle = { path = "../librustc_middle" }
+rustc_attr = { path = "../librustc_attr" }
 rustc_data_structures = { path = "../librustc_data_structures" }
-errors = { path = "../librustc_errors", package = "rustc_errors" }
+rustc_errors = { path = "../librustc_errors" }
+rustc_hir = { path = "../librustc_hir" }
 rustc_target = { path = "../librustc_target" }
-smallvec = { version = "0.6.7", features = ["union", "may_dangle"] }
-syntax = { path = "../libsyntax" }
-syntax_pos = { path = "../libsyntax_pos" }
+rustc_session = { path = "../librustc_session" }
+smallvec = { version = "1.0", features = ["union", "may_dangle"] }
+rustc_ast = { path = "../librustc_ast" }
+rustc_span = { path = "../librustc_span" }
+rustc_index = { path = "../librustc_index" }
+rustc_infer = { path = "../librustc_infer" }
+rustc_trait_selection = { path = "../librustc_trait_selection" }

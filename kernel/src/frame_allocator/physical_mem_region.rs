@@ -61,6 +61,10 @@ impl PhysicalMemRegion {
     /// * InvalidLength:
     ///     * `length` is not PAGE_SIZE aligned.
     ///     * `length` is zero.
+    ///
+    /// # Safety
+    ///
+    ///
     pub unsafe fn on_fixed_mmio(address: PhysicalAddress, length: usize) -> Result<Self, KernelError> {
         check_nonzero_length(length)?;
         check_size_aligned(length, PAGE_SIZE)?;
@@ -81,6 +85,12 @@ impl PhysicalMemRegion {
     ///
     /// * Panics when the address is not framesize-aligned
     /// * Panics when the len is not framesize-aligned
+    ///
+    /// # Safety
+    ///
+    /// This function can be used to allocate the same frame twice, which would
+    /// cause undefined behavior if written to without additional
+    /// synchronization.
     pub unsafe fn new_unchecked(physical_addr: PhysicalAddress, len: usize) -> Self {
         assert_eq!(physical_addr.addr() % PAGE_SIZE, 0,
                    "PhysicalMemRegion must be constructed from a framesize-aligned pointer");
@@ -112,6 +122,12 @@ impl PhysicalMemRegion {
     /// the frame allocator.
     /// * Panics when the address is not framesize-aligned
     /// * Panics when the len is not framesize-aligned
+    ///
+    /// # Safety
+    ///
+    /// This function should only be called to recreate a `PhysicalMemRegion` that
+    /// was previously created by `FrameAlloc::allocate_region`, and
+    /// `mem::forget`'d.
     pub unsafe fn reconstruct(physical_addr: PhysicalAddress, len: usize) -> Self {
         assert_eq!(physical_addr.addr() % PAGE_SIZE, 0,
                    "PhysicalMemRegion must be constructed from a framesize-aligned pointer");
@@ -128,7 +144,7 @@ impl PhysicalMemRegion {
     /// Constructs a `PhysicalMemRegion` from a physical address, and a len.
     /// Region won't be given back to the [FrameAllocator] on drop.
     ///
-    /// # Unsafe
+    /// # Safety
     ///
     /// This function by-passes the [FrameAllocator], and should only be used
     /// for frames that have been deconstructed and put in the Page Tables,

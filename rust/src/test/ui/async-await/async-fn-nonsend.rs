@@ -1,18 +1,15 @@
-// compile-fail
 // edition:2018
 // compile-flags: --crate-type lib
 
-#![feature(async_await)]
+use std::{cell::RefCell, fmt::Debug, rc::Rc};
 
-use std::{
-    cell::RefCell,
-    fmt::Debug,
-    rc::Rc,
-};
+fn non_sync() -> impl Debug {
+    RefCell::new(())
+}
 
-fn non_sync() -> impl Debug { RefCell::new(()) }
-
-fn non_send() -> impl Debug { Rc::new(()) }
+fn non_send() -> impl Debug {
+    Rc::new(())
+}
 
 fn take_ref<T>(_: &T) {}
 
@@ -50,10 +47,9 @@ fn assert_send(_: impl Send) {}
 
 pub fn pass_assert() {
     assert_send(local_dropped_before_await());
-    //~^ ERROR `std::rc::Rc<()>` cannot be sent between threads safely
+    //~^ ERROR future cannot be sent between threads safely
     assert_send(non_send_temporary_in_match());
-    //~^ ERROR `std::rc::Rc<()>` cannot be sent between threads safely
+    //~^ ERROR future cannot be sent between threads safely
     assert_send(non_sync_with_method_call());
-    //~^ ERROR `dyn std::fmt::Write` cannot be sent between threads safely
-    //~^^ ERROR `*mut (dyn std::ops::Fn() + 'static)` cannot be shared between threads safely
+    //~^ ERROR future cannot be sent between threads safely
 }

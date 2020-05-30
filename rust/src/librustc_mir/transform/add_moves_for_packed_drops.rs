@@ -1,10 +1,10 @@
-use rustc::hir::def_id::DefId;
-use rustc::mir::*;
-use rustc::ty::TyCtxt;
+use rustc_hir::def_id::DefId;
+use rustc_middle::mir::*;
+use rustc_middle::ty::TyCtxt;
 
 use crate::transform::{MirPass, MirSource};
-use crate::util::patch::MirPatch;
 use crate::util;
+use crate::util::patch::MirPatch;
 
 // This pass moves values being dropped that are within a packed
 // struct to a separate local before dropping them, to ensure that
@@ -39,8 +39,8 @@ use crate::util;
 
 pub struct AddMovesForPackedDrops;
 
-impl MirPass for AddMovesForPackedDrops {
-    fn run_pass<'tcx>(&self, tcx: TyCtxt<'tcx>, src: MirSource<'tcx>, body: &mut Body<'tcx>) {
+impl<'tcx> MirPass<'tcx> for AddMovesForPackedDrops {
+    fn run_pass(&self, tcx: TyCtxt<'tcx>, src: MirSource<'tcx>, body: &mut Body<'tcx>) {
         debug!("add_moves_for_packed_drops({:?} @ {:?})", src, body.span);
         add_moves_for_packed_drops(tcx, body, src.def_id());
     }
@@ -64,15 +64,13 @@ fn add_moves_for_packed_drops_patch<'tcx>(
         let terminator = data.terminator();
 
         match terminator.kind {
-            TerminatorKind::Drop { ref location, .. }
+            TerminatorKind::Drop { location, .. }
                 if util::is_disaligned(tcx, body, param_env, location) =>
             {
-                add_move_for_packed_drop(tcx, body, &mut patch, terminator,
-                                         loc, data.is_cleanup);
+                add_move_for_packed_drop(tcx, body, &mut patch, terminator, loc, data.is_cleanup);
             }
             TerminatorKind::DropAndReplace { .. } => {
-                span_bug!(terminator.source_info.span,
-                          "replace in AddMovesForPackedDrops");
+                span_bug!(terminator.source_info.span, "replace in AddMovesForPackedDrops");
             }
             _ => {}
         }
@@ -91,9 +89,8 @@ fn add_move_for_packed_drop<'tcx>(
 ) {
     debug!("add_move_for_packed_drop({:?} @ {:?})", terminator, loc);
     let (location, target, unwind) = match terminator.kind {
-        TerminatorKind::Drop { ref location, target, unwind } =>
-            (location, target, unwind),
-        _ => unreachable!()
+        TerminatorKind::Drop { ref location, target, unwind } => (location, target, unwind),
+        _ => unreachable!(),
     };
 
     let source_info = terminator.source_info;
@@ -101,22 +98,15 @@ fn add_move_for_packed_drop<'tcx>(
     let temp = patch.new_temp(ty, terminator.source_info.span);
 
     let storage_dead_block = patch.new_block(BasicBlockData {
-        statements: vec![Statement {
-            source_info, kind: StatementKind::StorageDead(temp)
-        }],
-        terminator: Some(Terminator {
-            source_info, kind: TerminatorKind::Goto { target }
-        }),
-        is_cleanup
+        statements: vec![Statement { source_info, kind: StatementKind::StorageDead(temp) }],
+        terminator: Some(Terminator { source_info, kind: TerminatorKind::Goto { target } }),
+        is_cleanup,
     });
 
-    patch.add_statement(
-        loc, StatementKind::StorageLive(temp));
-    patch.add_assign(loc, Place::from(temp),
-                     Rvalue::Use(Operand::Move(location.clone())));
-    patch.patch_terminator(loc.block, TerminatorKind::Drop {
-        location: Place::from(temp),
-        target: storage_dead_block,
-        unwind
-    });
+    patch.add_statement(loc, StatementKind::StorageLive(temp));
+    patch.add_assign(loc, Place::from(temp), Rvalue::Use(Operand::Move(*location)));
+    patch.patch_terminator(
+        loc.block,
+        TerminatorKind::Drop { location: Place::from(temp), target: storage_dead_block, unwind },
+    );
 }

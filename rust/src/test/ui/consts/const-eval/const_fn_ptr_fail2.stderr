@@ -1,0 +1,31 @@
+error[E0080]: evaluation of constant expression failed
+  --> $DIR/const_fn_ptr_fail2.rs:20:5
+   |
+LL |     assert_eq!(Y, 4);
+   |     ^^^^^^^^^^^-^^^^^
+   |                |
+   |                referenced constant has errors
+   |
+   = note: this error originates in a macro (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0080]: evaluation of constant expression failed
+  --> $DIR/const_fn_ptr_fail2.rs:22:5
+   |
+LL |     assert_eq!(Z, 4);
+   |     ^^^^^^^^^^^-^^^^^
+   |                |
+   |                referenced constant has errors
+   |
+   = note: this error originates in a macro (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: skipping const checks
+   |
+help: skipping check that does not even have a feature gate
+  --> $DIR/const_fn_ptr_fail2.rs:13:5
+   |
+LL |     x(y)
+   |     ^^^^
+
+error: aborting due to 2 previous errors; 1 warning emitted
+
+For more information about this error, try `rustc --explain E0080`.

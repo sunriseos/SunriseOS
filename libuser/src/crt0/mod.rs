@@ -10,7 +10,7 @@ pub mod relocation;
 #[no_mangle]
 #[link_section = ".text.crt0"]
 pub unsafe extern fn start() {
-    asm!("
+    llvm_asm!("
     .intel_syntax noprefix
     get_aslr_base:
         call _start_shim

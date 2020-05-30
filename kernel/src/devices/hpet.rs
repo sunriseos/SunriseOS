@@ -452,6 +452,10 @@ assert_eq_size!(HpetRegister, [u8; 0x100]);
 static mut HPET_INSTANCE: Option<Hpet> = None;
 
 /// Try to initialize the HPET in legacy mode.
+///
+/// # Safety
+///
+/// May only be called once.
 pub unsafe fn init(hpet: &acpi::Hpet) -> bool {
     let physical_mem = PhysicalMemRegion::on_fixed_mmio(
         PhysicalAddress(hpet.base_address.address as usize),
@@ -515,11 +519,11 @@ pub unsafe fn init(hpet: &acpi::Hpet) -> bool {
     // BODY: Idealy, HPET should be using IRQ2 (which seems to be generally
     // BODY: wired properly). Unfortunately, qemu has an unfortunate bug where
     // BODY: interrupts for IRQ2 gets ignored.
-    // BODY: 
+    // BODY:
     // BODY: As a workaround, we currently use IRQ16 as the timer IRQ. This is
     // BODY: not very portable - but it'll do until we have a proper IRQ
     // BODY: allocation scheme.
-    // BODY: 
+    // BODY:
     // BODY: Upstream bug: https://bugs.launchpad.net/qemu/+bug/1834051
     // Route the timer to the IRQ 16. IRQ 2 is broken, and IRQ 0 is not
     // supported.

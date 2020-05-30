@@ -1,17 +1,16 @@
 /// The underlying OsString/OsStr implementation on Windows is a
 /// wrapper around the "WTF-8" encoding; see the `wtf8` module for more.
-
 use crate::borrow::Cow;
 use crate::fmt;
-use crate::sys_common::wtf8::{Wtf8, Wtf8Buf};
 use crate::mem;
 use crate::rc::Rc;
 use crate::sync::Arc;
-use crate::sys_common::{AsInner, IntoInner, FromInner};
+use crate::sys_common::wtf8::{Wtf8, Wtf8Buf};
+use crate::sys_common::{AsInner, FromInner, IntoInner};
 
 #[derive(Clone, Hash)]
 pub struct Buf {
-    pub inner: Wtf8Buf
+    pub inner: Wtf8Buf,
 }
 
 impl IntoInner<Wtf8Buf> for Buf {
@@ -45,7 +44,7 @@ impl fmt::Display for Buf {
 }
 
 pub struct Slice {
-    pub inner: Wtf8
+    pub inner: Wtf8,
 }
 
 impl fmt::Debug for Slice {
@@ -62,9 +61,7 @@ impl fmt::Display for Slice {
 
 impl Buf {
     pub fn with_capacity(capacity: usize) -> Buf {
-        Buf {
-            inner: Wtf8Buf::with_capacity(capacity)
-        }
+        Buf { inner: Wtf8Buf::with_capacity(capacity) }
     }
 
     pub fn clear(&mut self) {
@@ -80,7 +77,19 @@ impl Buf {
     }
 
     pub fn as_slice(&self) -> &Slice {
+        // Safety: Slice is just a wrapper for Wtf8,
+        // and self.inner.as_slice() returns &Wtf8.
+        // Therefore, transmuting &Wtf8 to &Slice is safe.
         unsafe { mem::transmute(self.inner.as_slice()) }
+    }
+
+    pub fn as_mut_slice(&mut self) -> &mut Slice {
+        // Safety: Slice is just a wrapper for Wtf8,
+        // and self.inner.as_mut_slice() returns &mut Wtf8.
+        // Therefore, transmuting &mut Wtf8 to &mut Slice is safe.
+        // Additionally, care should be taken to ensure the slice
+        // is always valid Wtf8.
+        unsafe { mem::transmute(self.inner.as_mut_slice()) }
     }
 
     pub fn into_string(self) -> Result<String, Buf> {
@@ -131,6 +140,7 @@ impl Buf {
 }
 
 impl Slice {
+    #[inline]
     pub fn from_str(s: &str) -> &Slice {
         unsafe { mem::transmute(Wtf8::from_str(s)) }
     }
@@ -147,6 +157,10 @@ impl Slice {
         let mut buf = Wtf8Buf::with_capacity(self.inner.len());
         buf.push_wtf8(&self.inner);
         Buf { inner: buf }
+    }
+
+    pub fn clone_into(&self, buf: &mut Buf) {
+        self.inner.clone_into(&mut buf.inner)
     }
 
     #[inline]
@@ -168,5 +182,35 @@ impl Slice {
     pub fn into_rc(&self) -> Rc<Slice> {
         let rc = self.inner.into_rc();
         unsafe { Rc::from_raw(Rc::into_raw(rc) as *const Slice) }
+    }
+
+    #[inline]
+    pub fn make_ascii_lowercase(&mut self) {
+        self.inner.make_ascii_lowercase()
+    }
+
+    #[inline]
+    pub fn make_ascii_uppercase(&mut self) {
+        self.inner.make_ascii_uppercase()
+    }
+
+    #[inline]
+    pub fn to_ascii_lowercase(&self) -> Buf {
+        Buf { inner: self.inner.to_ascii_lowercase() }
+    }
+
+    #[inline]
+    pub fn to_ascii_uppercase(&self) -> Buf {
+        Buf { inner: self.inner.to_ascii_uppercase() }
+    }
+
+    #[inline]
+    pub fn is_ascii(&self) -> bool {
+        self.inner.is_ascii()
+    }
+
+    #[inline]
+    pub fn eq_ignore_ascii_case(&self, other: &Self) -> bool {
+        self.inner.eq_ignore_ascii_case(&other.inner)
     }
 }

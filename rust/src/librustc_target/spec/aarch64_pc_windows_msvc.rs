@@ -1,12 +1,10 @@
-use crate::spec::{LinkerFlavor, Target, TargetResult, PanicStrategy};
+use crate::spec::{LinkerFlavor, Target, TargetResult};
 
 pub fn target() -> TargetResult {
     let mut base = super::windows_msvc_base::opts();
     base.max_atomic_width = Some(64);
     base.has_elf_tls = true;
-
-    // FIXME: this shouldn't be panic=abort, it should be panic=unwind
-    base.panic_strategy = PanicStrategy::Abort;
+    base.features = "+neon,+fp-armv8".to_string();
 
     Ok(Target {
         llvm_target: "aarch64-pc-windows-msvc".to_string(),

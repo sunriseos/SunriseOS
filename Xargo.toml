@@ -10,8 +10,13 @@ stage = 1
 
 [patch.crates-io.libc]
 git = "https://github.com/sunriseos/libc.git"
-branch = "sunrise"
+branch = "sunrise-2020-05-27"
 features = ['align']
+
+[patch.crates-io.compiler_builtins]
+git = "https://github.com/sunriseos/compiler-builtins.git"
+branch = "sunrise-2020-05-27"
+features = ['soft-float']
 
 [patch."https://github.com/sunriseos/sunriseos.git".sunrise-libuser]
 path = "libuser"

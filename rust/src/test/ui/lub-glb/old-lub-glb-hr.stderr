@@ -1,4 +1,4 @@
-error[E0308]: match arms have incompatible types
+error[E0308]: `match` arms have incompatible types
   --> $DIR/old-lub-glb-hr.rs:16:14
    |
 LL |       let z = match 22 {
@@ -10,8 +10,8 @@ LL | |         _ => y,
 LL | |     };
    | |_____- `match` arms have incompatible types
    |
-   = note: expected type `for<'r, 's> fn(&'r u8, &'s u8)`
-              found type `for<'a> fn(&'a u8, &'a u8)`
+   = note:    expected type `for<'r, 's> fn(&'r u8, &'s u8)`
+           found fn pointer `for<'a> fn(&'a u8, &'a u8)`
 
 error: aborting due to previous error
 

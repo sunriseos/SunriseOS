@@ -73,7 +73,7 @@
 //! you know what you're getting in to!
 
 use super::wasm32_base;
-use super::{LinkerFlavor, LldFlavor, Target};
+use super::{crt_objects, LinkerFlavor, LldFlavor, Target};
 
 pub fn target() -> Result<Target, String> {
     let mut options = wasm32_base::options();
@@ -84,9 +84,8 @@ pub fn target() -> Result<Target, String> {
         .or_insert(Vec::new())
         .push("--target=wasm32-wasi".to_string());
 
-    // When generating an executable be sure to put the startup object at the
-    // front so the main function is correctly hooked up.
-    options.pre_link_objects_exe_crt.push("crt1.o".to_string());
+    options.pre_link_objects_fallback = crt_objects::pre_wasi_fallback();
+    options.post_link_objects_fallback = crt_objects::post_wasi_fallback();
 
     // Right now this is a bit of a workaround but we're currently saying that
     // the target by default has a static crt which we're taking as a signal
@@ -96,6 +95,14 @@ pub fn target() -> Result<Target, String> {
     // compiler if configured correctly.
     options.crt_static_default = true;
     options.crt_static_respected = true;
+
+    // Allow `+crt-static` to create a "cdylib" output which is just a wasm file
+    // without a main function.
+    options.crt_static_allows_dylibs = true;
+
+    // WASI's `sys::args::init` function ignores its arguments; instead,
+    // `args::args()` makes the WASI API calls itself.
+    options.main_needs_argc_argv = false;
 
     Ok(Target {
         llvm_target: "wasm32-wasi".to_string(),

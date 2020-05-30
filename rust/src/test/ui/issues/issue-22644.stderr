@@ -50,6 +50,7 @@ LL |                    <
    |                    ^ not interpreted as comparison
 LL |                    4);
    |                    - interpreted as generic arguments
+   |
 help: try comparing the cast value
    |
 LL |     println!("{}", (a
@@ -64,6 +65,7 @@ LL |                    <
    |                    ^ not interpreted as comparison
 LL |                    5);
    |                    - interpreted as generic arguments
+   |
 help: try comparing the cast value
    |
 LL |     println!("{}", (a
@@ -87,15 +89,12 @@ error: expected type, found `4`
   --> $DIR/issue-22644.rs:34:28
    |
 LL |     println!("{}", a: &mut 4);
-   |                            ^ expecting a type here because of type ascription
+   |                     -      ^ expected type
+   |                     |
+   |                     tried to parse a type due to this type ascription
    |
-   = note: #![feature(type_ascription)] lets you annotate an expression with a type: `<expr>: <type>`
-note: this expression expects an ascribed type after the colon
-  --> $DIR/issue-22644.rs:34:20
-   |
-LL |     println!("{}", a: &mut 4);
-   |                    ^
-   = help: this might be indicative of a syntax error elsewhere
+   = note: `#![feature(type_ascription)]` lets you annotate an expression with a type: `<expr>: <type>`
+   = note: see issue #23416 <https://github.com/rust-lang/rust/issues/23416> for more information
 
 error: aborting due to 9 previous errors
 

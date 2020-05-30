@@ -15,7 +15,7 @@ pub static HELP: &str = "test_divide_by_zero: Check exception handling by throwi
 pub fn main(_stdin: IPipeProxy, _stdout: IPipeProxy, _stderr: IPipeProxy, _args: Vec<String>) -> Result<(), Error> {
     // don't panic, we want to actually divide by zero
     unsafe {
-        asm!("
+        llvm_asm!("
         mov eax, 42
         mov ecx, 0
         div ecx" :::: "volatile", "intel")

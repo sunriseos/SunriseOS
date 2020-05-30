@@ -37,9 +37,10 @@
 //! and will allocate a new page every time it is full and cannot satisfy a TLS allocation.
 //!
 //! [TLS]: sunrise_libkern::TLS
-//! [TLSManager]: thread_local_storage::TLSManager
-//! [allocate_TLS]: thread_local_storage::TLSManager::allocate_tls
-//! [free_TLS]: thread_local_storage::TLSManager::free_tls
+//! [TLSManager]: TLSManager
+//! [ThreadStruct]: crate::process::ThreadStruct
+//! [allocate_TLS]: TLSManager::allocate_tls
+//! [free_TLS]: TLSManager::free_tls
 
 use crate::VirtualAddress;
 use crate::PAGE_SIZE;
@@ -165,7 +166,7 @@ impl TLSManager {
 
     /// Mark this TLS as free, so it can be re-used by future spawned thread.
     ///
-    /// # Unsafety
+    /// # Safety
     ///
     /// The TLS will be reassigned, so it must never be used again after calling this function.
     ///

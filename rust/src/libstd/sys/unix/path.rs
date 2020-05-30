@@ -1,5 +1,5 @@
-use crate::path::{PrefixComponent, Prefix};
 use crate::ffi::OsStr;
+use crate::path::{PrefixComponent, Prefix};
 
 #[inline]
 pub fn is_sep_byte(b: u8) -> bool {

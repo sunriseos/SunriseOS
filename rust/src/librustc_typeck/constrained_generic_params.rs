@@ -1,29 +1,34 @@
-use rustc::ty::{self, Ty, TyCtxt};
-use rustc::ty::fold::{TypeFoldable, TypeVisitor};
-use rustc::util::nodemap::FxHashSet;
-use rustc::mir::interpret::ConstValue;
-use syntax::source_map::Span;
+use rustc_data_structures::fx::FxHashSet;
+use rustc_middle::ty::fold::{TypeFoldable, TypeVisitor};
+use rustc_middle::ty::{self, Ty, TyCtxt};
+use rustc_span::source_map::Span;
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Parameter(pub u32);
 
 impl From<ty::ParamTy> for Parameter {
-    fn from(param: ty::ParamTy) -> Self { Parameter(param.index) }
+    fn from(param: ty::ParamTy) -> Self {
+        Parameter(param.index)
+    }
 }
 
 impl From<ty::EarlyBoundRegion> for Parameter {
-    fn from(param: ty::EarlyBoundRegion) -> Self { Parameter(param.index) }
+    fn from(param: ty::EarlyBoundRegion) -> Self {
+        Parameter(param.index)
+    }
 }
 
 impl From<ty::ParamConst> for Parameter {
-    fn from(param: ty::ParamConst) -> Self { Parameter(param.index) }
+    fn from(param: ty::ParamConst) -> Self {
+        Parameter(param.index)
+    }
 }
 
 /// Returns the set of parameters constrained by the impl header.
-pub fn parameters_for_impl<'tcx>(impl_self_ty: Ty<'tcx>,
-                                 impl_trait_ref: Option<ty::TraitRef<'tcx>>)
-                                 -> FxHashSet<Parameter>
-{
+pub fn parameters_for_impl<'tcx>(
+    impl_self_ty: Ty<'tcx>,
+    impl_trait_ref: Option<ty::TraitRef<'tcx>>,
+) -> FxHashSet<Parameter> {
     let vec = match impl_trait_ref {
         Some(tr) => parameters_for(&tr, false),
         None => parameters_for(&impl_self_ty, false),
@@ -31,33 +36,28 @@ pub fn parameters_for_impl<'tcx>(impl_self_ty: Ty<'tcx>,
     vec.into_iter().collect()
 }
 
-/// If `include_projections` is false, returns the list of parameters that are
+/// If `include_nonconstraining` is false, returns the list of parameters that are
 /// constrained by `t` - i.e., the value of each parameter in the list is
 /// uniquely determined by `t` (see RFC 447). If it is true, return the list
 /// of parameters whose values are needed in order to constrain `ty` - these
 /// differ, with the latter being a superset, in the presence of projections.
-pub fn parameters_for<'tcx, T>(t: &T,
-                               include_nonconstraining: bool)
-                               -> Vec<Parameter>
-    where T: TypeFoldable<'tcx>
-{
-
-    let mut collector = ParameterCollector {
-        parameters: vec![],
-        include_nonconstraining,
-    };
+pub fn parameters_for<'tcx>(
+    t: &impl TypeFoldable<'tcx>,
+    include_nonconstraining: bool,
+) -> Vec<Parameter> {
+    let mut collector = ParameterCollector { parameters: vec![], include_nonconstraining };
     t.visit_with(&mut collector);
     collector.parameters
 }
 
 struct ParameterCollector {
     parameters: Vec<Parameter>,
-    include_nonconstraining: bool
+    include_nonconstraining: bool,
 }
 
 impl<'tcx> TypeVisitor<'tcx> for ParameterCollector {
     fn visit_ty(&mut self, t: Ty<'tcx>) -> bool {
-        match t.sty {
+        match t.kind {
             ty::Projection(..) | ty::Opaque(..) if !self.include_nonconstraining => {
                 // projections are not injective
                 return false;
@@ -79,23 +79,30 @@ impl<'tcx> TypeVisitor<'tcx> for ParameterCollector {
     }
 
     fn visit_const(&mut self, c: &'tcx ty::Const<'tcx>) -> bool {
-        if let ConstValue::Param(data) = c.val {
-            self.parameters.push(Parameter::from(data));
+        match c.val {
+            ty::ConstKind::Unevaluated(..) if !self.include_nonconstraining => {
+                // Constant expressions are not injective
+                return c.ty.visit_with(self);
+            }
+            ty::ConstKind::Param(data) => {
+                self.parameters.push(Parameter::from(data));
+            }
+            _ => {}
         }
-        false
+
+        c.super_visit_with(self)
     }
 }
 
 pub fn identify_constrained_generic_params<'tcx>(
     tcx: TyCtxt<'tcx>,
-    predicates: &ty::GenericPredicates<'tcx>,
+    predicates: ty::GenericPredicates<'tcx>,
     impl_trait_ref: Option<ty::TraitRef<'tcx>>,
     input_parameters: &mut FxHashSet<Parameter>,
 ) {
-    let mut predicates = predicates.predicates.clone();
+    let mut predicates = predicates.predicates.to_vec();
     setup_constraining_predicates(tcx, &mut predicates, impl_trait_ref, input_parameters);
 }
-
 
 /// Order the predicates in `predicates` such that each parameter is
 /// constrained before it is used, if that is possible, and add the
@@ -138,7 +145,7 @@ pub fn identify_constrained_generic_params<'tcx>(
 /// by 0. I should probably pick a less tangled example, but I can't
 /// think of any.
 pub fn setup_constraining_predicates<'tcx>(
-    tcx: TyCtxt<'_>,
+    tcx: TyCtxt<'tcx>,
     predicates: &mut [(ty::Predicate<'tcx>, Span)],
     impl_trait_ref: Option<ty::TraitRef<'tcx>>,
     input_parameters: &mut FxHashSet<Parameter>,
@@ -162,16 +169,18 @@ pub fn setup_constraining_predicates<'tcx>(
     //   * <U as Iterator>::Item = T
     //   * T: Debug
     //   * U: Iterator
-    debug!("setup_constraining_predicates: predicates={:?} \
+    debug!(
+        "setup_constraining_predicates: predicates={:?} \
             impl_trait_ref={:?} input_parameters={:?}",
-           predicates, impl_trait_ref, input_parameters);
+        predicates, impl_trait_ref, input_parameters
+    );
     let mut i = 0;
     let mut changed = true;
     while changed {
         changed = false;
 
         for j in i..predicates.len() {
-            if let ty::Predicate::Projection(ref poly_projection) = predicates[j].0 {
+            if let ty::PredicateKind::Projection(ref poly_projection) = predicates[j].0.kind() {
                 // Note that we can skip binder here because the impl
                 // trait ref never contains any late-bound regions.
                 let projection = poly_projection.skip_binder();
@@ -180,7 +189,7 @@ pub fn setup_constraining_predicates<'tcx>(
                 // to project out an associated type defined by this very
                 // trait.
                 let unbound_trait_ref = projection.projection_ty.trait_ref(tcx);
-                if Some(unbound_trait_ref.clone()) == impl_trait_ref {
+                if Some(unbound_trait_ref) == impl_trait_ref {
                     continue;
                 }
 
@@ -203,8 +212,10 @@ pub fn setup_constraining_predicates<'tcx>(
             i += 1;
             changed = true;
         }
-        debug!("setup_constraining_predicates: predicates={:?} \
+        debug!(
+            "setup_constraining_predicates: predicates={:?} \
                 i={} impl_trait_ref={:?} input_parameters={:?}",
-               predicates, i, impl_trait_ref, input_parameters);
+            predicates, i, impl_trait_ref, input_parameters
+        );
     }
 }

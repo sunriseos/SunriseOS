@@ -2,7 +2,7 @@ use crate::os::windows::prelude::*;
 
 use crate::ffi::OsString;
 use crate::fmt;
-use crate::io::{self, Error, SeekFrom, IoSlice, IoSliceMut};
+use crate::io::{self, Error, IoSlice, IoSliceMut, SeekFrom};
 use crate::mem;
 use crate::path::{Path, PathBuf};
 use crate::ptr;
@@ -15,7 +15,9 @@ use crate::sys_common::FromInner;
 
 use super::to_u16s;
 
-pub struct File { handle: Handle }
+pub struct File {
+    handle: Handle,
+}
 
 #[derive(Clone)]
 pub struct FileAttr {
@@ -25,6 +27,9 @@ pub struct FileAttr {
     last_write_time: c::FILETIME,
     file_size: u64,
     reparse_tag: c::DWORD,
+    volume_serial_number: Option<u32>,
+    number_of_links: Option<u32>,
+    file_index: Option<u64>,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
@@ -68,7 +73,9 @@ pub struct OpenOptions {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct FilePermissions { attrs: c::DWORD }
+pub struct FilePermissions {
+    attrs: c::DWORD,
+}
 
 #[derive(Debug)]
 pub struct DirBuilder;
@@ -94,13 +101,13 @@ impl Iterator for ReadDir {
             loop {
                 if c::FindNextFileW(self.handle.0, &mut wfd) == 0 {
                     if c::GetLastError() == c::ERROR_NO_MORE_FILES {
-                        return None
+                        return None;
                     } else {
-                        return Some(Err(Error::last_os_error()))
+                        return Some(Err(Error::last_os_error()));
                     }
                 }
                 if let Some(e) = DirEntry::new(&self.root, &wfd) {
-                    return Some(Ok(e))
+                    return Some(Ok(e));
                 }
             }
         }
@@ -118,15 +125,11 @@ impl DirEntry {
     fn new(root: &Arc<PathBuf>, wfd: &c::WIN32_FIND_DATAW) -> Option<DirEntry> {
         match &wfd.cFileName[0..3] {
             // check for '.' and '..'
-            &[46, 0, ..] |
-            &[46, 46, 0, ..] => return None,
+            &[46, 0, ..] | &[46, 46, 0, ..] => return None,
             _ => {}
         }
 
-        Some(DirEntry {
-            root: root.clone(),
-            data: *wfd,
-        })
+        Some(DirEntry { root: root.clone(), data: *wfd })
     }
 
     pub fn path(&self) -> PathBuf {
@@ -139,8 +142,10 @@ impl DirEntry {
     }
 
     pub fn file_type(&self) -> io::Result<FileType> {
-        Ok(FileType::new(self.data.dwFileAttributes,
-                         /* reparse_tag = */ self.data.dwReserved0))
+        Ok(FileType::new(
+            self.data.dwFileAttributes,
+            /* reparse_tag = */ self.data.dwReserved0,
+        ))
     }
 
     pub fn metadata(&self) -> io::Result<FileAttr> {
@@ -151,11 +156,14 @@ impl DirEntry {
             last_write_time: self.data.ftLastWriteTime,
             file_size: ((self.data.nFileSizeHigh as u64) << 32) | (self.data.nFileSizeLow as u64),
             reparse_tag: if self.data.dwFileAttributes & c::FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-                    // reserved unless this is a reparse point
-                    self.data.dwReserved0
-                } else {
-                    0
-                },
+                // reserved unless this is a reparse point
+                self.data.dwReserved0
+            } else {
+                0
+            },
+            volume_serial_number: None,
+            number_of_links: None,
+            file_index: None,
         })
     }
 }
@@ -180,17 +188,37 @@ impl OpenOptions {
         }
     }
 
-    pub fn read(&mut self, read: bool) { self.read = read; }
-    pub fn write(&mut self, write: bool) { self.write = write; }
-    pub fn append(&mut self, append: bool) { self.append = append; }
-    pub fn truncate(&mut self, truncate: bool) { self.truncate = truncate; }
-    pub fn create(&mut self, create: bool) { self.create = create; }
-    pub fn create_new(&mut self, create_new: bool) { self.create_new = create_new; }
+    pub fn read(&mut self, read: bool) {
+        self.read = read;
+    }
+    pub fn write(&mut self, write: bool) {
+        self.write = write;
+    }
+    pub fn append(&mut self, append: bool) {
+        self.append = append;
+    }
+    pub fn truncate(&mut self, truncate: bool) {
+        self.truncate = truncate;
+    }
+    pub fn create(&mut self, create: bool) {
+        self.create = create;
+    }
+    pub fn create_new(&mut self, create_new: bool) {
+        self.create_new = create_new;
+    }
 
-    pub fn custom_flags(&mut self, flags: u32) { self.custom_flags = flags; }
-    pub fn access_mode(&mut self, access_mode: u32) { self.access_mode = Some(access_mode); }
-    pub fn share_mode(&mut self, share_mode: u32) { self.share_mode = share_mode; }
-    pub fn attributes(&mut self, attrs: u32) { self.attributes = attrs; }
+    pub fn custom_flags(&mut self, flags: u32) {
+        self.custom_flags = flags;
+    }
+    pub fn access_mode(&mut self, access_mode: u32) {
+        self.access_mode = Some(access_mode);
+    }
+    pub fn share_mode(&mut self, share_mode: u32) {
+        self.share_mode = share_mode;
+    }
+    pub fn attributes(&mut self, attrs: u32) {
+        self.attributes = attrs;
+    }
     pub fn security_qos_flags(&mut self, flags: u32) {
         // We have to set `SECURITY_SQOS_PRESENT` here, because one of the valid flags we can
         // receive is `SECURITY_ANONYMOUS = 0x0`, which we can't check for later on.
@@ -205,12 +233,13 @@ impl OpenOptions {
 
         match (self.read, self.write, self.append, self.access_mode) {
             (.., Some(mode)) => Ok(mode),
-            (true,  false, false, None) => Ok(c::GENERIC_READ),
-            (false, true,  false, None) => Ok(c::GENERIC_WRITE),
-            (true,  true,  false, None) => Ok(c::GENERIC_READ | c::GENERIC_WRITE),
-            (false, _,     true,  None) => Ok(c::FILE_GENERIC_WRITE & !c::FILE_WRITE_DATA),
-            (true,  _,     true,  None) => Ok(c::GENERIC_READ |
-                                              (c::FILE_GENERIC_WRITE & !c::FILE_WRITE_DATA)),
+            (true, false, false, None) => Ok(c::GENERIC_READ),
+            (false, true, false, None) => Ok(c::GENERIC_WRITE),
+            (true, true, false, None) => Ok(c::GENERIC_READ | c::GENERIC_WRITE),
+            (false, _, true, None) => Ok(c::FILE_GENERIC_WRITE & !c::FILE_WRITE_DATA),
+            (true, _, true, None) => {
+                Ok(c::GENERIC_READ | (c::FILE_GENERIC_WRITE & !c::FILE_WRITE_DATA))
+            }
             (false, false, false, None) => Err(Error::from_raw_os_error(ERROR_INVALID_PARAMETER)),
         }
     }
@@ -220,30 +249,32 @@ impl OpenOptions {
 
         match (self.write, self.append) {
             (true, false) => {}
-            (false, false) =>
+            (false, false) => {
                 if self.truncate || self.create || self.create_new {
                     return Err(Error::from_raw_os_error(ERROR_INVALID_PARAMETER));
-                },
-            (_, true) =>
+                }
+            }
+            (_, true) => {
                 if self.truncate && !self.create_new {
                     return Err(Error::from_raw_os_error(ERROR_INVALID_PARAMETER));
-                },
+                }
+            }
         }
 
         Ok(match (self.create, self.truncate, self.create_new) {
-                (false, false, false) => c::OPEN_EXISTING,
-                (true,  false, false) => c::OPEN_ALWAYS,
-                (false, true,  false) => c::TRUNCATE_EXISTING,
-                (true,  true,  false) => c::CREATE_ALWAYS,
-                (_,      _,    true)  => c::CREATE_NEW,
-           })
+            (false, false, false) => c::OPEN_EXISTING,
+            (true, false, false) => c::OPEN_ALWAYS,
+            (false, true, false) => c::TRUNCATE_EXISTING,
+            (true, true, false) => c::CREATE_ALWAYS,
+            (_, _, true) => c::CREATE_NEW,
+        })
     }
 
     fn get_flags_and_attributes(&self) -> c::DWORD {
-        self.custom_flags |
-        self.attributes |
-        self.security_qos_flags |
-        if self.create_new { c::FILE_FLAG_OPEN_REPARSE_POINT } else { 0 }
+        self.custom_flags
+            | self.attributes
+            | self.security_qos_flags
+            | if self.create_new { c::FILE_FLAG_OPEN_REPARSE_POINT } else { 0 }
     }
 }
 
@@ -251,13 +282,15 @@ impl File {
     pub fn open(path: &Path, opts: &OpenOptions) -> io::Result<File> {
         let path = to_u16s(path)?;
         let handle = unsafe {
-            c::CreateFileW(path.as_ptr(),
-                           opts.get_access_mode()?,
-                           opts.share_mode,
-                           opts.security_attributes as *mut _,
-                           opts.get_creation_mode()?,
-                           opts.get_flags_and_attributes(),
-                           ptr::null_mut())
+            c::CreateFileW(
+                path.as_ptr(),
+                opts.get_access_mode()?,
+                opts.share_mode,
+                opts.security_attributes as *mut _,
+                opts.get_creation_mode()?,
+                opts.get_flags_and_attributes(),
+                ptr::null_mut(),
+            )
         };
         if handle == c::INVALID_HANDLE_VALUE {
             Err(Error::last_os_error())
@@ -271,36 +304,94 @@ impl File {
         Ok(())
     }
 
-    pub fn datasync(&self) -> io::Result<()> { self.fsync() }
+    pub fn datasync(&self) -> io::Result<()> {
+        self.fsync()
+    }
 
     pub fn truncate(&self, size: u64) -> io::Result<()> {
-        let mut info = c::FILE_END_OF_FILE_INFO {
-            EndOfFile: size as c::LARGE_INTEGER,
-        };
+        let mut info = c::FILE_END_OF_FILE_INFO { EndOfFile: size as c::LARGE_INTEGER };
         let size = mem::size_of_val(&info);
         cvt(unsafe {
-            c::SetFileInformationByHandle(self.handle.raw(),
-                                          c::FileEndOfFileInfo,
-                                          &mut info as *mut _ as *mut _,
-                                          size as c::DWORD)
+            c::SetFileInformationByHandle(
+                self.handle.raw(),
+                c::FileEndOfFileInfo,
+                &mut info as *mut _ as *mut _,
+                size as c::DWORD,
+            )
         })?;
         Ok(())
     }
 
+    #[cfg(not(target_vendor = "uwp"))]
     pub fn file_attr(&self) -> io::Result<FileAttr> {
         unsafe {
             let mut info: c::BY_HANDLE_FILE_INFORMATION = mem::zeroed();
-            cvt(c::GetFileInformationByHandle(self.handle.raw(),
-                                              &mut info))?;
-            let mut attr = FileAttr {
+            cvt(c::GetFileInformationByHandle(self.handle.raw(), &mut info))?;
+            let mut reparse_tag = 0;
+            if info.dwFileAttributes & c::FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+                let mut b = [0; c::MAXIMUM_REPARSE_DATA_BUFFER_SIZE];
+                if let Ok((_, buf)) = self.reparse_point(&mut b) {
+                    reparse_tag = buf.ReparseTag;
+                }
+            }
+            Ok(FileAttr {
                 attributes: info.dwFileAttributes,
                 creation_time: info.ftCreationTime,
                 last_access_time: info.ftLastAccessTime,
                 last_write_time: info.ftLastWriteTime,
-                file_size: ((info.nFileSizeHigh as u64) << 32) | (info.nFileSizeLow as u64),
+                file_size: (info.nFileSizeLow as u64) | ((info.nFileSizeHigh as u64) << 32),
+                reparse_tag,
+                volume_serial_number: Some(info.dwVolumeSerialNumber),
+                number_of_links: Some(info.nNumberOfLinks),
+                file_index: Some(
+                    (info.nFileIndexLow as u64) | ((info.nFileIndexHigh as u64) << 32),
+                ),
+            })
+        }
+    }
+
+    #[cfg(target_vendor = "uwp")]
+    pub fn file_attr(&self) -> io::Result<FileAttr> {
+        unsafe {
+            let mut info: c::FILE_BASIC_INFO = mem::zeroed();
+            let size = mem::size_of_val(&info);
+            cvt(c::GetFileInformationByHandleEx(
+                self.handle.raw(),
+                c::FileBasicInfo,
+                &mut info as *mut _ as *mut libc::c_void,
+                size as c::DWORD,
+            ))?;
+            let mut attr = FileAttr {
+                attributes: info.FileAttributes,
+                creation_time: c::FILETIME {
+                    dwLowDateTime: info.CreationTime as c::DWORD,
+                    dwHighDateTime: (info.CreationTime >> 32) as c::DWORD,
+                },
+                last_access_time: c::FILETIME {
+                    dwLowDateTime: info.LastAccessTime as c::DWORD,
+                    dwHighDateTime: (info.LastAccessTime >> 32) as c::DWORD,
+                },
+                last_write_time: c::FILETIME {
+                    dwLowDateTime: info.LastWriteTime as c::DWORD,
+                    dwHighDateTime: (info.LastWriteTime >> 32) as c::DWORD,
+                },
+                file_size: 0,
                 reparse_tag: 0,
+                volume_serial_number: None,
+                number_of_links: None,
+                file_index: None,
             };
-            if attr.is_reparse_point() {
+            let mut info: c::FILE_STANDARD_INFO = mem::zeroed();
+            let size = mem::size_of_val(&info);
+            cvt(c::GetFileInformationByHandleEx(
+                self.handle.raw(),
+                c::FileStandardInfo,
+                &mut info as *mut _ as *mut libc::c_void,
+                size as c::DWORD,
+            ))?;
+            attr.file_size = info.AllocationSize as u64;
+            attr.number_of_links = Some(info.NumberOfLinks);
+            if attr.file_type().is_reparse_point() {
                 let mut b = [0; c::MAXIMUM_REPARSE_DATA_BUFFER_SIZE];
                 if let Ok((_, buf)) = self.reparse_point(&mut b) {
                     attr.reparse_tag = buf.ReparseTag;
@@ -318,6 +409,11 @@ impl File {
         self.handle.read_vectored(bufs)
     }
 
+    #[inline]
+    pub fn is_read_vectored(&self) -> bool {
+        self.handle.is_read_vectored()
+    }
+
     pub fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<usize> {
         self.handle.read_at(buf, offset)
     }
@@ -330,11 +426,18 @@ impl File {
         self.handle.write_vectored(bufs)
     }
 
+    #[inline]
+    pub fn is_write_vectored(&self) -> bool {
+        self.handle.is_write_vectored()
+    }
+
     pub fn write_at(&self, buf: &[u8], offset: u64) -> io::Result<usize> {
         self.handle.write_at(buf, offset)
     }
 
-    pub fn flush(&self) -> io::Result<()> { Ok(()) }
+    pub fn flush(&self) -> io::Result<()> {
+        Ok(())
+    }
 
     pub fn seek(&self, pos: SeekFrom) -> io::Result<u64> {
         let (whence, pos) = match pos {
@@ -346,37 +449,39 @@ impl File {
         };
         let pos = pos as c::LARGE_INTEGER;
         let mut newpos = 0;
-        cvt(unsafe {
-            c::SetFilePointerEx(self.handle.raw(), pos,
-                                &mut newpos, whence)
-        })?;
+        cvt(unsafe { c::SetFilePointerEx(self.handle.raw(), pos, &mut newpos, whence) })?;
         Ok(newpos as u64)
     }
 
     pub fn duplicate(&self) -> io::Result<File> {
-        Ok(File {
-            handle: self.handle.duplicate(0, true, c::DUPLICATE_SAME_ACCESS)?,
-        })
+        Ok(File { handle: self.handle.duplicate(0, false, c::DUPLICATE_SAME_ACCESS)? })
     }
 
-    pub fn handle(&self) -> &Handle { &self.handle }
+    pub fn handle(&self) -> &Handle {
+        &self.handle
+    }
 
-    pub fn into_handle(self) -> Handle { self.handle }
+    pub fn into_handle(self) -> Handle {
+        self.handle
+    }
 
-    fn reparse_point<'a>(&self,
-                         space: &'a mut [u8; c::MAXIMUM_REPARSE_DATA_BUFFER_SIZE])
-                         -> io::Result<(c::DWORD, &'a c::REPARSE_DATA_BUFFER)> {
+    fn reparse_point<'a>(
+        &self,
+        space: &'a mut [u8; c::MAXIMUM_REPARSE_DATA_BUFFER_SIZE],
+    ) -> io::Result<(c::DWORD, &'a c::REPARSE_DATA_BUFFER)> {
         unsafe {
             let mut bytes = 0;
             cvt({
-                c::DeviceIoControl(self.handle.raw(),
-                                   c::FSCTL_GET_REPARSE_POINT,
-                                   ptr::null_mut(),
-                                   0,
-                                   space.as_mut_ptr() as *mut _,
-                                   space.len() as c::DWORD,
-                                   &mut bytes,
-                                   ptr::null_mut())
+                c::DeviceIoControl(
+                    self.handle.raw(),
+                    c::FSCTL_GET_REPARSE_POINT,
+                    ptr::null_mut(),
+                    0,
+                    space.as_mut_ptr() as *mut _,
+                    space.len() as c::DWORD,
+                    &mut bytes,
+                    ptr::null_mut(),
+                )
             })?;
             Ok((bytes, &*(space.as_ptr() as *const c::REPARSE_DATA_BUFFER)))
         }
@@ -390,21 +495,29 @@ impl File {
                 c::IO_REPARSE_TAG_SYMLINK => {
                     let info: *const c::SYMBOLIC_LINK_REPARSE_BUFFER =
                         &buf.rest as *const _ as *const _;
-                    (&(*info).PathBuffer as *const _ as *const u16,
-                     (*info).SubstituteNameOffset / 2,
-                     (*info).SubstituteNameLength / 2,
-                     (*info).Flags & c::SYMLINK_FLAG_RELATIVE != 0)
-                },
+                    (
+                        &(*info).PathBuffer as *const _ as *const u16,
+                        (*info).SubstituteNameOffset / 2,
+                        (*info).SubstituteNameLength / 2,
+                        (*info).Flags & c::SYMLINK_FLAG_RELATIVE != 0,
+                    )
+                }
                 c::IO_REPARSE_TAG_MOUNT_POINT => {
                     let info: *const c::MOUNT_POINT_REPARSE_BUFFER =
                         &buf.rest as *const _ as *const _;
-                    (&(*info).PathBuffer as *const _ as *const u16,
-                     (*info).SubstituteNameOffset / 2,
-                     (*info).SubstituteNameLength / 2,
-                     false)
-                },
-                _ => return Err(io::Error::new(io::ErrorKind::Other,
-                                               "Unsupported reparse point type"))
+                    (
+                        &(*info).PathBuffer as *const _ as *const u16,
+                        (*info).SubstituteNameOffset / 2,
+                        (*info).SubstituteNameLength / 2,
+                        false,
+                    )
+                }
+                _ => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        "Unsupported reparse point type",
+                    ));
+                }
             };
             let subst_ptr = path_buffer.offset(subst_off as isize);
             let mut subst = slice::from_raw_parts(subst_ptr, subst_len as usize);
@@ -427,10 +540,12 @@ impl File {
         };
         let size = mem::size_of_val(&info);
         cvt(unsafe {
-            c::SetFileInformationByHandle(self.handle.raw(),
-                                          c::FileBasicInfo,
-                                          &mut info as *mut _ as *mut _,
-                                          size as c::DWORD)
+            c::SetFileInformationByHandle(
+                self.handle.raw(),
+                c::FileBasicInfo,
+                &mut info as *mut _ as *mut _,
+                size as c::DWORD,
+            )
         })?;
         Ok(())
     }
@@ -463,7 +578,9 @@ impl FileAttr {
         FilePermissions { attrs: self.attributes }
     }
 
-    pub fn attrs(&self) -> u32 { self.attributes as u32 }
+    pub fn attrs(&self) -> u32 {
+        self.attributes
+    }
 
     pub fn file_type(&self) -> FileType {
         FileType::new(self.attributes, self.reparse_tag)
@@ -493,8 +610,16 @@ impl FileAttr {
         to_u64(&self.creation_time)
     }
 
-    fn is_reparse_point(&self) -> bool {
-        self.attributes & c::FILE_ATTRIBUTE_REPARSE_POINT != 0
+    pub fn volume_serial_number(&self) -> Option<u32> {
+        self.volume_serial_number
+    }
+
+    pub fn number_of_links(&self) -> Option<u32> {
+        self.number_of_links
+    }
+
+    pub fn file_index(&self) -> Option<u64> {
+        self.file_index
     }
 }
 
@@ -518,10 +643,7 @@ impl FilePermissions {
 
 impl FileType {
     fn new(attrs: c::DWORD, reparse_tag: c::DWORD) -> FileType {
-        FileType {
-            attributes: attrs,
-            reparse_tag: reparse_tag,
-        }
+        FileType { attributes: attrs, reparse_tag: reparse_tag }
     }
     pub fn is_dir(&self) -> bool {
         !self.is_symlink() && self.is_directory()
@@ -550,13 +672,13 @@ impl FileType {
 }
 
 impl DirBuilder {
-    pub fn new() -> DirBuilder { DirBuilder }
+    pub fn new() -> DirBuilder {
+        DirBuilder
+    }
 
     pub fn mkdir(&self, p: &Path) -> io::Result<()> {
         let p = to_u16s(p)?;
-        cvt(unsafe {
-            c::CreateDirectoryW(p.as_ptr(), ptr::null_mut())
-        })?;
+        cvt(unsafe { c::CreateDirectoryW(p.as_ptr(), ptr::null_mut()) })?;
         Ok(())
     }
 }
@@ -590,9 +712,7 @@ pub fn unlink(p: &Path) -> io::Result<()> {
 pub fn rename(old: &Path, new: &Path) -> io::Result<()> {
     let old = to_u16s(old)?;
     let new = to_u16s(new)?;
-    cvt(unsafe {
-        c::MoveFileExW(old.as_ptr(), new.as_ptr(), c::MOVEFILE_REPLACE_EXISTING)
-    })?;
+    cvt(unsafe { c::MoveFileExW(old.as_ptr(), new.as_ptr(), c::MOVEFILE_REPLACE_EXISTING) })?;
     Ok(())
 }
 
@@ -634,8 +754,7 @@ pub fn readlink(path: &Path) -> io::Result<PathBuf> {
     // this is needed for a common case.
     let mut opts = OpenOptions::new();
     opts.access_mode(0);
-    opts.custom_flags(c::FILE_FLAG_OPEN_REPARSE_POINT |
-                      c::FILE_FLAG_BACKUP_SEMANTICS);
+    opts.custom_flags(c::FILE_FLAG_OPEN_REPARSE_POINT | c::FILE_FLAG_BACKUP_SEMANTICS);
     let file = File::open(&path, &opts)?;
     file.readlink()
 }
@@ -653,16 +772,17 @@ pub fn symlink_inner(src: &Path, dst: &Path, dir: bool) -> io::Result<()> {
     // computer is in Developer Mode, but SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE must be
     // added to dwFlags to opt into this behaviour.
     let result = cvt(unsafe {
-        c::CreateSymbolicLinkW(dst.as_ptr(), src.as_ptr(),
-                               flags | c::SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE) as c::BOOL
+        c::CreateSymbolicLinkW(
+            dst.as_ptr(),
+            src.as_ptr(),
+            flags | c::SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE,
+        ) as c::BOOL
     });
     if let Err(err) = result {
         if err.raw_os_error() == Some(c::ERROR_INVALID_PARAMETER as i32) {
             // Older Windows objects to SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE,
             // so if we encounter ERROR_INVALID_PARAMETER, retry without that flag.
-            cvt(unsafe {
-                c::CreateSymbolicLinkW(dst.as_ptr(), src.as_ptr(), flags) as c::BOOL
-            })?;
+            cvt(unsafe { c::CreateSymbolicLinkW(dst.as_ptr(), src.as_ptr(), flags) as c::BOOL })?;
         } else {
             return Err(err);
         }
@@ -670,13 +790,17 @@ pub fn symlink_inner(src: &Path, dst: &Path, dir: bool) -> io::Result<()> {
     Ok(())
 }
 
+#[cfg(not(target_vendor = "uwp"))]
 pub fn link(src: &Path, dst: &Path) -> io::Result<()> {
     let src = to_u16s(src)?;
     let dst = to_u16s(dst)?;
-    cvt(unsafe {
-        c::CreateHardLinkW(dst.as_ptr(), src.as_ptr(), ptr::null_mut())
-    })?;
+    cvt(unsafe { c::CreateHardLinkW(dst.as_ptr(), src.as_ptr(), ptr::null_mut()) })?;
     Ok(())
+}
+
+#[cfg(target_vendor = "uwp")]
+pub fn link(_src: &Path, _dst: &Path) -> io::Result<()> {
+    return Err(io::Error::new(io::ErrorKind::Other, "hard link are not supported on UWP"));
 }
 
 pub fn stat(path: &Path) -> io::Result<FileAttr> {
@@ -707,12 +831,12 @@ pub fn set_perm(p: &Path, perm: FilePermissions) -> io::Result<()> {
 }
 
 fn get_path(f: &File) -> io::Result<PathBuf> {
-    super::fill_utf16_buf(|buf, sz| unsafe {
-        c::GetFinalPathNameByHandleW(f.handle.raw(), buf, sz,
-                                     c::VOLUME_NAME_DOS)
-    }, |buf| {
-        PathBuf::from(OsString::from_wide(buf))
-    })
+    super::fill_utf16_buf(
+        |buf, sz| unsafe {
+            c::GetFinalPathNameByHandleW(f.handle.raw(), buf, sz, c::VOLUME_NAME_DOS)
+        },
+        |buf| PathBuf::from(OsString::from_wide(buf)),
+    )
 }
 
 pub fn canonicalize(p: &Path) -> io::Result<PathBuf> {
@@ -737,15 +861,23 @@ pub fn copy(from: &Path, to: &Path) -> io::Result<u64> {
         _hDestinationFile: c::HANDLE,
         lpData: c::LPVOID,
     ) -> c::DWORD {
-        if dwStreamNumber == 1 {*(lpData as *mut i64) = StreamBytesTransferred;}
+        if dwStreamNumber == 1 {
+            *(lpData as *mut i64) = StreamBytesTransferred;
+        }
         c::PROGRESS_CONTINUE
     }
     let pfrom = to_u16s(from)?;
     let pto = to_u16s(to)?;
     let mut size = 0i64;
     cvt(unsafe {
-        c::CopyFileExW(pfrom.as_ptr(), pto.as_ptr(), Some(callback),
-                       &mut size as *mut _ as *mut _, ptr::null_mut(), 0)
+        c::CopyFileExW(
+            pfrom.as_ptr(),
+            pto.as_ptr(),
+            Some(callback),
+            &mut size as *mut _ as *mut _,
+            ptr::null_mut(),
+            0,
+        )
     })?;
     Ok(size as u64)
 }
@@ -767,15 +899,13 @@ fn symlink_junction_inner(target: &Path, junction: &Path) -> io::Result<()> {
 
     let mut opts = OpenOptions::new();
     opts.write(true);
-    opts.custom_flags(c::FILE_FLAG_OPEN_REPARSE_POINT |
-                      c::FILE_FLAG_BACKUP_SEMANTICS);
+    opts.custom_flags(c::FILE_FLAG_OPEN_REPARSE_POINT | c::FILE_FLAG_BACKUP_SEMANTICS);
     let f = File::open(junction, &opts)?;
     let h = f.handle().raw();
 
     unsafe {
         let mut data = [0u8; c::MAXIMUM_REPARSE_DATA_BUFFER_SIZE];
-        let db = data.as_mut_ptr()
-                    as *mut c::REPARSE_MOUNTPOINT_DATA_BUFFER;
+        let db = data.as_mut_ptr() as *mut c::REPARSE_MOUNTPOINT_DATA_BUFFER;
         let buf = &mut (*db).ReparseTarget as *mut c::WCHAR;
         let mut i = 0;
         // FIXME: this conversion is very hacky
@@ -790,16 +920,19 @@ fn symlink_junction_inner(target: &Path, junction: &Path) -> io::Result<()> {
         (*db).ReparseTag = c::IO_REPARSE_TAG_MOUNT_POINT;
         (*db).ReparseTargetMaximumLength = (i * 2) as c::WORD;
         (*db).ReparseTargetLength = ((i - 1) * 2) as c::WORD;
-        (*db).ReparseDataLength =
-                (*db).ReparseTargetLength as c::DWORD + 12;
+        (*db).ReparseDataLength = (*db).ReparseTargetLength as c::DWORD + 12;
 
         let mut ret = 0;
-        cvt(c::DeviceIoControl(h as *mut _,
-                               c::FSCTL_SET_REPARSE_POINT,
-                               data.as_ptr() as *mut _,
-                               (*db).ReparseDataLength + 8,
-                               ptr::null_mut(), 0,
-                               &mut ret,
-                               ptr::null_mut())).map(|_| ())
+        cvt(c::DeviceIoControl(
+            h as *mut _,
+            c::FSCTL_SET_REPARSE_POINT,
+            data.as_ptr() as *mut _,
+            (*db).ReparseDataLength + 8,
+            ptr::null_mut(),
+            0,
+            &mut ret,
+            ptr::null_mut(),
+        ))
+        .map(drop)
     }
 }

@@ -4,7 +4,6 @@
 //! In the future, it will also be capable of talking to the GPU to provide an
 //! OpenGL abstraction layer.
 
-#![feature(const_vec_new, async_await)]
 #![no_std]
 
 // rustc warnings
@@ -257,7 +256,7 @@ impl Buffer {
     pub fn get_px_offset(&self, x: usize, y: usize) -> usize {
         assert!(y < self.height() as usize, "{} {}", y, self.height());
         assert!(x < self.width() as usize);
-        (y * self.width() as usize + x)
+        y * self.width() as usize + x
     }
 
     /// Blit the buffer to the framebuffer.

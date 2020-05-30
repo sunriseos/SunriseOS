@@ -1,8 +1,6 @@
-#![feature(macros_in_extern)]
-
 macro_rules! m {
     () => {
-        let //~ ERROR expected
+        let //~ ERROR macro expansion ignores token `let` and any following
     };
 }
 

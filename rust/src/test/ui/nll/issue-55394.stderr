@@ -16,14 +16,19 @@ note: ...so that reference does not outlive borrowed content
    |
 LL |         Foo { bar }
    |               ^^^
-note: but, the lifetime must be valid for the lifetime '_ as defined on the impl at 7:10...
+note: but, the lifetime must be valid for the lifetime `'_` as defined on the impl at 7:10...
   --> $DIR/issue-55394.rs:7:10
    |
 LL | impl Foo<'_> {
    |          ^^
-   = note: ...so that the expression is assignable:
-           expected Foo<'_>
-              found Foo<'_>
+note: ...so that the expression is assignable
+  --> $DIR/issue-55394.rs:9:9
+   |
+LL |         Foo { bar }
+   |         ^^^^^^^^^^^
+   = note: expected  `Foo<'_>`
+              found  `Foo<'_>`
 
 error: aborting due to previous error
 
+For more information about this error, try `rustc --explain E0495`.

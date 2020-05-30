@@ -107,7 +107,7 @@
 /// [impls]: #implementors
 #[stable(feature = "rust1", since = "1.0.0")]
 #[lang = "clone"]
-pub trait Clone : Sized {
+pub trait Clone: Sized {
     /// Returns a copy of the value.
     ///
     /// # Examples
@@ -133,27 +133,44 @@ pub trait Clone : Sized {
     }
 }
 
+/// Derive macro generating an impl of the trait `Clone`.
+#[rustc_builtin_macro]
+#[stable(feature = "builtin_macro_prelude", since = "1.38.0")]
+#[allow_internal_unstable(core_intrinsics, derive_clone_copy)]
+pub macro Clone($item:item) {
+    /* compiler built-in */
+}
+
 // FIXME(aburka): these structs are used solely by #[derive] to
 // assert that every component of a type implements Clone or Copy.
 //
 // These structs should never appear in user code.
 #[doc(hidden)]
 #[allow(missing_debug_implementations)]
-#[unstable(feature = "derive_clone_copy",
-           reason = "deriving hack, should not be public",
-           issue = "0")]
-pub struct AssertParamIsClone<T: Clone + ?Sized> { _field: crate::marker::PhantomData<T> }
+#[unstable(
+    feature = "derive_clone_copy",
+    reason = "deriving hack, should not be public",
+    issue = "none"
+)]
+pub struct AssertParamIsClone<T: Clone + ?Sized> {
+    _field: crate::marker::PhantomData<T>,
+}
 #[doc(hidden)]
 #[allow(missing_debug_implementations)]
-#[unstable(feature = "derive_clone_copy",
-           reason = "deriving hack, should not be public",
-           issue = "0")]
-pub struct AssertParamIsCopy<T: Copy + ?Sized> { _field: crate::marker::PhantomData<T> }
+#[unstable(
+    feature = "derive_clone_copy",
+    reason = "deriving hack, should not be public",
+    issue = "none"
+)]
+pub struct AssertParamIsCopy<T: Copy + ?Sized> {
+    _field: crate::marker::PhantomData<T>,
+}
 
 /// Implementations of `Clone` for primitive types.
 ///
 /// Implementations that cannot be described in Rust
-/// are implemented in `SelectionContext::copy_clone_conditions()` in librustc.
+/// are implemented in `traits::SelectionContext::copy_clone_conditions()`
+/// in `rustc_trait_selection`.
 mod impls {
 
     use super::Clone;
@@ -203,7 +220,7 @@ mod impls {
         }
     }
 
-    // Shared references can be cloned, but mutable references *cannot*!
+    /// Shared references can be cloned, but mutable references *cannot*!
     #[stable(feature = "rust1", since = "1.0.0")]
     impl<T: ?Sized> Clone for &T {
         #[inline]
@@ -212,4 +229,7 @@ mod impls {
         }
     }
 
+    /// Shared references can be cloned, but mutable references *cannot*!
+    #[stable(feature = "rust1", since = "1.0.0")]
+    impl<T: ?Sized> !Clone for &mut T {}
 }

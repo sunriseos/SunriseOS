@@ -17,6 +17,13 @@ use super::INTERRUPT_DISARM;
 /// Only used by the panic handlers!
 ///
 /// Simply sets [INTERRUPT_DISARM].
+///
+/// # Safety
+///
+/// This is completely unsafe. It forcefully disables interrupts, which will
+/// cause the kernel to deadlock if it ever reaches an hlt or any other kind of
+/// sleep. It should only be done when something already went horribly wrong, in
+/// order to regain some amount of control to print a panic message.
 pub unsafe fn permanently_disable_interrupts() {
     INTERRUPT_DISARM.store(true, Ordering::SeqCst);
     unsafe { interrupts::cli() }
@@ -119,6 +126,12 @@ impl<T: ?Sized> SpinLockIRQ<T> {
     }
 
     /// Force unlocks the lock.
+    ///
+    /// # Safety
+    ///
+    /// This is completely unsafe. It does not reset the interrupt status
+    /// register, potentially causing deadlock. It should only be used when all
+    /// hope is already lost.
     pub unsafe fn force_unlock(&self) {
         self.internal.force_unlock()
     }

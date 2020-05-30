@@ -107,7 +107,7 @@ impl Window {
     pub fn get_px_offset(&self, x: usize, y: usize) -> usize {
         assert!(y < self.height(), "{} {}", y, self.height());
         assert!(x < self.width());
-        (y * self.width() + x)
+        y * self.width() + x
     }
 
     /// Writes a pixel in the window respecting the bgr pattern

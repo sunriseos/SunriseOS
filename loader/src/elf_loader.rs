@@ -3,6 +3,7 @@
 //! Loads the elf binaries.
 
 use core::slice;
+use core::cmp::Ordering;
 use xmas_elf::ElfFile;
 use xmas_elf::program::{ProgramHeader, Type::Load, SegmentData};
 use sunrise_libuser::syscalls::{self, map_process_memory};
@@ -19,9 +20,9 @@ use sunrise_libuser::error::{Error, LoaderError};
 /// - `LoaderError::InvalidElf`
 ///   - The provided ELF file is invalid.
 pub fn from_data(data: &[u8]) -> Result<ElfFile, Error> {
-    ElfFile::new(&data[..]).or_else(|err| {
+    ElfFile::new(&data[..]).map_err(|err| {
         error!("Invalid ELF: {}", err);
-        Err(LoaderError::InvalidElf.into())
+        LoaderError::InvalidElf.into()
     })
 }
 
@@ -34,7 +35,7 @@ pub fn from_data(data: &[u8]) -> Result<ElfFile, Error> {
 ///   - Overlapping segments.
 pub fn get_size(elf: &ElfFile<'_>) -> Result<usize, Error> {
     let mut size = 0;
-    let mut expected_next = None;
+    let mut expected_next: Option<usize> = None;
     for ph in elf.program_iter().filter(|ph|
         if let Ok(Load) = ph.get_type() { true } else { false })
     {
@@ -46,12 +47,16 @@ pub fn get_size(elf: &ElfFile<'_>) -> Result<usize, Error> {
         }
 
         if let Some(expected_next) = expected_next {
-            if expected_next < vaddr {
-                debug!("VAddr has an offset of {} bytes", vaddr - expected_next);
-                size += vaddr - expected_next;
-            } else if expected_next > vaddr {
-                error!("Overlapping segments: Expected segment start {:x}, got {:x}", expected_next, vaddr);
-                return Err(LoaderError::InvalidElf.into());
+            match expected_next.cmp(&vaddr) {
+                Ordering::Less => {
+                    debug!("VAddr has an offset of {} bytes", vaddr - expected_next);
+                    size += vaddr - expected_next;
+                },
+                Ordering::Greater => {
+                    error!("Overlapping segments: Expected segment start {:x}, got {:x}", expected_next, vaddr);
+                    return Err(LoaderError::InvalidElf.into());
+                },
+                _ => ()
             }
         }
 

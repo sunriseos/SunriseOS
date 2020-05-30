@@ -28,7 +28,6 @@ mod bookkeeping;
 pub use self::arch::{PAGE_SIZE, read_cr2, read_cr3, InactiveHierarchy};
 pub use self::hierarchical_table::PageState;
 pub use self::hierarchical_table::{InactiveHierarchyTrait};
-use sunrise_libkern;
 
 bitflags! {
     /// The flags of a mapping.

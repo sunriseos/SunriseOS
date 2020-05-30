@@ -5,7 +5,6 @@ use crate::mem;
 use crate::ptr;
 use crate::sys::cloudabi::abi;
 use crate::sys::time::checked_dur2intervals;
-use crate::sys_common::thread::*;
 use crate::time::Duration;
 
 pub const DEFAULT_MIN_STACK_SIZE: usize = 2 * 1024 * 1024;
@@ -22,7 +21,7 @@ unsafe impl Sync for Thread {}
 impl Thread {
     // unsafe: see thread::Builder::spawn_unchecked for safety requirements
     pub unsafe fn new(stack: usize, p: Box<dyn FnOnce()>) -> io::Result<Thread> {
-        let p = box p;
+        let p = Box::into_raw(box p);
         let mut native: libc::pthread_t = mem::zeroed();
         let mut attr: libc::pthread_attr_t = mem::zeroed();
         assert_eq!(libc::pthread_attr_init(&mut attr), 0);
@@ -30,19 +29,25 @@ impl Thread {
         let stack_size = cmp::max(stack, min_stack_size(&attr));
         assert_eq!(libc::pthread_attr_setstacksize(&mut attr, stack_size), 0);
 
-        let ret = libc::pthread_create(&mut native, &attr, thread_start, &*p as *const _ as *mut _);
+        let ret = libc::pthread_create(&mut native, &attr, thread_start, p as *mut _);
+        // Note: if the thread creation fails and this assert fails, then p will
+        // be leaked. However, an alternative design could cause double-free
+        // which is clearly worse.
         assert_eq!(libc::pthread_attr_destroy(&mut attr), 0);
 
         return if ret != 0 {
+            // The thread failed to start and as a result p was not consumed. Therefore, it is
+            // safe to reconstruct the box so that it gets deallocated.
+            drop(Box::from_raw(p));
             Err(io::Error::from_raw_os_error(ret))
         } else {
-            mem::forget(p); // ownership passed to pthread_create
             Ok(Thread { id: native })
         };
 
         extern "C" fn thread_start(main: *mut libc::c_void) -> *mut libc::c_void {
             unsafe {
-                start_thread(main as *mut u8);
+                // Let's run some code.
+                Box::from_raw(main as *mut Box<dyn FnOnce()>)();
             }
             ptr::null_mut()
         }
@@ -58,8 +63,8 @@ impl Thread {
     }
 
     pub fn sleep(dur: Duration) {
-        let timeout = checked_dur2intervals(&dur)
-            .expect("overflow converting duration to nanoseconds");
+        let timeout =
+            checked_dur2intervals(&dur).expect("overflow converting duration to nanoseconds");
         unsafe {
             let subscription = abi::subscription {
                 type_: abi::eventtype::CLOCK,
@@ -72,10 +77,11 @@ impl Thread {
                 },
                 ..mem::zeroed()
             };
-            let mut event: abi::event = mem::uninitialized();
-            let mut nevents: usize = mem::uninitialized();
-            let ret = abi::poll(&subscription, &mut event, 1, &mut nevents);
+            let mut event = mem::MaybeUninit::<abi::event>::uninit();
+            let mut nevents = mem::MaybeUninit::<usize>::uninit();
+            let ret = abi::poll(&subscription, event.as_mut_ptr(), 1, nevents.as_mut_ptr());
             assert_eq!(ret, abi::errno::SUCCESS);
+            let event = event.assume_init();
             assert_eq!(event.error, abi::errno::SUCCESS);
         }
     }
@@ -84,11 +90,7 @@ impl Thread {
         unsafe {
             let ret = libc::pthread_join(self.id, ptr::null_mut());
             mem::forget(self);
-            assert!(
-                ret == 0,
-                "failed to join thread: {}",
-                io::Error::from_raw_os_error(ret)
-            );
+            assert!(ret == 0, "failed to join thread: {}", io::Error::from_raw_os_error(ret));
         }
     }
 }

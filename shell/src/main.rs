@@ -3,7 +3,7 @@
 //! Creates an interactive terminal window, providing a few functions useful to
 //! test Sunrise. Type help followed by enter to get a list of allowed commands.
 
-#![feature(asm, naked_functions)]
+#![feature(llvm_asm, naked_functions)]
 #![no_std]
 
 // rustc warnings
@@ -456,7 +456,7 @@ pub fn split_path(path: &str) -> (&str, Option<&str>) {
 
     // unwrap will never fail here
     let comp = path_split.next().unwrap();
-    let rest_opt = path_split.next().and_then(|x| Some(x.trim_matches('/')));
+    let rest_opt = path_split.next().map(|x| x.trim_matches('/'));
 
     (comp, rest_opt)
 }

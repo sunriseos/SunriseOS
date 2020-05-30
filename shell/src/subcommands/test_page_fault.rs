@@ -14,7 +14,7 @@ pub fn main(_stdin: IPipeProxy, _stdout: IPipeProxy, _stderr: IPipeProxy, _args:
     // dereference the null pointer.
     // doing this in rust is so UB, it's optimized out, so we do it in asm.
     unsafe {
-        asm!("
+        llvm_asm!("
         mov al, [0]
         " ::: "eax" : "volatile", "intel")
     }

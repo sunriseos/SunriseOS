@@ -6,7 +6,7 @@ struct Foo {
 
 impl Foo {
     fn foo(self: isize, x: isize) -> isize {
-        //~^ ERROR invalid method receiver type
+        //~^ ERROR invalid `self` parameter type
         self.f + x
     }
 }
@@ -17,11 +17,11 @@ struct Bar<T> {
 
 impl<T> Bar<T> {
     fn foo(self: Bar<isize>, x: isize) -> isize {
-        //~^ ERROR invalid method receiver type
+        //~^ ERROR invalid `self` parameter type
         x
     }
     fn bar(self: &Bar<usize>, x: isize) -> isize {
-        //~^ ERROR invalid method receiver type
+        //~^ ERROR invalid `self` parameter type
         x
     }
 }
@@ -34,16 +34,16 @@ trait SomeTrait {
 
 impl<'a, T> SomeTrait for &'a Bar<T> {
     fn dummy1(self: &&'a Bar<T>) { }
-    fn dummy2(self: &Bar<T>) {} //~ ERROR mismatched method receiver
-    //~^ ERROR mismatched method receiver
+    fn dummy2(self: &Bar<T>) {} //~ ERROR mismatched `self` parameter type
+    //~^ ERROR mismatched `self` parameter type
     fn dummy3(self: &&Bar<T>) {}
-    //~^ ERROR mismatched method receiver
-    //~| expected type `&'a Bar<T>`
-    //~| found type `&Bar<T>`
+    //~^ ERROR mismatched `self` parameter type
+    //~| expected reference `&'a Bar<T>`
+    //~| found reference `&Bar<T>`
     //~| lifetime mismatch
-    //~| ERROR mismatched method receiver
-    //~| expected type `&'a Bar<T>`
-    //~| found type `&Bar<T>`
+    //~| ERROR mismatched `self` parameter type
+    //~| expected reference `&'a Bar<T>`
+    //~| found reference `&Bar<T>`
     //~| lifetime mismatch
 }
 

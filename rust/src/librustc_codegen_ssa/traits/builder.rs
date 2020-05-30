@@ -2,18 +2,23 @@ use super::abi::AbiBuilderMethods;
 use super::asm::AsmBuilderMethods;
 use super::debuginfo::DebugInfoBuilderMethods;
 use super::intrinsic::IntrinsicCallMethods;
-use super::type_::ArgTypeMethods;
+use super::type_::ArgAbiMethods;
 use super::{HasCodegen, StaticBuilderMethods};
-use crate::common::{AtomicOrdering, AtomicRmwBinOp, IntPredicate, RealPredicate,
-    SynchronizationScope};
+
+use crate::common::{
+    AtomicOrdering, AtomicRmwBinOp, IntPredicate, RealPredicate, SynchronizationScope,
+};
 use crate::mir::operand::OperandRef;
 use crate::mir::place::PlaceRef;
 use crate::MemFlags;
-use rustc::ty::Ty;
-use rustc::ty::layout::{Align, Size, HasParamEnv};
-use rustc_target::spec::{HasTargetSpec};
-use std::ops::Range;
+
+use rustc_middle::ty::layout::HasParamEnv;
+use rustc_middle::ty::Ty;
+use rustc_target::abi::{Align, Size};
+use rustc_target::spec::HasTargetSpec;
+
 use std::iter::TrustedLen;
+use std::ops::Range;
 
 #[derive(Copy, Clone)]
 pub enum OverflowOp {
@@ -24,17 +29,16 @@ pub enum OverflowOp {
 
 pub trait BuilderMethods<'a, 'tcx>:
     HasCodegen<'tcx>
-    + DebugInfoBuilderMethods<'tcx>
-    + ArgTypeMethods<'tcx>
+    + DebugInfoBuilderMethods
+    + ArgAbiMethods<'tcx>
     + AbiBuilderMethods<'tcx>
     + IntrinsicCallMethods<'tcx>
     + AsmBuilderMethods<'tcx>
     + StaticBuilderMethods
     + HasParamEnv<'tcx>
     + HasTargetSpec
-
 {
-    fn new_block<'b>(cx: &'a Self::CodegenCx, llfn: Self::Value, name: &'b str) -> Self;
+    fn new_block<'b>(cx: &'a Self::CodegenCx, llfn: Self::Function, name: &'b str) -> Self;
     fn with_cx(cx: &'a Self::CodegenCx) -> Self;
     fn build_sibling_block(&self, name: &str) -> Self;
     fn cx(&self) -> &Self::CodegenCx;
@@ -109,23 +113,17 @@ pub trait BuilderMethods<'a, 'tcx>:
         rhs: Self::Value,
     ) -> (Self::Value, Self::Value);
 
-    fn alloca(&mut self, ty: Self::Type, name: &str, align: Align) -> Self::Value;
-    fn dynamic_alloca(&mut self, ty: Self::Type, name: &str, align: Align) -> Self::Value;
-    fn array_alloca(
-        &mut self,
-        ty: Self::Type,
-        len: Self::Value,
-        name: &str,
-        align: Align,
-    ) -> Self::Value;
+    fn alloca(&mut self, ty: Self::Type, align: Align) -> Self::Value;
+    fn dynamic_alloca(&mut self, ty: Self::Type, align: Align) -> Self::Value;
+    fn array_alloca(&mut self, ty: Self::Type, len: Self::Value, align: Align) -> Self::Value;
 
     fn load(&mut self, ptr: Self::Value, align: Align) -> Self::Value;
     fn volatile_load(&mut self, ptr: Self::Value) -> Self::Value;
     fn atomic_load(&mut self, ptr: Self::Value, order: AtomicOrdering, size: Size) -> Self::Value;
     fn load_operand(&mut self, place: PlaceRef<'tcx, Self::Value>)
-        -> OperandRef<'tcx, Self::Value>;
+    -> OperandRef<'tcx, Self::Value>;
 
-        /// Called for Rvalue::Repeat when the elem is neither a ZST nor optimizable using memset.
+    /// Called for Rvalue::Repeat when the elem is neither a ZST nor optimizable using memset.
     fn write_operand_repeatedly(
         self,
         elem: OperandRef<'tcx, Self::Value>,

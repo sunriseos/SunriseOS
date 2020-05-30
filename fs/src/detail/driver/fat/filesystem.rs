@@ -106,11 +106,11 @@ impl FileSystemOperations for FatFileSystem {
             .lock()
             .search_entry(path)
             .map_err(from_driver)
-            .and_then(|result| {
+            .map(|result| {
                 if result.attribute.is_directory() {
-                    Ok(DirectoryEntryType::Directory)
+                    DirectoryEntryType::Directory
                 } else {
-                    Ok(DirectoryEntryType::File)
+                    DirectoryEntryType::File
                 }
             })
     }

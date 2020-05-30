@@ -8,6 +8,7 @@
 
 #![deny(unsafe_code)]
 
+use crate::{Delimiter, Level, LineColumn, Spacing};
 use std::fmt;
 use std::hash::Hash;
 use std::marker;
@@ -17,7 +18,6 @@ use std::panic;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Once;
 use std::thread;
-use crate::{Delimiter, Level, LineColumn, Spacing};
 
 /// Higher-order macro describing the server RPC API, allowing automatic
 /// generation of type-safe Rust APIs, both client-side and server-side.
@@ -103,8 +103,9 @@ macro_rules! with_api {
             Literal {
                 fn drop($self: $S::Literal);
                 fn clone($self: &$S::Literal) -> $S::Literal;
-                // FIXME(eddyb) `Literal` should not expose internal `Debug` impls.
-                fn debug($self: &$S::Literal) -> String;
+                fn debug_kind($self: &$S::Literal) -> String;
+                fn symbol($self: &$S::Literal) -> String;
+                fn suffix($self: &$S::Literal) -> Option<String>;
                 fn integer(n: &str) -> $S::Literal;
                 fn typed_integer(n: &str, kind: &str) -> $S::Literal;
                 fn float(n: &str) -> $S::Literal;
@@ -148,6 +149,7 @@ macro_rules! with_api {
                 fn debug($self: $S::Span) -> String;
                 fn def_site() -> $S::Span;
                 fn call_site() -> $S::Span;
+                fn mixed_site() -> $S::Span;
                 fn source_file($self: $S::Span) -> $S::SourceFile;
                 fn parent($self: $S::Span) -> Option<$S::Span>;
                 fn source($self: $S::Span) -> $S::Span;
@@ -269,10 +271,7 @@ struct Marked<T, M> {
 impl<T, M> Mark for Marked<T, M> {
     type Unmarked = T;
     fn mark(unmarked: Self::Unmarked) -> Self {
-        Marked {
-            value: unmarked,
-            _marker: marker::PhantomData,
-        }
+        Marked { value: unmarked, _marker: marker::PhantomData }
     }
 }
 impl<T, M> Unmark for Marked<T, M> {
