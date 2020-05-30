@@ -1,0 +1,3115 @@
+From abf7200c294b2a19e7657bf92bdc31d8233ac250 Mon Sep 17 00:00:00 2001
+From: roblabla <unfiltered@roblab.la>
+Date: Sat, 30 May 2020 12:03:10 +0000
+Subject: [PATCH] Add sunrise
+
+---
+ src/liballoc/Cargo.toml                     |   2 +-
+ src/libpanic_abort/Cargo.toml               |   4 +-
+ src/libpanic_abort/lib.rs                   |   7 +-
+ src/libpanic_unwind/Cargo.toml              |   6 +-
+ src/libpanic_unwind/lib.rs                  |   1 +
+ src/libprofiler_builtins/Cargo.toml         |   4 +-
+ src/libstd/Cargo.toml                       |  26 +-
+ src/libstd/error.rs                         |   2 +-
+ src/libstd/lib.rs                           |   2 +-
+ src/libstd/os/mod.rs                        |   3 +
+ src/libstd/os/raw/mod.rs                    |   6 +-
+ src/libstd/path.rs                          |  59 +-
+ src/libstd/sys/hermit/path.rs               |   4 +-
+ src/libstd/sys/mod.rs                       |   3 +
+ src/libstd/sys/sgx/path.rs                  |   4 +-
+ src/libstd/sys/sunrise/alloc.rs             |  17 +
+ src/libstd/sys/sunrise/args.rs              |  92 +++
+ src/libstd/sys/sunrise/cmath.rs             |  29 +
+ src/libstd/sys/sunrise/condvar.rs           |  38 ++
+ src/libstd/sys/sunrise/env.rs               |   9 +
+ src/libstd/sys/sunrise/ext/ffi.rs           |  38 ++
+ src/libstd/sys/sunrise/ext/mod.rs           |  35 ++
+ src/libstd/sys/sunrise/fast_thread_local.rs |   4 +
+ src/libstd/sys/sunrise/fs/mod.rs            | 644 ++++++++++++++++++++
+ src/libstd/sys/sunrise/io.rs                |  45 ++
+ src/libstd/sys/sunrise/memchr.rs            |   1 +
+ src/libstd/sys/sunrise/mod.rs               |  86 +++
+ src/libstd/sys/sunrise/mutex.rs             |  68 +++
+ src/libstd/sys/sunrise/net.rs               | 366 +++++++++++
+ src/libstd/sys/sunrise/os.rs                | 188 ++++++
+ src/libstd/sys/sunrise/path.rs              |  25 +
+ src/libstd/sys/sunrise/pipe.rs              |  41 ++
+ src/libstd/sys/sunrise/process.rs           | 216 +++++++
+ src/libstd/sys/sunrise/rwlock.rs            |  72 +++
+ src/libstd/sys/sunrise/stack_overflow.rs    |   5 +
+ src/libstd/sys/sunrise/stdio.rs             | 107 ++++
+ src/libstd/sys/sunrise/thread.rs            |  60 ++
+ src/libstd/sys/sunrise/thread_local.rs      |  40 ++
+ src/libstd/sys/sunrise/time.rs              |  57 ++
+ src/libstd/sys/unix/path.rs                 |   4 +-
+ src/libstd/sys/vxworks/path.rs              |   4 +-
+ src/libstd/sys/wasi/path.rs                 |   4 +-
+ src/libstd/sys/wasm/path.rs                 |   4 +-
+ src/libstd/sys/windows/path.rs              |  10 +-
+ src/libstd/sys_common/mod.rs                |   2 +
+ src/libtest/Cargo.toml                      |   4 +-
+ src/libunwind/Cargo.toml                    |   6 +-
+ 47 files changed, 2380 insertions(+), 74 deletions(-)
+ create mode 100644 src/libstd/sys/sunrise/alloc.rs
+ create mode 100644 src/libstd/sys/sunrise/args.rs
+ create mode 100644 src/libstd/sys/sunrise/cmath.rs
+ create mode 100644 src/libstd/sys/sunrise/condvar.rs
+ create mode 100644 src/libstd/sys/sunrise/env.rs
+ create mode 100644 src/libstd/sys/sunrise/ext/ffi.rs
+ create mode 100644 src/libstd/sys/sunrise/ext/mod.rs
+ create mode 100644 src/libstd/sys/sunrise/fast_thread_local.rs
+ create mode 100644 src/libstd/sys/sunrise/fs/mod.rs
+ create mode 100644 src/libstd/sys/sunrise/io.rs
+ create mode 100644 src/libstd/sys/sunrise/memchr.rs
+ create mode 100644 src/libstd/sys/sunrise/mod.rs
+ create mode 100644 src/libstd/sys/sunrise/mutex.rs
+ create mode 100644 src/libstd/sys/sunrise/net.rs
+ create mode 100644 src/libstd/sys/sunrise/os.rs
+ create mode 100644 src/libstd/sys/sunrise/path.rs
+ create mode 100644 src/libstd/sys/sunrise/pipe.rs
+ create mode 100644 src/libstd/sys/sunrise/process.rs
+ create mode 100644 src/libstd/sys/sunrise/rwlock.rs
+ create mode 100644 src/libstd/sys/sunrise/stack_overflow.rs
+ create mode 100644 src/libstd/sys/sunrise/stdio.rs
+ create mode 100644 src/libstd/sys/sunrise/thread.rs
+ create mode 100644 src/libstd/sys/sunrise/thread_local.rs
+ create mode 100644 src/libstd/sys/sunrise/time.rs
+
+diff --git a/src/liballoc/Cargo.toml b/src/liballoc/Cargo.toml
+index d1119f7..f91cdce 100644
+--- a/src/liballoc/Cargo.toml
++++ b/src/liballoc/Cargo.toml
+@@ -12,7 +12,7 @@ path = "lib.rs"
+ 
+ [dependencies]
+ core = { path = "../libcore" }
+-compiler_builtins = { version = "0.1.10", features = ['rustc-dep-of-std'] }
++compiler_builtins = { version = "0.1.0", features = ['rustc-dep-of-std', 'soft-float'] }
+ 
+ [dev-dependencies]
+ rand = "0.7"
+diff --git a/src/libpanic_abort/Cargo.toml b/src/libpanic_abort/Cargo.toml
+index 2bee0b7..ad45a40 100644
+--- a/src/libpanic_abort/Cargo.toml
++++ b/src/libpanic_abort/Cargo.toml
+@@ -11,6 +11,6 @@ bench = false
+ doc = false
+ 
+ [dependencies]
+-core = { path = "../libcore" }
++#core = { path = "../libcore" }
+ libc = { version = "0.2", default-features = false }
+-compiler_builtins = "0.1.0"
++#compiler_builtins = "0.1.0"
+diff --git a/src/libpanic_abort/lib.rs b/src/libpanic_abort/lib.rs
+index fd3e118..e2c71dc 100644
+--- a/src/libpanic_abort/lib.rs
++++ b/src/libpanic_abort/lib.rs
+@@ -44,7 +44,11 @@ pub unsafe extern "C" fn __rust_start_panic(_payload: usize) -> u32 {
+         libc::abort();
+     }
+ 
+-    #[cfg(any(windows, all(target_arch = "wasm32", not(target_os = "emscripten"))))]
++    #[cfg(any(
++        windows,
++        all(target_arch = "wasm32", not(target_os = "emscripten")),
++        target_os = "sunrise",
++    ))]
+     unsafe fn abort() -> ! {
+         core::intrinsics::abort();
+     }
+@@ -90,6 +94,7 @@ pub mod personalities {
+     #[cfg(not(any(
+         all(target_arch = "wasm32", not(target_os = "emscripten"),),
+         all(target_os = "windows", target_env = "gnu", target_arch = "x86_64",),
++        target_os = "sunrise",
+     )))]
+     pub extern "C" fn rust_eh_personality() {}
+ 
+diff --git a/src/libpanic_unwind/Cargo.toml b/src/libpanic_unwind/Cargo.toml
+index 47cd09f..7396b11 100644
+--- a/src/libpanic_unwind/Cargo.toml
++++ b/src/libpanic_unwind/Cargo.toml
+@@ -11,9 +11,9 @@ bench = false
+ doc = false
+ 
+ [dependencies]
+-alloc = { path = "../liballoc" }
+-core = { path = "../libcore" }
++#alloc = { path = "../liballoc" }
++#core = { path = "../libcore" }
+ libc = { version = "0.2", default-features = false }
+ unwind = { path = "../libunwind" }
+-compiler_builtins = "0.1.0"
++#compiler_builtins = "0.1.0"
+ cfg-if = "0.1.8"
+diff --git a/src/libpanic_unwind/lib.rs b/src/libpanic_unwind/lib.rs
+index f791fe8..3d5f53e 100644
+--- a/src/libpanic_unwind/lib.rs
++++ b/src/libpanic_unwind/lib.rs
+@@ -33,6 +33,7 @@
+ // `real_imp` is unused with Miri, so silence warnings.
+ #![cfg_attr(miri, allow(dead_code))]
+ 
++extern crate alloc;
+ use alloc::boxed::Box;
+ use core::any::Any;
+ use core::panic::BoxMeUp;
+diff --git a/src/libprofiler_builtins/Cargo.toml b/src/libprofiler_builtins/Cargo.toml
+index 0d36bd0..6f04676 100644
+--- a/src/libprofiler_builtins/Cargo.toml
++++ b/src/libprofiler_builtins/Cargo.toml
+@@ -13,8 +13,8 @@ bench = false
+ doc = false
+ 
+ [dependencies]
+-core = { path = "../libcore" }
+-compiler_builtins = { version = "0.1.0", features = ['rustc-dep-of-std'] }
++#core = { path = "../libcore" }
++#compiler_builtins = { version = "0.1.0", features = ['rustc-dep-of-std'] }
+ 
+ [build-dependencies]
+ cc = "1.0.1"
+diff --git a/src/libstd/Cargo.toml b/src/libstd/Cargo.toml
+index 077ca2a..6f0e910 100644
+--- a/src/libstd/Cargo.toml
++++ b/src/libstd/Cargo.toml
+@@ -14,22 +14,23 @@ path = "lib.rs"
+ crate-type = ["dylib", "rlib"]
+ 
+ [dependencies]
+-alloc = { path = "../liballoc" }
+-cfg-if = { version = "0.1.8", features = ['rustc-dep-of-std'] }
++#alloc = { path = "../liballoc" }
++cfg-if = { version = "0.1.8" }
+ panic_unwind = { path = "../libpanic_unwind", optional = true }
+ panic_abort = { path = "../libpanic_abort" }
+-core = { path = "../libcore" }
+-libc = { version = "0.2.51", default-features = false, features = ['rustc-dep-of-std'] }
+-compiler_builtins = { version = "0.1.16" }
++#core = { path = "../libcore" }
++libc = { version = "0.2.51", default-features = false, features = ['align'] }
++#compiler_builtins = { version = "0.1.16", features = ['rustc-dep-of-std', 'soft-float'] }
+ profiler_builtins = { path = "../libprofiler_builtins", optional = true }
+ unwind = { path = "../libunwind" }
+-hashbrown = { version = "0.6.2", default-features = false, features = ['rustc-dep-of-std'] }
++hashbrown = { version = "0.6.2", default-features = false, features = ['rustc-internal-api'] }
+ 
+ [dependencies.backtrace_rs]
+ package = "backtrace"
+ version = "0.3.46"
+ default-features = false # without the libstd `backtrace` feature, stub out everything
+-features = [ "rustc-dep-of-std" ] # enable build support for integrating into libstd
++features = []
++# TODO: backtrace-sys fork.
+ 
+ [dev-dependencies]
+ rand = "0.7"
+@@ -46,6 +47,13 @@ hermit-abi = { version = "0.1.13", features = ['rustc-dep-of-std'] }
+ [target.wasm32-wasi.dependencies]
+ wasi = { version = "0.9.0", features = ['rustc-dep-of-std'], default-features = false }
+ 
++[target.'cfg(target_os = "sunrise")'.dependencies]
++# Need #SunriseOS/SunriseOS#402 to actually build
++sunrise-libuser = { git = "https://github.com/sunriseos/sunriseos.git", default-features = false, features = ['rustc-dep-of-std'] }
++lazy_static = { version = "1.3", features = ['spin_no_std'] }
++log = "0.4"
++spin = "0.5"
++
+ [features]
+ default = ["std_detect_file_io", "std_detect_dlsym_getauxval", "panic-unwind"]
+ 
+@@ -58,11 +66,11 @@ backtrace = [
+ 
+ panic-unwind = ["panic_unwind"]
+ profiler = ["profiler_builtins"]
+-compiler-builtins-c = ["alloc/compiler-builtins-c"]
++#compiler-builtins-c = ["alloc/compiler-builtins-c"]
+ llvm-libunwind = ["unwind/llvm-libunwind"]
+ 
+ # Make panics and failed asserts immediately abort without formatting any message
+-panic_immediate_abort = ["core/panic_immediate_abort"]
++#panic_immediate_abort = ["core/panic_immediate_abort"]
+ 
+ # Enable std_detect default features for stdarch/crates/std_detect:
+ # https://github.com/rust-lang/stdarch/blob/master/crates/std_detect/Cargo.toml
+diff --git a/src/libstd/error.rs b/src/libstd/error.rs
+index 24b57f1..d84ca86 100644
+--- a/src/libstd/error.rs
++++ b/src/libstd/error.rs
+@@ -546,7 +546,7 @@ impl Error for char::ParseCharError {
+ }
+ 
+ #[unstable(feature = "try_reserve", reason = "new API", issue = "48043")]
+-impl Error for alloc::collections::TryReserveError {}
++impl Error for alloc_crate::collections::TryReserveError {}
+ 
+ // Copied from `any.rs`.
+ impl dyn Error + 'static {
+diff --git a/src/libstd/lib.rs b/src/libstd/lib.rs
+index cc3e613..d72f193 100644
+--- a/src/libstd/lib.rs
++++ b/src/libstd/lib.rs
+@@ -479,7 +479,7 @@ pub mod task {
+ 
+     #[doc(inline)]
+     #[unstable(feature = "wake_trait", issue = "69912")]
+-    pub use alloc::task::*;
++    pub use alloc_crate::task::*;
+ }
+ 
+ #[stable(feature = "futures_api", since = "1.36.0")]
+diff --git a/src/libstd/os/mod.rs b/src/libstd/os/mod.rs
+index fd6ee08..72af6c6 100644
+--- a/src/libstd/os/mod.rs
++++ b/src/libstd/os/mod.rs
+@@ -35,6 +35,9 @@ cfg_if::cfg_if! {
+         #[cfg(any(target_os = "linux", target_os = "l4re"))]
+         pub mod linux;
+ 
++        #[cfg(any(target_os = "sunrise"))]
++        #[stable(feature = "rust1", since = "1.0.0")]
++        pub use crate::sys::ext as sunrise;
+     }
+ }
+ 
+diff --git a/src/libstd/os/raw/mod.rs b/src/libstd/os/raw/mod.rs
+index 47daf0c..2b9ddf5 100644
+--- a/src/libstd/os/raw/mod.rs
++++ b/src/libstd/os/raw/mod.rs
+@@ -47,7 +47,8 @@
+             target_arch = "powerpc"
+         )
+     ),
+-    all(target_os = "fuchsia", target_arch = "aarch64")
++    all(target_os = "fuchsia", target_arch = "aarch64"),
++    target_os = "sunrise"
+ ))]
+ #[stable(feature = "raw_os", since = "1.1.0")]
+ pub type c_char = u8;
+@@ -90,7 +91,8 @@ pub type c_char = u8;
+             target_arch = "powerpc"
+         )
+     ),
+-    all(target_os = "fuchsia", target_arch = "aarch64")
++    all(target_os = "fuchsia", target_arch = "aarch64"),
++    target_os = "sunrise"
+ )))]
+ #[stable(feature = "raw_os", since = "1.1.0")]
+ pub type c_char = i8;
+diff --git a/src/libstd/path.rs b/src/libstd/path.rs
+index 0fe5451..1772b96 100644
+--- a/src/libstd/path.rs
++++ b/src/libstd/path.rs
+@@ -188,7 +188,7 @@ pub enum Prefix<'a> {
+ 
+ impl<'a> Prefix<'a> {
+     #[inline]
+-    fn len(&self) -> usize {
++    pub(crate) fn len(&self) -> usize {
+         use self::Prefix::*;
+         fn os_str_len(s: &OsStr) -> usize {
+             os_str_as_u8_slice(s).len()
+@@ -304,18 +304,17 @@ unsafe fn u8_slice_as_os_str(s: &[u8]) -> &OsStr {
+     &*(s as *const [u8] as *const OsStr)
+ }
+ 
+-// Detect scheme on Redox
+-fn has_redox_scheme(s: &[u8]) -> bool {
+-    cfg!(target_os = "redox") && s.contains(&b':')
+-}
+-
+ ////////////////////////////////////////////////////////////////////////////////
+ // Cross-platform, iterator-independent parsing
+ ////////////////////////////////////////////////////////////////////////////////
+ 
+ /// Says whether the first byte after the prefix is a separator.
+-fn has_physical_root(s: &[u8], prefix: Option<Prefix<'_>>) -> bool {
+-    let path = if let Some(p) = prefix { &s[p.len()..] } else { s };
++fn has_physical_root(s: &[u8], prefix: Option<PrefixComponent<'_>>) -> bool {
++    let path = if let Some(p) = prefix {
++        &s[os_str_as_u8_slice(p.as_os_str()).len()..]
++    } else {
++        s
++    };
+     !path.is_empty() && is_sep_byte(path[0])
+ }
+ 
+@@ -425,6 +424,13 @@ impl<'a> PrefixComponent<'a> {
+     pub fn as_os_str(&self) -> &'a OsStr {
+         self.raw
+     }
++
++    pub(crate) fn from_os_str_kind<'raw>(raw: &'raw OsStr, prefix: Prefix<'raw>) -> PrefixComponent<'raw> {
++        PrefixComponent {
++            raw,
++            parsed: prefix
++        }
++    }
+ }
+ 
+ #[stable(feature = "rust1", since = "1.0.0")]
+@@ -584,7 +590,7 @@ pub struct Components<'a> {
+     path: &'a [u8],
+ 
+     // The prefix as it was originally parsed, if any
+-    prefix: Option<Prefix<'a>>,
++    prefix: Option<PrefixComponent<'a>>,
+ 
+     // true if path *physically* has a root separator; for most Windows
+     // prefixes, it may have a "logical" rootseparator for the purposes of
+@@ -631,12 +637,12 @@ impl<'a> Components<'a> {
+     // how long is the prefix, if any?
+     #[inline]
+     fn prefix_len(&self) -> usize {
+-        self.prefix.as_ref().map(Prefix::len).unwrap_or(0)
++        self.prefix.map(|v| v.as_os_str().len()).unwrap_or(0)
+     }
+ 
+     #[inline]
+     fn prefix_verbatim(&self) -> bool {
+-        self.prefix.as_ref().map(Prefix::is_verbatim).unwrap_or(false)
++        self.prefix.as_ref().map(|v| v.kind().is_verbatim()).unwrap_or(false)
+     }
+ 
+     /// how much of the prefix is left from the point of view of iteration?
+@@ -695,7 +701,7 @@ impl<'a> Components<'a> {
+             return true;
+         }
+         if let Some(p) = self.prefix {
+-            if p.has_implicit_root() {
++            if p.kind().has_implicit_root() {
+                 return true;
+             }
+         }
+@@ -868,12 +874,8 @@ impl<'a> Iterator for Components<'a> {
+                 State::Prefix if self.prefix_len() > 0 => {
+                     self.front = State::StartDir;
+                     debug_assert!(self.prefix_len() <= self.path.len());
+-                    let raw = &self.path[..self.prefix_len()];
+                     self.path = &self.path[self.prefix_len()..];
+-                    return Some(Component::Prefix(PrefixComponent {
+-                        raw: unsafe { u8_slice_as_os_str(raw) },
+-                        parsed: self.prefix.unwrap(),
+-                    }));
++                    return Some(Component::Prefix(self.prefix.unwrap()));
+                 }
+                 State::Prefix => {
+                     self.front = State::StartDir;
+@@ -885,7 +887,7 @@ impl<'a> Iterator for Components<'a> {
+                         self.path = &self.path[1..];
+                         return Some(Component::RootDir);
+                     } else if let Some(p) = self.prefix {
+-                        if p.has_implicit_root() && !p.is_verbatim() {
++                        if p.kind().has_implicit_root() && !p.kind().is_verbatim() {
+                             return Some(Component::RootDir);
+                         }
+                     } else if self.include_cur_dir() {
+@@ -932,7 +934,7 @@ impl<'a> DoubleEndedIterator for Components<'a> {
+                         self.path = &self.path[..self.path.len() - 1];
+                         return Some(Component::RootDir);
+                     } else if let Some(p) = self.prefix {
+-                        if p.has_implicit_root() && !p.is_verbatim() {
++                        if p.kind().has_implicit_root() && !p.kind().is_verbatim() {
+                             return Some(Component::RootDir);
+                         }
+                     } else if self.include_cur_dir() {
+@@ -942,10 +944,7 @@ impl<'a> DoubleEndedIterator for Components<'a> {
+                 }
+                 State::Prefix if self.prefix_len() > 0 => {
+                     self.back = State::Done;
+-                    return Some(Component::Prefix(PrefixComponent {
+-                        raw: unsafe { u8_slice_as_os_str(self.path) },
+-                        parsed: self.prefix.unwrap(),
+-                    }));
++                    return Some(Component::Prefix(self.prefix.unwrap()));
+                 }
+                 State::Prefix => {
+                     self.back = State::Done;
+@@ -1196,7 +1195,7 @@ impl PathBuf {
+             let comps = self.components();
+             if comps.prefix_len() > 0
+                 && comps.prefix_len() == comps.path.len()
+-                && comps.prefix.unwrap().is_drive()
++                && comps.prefix.unwrap().kind().is_drive()
+             {
+                 need_sep = false
+             }
+@@ -1887,12 +1886,7 @@ impl Path {
+     #[stable(feature = "rust1", since = "1.0.0")]
+     #[allow(deprecated)]
+     pub fn is_absolute(&self) -> bool {
+-        if cfg!(target_os = "redox") {
+-            // FIXME: Allow Redox prefixes
+-            self.has_root() || has_redox_scheme(self.as_u8_slice())
+-        } else {
+-            self.has_root() && (cfg!(unix) || self.prefix().is_some())
+-        }
++        self.has_root() && (cfg!(all(unix, not(target_os = "redox"))) || self.prefix().is_some())
+     }
+ 
+     /// Returns `true` if the `Path` is relative, i.e., not absolute.
+@@ -1913,7 +1907,7 @@ impl Path {
+         !self.is_absolute()
+     }
+ 
+-    fn prefix(&self) -> Option<Prefix<'_>> {
++    fn prefix(&self) -> Option<PrefixComponent<'_>> {
+         self.components().prefix
+     }
+ 
+@@ -2291,8 +2285,7 @@ impl Path {
+         Components {
+             path: self.as_u8_slice(),
+             prefix,
+-            has_physical_root: has_physical_root(self.as_u8_slice(), prefix)
+-                || has_redox_scheme(self.as_u8_slice()),
++            has_physical_root: has_physical_root(self.as_u8_slice(), prefix),
+             front: State::Prefix,
+             back: State::Body,
+         }
+diff --git a/src/libstd/sys/hermit/path.rs b/src/libstd/sys/hermit/path.rs
+index 840a7ae..8a47064 100644
+--- a/src/libstd/sys/hermit/path.rs
++++ b/src/libstd/sys/hermit/path.rs
+@@ -1,5 +1,5 @@
+ use crate::ffi::OsStr;
+-use crate::path::Prefix;
++use crate::path::PrefixComponent;
+ 
+ #[inline]
+ pub fn is_sep_byte(b: u8) -> bool {
+@@ -11,7 +11,7 @@ pub fn is_verbatim_sep(b: u8) -> bool {
+     b == b'/'
+ }
+ 
+-pub fn parse_prefix(_: &OsStr) -> Option<Prefix<'_>> {
++pub fn parse_prefix(_: &OsStr) -> Option<PrefixComponent<'_>> {
+     None
+ }
+ 
+diff --git a/src/libstd/sys/mod.rs b/src/libstd/sys/mod.rs
+index 875ff1a..e75f713 100644
+--- a/src/libstd/sys/mod.rs
++++ b/src/libstd/sys/mod.rs
+@@ -41,6 +41,9 @@ cfg_if::cfg_if! {
+     } else if #[cfg(target_os = "wasi")] {
+         mod wasi;
+         pub use self::wasi::*;
++    } else if #[cfg(target_os = "sunrise")] {
++        mod sunrise;
++        pub use self::sunrise::*;
+     } else if #[cfg(target_arch = "wasm32")] {
+         mod wasm;
+         pub use self::wasm::*;
+diff --git a/src/libstd/sys/sgx/path.rs b/src/libstd/sys/sgx/path.rs
+index 06c9df3..5172bd2 100644
+--- a/src/libstd/sys/sgx/path.rs
++++ b/src/libstd/sys/sgx/path.rs
+@@ -1,5 +1,5 @@
+ use crate::ffi::OsStr;
+-use crate::path::Prefix;
++use crate::path::PrefixComponent;
+ 
+ #[inline]
+ pub fn is_sep_byte(b: u8) -> bool {
+@@ -11,7 +11,7 @@ pub fn is_verbatim_sep(b: u8) -> bool {
+     b == b'/'
+ }
+ 
+-pub fn parse_prefix(_: &OsStr) -> Option<Prefix<'_>> {
++pub fn parse_prefix(_: &OsStr) -> Option<PrefixComponent<'_>> {
+     None
+ }
+ 
+diff --git a/src/libstd/sys/sunrise/alloc.rs b/src/libstd/sys/sunrise/alloc.rs
+new file mode 100644
+index 0000000..2048e9a
+--- /dev/null
++++ b/src/libstd/sys/sunrise/alloc.rs
+@@ -0,0 +1,17 @@
++//! This is an implementation of a global allocator on the surnise platform using libuser.
++use crate::alloc::{GlobalAlloc, Layout, System};
++use sunrise_libuser::ALLOCATOR;
++
++#[stable(feature = "alloc_system_type", since = "1.28.0")]
++unsafe impl GlobalAlloc for System {
++    #[inline]
++    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
++        ALLOCATOR.alloc(layout)
++    }
++
++    #[inline]
++    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
++        ALLOCATOR.dealloc(ptr, layout)
++    }
++
++}
+diff --git a/src/libstd/sys/sunrise/args.rs b/src/libstd/sys/sunrise/args.rs
+new file mode 100644
+index 0000000..cdd1652
+--- /dev/null
++++ b/src/libstd/sys/sunrise/args.rs
+@@ -0,0 +1,92 @@
++use crate::ffi::OsString;
++use crate::marker::PhantomData;
++use crate::vec;
++
++/// One-time global initialization.
++pub unsafe fn init(argc: isize, argv: *const *const u8) { imp::init(argc, argv) }
++
++/// One-time global cleanup.
++pub unsafe fn cleanup() { imp::cleanup() }
++
++/// Returns the command line arguments
++pub fn args() -> Args {
++    imp::args()
++}
++
++pub struct Args {
++    iter: vec::IntoIter<OsString>,
++    _dont_send_or_sync_me: PhantomData<*mut ()>,
++}
++
++impl Args {
++    pub fn inner_debug(&self) -> &[OsString] {
++        self.iter.as_slice()
++    }
++}
++
++impl Iterator for Args {
++    type Item = OsString;
++    fn next(&mut self) -> Option<OsString> {
++        self.iter.next()
++    }
++    fn size_hint(&self) -> (usize, Option<usize>) {
++        self.iter.size_hint()
++    }
++}
++
++impl ExactSizeIterator for Args {
++    fn len(&self) -> usize {
++        self.iter.len()
++    }
++}
++
++impl DoubleEndedIterator for Args {
++    fn next_back(&mut self) -> Option<OsString> {
++        self.iter.next_back()
++    }
++}
++
++mod imp {
++    use crate::os::sunrise::prelude::*;
++    use crate::ptr;
++    use crate::ffi::{CStr, OsString};
++    use crate::marker::PhantomData;
++    use super::Args;
++
++    use crate::sys_common::mutex::Mutex;
++
++    static mut ARGC: isize = 0;
++    static mut ARGV: *const *const u8 = ptr::null();
++    // We never call `ENV_LOCK.init()`, so it is UB to attempt to
++    // acquire this mutex reentrantly!
++    static LOCK: Mutex = Mutex::new();
++
++    pub unsafe fn init(argc: isize, argv: *const *const u8) {
++        let _guard = LOCK.lock();
++        ARGC = argc;
++        ARGV = argv;
++    }
++
++    pub unsafe fn cleanup() {
++        let _guard = LOCK.lock();
++        ARGC = 0;
++        ARGV = ptr::null();
++    }
++
++    pub fn args() -> Args {
++        Args {
++            iter: clone().into_iter(),
++            _dont_send_or_sync_me: PhantomData
++        }
++    }
++
++    fn clone() -> Vec<OsString> {
++        unsafe {
++            let _guard = LOCK.lock();
++            (0..ARGC).map(|i| {
++                let cstr = CStr::from_ptr(*ARGV.offset(i) as *const libc::c_char);
++                OsStringExt::from_vec(cstr.to_bytes().to_vec())
++            }).collect()
++        }
++    }
++}
+diff --git a/src/libstd/sys/sunrise/cmath.rs b/src/libstd/sys/sunrise/cmath.rs
+new file mode 100644
+index 0000000..fa77831
+--- /dev/null
++++ b/src/libstd/sys/sunrise/cmath.rs
+@@ -0,0 +1,29 @@
++// These symbols are all defined in `compiler-builtins`
++extern {
++    pub fn acos(n: f64) -> f64;
++    pub fn acosf(n: f32) -> f32;
++    pub fn asin(n: f64) -> f64;
++    pub fn asinf(n: f32) -> f32;
++    pub fn atan(n: f64) -> f64;
++    pub fn atan2(a: f64, b: f64) -> f64;
++    pub fn atan2f(a: f32, b: f32) -> f32;
++    pub fn atanf(n: f32) -> f32;
++    pub fn cbrt(n: f64) -> f64;
++    pub fn cbrtf(n: f32) -> f32;
++    pub fn cosh(n: f64) -> f64;
++    pub fn coshf(n: f32) -> f32;
++    pub fn expm1(n: f64) -> f64;
++    pub fn expm1f(n: f32) -> f32;
++    pub fn fdim(a: f64, b: f64) -> f64;
++    pub fn fdimf(a: f32, b: f32) -> f32;
++    pub fn hypot(x: f64, y: f64) -> f64;
++    pub fn hypotf(x: f32, y: f32) -> f32;
++    pub fn log1p(n: f64) -> f64;
++    pub fn log1pf(n: f32) -> f32;
++    pub fn sinh(n: f64) -> f64;
++    pub fn sinhf(n: f32) -> f32;
++    pub fn tan(n: f64) -> f64;
++    pub fn tanf(n: f32) -> f32;
++    pub fn tanh(n: f64) -> f64;
++    pub fn tanhf(n: f32) -> f32;
++}
+diff --git a/src/libstd/sys/sunrise/condvar.rs b/src/libstd/sys/sunrise/condvar.rs
+new file mode 100644
+index 0000000..b109970
+--- /dev/null
++++ b/src/libstd/sys/sunrise/condvar.rs
+@@ -0,0 +1,38 @@
++use crate::sys::mutex::Mutex;
++use crate::time::Duration;
++
++pub struct Condvar { }
++
++impl Condvar {
++    pub const fn new() -> Condvar {
++        Condvar { }
++    }
++
++    #[inline]
++    pub unsafe fn init(&mut self) {
++        //panic!("not supported on sunrise yet")
++    }
++
++    #[inline]
++    pub unsafe fn notify_one(&self) {
++        panic!("not supported on sunrise yet")
++    }
++
++    #[inline]
++    pub unsafe fn notify_all(&self) {
++        panic!("not supported on sunrise yet")
++    }
++
++    pub unsafe fn wait(&self, _mutex: &Mutex) {
++        panic!("not supported on sunrise yet")
++    }
++
++    pub unsafe fn wait_timeout(&self, _mutex: &Mutex, _dur: Duration) -> bool {
++        panic!("not supported on sunrise yet")
++    }
++
++    #[inline]
++    pub unsafe fn destroy(&self) {
++        panic!("not supported on sunrise yet")
++    }
++}
+diff --git a/src/libstd/sys/sunrise/env.rs b/src/libstd/sys/sunrise/env.rs
+new file mode 100644
+index 0000000..5388690
+--- /dev/null
++++ b/src/libstd/sys/sunrise/env.rs
+@@ -0,0 +1,9 @@
++pub mod os {
++    pub const FAMILY: &str = "sunrise";
++    pub const OS: &str = "sunrise";
++    pub const DLL_PREFIX: &str = "";
++    pub const DLL_SUFFIX: &str = ".so";
++    pub const DLL_EXTENSION: &str = "so";
++    pub const EXE_SUFFIX: &str = "";
++    pub const EXE_EXTENSION: &str = "";
++}
+diff --git a/src/libstd/sys/sunrise/ext/ffi.rs b/src/libstd/sys/sunrise/ext/ffi.rs
+new file mode 100644
+index 0000000..5233578
+--- /dev/null
++++ b/src/libstd/sys/sunrise/ext/ffi.rs
+@@ -0,0 +1,38 @@
++//! Sunrise-specific extension to the primitives in the `std::ffi` module.
++//!
++//! # Examples
++//!
++//! ```
++//! use std::ffi::OsString;
++//! use std::os::sunrise::ffi::OsStringExt;
++//!
++//! let bytes = b"foo".to_vec();
++//!
++//! // OsStringExt::from_vec
++//! let os_string = OsString::from_vec(bytes);
++//! assert_eq!(os_string.to_str(), Some("foo"));
++//!
++//! // OsStringExt::into_vec
++//! let bytes = os_string.into_vec();
++//! assert_eq!(bytes, b"foo");
++//! ```
++//!
++//! ```
++//! use std::ffi::OsStr;
++//! use std::os::sunrise::ffi::OsStrExt;
++//!
++//! let bytes = b"foo";
++//!
++//! // OsStrExt::from_bytes
++//! let os_str = OsStr::from_bytes(bytes);
++//! assert_eq!(os_str.to_str(), Some("foo"));
++//!
++//! // OsStrExt::as_bytes
++//! let bytes = os_str.as_bytes();
++//! assert_eq!(bytes, b"foo");
++//! ```
++
++#![stable(feature = "rust1", since = "1.0.0")]
++
++#[stable(feature = "rust1", since = "1.0.0")]
++pub use crate::sys_common::os_str_bytes::*;
+diff --git a/src/libstd/sys/sunrise/ext/mod.rs b/src/libstd/sys/sunrise/ext/mod.rs
+new file mode 100644
+index 0000000..2b04f02
+--- /dev/null
++++ b/src/libstd/sys/sunrise/ext/mod.rs
+@@ -0,0 +1,35 @@
++//! Experimental extensions to `std` for Sunrise platforms.
++//!
++//! For now, this module is limited to extracting file descriptors,
++//! but its functionality will grow over time.
++//!
++//! # Examples
++//!
++//! ```no_run
++//! use std::fs::File;
++//! use std::os::sunrise::prelude::*;
++//!
++//! fn main() {
++//!     // use stuffs with native sunrise bindings
++//! }
++//! ```
++
++#![stable(feature = "rust1", since = "1.0.0")]
++#![doc(cfg(target_os = "sunrise"))]
++
++pub mod ffi;
++
++/// A prelude for conveniently writing platform-specific code.
++///
++/// Includes all extension traits, and some important type definitions.
++#[stable(feature = "rust1", since = "1.0.0")]
++pub mod prelude {
++    #[doc(no_inline)] #[stable(feature = "rust1", since = "1.0.0")]
++    pub use super::ffi::{OsStrExt, OsStringExt};
++
++    #[doc(no_inline)] #[stable(feature = "rust1", since = "1.0.0")]
++    pub use sunrise_libuser::capabilities;
++
++    #[doc(no_inline)] #[stable(feature = "rust1", since = "1.0.0")]
++    pub use sunrise_libuser::syscalls::nr;
++}
+diff --git a/src/libstd/sys/sunrise/fast_thread_local.rs b/src/libstd/sys/sunrise/fast_thread_local.rs
+new file mode 100644
+index 0000000..1108e25
+--- /dev/null
++++ b/src/libstd/sys/sunrise/fast_thread_local.rs
+@@ -0,0 +1,4 @@
++#![cfg(target_thread_local)]
++#![unstable(feature = "thread_local_internals", issue = "none")]
++
++pub use crate::sys_common::thread_local::register_dtor_fallback as register_dtor;
+diff --git a/src/libstd/sys/sunrise/fs/mod.rs b/src/libstd/sys/sunrise/fs/mod.rs
+new file mode 100644
+index 0000000..1bc5bab
+--- /dev/null
++++ b/src/libstd/sys/sunrise/fs/mod.rs
+@@ -0,0 +1,644 @@
++use crate::ffi::OsString;
++use crate::fmt;
++use crate::io::{self, SeekFrom, IoSlice, IoSliceMut};
++use crate::sys::time::{UNIX_EPOCH, SystemTime};
++use crate::sys::unsupported;
++use crate::time::Duration;
++use crate::path::{Component, Path, PathBuf};
++
++use crate::sync::Arc;
++use crate::collections::HashMap;
++use lazy_static::lazy_static;
++use sunrise_libuser::fs::{DirectoryEntry, DirectoryEntryType, FileTimeStampRaw, IDirectoryProxy, IFileSystemServiceProxy, IFileSystemProxy, IFileProxy};
++
++use crate::sys::os::getcwd;
++use crate::sync::Mutex;
++
++use crate::io::{Error, ErrorKind};
++
++use sunrise_libuser::error::{Error as LibUserError, FileSystemError};
++
++pub use crate::sys_common::fs::remove_dir_all;
++
++#[stable(feature = "rust1", since = "1.0.0")]
++impl From<LibUserError> for Error {
++    fn from(user_error: LibUserError) -> Error {
++        match user_error {
++            LibUserError::FileSystem(error, _) => {
++                match error {
++                    FileSystemError::Unknown => Error::new(ErrorKind::Other, "Unknown FileSystem IO Error."),
++                    FileSystemError::PathNotFound | FileSystemError::FileNotFound | FileSystemError::DirectoryNotFound =>
++                        Error::new(ErrorKind::NotFound, "The given resource couldn't be found."),
++                    FileSystemError::PathExists => Error::new(ErrorKind::AlreadyExists, "A resource at the given path already exist."),
++                    FileSystemError::InUse => Error::new(ErrorKind::Other, "Resource already in use."),
++                    FileSystemError::NoSpaceLeft => Error::new(ErrorKind::Other, "There isn't enough space for a resource to be stored."),
++                    FileSystemError::InvalidPartition => Error::new(ErrorKind::Other, "The partition wasn't used as it's invalid."),
++                    FileSystemError::OutOfRange => Error::new(ErrorKind::Other, "Specified value is out of range."),
++                    FileSystemError::WriteFailed => Error::new(ErrorKind::Other, "A write operation failed on the attached storage device."),
++                    FileSystemError::ReadFailed => Error::new(ErrorKind::Other, "A read operation failed on the attached storage device."),
++                    FileSystemError::PartitionNotFound => Error::new(ErrorKind::Other, "The given partition cannot be found."),
++                    FileSystemError::InvalidInput => Error::new(ErrorKind::InvalidInput, "A parameter was incorrect."),
++                    FileSystemError::PathTooLong => Error::new(ErrorKind::InvalidData, "The given path is too long to be resolved."),
++                    FileSystemError::AccessDenied => Error::new(ErrorKind::PermissionDenied, "The operation lacked the necessary privileges to complete."),
++                    FileSystemError::UnsupportedOperation => Error::new(ErrorKind::Other, "The requested operation isn't supported by the detail."),
++                    FileSystemError::NotAFile => Error::new(ErrorKind::Other, "The given resource cannot be represented as a file."),
++                    FileSystemError::NotADirectory => Error::new(ErrorKind::Other, "The given resource cannot be represented as a directory."),
++                    FileSystemError::DiskNotFound => Error::new(ErrorKind::Other, "The given disk id doesn't correspond to a any known disk."),
++                    _ => Error::new(ErrorKind::Other, "Unknown Libuser Filesystem Error.")
++                }
++            },
++            _ => Error::new(ErrorKind::Other, "Unknown Libuser IO Error.")
++        }
++    }
++}
++
++
++lazy_static! {
++    /// Registry of all filesystem prefix registered
++    static ref SCHEMA_REGISTRY: Mutex<HashMap<&'static str, Arc<IFileSystemProxy>>> = Mutex::new(HashMap::new());
++}
++
++#[cfg(not(test))]
++pub fn init() {
++    let fs_proxy = IFileSystemServiceProxy::raw_new().unwrap();
++    let system_filesystem = fs_proxy.open_disk_partition(0, 0).unwrap();
++    SCHEMA_REGISTRY.lock().unwrap().insert("system", Arc::new(system_filesystem));
++}
++
++fn get_filesystem(path: &Path) -> io::Result<(Arc<IFileSystemProxy>, &str, &Path)> {
++    assert!(path.is_absolute(), "path is not absolute? {:?}", path);
++
++    let mut iter = path.components();
++    let prefix = match iter.next() {
++        Some(Component::Prefix(prefix)) => prefix.as_os_str().to_str().unwrap().trim_end_matches(':'),
++        _ => panic!("If path is absolute, it should start with prefix")
++    };
++
++    for (key, value) in SCHEMA_REGISTRY.lock().unwrap().iter() {
++        if prefix == *key {
++            return Ok((Arc::clone(&value), prefix, &iter.as_path()))
++        }
++    }
++
++    unsupported()
++}
++
++pub struct File {
++    inner: IFileProxy,
++    offset: Mutex<u64>,
++    path: PathBuf
++}
++
++#[derive(Clone, Debug)]
++pub struct FileAttr(PathBuf, u64, FileType);
++
++
++#[derive(Debug)]
++pub struct ReadDir(IDirectoryProxy, String);
++
++#[derive(Clone, Debug)]
++pub struct DirEntry(DirectoryEntry, String);
++
++#[derive(Clone, Debug)]
++pub struct OpenOptions {
++    read: bool,
++    write: bool,
++    append: bool,
++    truncate: bool,
++    create: bool,
++    create_new: bool
++}
++
++#[derive(Copy, Clone, PartialEq, Eq, Debug)]
++pub struct FilePermissions;
++
++#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
++pub struct FileType(bool);
++
++#[derive(Debug)]
++pub struct DirBuilder { }
++
++impl FileAttr {
++    pub fn size(&self) -> u64 {
++        self.1
++    }
++
++    pub fn perm(&self) -> FilePermissions {
++        FilePermissions
++    }
++
++    pub fn file_type(&self) -> FileType {
++        self.2
++    }
++
++    fn get_timestamp_raw(&self) -> io::Result<FileTimeStampRaw> {
++        let path = getcwd()?.join(self.0.clone());
++        let (fs, _, path) = get_filesystem(&path)?;
++        let path_bytes = path.to_str().unwrap().as_bytes();
++        let mut raw_path = [0x0; 0x300];
++        raw_path[..path_bytes.len()].copy_from_slice(path_bytes);
++
++        let res = fs.get_file_timestamp_raw(&raw_path)?;
++
++        Ok(res)
++    }
++
++    pub fn modified(&self) -> io::Result<SystemTime> {
++        let timestamp = self.get_timestamp_raw()?;
++        let modified_timestamp = Duration::from_secs(timestamp.modified_timestamp);
++        UNIX_EPOCH.checked_add_duration(&modified_timestamp).ok_or_else(|| Error::new(ErrorKind::Other, "Timestamp overflowed outside of SystemTime range"))
++    }
++
++    pub fn accessed(&self) -> io::Result<SystemTime> {
++        let timestamp = self.get_timestamp_raw()?;
++        let accessed_timestamp = Duration::from_secs(timestamp.accessed_timestamp);
++        UNIX_EPOCH.checked_add_duration(&accessed_timestamp).ok_or_else(|| Error::new(ErrorKind::Other, "Timestamp overflowed outside of SystemTime range"))
++    }
++
++    pub fn created(&self) -> io::Result<SystemTime> {
++        let timestamp = self.get_timestamp_raw()?;
++        let creation_timestamp = Duration::from_secs(timestamp.creation_timestamp);
++        UNIX_EPOCH.checked_add_duration(&creation_timestamp).ok_or_else(|| Error::new(ErrorKind::Other, "Timestamp overflowed outside of SystemTime range"))
++    }
++}
++
++impl FilePermissions {
++    pub fn readonly(&self) -> bool {
++        // TODO(Sunrise): We don't have permissions on Sunrise.
++        false
++    }
++
++    pub fn set_readonly(&mut self, _readonly: bool) {
++        // TODO(Sunrise): We don't have permissions on Sunrise.
++    }
++}
++
++impl FileType {
++    pub fn is_dir(&self) -> bool {
++        self.0
++    }
++
++    pub fn is_file(&self) -> bool {
++        !self.is_dir()
++    }
++
++    pub fn is_symlink(&self) -> bool {
++        false
++    }
++}
++
++impl Iterator for ReadDir {
++    type Item = io::Result<DirEntry>;
++
++    fn next(&mut self) -> Option<io::Result<DirEntry>> {
++        let mut entries = [DirectoryEntry {
++            path: [0; 0x300], attribute: 0,
++            directory_entry_type: DirectoryEntryType::Directory, file_size: 0
++        }; 1];
++
++        let read_result = self.0.read(&mut entries);
++        if let Err(error) = read_result {
++            return Some(Err(error.into()));
++        }
++
++        let count = read_result.unwrap();
++
++        if count == 0 {
++            return None;
++        }
++
++        Some(Ok(DirEntry(entries[0], self.1.clone())))
++    }
++}
++
++impl DirEntry {
++    pub fn path(&self) -> PathBuf {
++        let s = crate::str::from_utf8(&self.0.path).expect("Invalid path for DirEntry").trim_matches('\0');
++        let mut res = PathBuf::from(self.1.clone());
++        res.push(s);
++
++        res
++    }
++
++    pub fn file_name(&self) -> OsString {
++        OsString::from(self.path().file_name().expect("No file_name availaible for the DirEntry path"))
++    }
++
++    pub fn metadata(&self) -> io::Result<FileAttr> {
++        Ok(FileAttr(self.path(), self.0.file_size, self.file_type()?))
++    }
++
++    pub fn file_type(&self) -> io::Result<FileType> {
++        Ok(FileType(self.0.directory_entry_type == DirectoryEntryType::Directory))
++    }
++}
++
++impl OpenOptions {
++    pub fn new() -> OpenOptions {
++        OpenOptions {
++            read: false,
++            write: false,
++            append: false,
++            truncate: false,
++            create: false,
++            create_new: false
++        }
++    }
++
++    pub fn read(&mut self, read: bool) {
++        self.read = read;
++    }
++    pub fn write(&mut self, write: bool) {
++        self.write = write;
++    }
++    pub fn append(&mut self, append: bool) {
++        self.append = append;
++    }
++    pub fn truncate(&mut self, truncate: bool) {
++        self.truncate = truncate;
++    }
++    pub fn create(&mut self, create: bool) {
++        self.create = create;
++        self.append(true);
++    }
++    pub fn create_new(&mut self, create_new: bool) {
++        self.create_new = create_new;
++        self.append(true);
++    }
++}
++
++impl File {
++    pub fn open(p: &Path, opts: &OpenOptions) -> io::Result<File> {
++        let path = getcwd()?.join(p);
++        let (fs, _, path) = get_filesystem(&path)?;
++
++        let path_bytes = path.to_str().unwrap().as_bytes();
++        let mut raw_path = [0x0; 0x300];
++        raw_path[..path_bytes.len()].copy_from_slice(path_bytes);
++
++        let need_create = opts.create_new || opts.create;
++
++        if need_create {
++            let res = fs.create_file(0, 0, &raw_path);
++
++            if res.is_err() && opts.create_new {
++                let _ = res?;
++            }
++        }
++
++        let mut flags = 0;
++
++        if opts.read {
++            flags |= 1;
++        }
++
++        if opts.write {
++            flags |= 1 << 1;
++        }
++
++        if opts.append {
++            flags |= 1 << 2;
++        }
++
++        Ok(File {
++            path: path.to_path_buf(),
++            inner: fs.open_file(flags, &raw_path)?,
++            offset: Mutex::new(0)
++        })
++    }
++
++    pub fn file_attr(&self) -> io::Result<FileAttr> {
++        Ok(FileAttr(self.path.clone(), self.inner.get_size()?, FileType(false)))
++    }
++
++    pub fn fsync(&self) -> io::Result<()> {
++        self.flush()
++    }
++
++    pub fn datasync(&self) -> io::Result<()> {
++        self.flush()
++    }
++
++    pub fn truncate(&self, size: u64) -> io::Result<()> {
++        self.inner.set_size(size)?;
++
++        Ok(())
++    }
++
++    pub fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
++        let mut offset = self.offset.try_lock().unwrap();
++
++        let out = self.inner.read(0, *offset, buf.len() as u64, buf)?;
++
++        *offset += out as u64;
++
++        Ok(out as usize)
++    }
++
++    pub fn read_vectored(&self, bufs: &mut [IoSliceMut<'_>]) -> io::Result<usize> {
++        crate::io::default_read_vectored(|buf| self.read(buf), bufs)
++    }
++
++    pub fn is_read_vectored(&self) -> bool {
++        false
++    }
++
++    pub fn write(&self, buf: &[u8]) -> io::Result<usize> {
++        let mut offset = self.offset.try_lock().unwrap();
++
++        self.inner.write(0, *offset, buf.len() as u64, buf)?;
++
++        *offset += buf.len() as u64;
++
++        Ok(buf.len())
++    }
++
++    pub fn write_vectored(&self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
++        crate::io::default_write_vectored(|buf| self.write(buf), bufs)
++    }
++
++    pub fn is_write_vectored(&self) -> bool {
++        false
++    }
++
++    pub fn flush(&self) -> io::Result<()> {
++        self.inner.flush()?;
++
++        Ok(())
++    }
++
++    pub fn seek(&self, pos: SeekFrom) -> io::Result<u64> {
++        let mut offset = self.offset.try_lock().unwrap();
++
++        let newpos = match pos {
++            SeekFrom::Current(pos) => {
++                let newval = *offset as i64 + pos;
++
++                if newval < 0 {
++                    return Err(io::Error::from(io::ErrorKind::InvalidInput));
++                } else {
++                    *offset = newval as u64;
++                }
++
++                newval as u64
++            }
++            SeekFrom::Start(pos) => {
++                *offset = pos;
++
++                pos
++            },
++            SeekFrom::End(pos) => {
++                let size = self.inner.get_size()?;
++
++                let newpos = size as i64 + pos;
++
++                if newpos < 0 {
++                    Err(io::Error::from(io::ErrorKind::InvalidInput))?
++                }
++
++                *offset = newpos as u64;
++
++                newpos as u64
++            }
++        };
++
++        Ok(newpos)
++    }
++
++    pub fn duplicate(&self) -> io::Result<File> {
++        // TODO(Sunrise): Used by try_clone()
++        // BODY: Only insane people uses this.
++        unsupported()
++    }
++
++    pub fn set_permissions(&self, _perm: FilePermissions) -> io::Result<()> {
++        Ok(())
++    }
++}
++
++impl DirBuilder {
++    pub fn new() -> DirBuilder {
++        DirBuilder { }
++    }
++
++    pub fn mkdir(&self, path: &Path) -> io::Result<()> {
++        let path = getcwd()?.join(path);
++        let (fs, _, path) = get_filesystem(&path)?;
++        let path_bytes = path.to_str().unwrap().as_bytes();
++
++        let mut path = [0x0; 0x300];
++        path[..path_bytes.len()].copy_from_slice(path_bytes);
++
++        fs.create_directory(&path)?;
++
++        Ok(())
++    }
++}
++
++impl fmt::Debug for File {
++    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
++        unimplemented!();
++    }
++}
++
++pub fn readdir(path: &Path) -> io::Result<ReadDir> {
++    let path = getcwd()?.join(path);
++    let (fs, prefix, path) = get_filesystem(&path)?;
++
++    let path_bytes = path.to_str().unwrap().as_bytes();
++
++    let mut path = [0x0; 0x300];
++    path[..path_bytes.len()].copy_from_slice(path_bytes);
++
++    let res = ReadDir(fs.open_directory(3, &path)?, String::from(prefix));
++
++    Ok(res)
++}
++
++pub fn unlink(path: &Path) -> io::Result<()> {
++    let path = getcwd()?.join(path);
++    let (fs, _, path) = get_filesystem(&path)?;
++
++    let path_bytes = path.to_str().unwrap().as_bytes();
++
++    let mut path = [0x0; 0x300];
++    path[..path_bytes.len()].copy_from_slice(path_bytes);
++
++    fs.delete_file(&path)?;
++
++    Ok(())
++}
++
++pub fn rename(old: &Path, new: &Path) -> io::Result<()> {
++    let old = getcwd()?.join(old);
++    let (old_fs, old_prefix, old) = get_filesystem(&old)?;
++
++    let old_path_bytes = old.to_str().unwrap().as_bytes();
++    let mut old_path = [0x0; 0x300];
++    old_path[..old_path_bytes.len()].copy_from_slice(old_path_bytes);
++
++    let new = getcwd()?.join(new);
++    let (_, new_prefix, _) = get_filesystem(&new)?;
++
++    let new_path_bytes = new.to_str().unwrap().as_bytes();
++    let mut new_path = [0x0; 0x300];
++    new_path[..new_path_bytes.len()].copy_from_slice(new_path_bytes);
++
++    let is_dir = old.is_dir();
++
++    if *old_prefix != *new_prefix {
++        return Err(Error::new(ErrorKind::InvalidInput, "Not in the same filesystem"))
++    }
++
++    if is_dir {
++        old_fs.rename_directory(&old_path, &new_path)?;
++    } else {
++        old_fs.rename_file(&old_path, &new_path)?;
++    }
++
++    Ok(())
++}
++
++pub fn set_perm(p: &Path, perm: FilePermissions) -> io::Result<()> {
++    let mut opts = OpenOptions::new();
++
++    opts.read(true);
++    opts.write(true);
++
++    let file = File::open(p, &opts)?;
++    file.set_permissions(perm)
++}
++
++pub fn rmdir(path: &Path) -> io::Result<()> {
++    let path = getcwd()?.join(path);
++    let (fs, _, path) = get_filesystem(&path)?;
++
++    let path_bytes = path.to_str().unwrap().as_bytes();
++
++    let mut path = [0x0; 0x300];
++    path[..path_bytes.len()].copy_from_slice(path_bytes);
++
++    fs.delete_directory(&path)?;
++
++    Ok(())
++}
++
++pub fn readlink(_p: &Path) -> io::Result<PathBuf> {
++    // FIXME: found the error used for non symlink here.
++    unsupported()
++}
++
++pub fn symlink(_src: &Path, _dst: &Path) -> io::Result<()> {
++    // TODO(Sunrise): We don't have symlink support
++    unsupported()
++}
++
++pub fn link(_src: &Path, _dst: &Path) -> io::Result<()> {
++    // TODO(Sunrise): We don't have symlink support
++    unsupported()
++}
++
++pub fn stat(path: &Path) -> io::Result<FileAttr> {
++    let path = getcwd()?.join(path);
++    let (_, _, path) = get_filesystem(&path)?;
++
++    let parent_path = path.parent();
++
++    let path = path.to_path_buf();
++
++    if parent_path.is_none() {
++        return Ok(FileAttr(path, 0, FileType(true)))
++    } else {
++        for entry in readdir(parent_path.unwrap())? {
++            let entry = entry?;
++            if entry.path() == path {
++                return entry.metadata()
++            }
++        }
++    }
++
++    Err(Error::new(ErrorKind::NotFound, "The given resource couldn't be found."))
++}
++
++pub fn lstat(path: &Path) -> io::Result<FileAttr> {
++    stat(path)
++}
++
++/// Splits a path at the first `/` it encounters.
++///
++/// Returns a tuple of the parts before and after the cut.
++///
++/// # Notes:
++/// - The rest part can contain duplicates '/' in the middle of the path. This should be fine as you should call split_path to parse the rest part.
++pub fn split_path(path: &str) -> (&str, Option<&str>) {
++    let mut path_split = path.trim_matches('/').splitn(2, '/');
++
++    // unwrap will never fail here
++    let comp = path_split.next().unwrap();
++    let rest_opt = path_split.next().and_then(|x| Some(x.trim_matches('/')));
++
++    (comp, rest_opt)
++}
++
++/// Get an absolute path from an user path
++fn get_absolute_path(path: &str) -> String {
++    let mut path = path;
++    let mut path_parts = Vec::new();
++
++    loop {
++        let (comp, rest_opt) = split_path(path);
++
++        match comp {
++            "." => {},
++            ".." => {
++                path_parts.pop();
++            }
++            _ => {
++                let mut component = String::new();
++                component.push('/');
++                component.push_str(comp);
++
++                path_parts.push(component);
++            }
++        }
++
++        if rest_opt.is_none() {
++            break;
++        }
++
++        path = rest_opt.unwrap();
++    }
++
++    let mut res = String::new();
++
++    if path_parts.is_empty() {
++        res.push('/');
++    }
++
++    for part in path_parts {
++        res.push_str(part.as_str())
++    }
++
++    res
++}
++
++pub fn canonicalize(p: &Path) -> io::Result<PathBuf> {
++    Ok(PathBuf::from(get_absolute_path(p.to_str().unwrap())))
++}
++
++pub fn copy(from: &Path, to: &Path) -> io::Result<u64> {
++    use crate::fs::File;
++
++    if !from.is_file() {
++        return Err(io::Error::new(io::ErrorKind::InvalidInput,
++                              "the source path is not an existing regular file"))
++    }
++
++    let mut reader = File::open(from)?;
++    let mut writer = File::create(to)?;
++    let perm = reader.metadata()?.permissions();
++
++    let ret = io::copy(&mut reader, &mut writer)?;
++    writer.set_permissions(perm)?;
++    Ok(ret)
++}
+diff --git a/src/libstd/sys/sunrise/io.rs b/src/libstd/sys/sunrise/io.rs
+new file mode 100644
+index 0000000..5adf1ec
+--- /dev/null
++++ b/src/libstd/sys/sunrise/io.rs
+@@ -0,0 +1,45 @@
++#[derive(Copy, Clone)]
++pub struct IoSlice<'a>(&'a [u8]);
++
++impl<'a> IoSlice<'a> {
++    #[inline]
++    pub fn new(buf: &'a [u8]) -> IoSlice<'a> {
++        IoSlice(buf)
++    }
++
++    #[inline]
++    pub fn advance(&mut self, n: usize) {
++        self.0 = &self.0[n..]
++    }
++
++    #[inline]
++    pub fn as_slice(&self) -> &[u8] {
++        self.0
++    }
++}
++
++pub struct IoSliceMut<'a>(&'a mut [u8]);
++
++impl<'a> IoSliceMut<'a> {
++    #[inline]
++    pub fn new(buf: &'a mut [u8]) -> IoSliceMut<'a> {
++        IoSliceMut(buf)
++    }
++
++    #[inline]
++    pub fn advance(&mut self, n: usize) {
++        let slice = core::mem::replace(&mut self.0, &mut []);
++        let (_, remaining) = slice.split_at_mut(n);
++        self.0 = remaining;
++    }
++
++    #[inline]
++    pub fn as_slice(&self) -> &[u8] {
++        self.0
++    }
++
++    #[inline]
++    pub fn as_mut_slice(&mut self) -> &mut [u8] {
++        self.0
++    }
++}
+diff --git a/src/libstd/sys/sunrise/memchr.rs b/src/libstd/sys/sunrise/memchr.rs
+new file mode 100644
+index 0000000..9967482
+--- /dev/null
++++ b/src/libstd/sys/sunrise/memchr.rs
+@@ -0,0 +1 @@
++pub use core::slice::memchr::{memchr, memrchr};
+diff --git a/src/libstd/sys/sunrise/mod.rs b/src/libstd/sys/sunrise/mod.rs
+new file mode 100644
+index 0000000..9c3d878
+--- /dev/null
++++ b/src/libstd/sys/sunrise/mod.rs
+@@ -0,0 +1,86 @@
++//! System bindings for the sunrise platform
++//!
++//! This is all super highly experimental and not actually intended for
++//! wide/production use yet, it's still all in the experimental category. This
++//! will likely change over time.
++//!
++//! Currently all functions here are basically stubs that immediately return
++//! errors.
++
++use crate::os::raw::c_char;
++
++pub mod alloc;
++pub mod args;
++pub mod cmath;
++pub mod env;
++pub mod ext;
++pub mod fast_thread_local;
++pub mod fs;
++pub mod io;
++pub mod memchr;
++pub mod net;
++pub mod os;
++pub mod path;
++pub mod pipe;
++pub mod process;
++pub mod stack_overflow;
++pub mod thread;
++pub mod time;
++pub mod stdio;
++
++pub use crate::sys_common::os_str_bytes as os_str;
++
++pub mod condvar;
++pub mod mutex;
++pub mod rwlock;
++pub mod thread_local;
++
++#[cfg(not(test))]
++pub fn init() {
++    use core::intrinsics::abort;
++    if let Err(err) = stdio::init() {
++        log::error!("Error initializing stdio! {:?}", err);
++        abort();
++    }
++    fs::init();
++}
++
++pub fn unsupported<T>() -> crate::io::Result<T> {
++    Err(unsupported_err())
++}
++
++pub fn unsupported_err() -> crate::io::Error {
++    crate::io::Error::new(crate::io::ErrorKind::Other,
++                   "operation not supported on sunrise yet")
++}
++
++pub fn decode_error_kind(_code: i32) -> crate::io::ErrorKind {
++    crate::io::ErrorKind::Other
++}
++
++// This enum is used as the storage for a bunch of types which can't actually
++// exist.
++#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
++pub enum Void {}
++
++pub unsafe fn strlen(mut s: *const c_char) -> usize {
++    let mut n = 0;
++    while *s != 0 {
++        n += 1;
++        s = s.offset(1);
++    }
++    return n
++}
++
++pub fn abort_internal() -> ! {
++    core::intrinsics::abort();
++}
++
++// We don't have randomness yet, but I totally used a random number generator to
++// generate these numbers.
++//
++// More seriously though this is just for DOS protection in hash maps. It's ok
++// if we don't do that on sunrise just yet.
++pub fn hashmap_random_keys() -> (u64, u64) {
++    (1, 2)
++}
+diff --git a/src/libstd/sys/sunrise/mutex.rs b/src/libstd/sys/sunrise/mutex.rs
+new file mode 100644
+index 0000000..7ac8f4d
+--- /dev/null
++++ b/src/libstd/sys/sunrise/mutex.rs
+@@ -0,0 +1,68 @@
++use crate::cell::UnsafeCell;
++
++pub struct Mutex {
++    locked: UnsafeCell<bool>,
++}
++
++unsafe impl Send for Mutex {}
++unsafe impl Sync for Mutex {}
++
++impl Mutex {
++    pub const fn new() -> Mutex {
++        Mutex { locked: UnsafeCell::new(false) }
++    }
++
++    #[inline]
++    pub unsafe fn init(&mut self) {
++    }
++
++    #[inline]
++    pub unsafe fn lock(&self) {
++        let locked = self.locked.get();
++        assert!(!*locked, "cannot recursively acquire mutex");
++        *locked = true;
++    }
++
++    #[inline]
++    pub unsafe fn unlock(&self) {
++        *self.locked.get() = false;
++    }
++
++    #[inline]
++    pub unsafe fn try_lock(&self) -> bool {
++        let locked = self.locked.get();
++        if *locked {
++            false
++        } else {
++            *locked = true;
++            true
++        }
++    }
++
++    #[inline]
++    pub unsafe fn destroy(&self) {
++    }
++}
++
++// All empty stubs so lock acquisition always succeeds.
++pub struct ReentrantMutex {
++}
++
++impl ReentrantMutex {
++    pub const unsafe fn uninitialized() -> ReentrantMutex {
++        ReentrantMutex { }
++    }
++
++    pub unsafe fn init(&self) {}
++
++    pub unsafe fn lock(&self) {}
++
++    #[inline]
++    pub unsafe fn try_lock(&self) -> bool {
++        true
++    }
++
++    pub unsafe fn unlock(&self) {}
++
++    pub unsafe fn destroy(&self) {}
++}
+diff --git a/src/libstd/sys/sunrise/net.rs b/src/libstd/sys/sunrise/net.rs
+new file mode 100644
+index 0000000..21be842
+--- /dev/null
++++ b/src/libstd/sys/sunrise/net.rs
+@@ -0,0 +1,366 @@
++use crate::fmt;
++use crate::io::{self, IoSlice, IoSliceMut};
++use crate::net::{SocketAddr, Shutdown, Ipv4Addr, Ipv6Addr};
++use crate::time::Duration;
++use crate::sys::{unsupported, Void};
++use crate::convert::TryFrom;
++
++pub struct TcpStream(Void);
++
++impl TcpStream {
++    pub fn connect(_: io::Result<&SocketAddr>) -> io::Result<TcpStream> {
++        unsupported()
++    }
++
++    pub fn connect_timeout(_: &SocketAddr, _: Duration) -> io::Result<TcpStream> {
++        unsupported()
++    }
++
++    pub fn set_read_timeout(&self, _: Option<Duration>) -> io::Result<()> {
++        unsupported()
++    }
++
++    pub fn set_write_timeout(&self, _: Option<Duration>) -> io::Result<()> {
++        unsupported()
++    }
++
++    pub fn read_timeout(&self) -> io::Result<Option<Duration>> {
++        unsupported()
++    }
++
++    pub fn write_timeout(&self) -> io::Result<Option<Duration>> {
++        unsupported()
++    }
++
++    pub fn peek(&self, _: &mut [u8]) -> io::Result<usize> {
++        unsupported()
++    }
++
++    pub fn read(&self, _: &mut [u8]) -> io::Result<usize> {
++        unsupported()
++    }
++
++    pub fn read_vectored(&self, _: &mut [IoSliceMut<'_>]) -> io::Result<usize> {
++        unsupported()
++    }
++
++    pub fn is_read_vectored(&self) -> bool {
++        false
++    }
++
++    pub fn write(&self, _: &[u8]) -> io::Result<usize> {
++        unsupported()
++    }
++
++    pub fn write_vectored(&self, _: &[IoSlice<'_>]) -> io::Result<usize> {
++        unsupported()
++    }
++
++    pub fn is_write_vectored(&self) -> bool {
++        false
++    }
++
++    pub fn peer_addr(&self) -> io::Result<SocketAddr> {
++        unsupported()
++    }
++
++    pub fn socket_addr(&self) -> io::Result<SocketAddr> {
++        unsupported()
++    }
++
++    pub fn shutdown(&self, _: Shutdown) -> io::Result<()> {
++        unsupported()
++    }
++
++    pub fn duplicate(&self) -> io::Result<TcpStream> {
++        unsupported()
++    }
++
++    pub fn set_nodelay(&self, _: bool) -> io::Result<()> {
++        unsupported()
++    }
++
++    pub fn nodelay(&self) -> io::Result<bool> {
++        unsupported()
++    }
++
++    pub fn set_ttl(&self, _: u32) -> io::Result<()> {
++        unsupported()
++    }
++
++    pub fn ttl(&self) -> io::Result<u32> {
++        unsupported()
++    }
++
++    pub fn take_error(&self) -> io::Result<Option<io::Error>> {
++        unsupported()
++    }
++
++    pub fn set_nonblocking(&self, _: bool) -> io::Result<()> {
++        unsupported()
++    }
++}
++
++impl fmt::Debug for TcpStream {
++    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
++        match self.0 {}
++    }
++}
++
++pub struct TcpListener(Void);
++
++impl TcpListener {
++    pub fn bind(_: io::Result<&SocketAddr>) -> io::Result<TcpListener> {
++        unsupported()
++    }
++
++    pub fn socket_addr(&self) -> io::Result<SocketAddr> {
++        unsupported()
++    }
++
++    pub fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
++        unsupported()
++    }
++
++    pub fn duplicate(&self) -> io::Result<TcpListener> {
++        unsupported()
++    }
++
++    pub fn set_ttl(&self, _: u32) -> io::Result<()> {
++        unsupported()
++    }
++
++    pub fn ttl(&self) -> io::Result<u32> {
++        unsupported()
++    }
++
++    pub fn set_only_v6(&self, _: bool) -> io::Result<()> {
++        unsupported()
++    }
++
++    pub fn only_v6(&self) -> io::Result<bool> {
++        unsupported()
++    }
++
++    pub fn take_error(&self) -> io::Result<Option<io::Error>> {
++        unsupported()
++    }
++
++    pub fn set_nonblocking(&self, _: bool) -> io::Result<()> {
++        unsupported()
++    }
++}
++
++impl fmt::Debug for TcpListener {
++    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
++        match self.0 {}
++    }
++}
++
++pub struct UdpSocket(Void);
++
++impl UdpSocket {
++    pub fn bind(_: io::Result<&SocketAddr>) -> io::Result<UdpSocket> {
++        unsupported()
++    }
++
++    pub fn peer_addr(&self) -> io::Result<SocketAddr> {
++        unsupported()
++    }
++
++    pub fn socket_addr(&self) -> io::Result<SocketAddr> {
++        unsupported()
++    }
++
++    pub fn recv_from(&self, _: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
++        unsupported()
++    }
++
++    pub fn peek_from(&self, _: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
++        unsupported()
++    }
++
++    pub fn send_to(&self, _: &[u8], _: &SocketAddr) -> io::Result<usize> {
++        unsupported()
++    }
++
++    pub fn duplicate(&self) -> io::Result<UdpSocket> {
++        unsupported()
++    }
++
++    pub fn set_read_timeout(&self, _: Option<Duration>) -> io::Result<()> {
++        unsupported()
++    }
++
++    pub fn set_write_timeout(&self, _: Option<Duration>) -> io::Result<()> {
++        unsupported()
++    }
++
++    pub fn read_timeout(&self) -> io::Result<Option<Duration>> {
++        unsupported()
++    }
++
++    pub fn write_timeout(&self) -> io::Result<Option<Duration>> {
++        unsupported()
++    }
++
++    pub fn set_broadcast(&self, _: bool) -> io::Result<()> {
++        unsupported()
++    }
++
++    pub fn broadcast(&self) -> io::Result<bool> {
++        unsupported()
++    }
++
++    pub fn set_multicast_loop_v4(&self, _: bool) -> io::Result<()> {
++        unsupported()
++    }
++
++    pub fn multicast_loop_v4(&self) -> io::Result<bool> {
++        unsupported()
++    }
++
++    pub fn set_multicast_ttl_v4(&self, _: u32) -> io::Result<()> {
++        unsupported()
++    }
++
++    pub fn multicast_ttl_v4(&self) -> io::Result<u32> {
++        unsupported()
++    }
++
++    pub fn set_multicast_loop_v6(&self, _: bool) -> io::Result<()> {
++        unsupported()
++    }
++
++    pub fn multicast_loop_v6(&self) -> io::Result<bool> {
++        unsupported()
++    }
++
++    pub fn join_multicast_v4(&self, _: &Ipv4Addr, _: &Ipv4Addr)
++                         -> io::Result<()> {
++        unsupported()
++    }
++
++    pub fn join_multicast_v6(&self, _: &Ipv6Addr, _: u32)
++                         -> io::Result<()> {
++        unsupported()
++    }
++
++    pub fn leave_multicast_v4(&self, _: &Ipv4Addr, _: &Ipv4Addr)
++                          -> io::Result<()> {
++        unsupported()
++    }
++
++    pub fn leave_multicast_v6(&self, _: &Ipv6Addr, _: u32)
++                          -> io::Result<()> {
++        unsupported()
++    }
++
++    pub fn set_ttl(&self, _: u32) -> io::Result<()> {
++        unsupported()
++    }
++
++    pub fn ttl(&self) -> io::Result<u32> {
++        unsupported()
++    }
++
++    pub fn take_error(&self) -> io::Result<Option<io::Error>> {
++        unsupported()
++    }
++
++    pub fn set_nonblocking(&self, _: bool) -> io::Result<()> {
++        unsupported()
++    }
++
++    pub fn recv(&self, _: &mut [u8]) -> io::Result<usize> {
++        unsupported()
++    }
++
++    pub fn peek(&self, _: &mut [u8]) -> io::Result<usize> {
++        unsupported()
++    }
++
++    pub fn send(&self, _: &[u8]) -> io::Result<usize> {
++        unsupported()
++    }
++
++    pub fn connect(&self, _: io::Result<&SocketAddr>) -> io::Result<()> {
++        unsupported()
++    }
++}
++
++impl fmt::Debug for UdpSocket {
++    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
++        match self.0 {}
++    }
++}
++
++pub struct LookupHost(Void);
++
++impl LookupHost {
++    pub fn port(&self) -> u16 {
++        match self.0 {}
++    }
++}
++
++impl Iterator for LookupHost {
++    type Item = SocketAddr;
++    fn next(&mut self) -> Option<SocketAddr> {
++        match self.0 {}
++    }
++}
++
++impl TryFrom<&str> for LookupHost {
++    type Error = io::Error;
++
++    fn try_from(_v: &str) -> io::Result<LookupHost> {
++        unsupported()
++    }
++}
++
++impl<'a> TryFrom<(&'a str, u16)> for LookupHost {
++    type Error = io::Error;
++
++    fn try_from(_v: (&'a str, u16)) -> io::Result<LookupHost> {
++        unsupported()
++    }
++}
++
++#[allow(nonstandard_style)]
++pub mod netc {
++    pub const AF_INET: u8 = 0;
++    pub const AF_INET6: u8 = 1;
++    pub type sa_family_t = u8;
++
++    #[derive(Copy, Clone)]
++    pub struct in_addr {
++        pub s_addr: u32,
++    }
++
++    #[derive(Copy, Clone)]
++    pub struct sockaddr_in {
++        pub sin_family: sa_family_t,
++        pub sin_port: u16,
++        pub sin_addr: in_addr,
++    }
++
++    #[derive(Copy, Clone)]
++    pub struct in6_addr {
++        pub s6_addr: [u8; 16],
++    }
++
++    #[derive(Copy, Clone)]
++    pub struct sockaddr_in6 {
++        pub sin6_family: sa_family_t,
++        pub sin6_port: u16,
++        pub sin6_addr: in6_addr,
++        pub sin6_flowinfo: u32,
++        pub sin6_scope_id: u32,
++    }
++
++    #[derive(Copy, Clone)]
++    pub struct sockaddr {
++    }
++
++    pub type socklen_t = usize;
++}
+diff --git a/src/libstd/sys/sunrise/os.rs b/src/libstd/sys/sunrise/os.rs
+new file mode 100644
+index 0000000..5043ab5
+--- /dev/null
++++ b/src/libstd/sys/sunrise/os.rs
+@@ -0,0 +1,188 @@
++use crate::os::sunrise::prelude::*;
++
++use crate::error::Error as StdError;
++use crate::ffi::{OsStr, OsString, CStr};
++use crate::fmt;
++use crate::iter;
++use crate::io;
++use crate::path::{self, PathBuf};
++use crate::slice;
++use crate::str;
++use crate::sync::Mutex;
++use crate::vec::Vec;
++use crate::collections::HashMap;
++use crate::ptr;
++use crate::memchr;
++use lazy_static::lazy_static;
++use sunrise_libuser::argv::envp;
++
++pub fn errno() -> i32 {
++    0
++}
++
++pub fn error_string(_errno: i32) -> String {
++    "operation successful".to_string()
++}
++
++pub fn getcwd() -> io::Result<PathBuf> {
++    let mut path = crate::env::var_os("PWD").map(PathBuf::from).unwrap_or_else(|| {
++        PathBuf::from("system:/")
++    });
++
++    if !path.is_absolute() {
++        path = PathBuf::from("system:/").join(path);
++    }
++
++    Ok(path)
++}
++
++pub fn chdir(path: &path::Path) -> io::Result<()> {
++    if !path.exists() {
++        return Err(io::Error::new(io::ErrorKind::NotFound, "Entry not found"))
++    }
++
++    setenv(OsStr::new("PWD"), path.as_os_str())
++}
++
++pub struct SplitPaths<'a> {
++    iter: iter::Map<slice::Split<'a, u8, fn(&u8) -> bool>,
++                    fn(&'a [u8]) -> PathBuf>,
++}
++
++pub fn split_paths(unparsed: &OsStr) -> SplitPaths<'_> {
++    fn bytes_to_path(b: &[u8]) -> PathBuf {
++        PathBuf::from(<OsStr as OsStrExt>::from_bytes(b))
++    }
++    fn is_semicolon(b: &u8) -> bool { *b == b';' }
++    let unparsed = unparsed.as_bytes();
++    SplitPaths {
++        iter: unparsed.split(is_semicolon as fn(&u8) -> bool)
++                      .map(bytes_to_path as fn(&[u8]) -> PathBuf)
++    }
++}
++
++impl<'a> Iterator for SplitPaths<'a> {
++    type Item = PathBuf;
++    fn next(&mut self) -> Option<PathBuf> { self.iter.next() }
++    fn size_hint(&self) -> (usize, Option<usize>) { self.iter.size_hint() }
++}
++
++#[derive(Debug)]
++pub struct JoinPathsError;
++
++pub fn join_paths<I, T>(paths: I) -> Result<OsString, JoinPathsError>
++    where I: Iterator<Item=T>, T: AsRef<OsStr>
++{
++    let mut joined = Vec::new();
++    let sep = b';';
++
++    for (i, path) in paths.enumerate() {
++        let path = path.as_ref().as_bytes();
++        if i > 0 { joined.push(sep) }
++        if path.contains(&sep) {
++            return Err(JoinPathsError)
++        }
++        joined.extend_from_slice(path);
++    }
++    Ok(OsStringExt::from_vec(joined))
++}
++
++impl fmt::Display for JoinPathsError {
++    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
++        "path segment contains separator `:`".fmt(f)
++    }
++}
++
++impl StdError for JoinPathsError {
++    fn description(&self) -> &str { "failed to join paths" }
++}
++
++pub fn current_exe() -> io::Result<PathBuf> {
++    panic!("not supported on sunrise yet")
++}
++
++lazy_static! {
++    /// Storage of all events of the current process.
++    static ref ENVIRONMENT_STORAGE: Mutex<HashMap<OsString, OsString>> = {
++        let mut environ = envp();
++        let mut result = HashMap::new();
++
++        unsafe {
++            // Safety: Envp should return a valid pointer to a null-terminated
++            // array of null-terminated strings.
++            while environ != ptr::null() && *environ != ptr::null() {
++                if let Some((key, value)) = parse(CStr::from_ptr(*environ).to_bytes()) {
++                    result.insert(key, value);
++                }
++                environ = environ.offset(1);
++            }
++        }
++
++        fn parse(input: &[u8]) -> Option<(OsString, OsString)> {
++            // Strategy (copied from glibc): Variable name and value are separated
++            // by an ASCII equals sign '='. Since a variable name must not be
++            // empty, allow variable names starting with an equals sign. Skip all
++            // malformed lines.
++            if input.is_empty() {
++                return None;
++            }
++            let pos = memchr::memchr(b'=', &input[1..]).map(|p| p + 1);
++            pos.map(|p| (
++                OsStringExt::from_vec(input[..p].to_vec()),
++                OsStringExt::from_vec(input[p+1..].to_vec()),
++            ))
++        }
++
++        Mutex::new(result)
++    };
++}
++
++pub struct Env(Vec<(OsString, OsString)>, usize);
++
++impl Iterator for Env {
++    type Item = (OsString, OsString);
++    fn next(&mut self) -> Option<(OsString, OsString)> {
++        let res = self.0.get(self.1).map(|x| x.clone());
++        self.1 += 1;
++
++        res
++    }
++}
++
++pub fn env() -> Env {
++    let env: Vec<(OsString, OsString)> = ENVIRONMENT_STORAGE.lock().unwrap().iter().map(|x| (x.0.clone(), x.1.clone())).collect();
++    Env(env, 0)
++}
++
++pub fn getenv(k: &OsStr) -> io::Result<Option<OsString>> {
++    Ok(ENVIRONMENT_STORAGE.lock().unwrap().get(&k.to_os_string()).map(|v| v.to_os_string()))
++}
++
++pub fn setenv(k: &OsStr, v: &OsStr) -> io::Result<()> {
++    ENVIRONMENT_STORAGE.lock().unwrap().insert(k.to_os_string(), v.to_os_string());
++    Ok(())
++}
++
++pub fn unsetenv(k: &OsStr) -> io::Result<()> {
++    ENVIRONMENT_STORAGE.lock().unwrap().remove(&k.to_os_string());
++    Ok(())
++}
++
++pub fn temp_dir() -> PathBuf {
++    crate::env::var_os("TMPDIR").map(PathBuf::from).unwrap_or_else(|| {
++        PathBuf::from("/tmp")
++    })
++}
++
++pub fn home_dir() -> Option<PathBuf> {
++    return crate::env::var_os("HOME").map(PathBuf::from);
++}
++
++pub fn exit(_code: i32) -> ! {
++    // TODO(Sunrise): propagate the error code somehow
++    sunrise_libuser::syscalls::exit_process()
++}
++
++pub fn getpid() -> u32 {
++    panic!("not supported on sunrise yet")
++}
+diff --git a/src/libstd/sys/sunrise/path.rs b/src/libstd/sys/sunrise/path.rs
+new file mode 100644
+index 0000000..f9dbdca
+--- /dev/null
++++ b/src/libstd/sys/sunrise/path.rs
+@@ -0,0 +1,25 @@
++use crate::path::{PrefixComponent, Prefix};
++use crate::ffi::OsStr;
++
++#[inline]
++pub fn is_sep_byte(b: u8) -> bool {
++    b == b'/'
++}
++
++#[inline]
++pub fn is_verbatim_sep(b: u8) -> bool {
++    b == b'/'
++}
++
++pub fn parse_prefix(path: &OsStr) -> Option<PrefixComponent<'_>> {
++    if let Some(path_str) = path.to_str() {
++        path_str.split('/').next()
++            .and_then(|s| s.bytes().position(|v| v == b':'))
++            .map(|idx| PrefixComponent::from_os_str_kind(OsStr::new(&path_str[..idx + 1]), Prefix::Disk(0)))
++    } else {
++        None
++    }
++}
++
++pub const MAIN_SEP_STR: &'static str = "/";
++pub const MAIN_SEP: char = '/';
+diff --git a/src/libstd/sys/sunrise/pipe.rs b/src/libstd/sys/sunrise/pipe.rs
+new file mode 100644
+index 0000000..4cb8f61
+--- /dev/null
++++ b/src/libstd/sys/sunrise/pipe.rs
+@@ -0,0 +1,41 @@
++use crate::io::{self, IoSlice, IoSliceMut};
++use crate::sys::Void;
++
++pub struct AnonPipe(Void);
++
++impl AnonPipe {
++    pub fn read(&self, _buf: &mut [u8]) -> io::Result<usize> {
++        match self.0 {}
++    }
++
++    pub fn read_vectored(&self, _bufs: &mut [IoSliceMut<'_>]) -> io::Result<usize> {
++        match self.0 {}
++    }
++
++    pub fn is_read_vectored(&self) -> bool {
++        false
++    }
++
++    pub fn write(&self, _buf: &[u8]) -> io::Result<usize> {
++        match self.0 {}
++    }
++
++    pub fn write_vectored(&self, _bufs: &[IoSlice<'_>]) -> io::Result<usize> {
++        match self.0 {}
++    }
++
++    pub fn is_write_vectored(&self) -> bool {
++        false
++    }
++
++    pub fn diverge(&self) -> ! {
++        match self.0 {}
++    }
++}
++
++pub fn read2(p1: AnonPipe,
++             _v1: &mut Vec<u8>,
++             _p2: AnonPipe,
++             _v2: &mut Vec<u8>) -> io::Result<()> {
++    match p1.0 {}
++}
+diff --git a/src/libstd/sys/sunrise/process.rs b/src/libstd/sys/sunrise/process.rs
+new file mode 100644
+index 0000000..1315e83
+--- /dev/null
++++ b/src/libstd/sys/sunrise/process.rs
+@@ -0,0 +1,216 @@
++use crate::ffi::OsStr;
++use crate::fmt;
++use crate::io::{self, Error, ErrorKind};
++use crate::sys::fs::File;
++use crate::sys::pipe::AnonPipe;
++use crate::sys::unsupported;
++use crate::sys_common::process::CommandEnv;
++use crate::sync::Arc;
++use crate::vec::Vec;
++use crate::string::String;
++
++use sunrise_libuser::ldr::{ILoaderInterfaceProxy};
++
++pub use crate::ffi::OsString as EnvKey;
++
++////////////////////////////////////////////////////////////////////////////////
++// Command
++////////////////////////////////////////////////////////////////////////////////
++
++pub struct Command {
++    program: String,
++    args: Vec<String>,
++    env: CommandEnv,
++    stdin: Option<Stdio>,
++    stdout: Option<Stdio>,
++    stderr: Option<Stdio>,
++}
++
++// passed back to std::process with the pipes connected to the child, if any
++// were requested
++pub struct StdioPipes {
++    pub stdin: Option<AnonPipe>,
++    pub stdout: Option<AnonPipe>,
++    pub stderr: Option<AnonPipe>,
++}
++
++pub enum Stdio {
++    Inherit,
++    Null,
++    MakePipe,
++}
++
++impl Command {
++    pub fn new(program: &OsStr) -> Command {
++        Command {
++            program: program.to_str().unwrap().to_owned(),
++            args: Vec::new(),
++            env: Default::default(),
++            stdin: None,
++            stdout: None,
++            stderr: None,
++        }
++    }
++
++    pub fn arg(&mut self, arg: &OsStr) {
++        self.args.push(arg.to_str().unwrap().to_owned());
++    }
++
++    pub fn env_mut(&mut self) -> &mut CommandEnv {
++        &mut self.env
++    }
++
++    pub fn cwd(&mut self, _dir: &OsStr) {
++        unimplemented!()
++    }
++
++    pub fn stdin(&mut self, stdin: Stdio) {
++        self.stdin = Some(stdin);
++    }
++
++    pub fn stdout(&mut self, stdout: Stdio) {
++        self.stdout = Some(stdout);
++    }
++
++    pub fn stderr(&mut self, stderr: Stdio) {
++        self.stderr = Some(stderr);
++    }
++
++    pub fn spawn(&mut self, _default: Stdio, _needs_stdin: bool)
++        -> io::Result<(Process, StdioPipes)> {
++        let interface = Arc::new(ILoaderInterfaceProxy::raw_new().expect("Cannot open a session with ILoaderInterface!"));
++
++        let mut command_line_args: Vec<String> = self.args
++            .iter()
++            .map(|v| {
++                let mut res = String::from("\"");
++
++                res.push_str(v.as_str());
++                res.push_str("\"");
++
++                res
++            })
++            .collect();
++
++        command_line_args.insert(0, self.program.clone());
++
++        let command_line = command_line_args.join(" ");
++
++        // TODO(Sunrise): Warn about pipes not being implemented
++        let stdio_pipes = StdioPipes {
++            stdin: None,
++            stdout: None,
++            stderr: None
++        };
++
++        // TODO(Sunrise): Remap error codes
++        let mut env = String::new();
++        for (k, v) in crate::env::vars() {
++            if env.is_empty() {
++                env += "\0";
++            }
++            env += &k;
++            env += "=";
++            env += &v;
++        }
++        let pid = interface.create_title(self.program.as_bytes(), command_line.as_bytes(), env.as_bytes()).unwrap();
++        interface.launch_title(pid).unwrap();
++
++        let child = Process {
++            pid,
++            interface,
++            result: None
++        };
++
++        Ok((child, stdio_pipes))
++    }
++}
++
++impl From<AnonPipe> for Stdio {
++    fn from(pipe: AnonPipe) -> Stdio {
++        pipe.diverge()
++    }
++}
++
++impl From<File> for Stdio {
++    fn from(_file: File) -> Stdio {
++        unimplemented!()
++    }
++}
++
++impl fmt::Debug for Command {
++    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
++        Ok(())
++    }
++}
++
++#[derive(Copy, Clone, PartialEq, Debug, Eq)]
++pub struct ExitStatus(u32);
++
++impl ExitStatus {
++    pub fn success(&self) -> bool {
++        self.0 == 0
++    }
++
++    pub fn code(&self) -> Option<i32> {
++        if self.success() {
++            None
++        } else {
++            Some(self.0 as i32)
++        }
++    }
++}
++
++impl fmt::Display for ExitStatus {
++    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
++        write!(f, "exit code: {}", self.0)
++    }
++}
++
++#[derive(PartialEq, Eq, Clone, Copy, Debug)]
++pub struct ExitCode(i32);
++
++impl ExitCode {
++    pub const SUCCESS: ExitCode = ExitCode(0);
++    pub const FAILURE: ExitCode = ExitCode(1);
++
++    pub fn as_i32(&self) -> i32 {
++        self.0
++    }
++}
++
++pub struct Process {
++    pid: u64,
++    interface: Arc<ILoaderInterfaceProxy>,
++    result: Option<ExitStatus>
++}
++
++impl Process {
++    pub fn id(&self) -> u32 {
++        self.pid as u32
++    }
++
++    pub fn kill(&mut self) -> io::Result<()> {
++        if self.result.is_some() {
++            Err(Error::new(ErrorKind::InvalidInput,
++                           "invalid argument: can't kill an exited process"))
++        } else {
++            // TODO(Sunrise): We don't have a killed command :c
++            unsupported()
++        }
++    }
++
++    pub fn wait(&mut self) -> io::Result<ExitStatus> {
++        let result_code = self.interface.wait(self.pid).expect("Unexpected error while waiting for process");
++        let res = ExitStatus(result_code);
++
++        self.result = Some(res);
++
++        Ok(res)
++    }
++
++    pub fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
++        // TODO(Sunrise): Implement this
++        unsupported()
++    }
++}
+diff --git a/src/libstd/sys/sunrise/rwlock.rs b/src/libstd/sys/sunrise/rwlock.rs
+new file mode 100644
+index 0000000..7813f90
+--- /dev/null
++++ b/src/libstd/sys/sunrise/rwlock.rs
+@@ -0,0 +1,72 @@
++use crate::cell::UnsafeCell;
++
++pub struct RWLock {
++    mode: UnsafeCell<isize>,
++}
++
++unsafe impl Send for RWLock {}
++unsafe impl Sync for RWLock {}
++
++impl RWLock {
++    pub const fn new() -> RWLock {
++        RWLock {
++            mode: UnsafeCell::new(0),
++        }
++    }
++
++    #[inline]
++    pub unsafe fn read(&self) {
++        let mode = self.mode.get();
++        if *mode >= 0 {
++            *mode += 1;
++        } else {
++            rtabort!("rwlock locked for writing");
++        }
++    }
++
++    #[inline]
++    pub unsafe fn try_read(&self) -> bool {
++        let mode = self.mode.get();
++        if *mode >= 0 {
++            *mode += 1;
++            true
++        } else {
++            false
++        }
++    }
++
++    #[inline]
++    pub unsafe fn write(&self) {
++        let mode = self.mode.get();
++        if *mode == 0 {
++            *mode = -1;
++        } else {
++            rtabort!("rwlock locked for reading")
++        }
++    }
++
++    #[inline]
++    pub unsafe fn try_write(&self) -> bool {
++        let mode = self.mode.get();
++        if *mode == 0 {
++            *mode = -1;
++            true
++        } else {
++            false
++        }
++    }
++
++    #[inline]
++    pub unsafe fn read_unlock(&self) {
++        *self.mode.get() -= 1;
++    }
++
++    #[inline]
++    pub unsafe fn write_unlock(&self) {
++        *self.mode.get() += 1;
++    }
++
++    #[inline]
++    pub unsafe fn destroy(&self) {
++    }
++}
+diff --git a/src/libstd/sys/sunrise/stack_overflow.rs b/src/libstd/sys/sunrise/stack_overflow.rs
+new file mode 100644
+index 0000000..d234169
+--- /dev/null
++++ b/src/libstd/sys/sunrise/stack_overflow.rs
+@@ -0,0 +1,5 @@
++pub unsafe fn init() {
++}
++
++pub unsafe fn cleanup() {
++}
+diff --git a/src/libstd/sys/sunrise/stdio.rs b/src/libstd/sys/sunrise/stdio.rs
+new file mode 100644
+index 0000000..0bb3cb0
+--- /dev/null
++++ b/src/libstd/sys/sunrise/stdio.rs
+@@ -0,0 +1,107 @@
++use crate::io;
++
++use sunrise_libuser::error::Error;
++use sunrise_libuser::twili::{ITwiliServiceProxy, IPipeProxy};
++use crate::sync::{LockResult, RwLock};
++use lazy_static::lazy_static;
++
++pub struct Stdin;
++pub struct Stdout;
++pub struct Stderr;
++
++lazy_static! {
++    static ref PIPE_STDIN: RwLock<Option<IPipeProxy>> = RwLock::new(None);
++    static ref PIPE_STDOUT: RwLock<Option<IPipeProxy>> = RwLock::new(None);
++    static ref PIPE_STDERR: RwLock<Option<IPipeProxy>> = RwLock::new(None);
++}
++
++pub fn init() -> Result<(), Error> {
++    let (stdin, stdout, stderr) = ITwiliServiceProxy::new()?.open_pipes()?;
++    *get_poison_inner(PIPE_STDIN.write()) = Some(stdin);
++    *get_poison_inner(PIPE_STDOUT.write()) = Some(stdout);
++    *get_poison_inner(PIPE_STDERR.write()) = Some(stderr);
++
++    fn get_poison_inner<T>(result: LockResult<T>) -> T {
++        match result {
++            Ok(val) => val,
++            Err(err) => err.into_inner()
++        }
++    }
++
++    // Close the pipes on exit
++    let _ = crate::sys_common::at_exit(|| {
++        get_poison_inner(PIPE_STDIN.write()).take();
++        get_poison_inner(PIPE_STDOUT.write()).take();
++        get_poison_inner(PIPE_STDERR.write()).take();
++    });
++
++    Ok(())
++}
++
++impl Stdin {
++    pub fn new() -> io::Result<Stdin> {
++        Ok(Stdin)
++    }
++}
++
++impl io::Read for Stdin {
++    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
++        let lock = PIPE_STDIN.try_read()
++            .or(Err(io::Error::from(io::ErrorKind::NotFound)))?;
++        lock.as_ref()
++            .ok_or(io::Error::from(io::ErrorKind::NotFound))
++            .and_then(|v| Ok(v.read(buf)? as usize))
++    }
++}
++
++impl Stdout {
++    pub fn new() -> io::Result<Stdout> {
++        Ok(Stdout)
++    }
++}
++
++impl io::Write for Stdout {
++    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
++        let lock = PIPE_STDOUT.try_read()
++            .or(Err(io::Error::from(io::ErrorKind::NotFound)))?;
++        lock.as_ref()
++            .ok_or(io::Error::from(io::ErrorKind::NotFound))
++            .and_then(|v| { v.write(buf)?; Ok(buf.len()) })
++    }
++
++    fn flush(&mut self) -> io::Result<()> {
++        Ok(())
++    }
++}
++
++impl Stderr {
++    pub fn new() -> io::Result<Stderr> {
++        Ok(Stderr)
++    }
++}
++
++impl io::Write for Stderr {
++    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
++        use sunrise_libuser::syscalls::output_debug_string;
++
++        let buf = unsafe { core::str::from_utf8_unchecked(buf) };
++
++        let _ = output_debug_string(buf, 10, "stderr");
++
++        Ok(buf.len())
++    }
++
++    fn flush(&mut self) -> io::Result<()> {
++        Ok(())
++    }
++}
++
++pub const STDIN_BUF_SIZE: usize = 1024; // 1024 bytes should be more than enough.
++
++pub fn is_ebadf(_err: &io::Error) -> bool {
++    true
++}
++
++pub fn panic_output() -> Option<impl io::Write> {
++    Stderr::new().ok()
++}
+diff --git a/src/libstd/sys/sunrise/thread.rs b/src/libstd/sys/sunrise/thread.rs
+new file mode 100644
+index 0000000..4a775e8
+--- /dev/null
++++ b/src/libstd/sys/sunrise/thread.rs
+@@ -0,0 +1,60 @@
++use crate::ffi::CStr;
++use crate::io;
++use crate::time::Duration;
++use crate::usize;
++
++use sunrise_libuser::syscalls;
++use sunrise_libuser::threads::{Thread as LibUserThread};
++
++pub struct Thread(LibUserThread);
++
++pub const DEFAULT_MIN_STACK_SIZE: usize = sunrise_libuser::threads::DEFAULT_STACK_SIZE;
++
++impl Thread {
++    // Thread wrapper
++    fn start_wrapper(argument: usize) {
++        let p = unsafe { Box::from_raw(argument as *const Box<dyn FnOnce()> as *mut Box<dyn FnOnce()>) };
++
++        p();
++    }
++
++    // unsafe: see thread::Builder::spawn_unchecked for safety requirements
++    pub unsafe fn new(stack_size: usize, p: Box<dyn FnOnce()>)
++        -> io::Result<Thread>
++    {
++        // TODO(Sunrise): remap errors
++        let box_p = Box::new(p);
++        let inner_thread = LibUserThread::create(Self::start_wrapper, Box::into_raw(box_p) as *const Box<dyn FnOnce()> as *const u8 as usize, stack_size).unwrap();
++        inner_thread.start().unwrap();
++        Ok(Thread(inner_thread))
++    }
++
++    pub fn yield_now() {
++        let _ = syscalls::sleep_thread(0);
++    }
++
++    pub fn set_name(_name: &CStr) {
++        // TODO(Sunrise): We don't have thread names yet
++        //panic!("not supported on sunrise yet")
++    }
++
++    pub fn sleep(duration: Duration) {
++        let mut nanos = duration.as_nanos();
++        if nanos > usize::MAX as u128 {
++            nanos = usize::MAX as u128;
++        }
++
++        // TODO(Sunrise): change this to u64 after changing the syscall.
++        let _ = syscalls::sleep_thread(nanos as usize);
++    }
++
++    pub fn join(self) {
++        self.0.join().unwrap();
++    }
++}
++
++pub mod guard {
++    pub type Guard = !;
++    pub unsafe fn current() -> Option<Guard> { None }
++    pub unsafe fn init() -> Option<Guard> { None }
++}
+diff --git a/src/libstd/sys/sunrise/thread_local.rs b/src/libstd/sys/sunrise/thread_local.rs
+new file mode 100644
+index 0000000..29e9854
+--- /dev/null
++++ b/src/libstd/sys/sunrise/thread_local.rs
+@@ -0,0 +1,40 @@
++use crate::boxed::Box;
++use crate::ptr;
++
++pub type Key = usize;
++
++struct Allocated {
++    value: *mut u8,
++    dtor: Option<unsafe extern fn(*mut u8)>,
++}
++
++#[inline]
++pub unsafe fn create(dtor: Option<unsafe extern fn(*mut u8)>) -> Key {
++    Box::into_raw(Box::new(Allocated {
++        value: ptr::null_mut(),
++        dtor,
++    })) as usize
++}
++
++#[inline]
++pub unsafe fn set(key: Key, value: *mut u8) {
++    (*(key as *mut Allocated)).value = value;
++}
++
++#[inline]
++pub unsafe fn get(key: Key) -> *mut u8 {
++    (*(key as *mut Allocated)).value
++}
++
++#[inline]
++pub unsafe fn destroy(key: Key) {
++    let key = Box::from_raw(key as *mut Allocated);
++    if let Some(f) = key.dtor {
++        f(key.value);
++    }
++}
++
++#[inline]
++pub fn requires_synchronized_create() -> bool {
++    false
++}
+diff --git a/src/libstd/sys/sunrise/time.rs b/src/libstd/sys/sunrise/time.rs
+new file mode 100644
+index 0000000..ea7f257
+--- /dev/null
++++ b/src/libstd/sys/sunrise/time.rs
+@@ -0,0 +1,57 @@
++use crate::time::Duration;
++use sunrise_libuser::time::RTCManagerProxy;
++
++#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
++pub struct Instant(Duration);
++
++#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
++pub struct SystemTime(Duration);
++
++pub const UNIX_EPOCH: SystemTime = SystemTime(Duration::from_secs(0));
++
++impl Instant {
++    pub fn now() -> Instant {
++        let rtc = RTCManagerProxy::raw_new().unwrap();
++        Instant(Duration::from_secs(rtc.get_rtc_time().unwrap() as u64))
++    }
++
++    pub const fn zero() -> Instant {
++        Instant(Duration::from_secs(0))
++    }
++
++    pub fn actually_monotonic() -> bool {
++        false
++    }
++
++    pub fn checked_sub_instant(&self, other: &Instant) -> Option<Duration> {
++        self.0.checked_sub(other.0)
++    }
++
++    pub fn checked_add_duration(&self, other: &Duration) -> Option<Instant> {
++        Some(Instant(self.0.checked_add(*other)?))
++    }
++
++    pub fn checked_sub_duration(&self, other: &Duration) -> Option<Instant> {
++        Some(Instant(self.0.checked_sub(*other)?))
++    }
++}
++
++impl SystemTime {
++    pub fn now() -> SystemTime {
++        let rtc = RTCManagerProxy::raw_new().unwrap();
++        SystemTime(Duration::from_secs(rtc.get_rtc_time().unwrap() as u64))
++    }
++
++    pub fn sub_time(&self, other: &SystemTime)
++                    -> Result<Duration, Duration> {
++        self.0.checked_sub(other.0).ok_or_else(|| other.0 - self.0)
++    }
++
++    pub fn checked_add_duration(&self, other: &Duration) -> Option<SystemTime> {
++        Some(SystemTime(self.0.checked_add(*other)?))
++    }
++
++    pub fn checked_sub_duration(&self, other: &Duration) -> Option<SystemTime> {
++        Some(SystemTime(self.0.checked_sub(*other)?))
++    }
++}
+diff --git a/src/libstd/sys/unix/path.rs b/src/libstd/sys/unix/path.rs
+index 840a7ae..fe20a8e 100644
+--- a/src/libstd/sys/unix/path.rs
++++ b/src/libstd/sys/unix/path.rs
+@@ -1,5 +1,5 @@
+ use crate::ffi::OsStr;
+-use crate::path::Prefix;
++use crate::path::{PrefixComponent, Prefix};
+ 
+ #[inline]
+ pub fn is_sep_byte(b: u8) -> bool {
+@@ -11,7 +11,7 @@ pub fn is_verbatim_sep(b: u8) -> bool {
+     b == b'/'
+ }
+ 
+-pub fn parse_prefix(_: &OsStr) -> Option<Prefix<'_>> {
++pub fn parse_prefix(_: &OsStr) -> Option<PrefixComponent<'_>> {
+     None
+ }
+ 
+diff --git a/src/libstd/sys/vxworks/path.rs b/src/libstd/sys/vxworks/path.rs
+index 840a7ae..8a47064 100644
+--- a/src/libstd/sys/vxworks/path.rs
++++ b/src/libstd/sys/vxworks/path.rs
+@@ -1,5 +1,5 @@
+ use crate::ffi::OsStr;
+-use crate::path::Prefix;
++use crate::path::PrefixComponent;
+ 
+ #[inline]
+ pub fn is_sep_byte(b: u8) -> bool {
+@@ -11,7 +11,7 @@ pub fn is_verbatim_sep(b: u8) -> bool {
+     b == b'/'
+ }
+ 
+-pub fn parse_prefix(_: &OsStr) -> Option<Prefix<'_>> {
++pub fn parse_prefix(_: &OsStr) -> Option<PrefixComponent<'_>> {
+     None
+ }
+ 
+diff --git a/src/libstd/sys/wasi/path.rs b/src/libstd/sys/wasi/path.rs
+index 840a7ae..8a47064 100644
+--- a/src/libstd/sys/wasi/path.rs
++++ b/src/libstd/sys/wasi/path.rs
+@@ -1,5 +1,5 @@
+ use crate::ffi::OsStr;
+-use crate::path::Prefix;
++use crate::path::PrefixComponent;
+ 
+ #[inline]
+ pub fn is_sep_byte(b: u8) -> bool {
+@@ -11,7 +11,7 @@ pub fn is_verbatim_sep(b: u8) -> bool {
+     b == b'/'
+ }
+ 
+-pub fn parse_prefix(_: &OsStr) -> Option<Prefix<'_>> {
++pub fn parse_prefix(_: &OsStr) -> Option<PrefixComponent<'_>> {
+     None
+ }
+ 
+diff --git a/src/libstd/sys/wasm/path.rs b/src/libstd/sys/wasm/path.rs
+index 840a7ae..8a47064 100644
+--- a/src/libstd/sys/wasm/path.rs
++++ b/src/libstd/sys/wasm/path.rs
+@@ -1,5 +1,5 @@
+ use crate::ffi::OsStr;
+-use crate::path::Prefix;
++use crate::path::PrefixComponent;
+ 
+ #[inline]
+ pub fn is_sep_byte(b: u8) -> bool {
+@@ -11,7 +11,7 @@ pub fn is_verbatim_sep(b: u8) -> bool {
+     b == b'/'
+ }
+ 
+-pub fn parse_prefix(_: &OsStr) -> Option<Prefix<'_>> {
++pub fn parse_prefix(_: &OsStr) -> Option<PrefixComponent<'_>> {
+     None
+ }
+ 
+diff --git a/src/libstd/sys/windows/path.rs b/src/libstd/sys/windows/path.rs
+index 524f21f..4ef9e00 100644
+--- a/src/libstd/sys/windows/path.rs
++++ b/src/libstd/sys/windows/path.rs
+@@ -1,6 +1,6 @@
+ use crate::ffi::OsStr;
+ use crate::mem;
+-use crate::path::Prefix;
++use crate::path::{Prefix, PrefixComponent};
+ 
+ fn os_str_as_u8_slice(s: &OsStr) -> &[u8] {
+     unsafe { mem::transmute(s) }
+@@ -19,7 +19,13 @@ pub fn is_verbatim_sep(b: u8) -> bool {
+     b == b'\\'
+ }
+ 
+-pub fn parse_prefix(path: &OsStr) -> Option<Prefix<'_>> {
++pub fn parse_prefix<'a>(path: &'a OsStr) -> Option<PrefixComponent<'_>> {
++    let pathu8 = os_str_as_u8_slice(path);
++    parse_prefix_simple(path)
++        .map(|v| PrefixComponent::from_os_str_kind(u8_slice_as_os_str(&pathu8[..v.len()]), v))
++}
++
++pub fn parse_prefix_simple(path: &OsStr) -> Option<Prefix<'_>> {
+     use crate::path::Prefix::*;
+     unsafe {
+         // The unsafety here stems from converting between &OsStr and &[u8]
+diff --git a/src/libstd/sys_common/mod.rs b/src/libstd/sys_common/mod.rs
+index e03e0fc..642e3a6 100644
+--- a/src/libstd/sys_common/mod.rs
++++ b/src/libstd/sys_common/mod.rs
+@@ -54,6 +54,7 @@ pub mod mutex;
+ #[cfg(any(doc, // see `mod os`, docs are generated for multiple platforms
+           unix,
+           target_os = "redox",
++          target_os = "sunrise",
+           target_os = "cloudabi",
+           target_os = "hermit",
+           target_arch = "wasm32",
+@@ -73,6 +74,7 @@ cfg_if::cfg_if! {
+     if #[cfg(any(target_os = "cloudabi",
+                  target_os = "l4re",
+                  target_os = "hermit",
++                 target_os = "sunrise",
+                  all(target_arch = "wasm32", not(target_os = "emscripten")),
+                  all(target_vendor = "fortanix", target_env = "sgx")))] {
+         pub use crate::sys::net;
+diff --git a/src/libtest/Cargo.toml b/src/libtest/Cargo.toml
+index 170fbb9..0d4d72b 100644
+--- a/src/libtest/Cargo.toml
++++ b/src/libtest/Cargo.toml
+@@ -24,8 +24,8 @@ proc_macro = { path = "../libproc_macro" }
+ # Forward features to the `std` crate as necessary
+ [features]
+ backtrace = ["std/backtrace"]
+-compiler-builtins-c = ["std/compiler-builtins-c"]
++#compiler-builtins-c = ["std/compiler-builtins-c"]
+ llvm-libunwind = ["std/llvm-libunwind"]
+ panic-unwind = ["std/panic_unwind"]
+-panic_immediate_abort = ["std/panic_immediate_abort"]
++#panic_immediate_abort = ["std/panic_immediate_abort"]
+ profiler = ["std/profiler"]
+diff --git a/src/libunwind/Cargo.toml b/src/libunwind/Cargo.toml
+index 77bcfff..307b359 100644
+--- a/src/libunwind/Cargo.toml
++++ b/src/libunwind/Cargo.toml
+@@ -16,9 +16,9 @@ bench = false
+ doc = false
+ 
+ [dependencies]
+-core = { path = "../libcore" }
+-libc = { version = "0.2.51", features = ['rustc-dep-of-std'], default-features = false }
+-compiler_builtins = "0.1.0"
++#core = { path = "../libcore" }
++libc = { version = "0.2.51", features = ['align'], default-features = false }
++#compiler_builtins = "0.1.0"
+ cfg-if = "0.1.8"
+ 
+ [build-dependencies]
+-- 
+2.26.2
+

@@ -1,6 +1,6 @@
 [config]
 skip_core_tasks = true
-min_version = "0.22.0"
+min_version = "0.30.8"
 default_to_workspace = false
 
 [env]
@@ -78,91 +78,91 @@ install_crate = { crate_name = "xargo", binary = "xargo", test_arg = "--version"
 
 [tasks.bootstrap]
 description = "Compiles the i386 bootstrap"
-dependencies = ["bootstrap-linker", "install-xargo"]
+dependencies = ["bootstrap-linker", "install-xargo", "setup-rust"]
 command = "xargo"
 args = ["build", "--target=i386-unknown-none", "--package=sunrise-bootstrap", "@@split(COMPILER_FLAGS, )" ]
 
 [tasks.kernel]
 description = "Compiles the kernel"
-dependencies = ["kernel-linker", "install-xargo"]
+dependencies = ["kernel-linker", "install-xargo", "setup-rust"]
 command = "xargo"
 args = ["build", "--target=i386-unknown-none", "--package=sunrise-kernel", "@@split(COMPILER_FLAGS, )", "@@split(KERNEL_FLAGS, )"]
 
 [tasks.vi]
 description = "Compiles sunrise-vi"
-dependencies = ["install-xargo"]
+dependencies = ["install-xargo", "setup-rust"]
 command = "xargo"
 args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-vi", "@@split(COMPILER_FLAGS, )"]
 
 [tasks.sm]
 description = "Compiles sunrise-sm"
-dependencies = ["install-xargo"]
+dependencies = ["install-xargo", "setup-rust"]
 command = "xargo"
 args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-sm", "@@split(COMPILER_FLAGS, )"]
 
 [tasks.shell]
 description = "Compiles sunrise-shell"
-dependencies = ["install-xargo"]
+dependencies = ["install-xargo", "setup-rust"]
 command = "xargo"
 args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-shell", "@@split(COMPILER_FLAGS, )"]
 
 [tasks.wall-clock]
 description = "Compiles sunrise-wall-clock"
-dependencies = ["install-xargo"]
+dependencies = ["install-xargo", "setup-rust"]
 command = "xargo"
 args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-wall-clock", "@@split(COMPILER_FLAGS, )"]
 
 [tasks.ahci]
 description = "Compiles sunrise-ahci"
-dependencies = ["install-xargo"]
+dependencies = ["install-xargo", "setup-rust"]
 command = "xargo"
 args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-ahci", "@@split(COMPILER_FLAGS, )"]
 
 [tasks.time]
 description = "Compiles sunrise-time"
-dependencies = ["install-xargo"]
+dependencies = ["install-xargo", "setup-rust"]
 command = "xargo"
 args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-time", "@@split(COMPILER_FLAGS, )"]
 
 [tasks.fs]
 description = "Compiles sunrise-fs"
-dependencies = ["install-xargo"]
+dependencies = ["install-xargo", "setup-rust"]
 command = "xargo"
 args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-fs", "@@split(COMPILER_FLAGS, )"]
 
 [tasks.loader]
 description = "Compiles sunrise-loader"
-dependencies = ["install-xargo"]
+dependencies = ["install-xargo", "setup-rust"]
 command = "xargo"
 args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-loader", "@@split(COMPILER_FLAGS, )"]
 
 [tasks.keyboard]
 description = "Compiles sunrise-keyboard"
-dependencies = ["install-xargo"]
+dependencies = ["install-xargo", "setup-rust"]
 command = "xargo"
 args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-keyboard", "@@split(COMPILER_FLAGS, )"]
 
 [tasks.twili]
 description = "Compiles sunrise-twili"
-dependencies = ["install-xargo"]
+dependencies = ["install-xargo", "setup-rust"]
 command = "xargo"
 args = ["build", "--target=i386-unknown-sunrise-user", "--package=sunrise-twili", "@@split(COMPILER_FLAGS, )"]
 
 [tasks.std_hello_world]
 description = "Compiles std_hello_world"
-dependencies = ["install-xargo"]
+dependencies = ["install-xargo", "setup-rust"]
 command = "xargo"
 args = ["build", "--target=i386-unknown-sunrise-user", "--package=std_hello_world", "@@split(COMPILER_FLAGS, )"]
 
 [tasks.df]
 description = "Compiles df"
-dependencies = ["install-xargo"]
+dependencies = ["install-xargo", "setup-rust"]
 command = "xargo"
 args = ["build", "--target=i386-unknown-sunrise-user", "--package=df", "@@split(COMPILER_FLAGS, )"]
 
 [tasks.uutils]
 description = "Compiles uutils (coreutils)"
-dependencies = ["install-xargo"]
+dependencies = ["install-xargo", "setup-rust"]
 command = "xargo"
 args = ["build", "--target=i386-unknown-sunrise-user", "--package=uutils", "-Z", "package-features", "--features=sunrise", "--no-default-features", "@@split(COMPILER_FLAGS, )"]
 
@@ -311,7 +311,7 @@ args = ["test", "--target=i686-unknown-linux-gnu",
 
 [tasks.clippy-sunrise-kernel-target]
 description = "Run clippy on sunrise kernel and bootstrap"
-dependencies = ["install-xargo"]
+dependencies = ["install-xargo", "setup-rust"]
 install_crate = { rustup_component_name = "clippy" }
 command = "xargo"
 args = ["clippy", "--target=i386-unknown-none",
@@ -324,7 +324,7 @@ args = ["clippy", "--target=i386-unknown-none",
 
 [tasks.clippy-sunrise-userspace-target-nostd]
 description = "Run clippy on sunrise userspace (no std)"
-dependencies = ["install-xargo"]
+dependencies = ["install-xargo", "setup-rust"]
 install_crate = { rustup_component_name = "clippy" }
 command = "xargo"
 args = ["clippy", "--target=i386-unknown-sunrise-user",
@@ -348,7 +348,7 @@ args = ["clippy", "--target=i386-unknown-sunrise-user",
 
 [tasks.clippy-sunrise-userspace-target-std]
 description = "Run clippy on sunrise userspace (std)"
-dependencies = ["install-xargo"]
+dependencies = ["install-xargo", "setup-rust"]
 install_crate = { rustup_component_name = "clippy" }
 command = "xargo"
 args = ["clippy", "--target=i386-unknown-sunrise-user",
@@ -369,6 +369,45 @@ args = ["clippy",
 	"@@split(CLIPPY_RULES, )",
 	"${@}",
 	]
+
+[tasks.setup-rust]
+script_runner = "@duckscript"
+script = [
+'''
+version = readfile rust-toolchain
+
+if is_path_exists ${CARGO_MAKE_WORKING_DIRECTORY}/rust
+    cd ${CARGO_MAKE_WORKING_DIRECTORY}/rust
+    head_rev = exec git rev-list --max-parents=0 HEAD
+    head_rev = trim ${head_rev.stdout}
+    message = exec git log --format=%B -n 1 ${head_rev}
+    message = trim ${message.stdout}
+    assert_eq ${message} ${version} "Rust version doesn't match rust-toolchain. The patches will need to be updated. See docs/UPDATE_RUST.md for more information"
+    exit 0
+end
+
+output = exec rustc --print sysroot
+output.stdout = trim ${output.stdout}
+sysroot = concat ${output.stdout} /lib/rustlib/src/rust/
+cp ${sysroot} "."
+cd rust/
+exec git init
+exec git add .
+exec git commit -m ${version}
+patches = glob_array ../rust-patches/*.patch
+patches = array_join ${patches} " "
+exec git am %{patches}
+''']
+
+[tasks.create-patches]
+script_runner = "@duckscript"
+script = [
+'''
+cd rust
+head = exec git rev-list --max-parents=0 HEAD
+head = trim ${head.stdout}
+exec git format-patch -o ../rust-patches ${head}..
+''']
 
 [tasks.clippy]
 dependencies = ["clippy-host-target", "clippy-sunrise-kernel-target", "clippy-sunrise-userspace-target-nostd", "clippy-sunrise-userspace-target-std"]
