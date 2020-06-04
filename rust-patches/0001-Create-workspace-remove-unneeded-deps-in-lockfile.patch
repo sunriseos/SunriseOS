@@ -1,6 +1,6 @@
-From 383743cca54963d11e28fd083362f8e98492d555 Mon Sep 17 00:00:00 2001
+From fc69f4cfdf3780e4adb213ffdb6cfe133dc2789c Mon Sep 17 00:00:00 2001
 From: roblabla <unfiltered@roblab.la>
-Date: Thu, 4 Jun 2020 15:37:42 +0000
+Date: Thu, 4 Jun 2020 16:40:51 +0000
 Subject: [PATCH 1/2] Create workspace, remove unneeded deps in lockfile
 
 This commit creates a cargo workspace containing all the crates in the
@@ -10,13 +10,13 @@ added to the rust-src dump.
 We then use `cargo update -p alloc` to remove all the unnecessary dependencies
 from the lockfile, without actually updating any dependencies!
 ---
- Cargo.lock | 5759 ++--------------------------------------------------
- Cargo.toml |   13 +
- 2 files changed, 160 insertions(+), 5612 deletions(-)
+ Cargo.lock | 5769 ++--------------------------------------------------
+ Cargo.toml |   22 +
+ 2 files changed, 177 insertions(+), 5614 deletions(-)
  create mode 100644 Cargo.toml
 
 diff --git a/Cargo.lock b/Cargo.lock
-index 19ecd20..b1cfbbb 100644
+index 19ecd20..b15b201 100644
 --- a/Cargo.lock
 +++ b/Cargo.lock
 @@ -1,110 +1,13 @@
@@ -145,7 +145,7 @@ index 19ecd20..b1cfbbb 100644
  [[package]]
  name = "backtrace"
  version = "0.3.46"
-@@ -146,5520 +43,274 @@ dependencies = [
+@@ -146,5640 +43,284 @@ dependencies = [
  ]
  
  [[package]]
@@ -616,25 +616,25 @@ index 19ecd20..b1cfbbb 100644
  [[package]]
 -name = "chrono"
 -version = "0.4.6"
-+name = "rustc-std-workspace-alloc"
-+version = "1.0.0"
- source = "registry+https://github.com/rust-lang/crates.io-index"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
 -checksum = "45912881121cb26fad7c38c17ba7daa18764771836b34fab7d3fbd93ed633878"
--dependencies = [
++name = "rustc-std-workspace-alloc"
++version = "1.99.0"
+ dependencies = [
 - "num-integer",
 - "num-traits",
 - "time",
--]
-+checksum = "ff66d57013a5686e1917ed6a025d54dd591fcda71a41fe07edf4d16726aefa86"
++ "alloc",
+ ]
  
  [[package]]
 -name = "clap"
 -version = "2.33.0"
-+name = "rustc-std-workspace-core"
-+version = "1.0.0"
- source = "registry+https://github.com/rust-lang/crates.io-index"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
 -checksum = "5067f5bb2d80ef5d68b4c87db81601f0b75bca627bc2ef76b141d7b846a3c6d9"
--dependencies = [
++name = "rustc-std-workspace-core"
++version = "1.99.0"
+ dependencies = [
 - "ansi_term",
 - "atty",
 - "bitflags",
@@ -643,12 +643,15 @@ index 19ecd20..b1cfbbb 100644
 - "unicode-width",
 - "vec_map",
 - "yaml-rust 0.3.5",
--]
--
--[[package]]
++ "core",
+ ]
+ 
+ [[package]]
 -name = "clippy"
 -version = "0.0.212"
--dependencies = [
++name = "std"
++version = "0.0.0"
+ dependencies = [
 - "cargo_metadata 0.9.1",
 - "clippy-mini-macro-test",
 - "clippy_lints",
@@ -661,32 +664,6 @@ index 19ecd20..b1cfbbb 100644
 - "serde",
 - "tempfile",
 - "tester",
--]
--
--[[package]]
--name = "clippy-mini-macro-test"
--version = "0.2.0"
-+checksum = "1956f5517128a2b6f23ab2dadf1a976f4f5b27962e7724c2bf3d45e539ec098c"
- 
- [[package]]
--name = "clippy_lints"
--version = "0.0.212"
-+name = "std"
-+version = "0.0.0"
- dependencies = [
-- "cargo_metadata 0.9.1",
-- "if_chain",
-- "itertools 0.9.0",
-- "lazy_static 1.4.0",
-- "pulldown-cmark 0.7.1",
-- "quine-mc_cluskey",
-- "regex-syntax",
-- "semver",
-- "serde",
-- "smallvec 1.4.0",
-- "toml",
-- "unicode-normalization",
-- "url 2.1.0",
 + "alloc",
 + "backtrace",
 + "cfg-if",
@@ -706,27 +683,42 @@ index 19ecd20..b1cfbbb 100644
  ]
  
  [[package]]
--name = "cloudabi"
--version = "0.0.3"
--source = "registry+https://github.com/rust-lang/crates.io-index"
--checksum = "ddfc5b9aa5d4507acaf872de71051dfd0e309860e88966e1051e462a077aac4f"
+-name = "clippy-mini-macro-test"
+-version = "0.2.0"
+-
+-[[package]]
+-name = "clippy_lints"
+-version = "0.0.212"
 +name = "term"
 +version = "0.0.0"
  dependencies = [
-- "bitflags",
+- "cargo_metadata 0.9.1",
+- "if_chain",
+- "itertools 0.9.0",
+- "lazy_static 1.4.0",
+- "pulldown-cmark 0.7.1",
+- "quine-mc_cluskey",
+- "regex-syntax",
+- "semver",
+- "serde",
+- "smallvec 1.4.0",
+- "toml",
+- "unicode-normalization",
+- "url 2.1.0",
 + "core",
 + "std",
  ]
  
  [[package]]
--name = "cmake"
--version = "0.1.42"
+-name = "cloudabi"
+-version = "0.0.3"
 -source = "registry+https://github.com/rust-lang/crates.io-index"
--checksum = "81fb25b677f8bf1eb325017cb6bb8452f87969db0fedb4f757b297bee78a7c62"
+-checksum = "ddfc5b9aa5d4507acaf872de71051dfd0e309860e88966e1051e462a077aac4f"
 +name = "unwind"
 +version = "0.0.0"
  dependencies = [
-  "cc",
+- "bitflags",
++ "cc",
 + "cfg-if",
 + "compiler_builtins",
 + "core",
@@ -734,6 +726,21 @@ index 19ecd20..b1cfbbb 100644
  ]
  
  [[package]]
+-name = "cmake"
+-version = "0.1.42"
++name = "wasi"
++version = "0.9.0+wasi-snapshot-preview1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "81fb25b677f8bf1eb325017cb6bb8452f87969db0fedb4f757b297bee78a7c62"
++checksum = "cccddf32554fecc6acb585f82a32a72e28b48f8c4c1883ddfeeeaa96f7d8e519"
+ dependencies = [
+- "cc",
++ "compiler_builtins",
++ "rustc-std-workspace-alloc",
++ "rustc-std-workspace-core",
+ ]
+ 
+-[[package]]
 -name = "codespan"
 -version = "0.5.0"
 -source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5806,15 +5813,13 @@ index 19ecd20..b1cfbbb 100644
 -[[package]]
 -name = "wasi"
 -version = "0.9.0+wasi-snapshot-preview1"
-+name = "wasi"
-+version = "0.9.0+wasi-snapshot-preview1"
- source = "registry+https://github.com/rust-lang/crates.io-index"
- checksum = "cccddf32554fecc6acb585f82a32a72e28b48f8c4c1883ddfeeeaa96f7d8e519"
- dependencies = [
-@@ -5667,119 +318,3 @@ dependencies = [
-  "rustc-std-workspace-alloc",
-  "rustc-std-workspace-core",
- ]
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "cccddf32554fecc6acb585f82a32a72e28b48f8c4c1883ddfeeeaa96f7d8e519"
+-dependencies = [
+- "compiler_builtins",
+- "rustc-std-workspace-alloc",
+- "rustc-std-workspace-core",
+-]
 -
 -[[package]]
 -name = "winapi"
@@ -5931,12 +5936,15 @@ index 19ecd20..b1cfbbb 100644
 -dependencies = [
 - "linked-hash-map",
 -]
++[[patch.unused]]
++name = "rustc-std-workspace-std"
++version = "1.99.0"
 diff --git a/Cargo.toml b/Cargo.toml
 new file mode 100644
-index 0000000..f739708
+index 0000000..6e10501
 --- /dev/null
 +++ b/Cargo.toml
-@@ -0,0 +1,13 @@
+@@ -0,0 +1,22 @@
 +[workspace]
 +members = [
 +	"src/build_helper",
@@ -5950,6 +5958,15 @@ index 0000000..f739708
 +	"src/libterm",
 +	"src/libunwind",
 +]
++
++[patch.crates-io.rustc-std-workspace-alloc]
++path = "./src/tools/rustc-std-workspace-alloc"
++
++[patch.crates-io.rustc-std-workspace-core]
++path = "./src/tools/rustc-std-workspace-core"
++
++[patch.crates-io.rustc-std-workspace-std]
++path = "./src/tools/rustc-std-workspace-std"
 -- 
 2.26.2
 

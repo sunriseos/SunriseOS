@@ -1,10 +1,10 @@
-From 36644da5d4f757daeb27eb1f753a782d2c503971 Mon Sep 17 00:00:00 2001
+From c23874844bf1e8776365352d32a7c78382266e37 Mon Sep 17 00:00:00 2001
 From: roblabla <unfiltered@roblab.la>
 Date: Sat, 30 May 2020 12:03:10 +0000
 Subject: [PATCH 2/2] Add sunrise
 
 ---
- Cargo.lock                                  | 578 +++++++++++++++++-
+ Cargo.lock                                  | 582 +++++++++++++++++-
  src/liballoc/Cargo.toml                     |   2 +-
  src/libpanic_abort/Cargo.toml               |   4 +-
  src/libpanic_abort/lib.rs                   |   7 +-
@@ -52,7 +52,7 @@ Subject: [PATCH 2/2] Add sunrise
  src/libstd/sys_common/mod.rs                |   2 +
  src/libtest/Cargo.toml                      |   4 +-
  src/libunwind/Cargo.toml                    |   6 +-
- 48 files changed, 2929 insertions(+), 103 deletions(-)
+ 48 files changed, 2931 insertions(+), 105 deletions(-)
  create mode 100644 src/libstd/sys/sunrise/alloc.rs
  create mode 100644 src/libstd/sys/sunrise/args.rs
  create mode 100644 src/libstd/sys/sunrise/cmath.rs
@@ -79,7 +79,7 @@ Subject: [PATCH 2/2] Add sunrise
  create mode 100644 src/libstd/sys/sunrise/time.rs
 
 diff --git a/Cargo.lock b/Cargo.lock
-index b1cfbbb..d7cd257 100644
+index b15b201..8c1c338 100644
 --- a/Cargo.lock
 +++ b/Cargo.lock
 @@ -10,12 +10,27 @@ dependencies = [
@@ -188,7 +188,7 @@ index b1cfbbb..d7cd257 100644
  [[package]]
  name = "c2-chacha"
  version = "0.2.3"
-@@ -66,10 +128,6 @@ name = "cfg-if"
+@@ -66,16 +128,12 @@ name = "cfg-if"
  version = "0.1.10"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "4785bdd1c96b2a846b2bd7cc02e86b6b3dbf14e7e53446c4f54c92a361040822"
@@ -199,6 +199,14 @@ index b1cfbbb..d7cd257 100644
  
  [[package]]
  name = "compiler_builtins"
+-version = "0.1.28"
++version = "0.1.29"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "439a6fab343b1dab347823537734a5cd4ae6ae2000b465ab886f64cdb723bd14"
++checksum = "da3e309b268ae176ec048f30a58369db0a7527cddd3546275355b68130652c91"
+ dependencies = [
+  "cc",
+  "rustc-std-workspace-core",
 @@ -88,6 +146,50 @@ dependencies = [
   "rand",
  ]
@@ -618,9 +626,9 @@ index b1cfbbb..d7cd257 100644
  
  [[package]]
  name = "rustc-std-workspace-alloc"
-@@ -267,28 +630,163 @@ version = "1.0.0"
- source = "registry+https://github.com/rust-lang/crates.io-index"
- checksum = "1956f5517128a2b6f23ab2dadf1a976f4f5b27962e7724c2bf3d45e539ec098c"
+@@ -269,28 +632,163 @@ dependencies = [
+  "core",
+ ]
  
 +[[package]]
 +name = "scopeguard"
@@ -786,7 +794,7 @@ index b1cfbbb..d7cd257 100644
  [[package]]
  name = "term"
  version = "0.0.0"
-@@ -297,14 +795,36 @@ dependencies = [
+@@ -299,14 +797,36 @@ dependencies = [
   "std",
  ]
  
