@@ -68,7 +68,7 @@ jobs:
         shell: bash
 
       - name: Install cargo-make
-        run: cargo install cargo-make --version 0.22.0 --locked
+        run: cargo install cargo-make --version 0.30.8 --locked
 
       - name: Install xargo
         run: cargo install xargo --version 0.3.18 --locked
