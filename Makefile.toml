@@ -376,27 +376,64 @@ script = [
 '''
 version = readfile rust-toolchain
 
-if is_path_exists ${CARGO_MAKE_WORKING_DIRECTORY}/rust
-    cd ${CARGO_MAKE_WORKING_DIRECTORY}/rust
-    head_rev = exec git rev-list --max-parents=0 HEAD
-    head_rev = trim ${head_rev.stdout}
-    message = exec git log --format=%B -n 1 ${head_rev}
-    message = trim ${message.stdout}
-    assert_eq ${message} ${version} "Rust version doesn't match rust-toolchain. The patches will need to be updated. See docs/UPDATE_RUST.md for more information"
+function apply_patches
+    patches = glob_array ${CARGO_MAKE_WORKING_DIRECTORY}/rust-patches/*.patch
+    patches = array_join ${patches} " "
+    exec git am %{patches}
+end
+
+# If rust folder doesn't exist, create it, and import the rust source.
+if not is_path_exists ${CARGO_MAKE_WORKING_DIRECTORY}/rust
+    output = exec rustc --print sysroot
+    output.stdout = trim ${output.stdout}
+    sysroot = concat ${output.stdout} /lib/rustlib/src/rust/
+    cp ${sysroot} ${CARGO_MAKE_WORKING_DIRECTORY}
+    cd ${CARGO_MAKE_WORKING_DIRECTORY}/rust/
+    exec git init
+    exec git add .
+    set_env GIT_COMMITTER_NAME patchsystem
+    echo "Importing rust-src"
+    exec git commit -m ${version} -q
+end
+
+use_dirty_rust_repo = get_env USE_DIRTY_RUST_REPO
+if not is_empty ${use_dirty_rust_repo}
+    echo "Using dirty rust repository."
     exit 0
 end
 
-output = exec rustc --print sysroot
-output.stdout = trim ${output.stdout}
-sysroot = concat ${output.stdout} /lib/rustlib/src/rust/
-cp ${sysroot} "."
-cd rust/
-exec git init
-exec git add .
-exec git commit -m ${version}
-patches = glob_array ../rust-patches/*.patch
-patches = array_join ${patches} " "
-exec git am %{patches}
+cd ${CARGO_MAKE_WORKING_DIRECTORY}/rust/
+
+# Check the original commit matches the current rust version. If it doesn't,
+# bail out, tell user they need to update their patches.
+head_rev = exec git rev-list --max-parents=0 HEAD
+head_rev = trim ${head_rev.stdout}
+message = exec git log --format=%B -n 1 ${head_rev}
+message = trim ${message.stdout}
+assert_eq ${message} ${version} "\nRust version doesn't match rust-toolchain. The patches will need to be updated. See docs/UPDATE_RUST.md for more information."
+
+# Check if there's any uncommitted changes. If there are, bail out, tell
+# user.
+exec git update-index --refresh
+status = exec git status --porcelain -z
+status = trim ${status.stdout}
+status_empty = is_empty ${status}
+assert ${status_empty} "\nUncommited changes were found in the rust folder.\nEither commit them and create a patch, or set the USE_DIRTY_RUST_REPO environment variable."
+
+# Check if there's any commits that got changed. If there are, tell the user
+# to create patches.
+output = exec git log --committer=^(?!patchsystem).*$ --perl-regexp --format=oneline
+output = trim ${output.stdout}
+output_empty = is_empty ${output}
+assert ${output_empty} "\nRust repo has commits that weren't properly added to the patch system.\nEither run create-patches, or set the USE_DIRTY_RUST_REPO environment variable."
+
+# Every commit belongs to the patchsystem, re-applying the patches is safe.
+# Reset to initial commit (which imports the rust tree)
+head = exec git rev-list --max-parents=0 HEAD
+head = trim ${head.stdout}
+exec git reset --hard ${head}
+# Apply all patches.
+apply_patches
 ''']
 
 [tasks.create-patches]
@@ -404,9 +441,18 @@ script_runner = "@duckscript"
 script = [
 '''
 cd rust
+# Get initial commit (which imports the rust tree)
 head = exec git rev-list --max-parents=0 HEAD
 head = trim ${head.stdout}
-exec git format-patch -o ../rust-patches ${head}..
+
+# Create patch for every commit after initial commit.
+#exec git format-patch -o ../rust-patches ${head}..
+
+# Change committer for the previous patches so they show up as being committed
+# by patchsystem.
+set_env FILTER_BRANCH_SQUELCH_WARNING 1
+exec git update-ref -d refs/original/refs/heads/master
+exec git filter-branch --env-filter "export GIT_COMMITTER_NAME=patchsystem" -- ${head}..
 ''']
 
 [tasks.clippy]
