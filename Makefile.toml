@@ -375,11 +375,17 @@ script_runner = "@duckscript"
 script = [
 '''
 version = readfile rust-toolchain
+date = split ${version} "-"
+array_remove ${date} 0
+date = array_join ${date} "-"
+datetime = concat ${date} " 12:00:00 +0000"
 
 function apply_patches
     patches = glob_array ${CARGO_MAKE_WORKING_DIRECTORY}/rust-patches/*.patch
     patches = array_join ${patches} " "
-    exec git am %{patches}
+    set_env GIT_COMMITTER_NAME patchsystem
+    set_env GIT_COMMITTER_EMAIL patchsystem
+    exec git am --committer-date-is-author-date %{patches}
 end
 
 # If rust folder doesn't exist, create it, and import the rust source.
@@ -392,9 +398,16 @@ if not is_path_exists ${CARGO_MAKE_WORKING_DIRECTORY}/rust
     exec git init
     exec git add .
     set_env GIT_COMMITTER_NAME patchsystem
+    set_env GIT_COMMITTER_EMAIL patchsystem
+    set_env GIT_COMMITTER_DATE ${datetime}
     set_env GIT_AUTHOR_NAME patchsystem
+    set_env GIT_AUTHOR_EMAIL patchsystem
+    set_env GIT_AUTHOR_DATE ${datetime}
     echo "Importing rust-src"
     exec git commit -m ${version} -q
+    unset_env GIT_AUTHOR_DATE
+    unset_env GIT_AUTHOR_EMAIL
+    unset_env GIT_AUTHOR_NAME
 end
 
 use_dirty_rust_repo = get_env USE_DIRTY_RUST_REPO
@@ -446,14 +459,14 @@ cd rust
 head = exec git rev-list --max-parents=0 HEAD
 head = trim ${head.stdout}
 
-# Create patch for every commit after initial commit.
-exec git format-patch -o ../rust-patches ${head}..
-
 # Change committer for the previous patches so they show up as being committed
 # by patchsystem.
 set_env FILTER_BRANCH_SQUELCH_WARNING 1
 exec git update-ref -d refs/original/refs/heads/master
-exec git filter-branch --env-filter "export GIT_COMMITTER_NAME=patchsystem" -- ${head}..
+exec git filter-branch --env-filter "export GIT_COMMITTER_NAME=patchsystem; export GIT_COMMITTER_EMAIL=patchsystem" -- ${head}..
+
+# Create patch for every commit after initial commit.
+exec git format-patch -o ../rust-patches ${head}..
 ''']
 
 [tasks.clippy]
