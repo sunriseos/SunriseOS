@@ -447,7 +447,7 @@ head = exec git rev-list --max-parents=0 HEAD
 head = trim ${head.stdout}
 
 # Create patch for every commit after initial commit.
-#exec git format-patch -o ../rust-patches ${head}..
+exec git format-patch -o ../rust-patches ${head}..
 
 # Change committer for the previous patches so they show up as being committed
 # by patchsystem.
