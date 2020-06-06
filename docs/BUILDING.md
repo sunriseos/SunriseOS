@@ -45,10 +45,10 @@ printed on stdout.
 
 ## Versions
 
-- rust: `nightly-2019-15-07`
+- rust: `nightly-2020-05-27`
   - clippy
   - rust-src
-- cargo-make: `0.22.0`
+- cargo-make: `0.31.0`
 - xargo: `0.3.18`
 - mkisofs-rs: `0.1.1`
 - qemu-system-i386: `4.0.50`

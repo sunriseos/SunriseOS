@@ -11,3 +11,4 @@ DISK.img
 /*.iml
 /cmake-build-debug
 /link.T
+/rust
