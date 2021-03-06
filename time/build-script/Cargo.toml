@@ -1,7 +1,7 @@
 [package]
 name = "build-script"
 version = "0.1.0"
-authors = ["Thomas Guillemard <me@thog.eu>"]
+authors = ["Thog <me@thog.eu>"]
 edition = "2018"
 
 [dependencies]
