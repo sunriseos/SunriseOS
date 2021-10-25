@@ -4,6 +4,7 @@ min_version = "0.31.0"
 default_to_workspace = false
 
 [env]
+CARGO_MAKE_CRATE_INSTALLATION_LOCKED = "true"
 RUST_TARGET_PATH = "${CARGO_MAKE_WORKING_DIRECTORY}"
 XARGO_RUST_SRC = "${CARGO_MAKE_WORKING_DIRECTORY}/rust/src"
 GDB_PORT = { script = ["echo ${GDB_PORT:-9090}"] }
