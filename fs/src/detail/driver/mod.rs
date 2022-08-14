@@ -34,7 +34,7 @@ type BoxedIStorage = Box<dyn IStorage<Error = Error>>;
 
 /// Instance handling drivers registration and usage.
 pub struct DriverManager {
-    /// The registry of the drivers availaible.
+    /// The registry of the drivers available.
     registry: Vec<Box<dyn FileSystemDriver>>,
 
     /// The drives actually opened.
@@ -91,7 +91,7 @@ impl DriverManager {
         self.drives.get(&disk_id).ok_or_else(|| FileSystemError::DiskNotFound.into()).map(|arc| arc.clone())
     }
 
-    /// Get the count of disks availaible.
+    /// Get the count of disks available.
     pub fn get_disks_count(&mut self) -> u32 {
         self.drives.len() as u32
     }
