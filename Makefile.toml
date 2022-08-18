@@ -40,7 +40,7 @@ QEMU_COMMON_FLAGS = """\
 # automatically prepended if necessary.
 PROFILE_NAME = "debug"
 # Flags to pass to cargo when building any project.
-COMPILER_FLAGS = ""
+COMPILER_FLAGS = "--locked"
 # Extra flags to pass when building the kernel. Appended to COMPILER_FLAGS.
 KERNEL_FLAGS = ""
 # Extra flags to pass to qemu.
@@ -48,13 +48,13 @@ QEMU_PROFILE_FLAGS = ""
 
 [env.development]
 PROFILE_NAME = "debug"
-COMPILER_FLAGS = ""
+COMPILER_FLAGS = "--locked"
 KERNEL_FLAGS = "-Z package-features --features=panic-on-exception"
 QEMU_EXTRA_FLAGS = "-d cpu_reset"
 
 [env.production]
 PROFILE_NAME = "release"
-COMPILER_FLAGS = "--release"
+COMPILER_FLAGS = "--locked --release"
 KERNEL_FLAGS = ""
 QEMU_EXTRA_FLAGS = ""
 
