@@ -71,7 +71,7 @@ script = ["cp linker-scripts/kernel.ld    link.T"]
 install_crate = { rustup_component_name = "rust-src" }
 
 [tasks.install-mkisofs-rs]
-install_crate = { crate_name = "mkisofs-rs", binary = "mkisofs-rs", test_arg = "--help", min_version = "0.1.1" }
+install_crate = { crate_name = "mkisofs-rs", binary = "mkisofs-rs", test_arg = "--help", min_version = "0.1.2" }
 
 [tasks.install-xargo]
 dependencies = ["install-rust-src"]
