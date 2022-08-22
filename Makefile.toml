@@ -4,6 +4,7 @@ min_version = "0.31.0"
 default_to_workspace = false
 
 [env]
+CARGO_MAKE_CRATE_INSTALLATION_LOCKED = "true"
 RUST_TARGET_PATH = "${CARGO_MAKE_WORKING_DIRECTORY}"
 XARGO_RUST_SRC = "${CARGO_MAKE_WORKING_DIRECTORY}/rust/src"
 GDB_PORT = { script = ["echo ${GDB_PORT:-9090}"] }
@@ -40,7 +41,7 @@ QEMU_COMMON_FLAGS = """\
 # automatically prepended if necessary.
 PROFILE_NAME = "debug"
 # Flags to pass to cargo when building any project.
-COMPILER_FLAGS = ""
+COMPILER_FLAGS = "--locked"
 # Extra flags to pass when building the kernel. Appended to COMPILER_FLAGS.
 KERNEL_FLAGS = ""
 # Extra flags to pass to qemu.
@@ -48,13 +49,13 @@ QEMU_PROFILE_FLAGS = ""
 
 [env.development]
 PROFILE_NAME = "debug"
-COMPILER_FLAGS = ""
+COMPILER_FLAGS = "--locked"
 KERNEL_FLAGS = "-Z package-features --features=panic-on-exception"
 QEMU_EXTRA_FLAGS = "-d cpu_reset"
 
 [env.production]
 PROFILE_NAME = "release"
-COMPILER_FLAGS = "--release"
+COMPILER_FLAGS = "--locked --release"
 KERNEL_FLAGS = ""
 QEMU_EXTRA_FLAGS = ""
 
@@ -70,7 +71,7 @@ script = ["cp linker-scripts/kernel.ld    link.T"]
 install_crate = { rustup_component_name = "rust-src" }
 
 [tasks.install-mkisofs-rs]
-install_crate = { crate_name = "mkisofs-rs", binary = "mkisofs-rs", test_arg = "--help", min_version = "0.1.1" }
+install_crate = { crate_name = "mkisofs-rs", binary = "mkisofs-rs", test_arg = "--help", min_version = "0.1.2" }
 
 [tasks.install-xargo]
 dependencies = ["install-rust-src"]
