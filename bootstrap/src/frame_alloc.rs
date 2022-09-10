@@ -19,7 +19,7 @@ use sunrise_libutils::{bit_array_first_one, bit_array_first_count_one};
 use crate::paging::PAGE_SIZE;
 use crate::address::PhysicalAddress;
 use crate::bootstrap_logging::Serial;
-use core::fmt::Write;
+use core::fmt::{self, Write};
 
 /// A memory frame is the same size as a page
 pub const MEMORY_FRAME_SIZE: usize = PAGE_SIZE;
@@ -192,41 +192,9 @@ impl FrameAllocator {
                                             0x00000000,
                                             0x00000001);
 
-        /* if log_enabled!(::log::Level::Info) {
-            let mut cur = None;
-            for (i, bitmap) in frames_bitmap.memory_bitmap.iter().enumerate() {
-                for j in 0..8 {
-                    let curaddr = (i * 8 + j) * ::paging::PAGE_SIZE;
-                    if bitmap & (1 << j) != 0 {
-                        // Area is available
-                        match cur {
-                            None => cur = Some((FRAME_FREE, curaddr)),
-                            Some((FRAME_OCCUPIED, last)) => {
-                                info!("{:#010x} - {:#010x} OCCUPIED", last, curaddr);
-                                cur = Some((FRAME_FREE, curaddr));
-                            },
-                            _ => ()
-                        }
-                    } else {
-                        // Area is occupied
-                        match cur {
-                            None => cur = Some((FRAME_OCCUPIED, curaddr)),
-                            Some((FRAME_FREE, last)) => {
-                                info!("{:#010x} - {:#010x} AVAILABLE", last, curaddr);
-                                cur = Some((FRAME_OCCUPIED, curaddr));
-                            },
-                            _ => ()
-                        }
-                    }
-                }
-            }
-            match cur {
-                Some((FRAME_FREE, last)) => info!("{:#010x} - {:#010x} AVAILABLE", last, 0xFFFFFFFFu32),
-                Some((FRAME_OCCUPIED, last)) => info!("{:#010x} - {:#010x} OCCUPIED", last, 0xFFFFFFFFu32),
-                _ => ()
-            }
-        } */
-        frames_bitmap.initialized = true
+        frames_bitmap.initialized = true;
+
+        writeln!(Serial, "{:?}", frames_bitmap);
     }
 
     /// Panics if the frames bitmap was not initialized
@@ -320,5 +288,48 @@ impl FrameAllocator {
             panic!("Frame being freed was not allocated");
         }
         frames_bitmap.memory_bitmap.set_bit(frame, FRAME_FREE);
+    }
+}
+
+impl fmt::Debug for AllocatorBitmap {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if !self.initialized {
+            return write!(f, "FrameAllocator {{ uninitialized }}");
+        }
+
+        let mut cur = None;
+        for (i, bitmap) in self.memory_bitmap.iter().enumerate() {
+            for j in 0..8 {
+                let curaddr = (i * 8 + j) * crate::paging::PAGE_SIZE;
+                if bitmap & (1 << j) != 0 {
+                    // Area is available
+                    match cur {
+                        None => cur = Some((FRAME_FREE, curaddr)),
+                        Some((FRAME_OCCUPIED, last)) => {
+                            writeln!(f, "    {:#010x} - {:#010x} OCCUPIED", last, curaddr)?;
+                            cur = Some((FRAME_FREE, curaddr));
+                        },
+                        _ => ()
+                    }
+                } else {
+                    // Area is occupied
+                    match cur {
+                        None => cur = Some((FRAME_OCCUPIED, curaddr)),
+                        Some((FRAME_FREE, last)) => {
+                            writeln!(f, "    {:#010x} - {:#010x} AVAILABLE", last, curaddr)?;
+                            cur = Some((FRAME_OCCUPIED, curaddr));
+                        },
+                        _ => ()
+                    }
+                }
+            }
+        }
+        match cur {
+            Some((FRAME_FREE, last)) => writeln!(f, "    {:#010x} - {:#010x} AVAILABLE", last, 0xFFFFFFFFu32)?,
+            Some((FRAME_OCCUPIED, last)) => writeln!(f, "    {:#010x} - {:#010x} OCCUPIED", last, 0xFFFFFFFFu32)?,
+            _ => ()
+        }
+
+        Ok(())
     }
 }
