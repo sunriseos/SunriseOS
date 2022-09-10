@@ -325,7 +325,7 @@ pub trait PageTablesSet {
             fn update(&mut self, newstate: State) {
                 let old_self = ::core::mem::replace(self, State::Present(0, 0));
                 let real_newstate = match (old_self, newstate) {
-                    (State::Present(addr, phys), State::Present(newaddr, newphys)) if newphys - phys == newaddr - addr => State::Present(addr, phys),
+                    (State::Present(addr, phys), State::Present(newaddr, newphys)) if newphys.checked_sub(phys) == Some(newaddr - addr) => State::Present(addr, phys),
                     (State::Present(addr, phys), State::Present(_newaddr, _newphys)) => State::Present(addr, phys),
                     (State::Guarded(addr), State::Guarded(_newaddr)) => State::Guarded(addr),
                     (State::Available(addr), State::Available(_newaddr)) => State::Available(addr),
