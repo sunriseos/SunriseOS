@@ -71,12 +71,12 @@ use crate::bootstrap_stack::BootstrapStack;
 
 /// 4 pages, PAGE_SIZE aligned.
 #[repr(align(4096))]
-pub struct AlignedStack([u8; 4096 * 4]);
+pub struct AlignedStack([u8; 4096 * 4096]);
 
 /// The stack we start on.
 ///
 /// The first thing we do is to make $esp point to it.
-pub static mut STACK: AlignedStack = AlignedStack([0; 4096 * 4]);
+pub static mut STACK: AlignedStack = AlignedStack([0; 4096 * 4096]);
 
 /// Prints raw hexdump of the stack.
 /// Use this if everything went wrong and you're really hopeless.
@@ -117,7 +117,7 @@ pub unsafe extern fn bootstrap_start() -> ! {
 
         // Create the stack
         mov esp, {}
-        add esp, 16383
+        add esp, 16777216
         mov ebp, esp
         // Save multiboot infos addr present in ebx
         push ebx
