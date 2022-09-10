@@ -38,6 +38,7 @@ SECTIONS {
 	.bss ALIGN(4K) : {
 		BSS_START = .;
 		*(.bss)
+		*(.bss.*)
 		BSS_END = .;
 	} : data
 

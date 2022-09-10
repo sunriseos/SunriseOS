@@ -12,8 +12,7 @@ use crate::error::KernelError;
 
 mod syscall_inner {
     #[cfg(all(target_arch = "x86", target_os = "sunrise", not(test), not(feature = "build-for-std-app")))]
-    global_asm!("
-.intel_syntax noprefix
+    core::arch::global_asm!("
 .global syscall_inner
 // Call the syscall using arch-specific syscall ABI.
 syscall_inner:

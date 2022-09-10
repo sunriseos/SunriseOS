@@ -1,6 +1,7 @@
 //! Test function ensuring divide by zero interruption kills only the current
 /// process.
 
+use core::arch::asm;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -15,10 +16,10 @@ pub static HELP: &str = "test_divide_by_zero: Check exception handling by throwi
 pub fn main(_stdin: IPipeProxy, _stdout: IPipeProxy, _stderr: IPipeProxy, _args: Vec<String>) -> Result<(), Error> {
     // don't panic, we want to actually divide by zero
     unsafe {
-        llvm_asm!("
+        asm!("
         mov eax, 42
         mov ecx, 0
-        div ecx" :::: "volatile", "intel")
+        div ecx");
     }
     Ok(())
 }

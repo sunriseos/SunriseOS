@@ -35,7 +35,7 @@
 
 // rustdoc warnings
 #![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
-#![deny(intra_doc_link_resolution_failure)]
+#![deny(rustdoc::broken_intra_doc_links)]
 
 // TODO: Bring the SwIPC parser in-line with new upstream format.
 // BODY: Unknown can now carry a size (which behaves like bytes). Unsized unknown

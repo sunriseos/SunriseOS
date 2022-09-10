@@ -3,11 +3,13 @@
 #![allow(unused_macros)]
 #![allow(dead_code)]
 
+use core::arch::asm;
+
 /// Gets the current $eip.
 #[inline(never)]
 pub extern fn eip() -> usize {
     let eip;
-    unsafe { llvm_asm!("mov $0, [ebp + 4]" : "=r"(eip) ::: "intel"); }
+    unsafe { asm!("mov {}, [ebp + 4]", out(reg) eip); }
     eip
 }
 
@@ -15,7 +17,7 @@ pub extern fn eip() -> usize {
 macro_rules! ebp {
     () => {{
         let ebp;
-        unsafe { llvm_asm!("mov $0, ebp" : "=r"(ebp) ::: "intel"); }
+        unsafe { asm!("mov {}, ebp", out(reg) ebp); }
         ebp
     }}
 }
@@ -24,13 +26,15 @@ macro_rules! ebp {
 macro_rules! esp {
     () => {{
         let esp;
-        unsafe { llvm_asm!("mov $0, esp" : "=r"(esp) ::: "intel"); }
+        unsafe { asm!("mov {}, esp", out(reg) esp); }
         esp
     }}
 }
 
 pub mod eflags {
     //! Processor state stored in the EFLAGS register.
+
+    use core::arch::asm;
 
     bitflags! {
         /// The EFLAGS register.
@@ -99,7 +103,7 @@ pub mod eflags {
     /// Returns the raw current value of the EFLAGS register.
     pub fn read_raw() -> u32 {
         let r: u32;
-        unsafe { llvm_asm!("pushfd; pop $0" : "=r"(r) :: "memory") };
+        unsafe { asm!("pushfd; pop {}", out(reg) r) };
         r
     }
 
@@ -116,6 +120,6 @@ pub mod eflags {
     ///
     /// Does not preserve any bits, including reserved bits.
     pub fn write_raw(val: u32) {
-        unsafe { llvm_asm!("pushd $0; popfd" :: "r"(val) : "memory" "flags") };
+        unsafe { asm!("pushd {}; popfd", in(reg) val) };
     }
 }

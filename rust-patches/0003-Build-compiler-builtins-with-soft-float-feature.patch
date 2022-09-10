@@ -1,0 +1,25 @@
+From fdc656f840ed08a1420f777bf51787fbc70ef4a2 Mon Sep 17 00:00:00 2001
+From: roblabla <unfiltered@roblab.la>
+Date: Mon, 22 Aug 2022 18:21:05 +0200
+Subject: [PATCH 3/7] Build compiler-builtins with soft-float feature
+
+---
+ library/alloc/Cargo.toml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/library/alloc/Cargo.toml b/library/alloc/Cargo.toml
+index 2650202..3fb2b90 100644
+--- a/library/alloc/Cargo.toml
++++ b/library/alloc/Cargo.toml
+@@ -10,7 +10,7 @@ edition = "2021"
+ 
+ [dependencies]
+ core = { path = "../core" }
+-compiler_builtins = { version = "0.1.40", features = ['rustc-dep-of-std'] }
++compiler_builtins = { version = "0.1.40", features = ['rustc-dep-of-std', 'soft-float'] }
+ 
+ [dev-dependencies]
+ rand = "0.7"
+-- 
+2.32.1 (Apple Git-133)
+

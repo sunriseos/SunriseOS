@@ -9,6 +9,8 @@
 pub mod segment_selector;
 pub mod i386;
 
+use core::arch::asm;
+
 use spin::Once;
 use arrayvec::ArrayVec;
 use bit_field::BitField;
@@ -94,7 +96,6 @@ pub fn init_gdt() {
     }
 }
 
-#[no_mangle]
 lazy_static! {
     pub static ref MAIN_TASK: TssStruct = {
         TssStruct::new(0, (SegmentSelector(0), 0), (SegmentSelector(0), 0), (SegmentSelector(0), 0), SegmentSelector(7 << 3))
@@ -147,21 +148,21 @@ impl DescriptorTable {
             // For some reason, I can only far jmp using AT&T syntax... Which
             // makes me unbelievably sad. I should probably yell at LLVM for
             // this one.
-            llvm_asm!("
+            asm!("
             // Reload CS through far jmp
-            ljmp $$0x8, $$reload_CS
-            reload_CS:");
+            ljmp $0x8, $1f
+            1:", options(att_syntax));
 
-            llvm_asm!("
+            asm!("
             // Reload other selectors
-            MOV   AX, $0
+            MOV   AX, {:x}
             MOV   DS, AX
             MOV   ES, AX
             MOV   FS, AX
             MOV   GS, AX
-            MOV   AX, $1
+            MOV   AX, {:x}
             MOV   SS, AX
-            " : : "r"(new_ds), "r"(new_ss) : "EAX" : "intel");
+            ", in(reg) new_ds, in(reg) new_ss, out("eax") _);
         }
     }
 }

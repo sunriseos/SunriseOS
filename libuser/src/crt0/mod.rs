@@ -10,30 +10,29 @@ pub mod relocation;
 #[no_mangle]
 #[link_section = ".text.crt0"]
 pub unsafe extern fn start() {
-    llvm_asm!("
-    .intel_syntax noprefix
-    get_aslr_base:
-        call _start_shim
-    eip_pos:
-        .int module_header - get_aslr_base
+    core::arch::asm!("
+    0:
+        call 2f
+    1:
         // As x86 has variable instruction length, this is going to be the offset to the aslr base
-        .int eip_pos - get_aslr_base
-    _start_shim:
+        .int . - start
+        .int module_header - start
+    2:
         pop eax
 
         // Save our thread handle passed by the kernel
         // `esi` is callee-saved
         mov esi, edx
 
-        // Save eip_pos address
-        mov ecx, eax
+        // Save 1b address
+        mov ecx, [eax + 4]
 
         // Compute ASLR base because hey we don't have a choice
-        sub eax, [eax + 0x4]
+        sub eax, [eax]
         mov ebx, eax
 
         // Compute mod0 offset
-        add ebx, [ecx]
+        add ebx, ecx
 
         // Relocate the module
         push ebx
@@ -49,7 +48,7 @@ pub unsafe extern fn start() {
         call init_main_thread
 
         call real_start
-    ");
+    ", options(noreturn));
 }
 
 /// Clean module bss.

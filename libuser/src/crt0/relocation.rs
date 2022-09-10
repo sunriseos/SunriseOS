@@ -4,7 +4,7 @@
 // Assembly blob can't get documented, but clippy requires it.
 #[allow(clippy::missing_docs_in_private_items)]
 mod module_header {
-    global_asm!(r#"
+    core::arch::global_asm!(r#"
     .section .rodata.mod0
     .global module_header
     module_header:

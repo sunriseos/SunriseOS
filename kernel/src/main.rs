@@ -10,7 +10,7 @@
 //! Currently doesn't do much, besides booting and printing Hello World on the
 //! screen. But hey, that's a start.
 
-#![feature(lang_items, start, llvm_asm, global_asm, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt, allocator_api, box_syntax, no_more_cas, step_trait, step_trait_ext, thread_local, nll, exclusive_range_pattern)]
+#![feature(lang_items, start, naked_functions, core_intrinsics, abi_x86_interrupt, allocator_api, box_syntax, thread_local, exclusive_range_pattern, asm_sym, step_trait)]
 #![no_std]
 #![cfg_attr(target_os = "none", no_main)]
 #![recursion_limit = "1024"]
@@ -25,7 +25,7 @@
 
 // rustdoc warnings
 #![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
-#![deny(intra_doc_link_resolution_failure)]
+#![deny(rustdoc::broken_intra_doc_links)]
 
 #[cfg(not(target_os = "none"))]
 extern crate std;
@@ -49,6 +49,7 @@ extern crate bitfield;
 #[macro_use]
 extern crate mashup;
 
+use core::arch::asm;
 use core::fmt::Write;
 use crate::utils::io;
 
@@ -107,7 +108,7 @@ use sunrise_libkern::process::*;
 /// This triggers the DoubleFault exception.
 unsafe fn force_double_fault() {
     loop {
-        llvm_asm!("push 0" :::: "intel", "volatile");
+        asm!("push 0");
     }
 }
 
@@ -200,7 +201,7 @@ fn main() {
 #[cfg(any(target_os = "none", doc))]
 #[no_mangle]
 pub unsafe extern fn start() -> ! {
-    llvm_asm!("
+    asm!("
         // Memset the bss. Hopefully memset doesn't actually use the bss...
         mov eax, BSS_END
         sub eax, BSS_START
@@ -212,7 +213,7 @@ pub unsafe extern fn start() -> ! {
 
         // Save multiboot infos addr present in ebx
         push ebx
-        call common_start" : : : : "intel", "volatile");
+        call common_start");
     core::intrinsics::unreachable()
 }
 
@@ -274,7 +275,7 @@ pub extern "C" fn common_start(multiboot_info_addr: usize) -> ! {
     // We shouldn't reach this...
     loop {
         #[cfg(target_os = "none")]
-        unsafe { llvm_asm!("HLT"); }
+        unsafe { asm!("HLT"); }
     }
 }
 

@@ -288,6 +288,12 @@ impl KernelMemory {
     /// Prints the state of the KernelLand by parsing the page tables. Used for debugging purposes.
     #[allow(clippy::missing_docs_in_private_items)]
     pub fn dump_kernelland_state(&mut self) {
+        self.write_kernelland_state(|v| info!("{}", v));
+    }
+
+    /// Prints the state of the KernelLand by parsing the page tables. Used for debugging purposes.
+    #[allow(clippy::missing_docs_in_private_items)]
+    pub fn write_kernelland_state<F: Fn(core::fmt::Arguments)>(&mut self, f: F) {
         #[derive(Debug, Clone, Copy)]
         enum State { Present(VirtualAddress, PhysicalAddress), Guarded(VirtualAddress), Available(VirtualAddress) }
         impl State {
@@ -299,7 +305,7 @@ impl KernelMemory {
                 }
             }
 
-            fn update(&mut self, newstate: State) {
+            fn update<F: Fn(core::fmt::Arguments)>(&mut self, newstate: State, f: &F) {
                 //let old_self = ::core::mem::replace(self, State::Present(VirtualAddress(0), PhysicalAddress(0)));
                 let old_self = *self;
                 let real_newstate = match (old_self, newstate) {
@@ -313,7 +319,7 @@ impl KernelMemory {
                             => State::Present(addr, phys),
                     // otherwise print the old mapping, and start a new one
                     (old, new) => {
-                        old.print(new.get_vaddr() - 1);
+                        old.print(new.get_vaddr() - 1, f);
                         new
                     }
                 };
@@ -328,12 +334,12 @@ impl KernelMemory {
                 }
             }
 
-            fn print(&self, end_addr: VirtualAddress) {
+            fn print<F: Fn(core::fmt::Arguments)>(&self, end_addr: VirtualAddress, f: &F) {
                 match *self {
-                    State::Guarded(addr) => info!("{:#010x} - {:#010x} - GUARDED", addr, end_addr),
-                    State::Available(addr) => info!("{:#010x} - {:#010x} - AVAILABLE", addr, end_addr),
-                    State::Present(addr, phys) => info!("{:#010x} - {:#010x} - MAPS {:#010x} - {:#010x} ({} frames)",
-                                                        addr, end_addr, phys, (phys + (end_addr - addr)), ((end_addr + 1) - addr) / PAGE_SIZE),
+                    State::Guarded(addr) => f(format_args!("{:#010x} - {:#010x} - GUARDED", addr, end_addr)),
+                    State::Available(addr) => f(format_args!("{:#010x} - {:#010x} - AVAILABLE", addr, end_addr)),
+                    State::Present(addr, phys) => f(format_args!("{:#010x} - {:#010x} - MAPS {:#010x} - {:#010x} ({} frames)",
+                                                        addr, end_addr, phys, (phys + (end_addr - addr)), ((end_addr + 1) - addr) / PAGE_SIZE)),
                 };
             }
         }
@@ -345,15 +351,15 @@ impl KernelMemory {
                 // the first run
                 None => { state = Some(State::from(entry, address)) },
                 // all others
-                Some(ref mut state) => state.update(State::from(entry, address))
+                Some(ref mut state) => state.update(State::from(entry, address), &f)
             }
             address += length;
         });
 
         // print the last state
         match state {
-            Some(state) => state.print(RecursiveTablesLand::start_addr() - 1),
-            None => info!("Tables are empty")
+            Some(state) => state.print(RecursiveTablesLand::start_addr() - 1, &f),
+            None => f(format_args!("Tables are empty"))
         }
     }
 }

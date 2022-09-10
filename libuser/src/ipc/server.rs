@@ -252,7 +252,7 @@
 use crate::syscalls;
 use crate::types::{ServerPort, ServerSession};
 use alloc::boxed::Box;
-use core::ops::{Deref, DerefMut, Index};
+use core::ops::{Deref, DerefMut, Index, IndexMut};
 use crate::error::{KernelError, Error};
 use crate::ipc::Message;
 use futures::future::{FutureObj, FutureExt};
@@ -280,6 +280,11 @@ impl<T, Idx> Index<Idx> for Align16<T> where T: Index<Idx> {
 
     fn index(&self, index: Idx) -> &T::Output {
         &self.0[index]
+    }
+}
+impl<T, Idx> IndexMut<Idx> for Align16<T> where T: IndexMut<Idx> {
+    fn index_mut(&mut self, index: Idx) -> &mut T::Output {
+        &mut self.0[index]
     }
 }
 

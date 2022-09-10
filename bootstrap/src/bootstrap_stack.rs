@@ -35,7 +35,7 @@ use sunrise_libutils::log2_ceil;
 
 /// The size of a kernel stack in pages, not accounting for the page guard
 // Make sure this value is the same as the one in kernel, or bad things happen.
-pub const STACK_SIZE: usize            = 8;
+pub const STACK_SIZE: usize            = 4095;
 /// The size of a kernel stack in pages, with the page guard.
 pub const STACK_SIZE_WITH_GUARD: usize = STACK_SIZE + 1;
 

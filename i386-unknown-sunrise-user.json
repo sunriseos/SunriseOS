@@ -18,7 +18,7 @@
   "env": "user",
   "position-independent-executables": true,
   "dynamic-linking": false,
-  "has-elf-tls": true,
+  "has-thread-local": true,
   "tls-model": "initial-exec",
   "has-rpath": false,
   "features": "-mmx,-sse,+soft-float",

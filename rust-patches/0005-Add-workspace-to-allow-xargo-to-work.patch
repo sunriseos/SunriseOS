@@ -1,0 +1,43 @@
+From ec2fd9d71e1f6f6a4a932dd823267ad0cfcf07dd Mon Sep 17 00:00:00 2001
+From: roblabla <unfiltered@roblab.la>
+Date: Mon, 22 Aug 2022 18:22:23 +0200
+Subject: [PATCH 5/7] Add workspace to allow xargo to work
+
+---
+ Cargo.toml | 24 ++++++++++++++++++++++++
+ 1 file changed, 24 insertions(+)
+ create mode 100644 Cargo.toml
+
+diff --git a/Cargo.toml b/Cargo.toml
+new file mode 100644
+index 0000000..8637ebc
+--- /dev/null
++++ b/Cargo.toml
+@@ -0,0 +1,24 @@
++[workspace]
++members = [
++	"library/alloc",
++	"library/backtrace",
++	"library/core",
++	"library/panic_abort",
++	"library/panic_unwind",
++	"library/portable-simd",
++	"library/proc_macro",
++	"library/profiler_builtins",
++	"library/std",
++	"library/stdarch",
++	"library/test",
++	"library/unwind",
++]
++
++[patch.crates-io.rustc-std-workspace-alloc]
++path = "./library/rustc-std-workspace-alloc"
++
++[patch.crates-io.rustc-std-workspace-core]
++path = "./library/rustc-std-workspace-core"
++
++[patch.crates-io.rustc-std-workspace-std]
++path = "./library/rustc-std-workspace-std"
+-- 
+2.32.1 (Apple Git-133)
+

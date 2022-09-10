@@ -45,11 +45,11 @@ printed on stdout.
 
 ## Versions
 
-- rust: `nightly-2020-05-27`
+- rust: `nightly-2022-08-19`
   - clippy
   - rust-src
 - cargo-make: `0.31.0`
 - xargo: `0.3.18`
 - mkisofs-rs: `0.1.1`
-- qemu-system-i386: `4.0.50`
+- qemu-system-i386: `7.0.0`
 - cargo-travis: `https://github.com/roblabla/cargo-travis` branch `doc-upload-target`

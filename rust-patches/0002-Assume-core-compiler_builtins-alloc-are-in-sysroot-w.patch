@@ -1,0 +1,187 @@
+From 351756cacdc58789b1188f4455caea060a1caf78 Mon Sep 17 00:00:00 2001
+From: roblabla <unfiltered@roblab.la>
+Date: Mon, 22 Aug 2022 18:20:35 +0200
+Subject: [PATCH 2/7] Assume core/compiler_builtins/alloc are in sysroot when
+ building std
+
+---
+ library/panic_abort/Cargo.toml               |  8 +++----
+ library/panic_unwind/Cargo.toml              |  6 ++---
+ library/profiler_builtins/Cargo.toml         |  4 ++--
+ library/std/Cargo.toml                       | 24 ++++++++++----------
+ library/stdarch/crates/std_detect/Cargo.toml | 12 +++++-----
+ library/test/Cargo.toml                      |  4 ++--
+ library/unwind/Cargo.toml                    |  4 ++--
+ 7 files changed, 31 insertions(+), 31 deletions(-)
+
+diff --git a/library/panic_abort/Cargo.toml b/library/panic_abort/Cargo.toml
+index 46183d1..f6ae237 100644
+--- a/library/panic_abort/Cargo.toml
++++ b/library/panic_abort/Cargo.toml
+@@ -12,8 +12,8 @@ bench = false
+ doc = false
+ 
+ [dependencies]
+-alloc = { path = "../alloc" }
+-cfg-if = { version = "0.1.8", features = ['rustc-dep-of-std'] }
+-core = { path = "../core" }
++#alloc = { path = "../alloc" }
++cfg-if = "0.1.8"
++#core = { path = "../core" }
+ libc = { version = "0.2", default-features = false }
+-compiler_builtins = "0.1.0"
++#compiler_builtins = "0.1.0"
+diff --git a/library/panic_unwind/Cargo.toml b/library/panic_unwind/Cargo.toml
+index d720cc7..f81f302 100644
+--- a/library/panic_unwind/Cargo.toml
++++ b/library/panic_unwind/Cargo.toml
+@@ -12,9 +12,9 @@ bench = false
+ doc = false
+ 
+ [dependencies]
+-alloc = { path = "../alloc" }
+-core = { path = "../core" }
++#alloc = { path = "../alloc" }
++#core = { path = "../core" }
+ libc = { version = "0.2", default-features = false }
+ unwind = { path = "../unwind" }
+-compiler_builtins = "0.1.0"
++#compiler_builtins = "0.1.0"
+ cfg-if = "0.1.8"
+diff --git a/library/profiler_builtins/Cargo.toml b/library/profiler_builtins/Cargo.toml
+index 3371dfa..9a4d579 100644
+--- a/library/profiler_builtins/Cargo.toml
++++ b/library/profiler_builtins/Cargo.toml
+@@ -9,8 +9,8 @@ bench = false
+ doc = false
+ 
+ [dependencies]
+-core = { path = "../core" }
+-compiler_builtins = { version = "0.1.0", features = ['rustc-dep-of-std'] }
++#core = { path = "../core" }
++#compiler_builtins = { version = "0.1.0", features = ['rustc-dep-of-std'] }
+ 
+ [build-dependencies]
+ cc = "1.0.69"
+diff --git a/library/std/Cargo.toml b/library/std/Cargo.toml
+index 229e546..f144570 100644
+--- a/library/std/Cargo.toml
++++ b/library/std/Cargo.toml
+@@ -10,21 +10,21 @@ edition = "2021"
+ crate-type = ["dylib", "rlib"]
+ 
+ [dependencies]
+-alloc = { path = "../alloc" }
+-cfg-if = { version = "0.1.8", features = ['rustc-dep-of-std'] }
++#alloc = { path = "../alloc" }
++cfg-if = "0.1.8"
+ panic_unwind = { path = "../panic_unwind", optional = true }
+ panic_abort = { path = "../panic_abort" }
+-core = { path = "../core" }
+-libc = { version = "0.2.126", default-features = false, features = ['rustc-dep-of-std'] }
+-compiler_builtins = { version = "0.1.73" }
++#core = { path = "../core" }
++libc = { version = "0.2.126", default-features = false, features = ['align'] }
++#compiler_builtins = { version = "0.1.73" }
+ profiler_builtins = { path = "../profiler_builtins", optional = true }
+ unwind = { path = "../unwind" }
+-hashbrown = { version = "0.12", default-features = false, features = ['rustc-dep-of-std'] }
++hashbrown = { version = "0.12", default-features = false, features = ['rustc-internal-api'] }
+ std_detect = { path = "../stdarch/crates/std_detect", default-features = false, features = ['rustc-dep-of-std'] }
+ 
+ # Dependencies of the `backtrace` crate
+ addr2line = { version = "0.16.0", optional = true, default-features = false }
+-rustc-demangle = { version = "0.1.21", features = ['rustc-dep-of-std'] }
++rustc-demangle = { version = "0.1.21", features = [] }
+ miniz_oxide = { version = "0.4.0", optional = true, default-features = false }
+ [dependencies.object]
+ version = "0.26.1"
+@@ -58,15 +58,15 @@ gimli-symbolize = []
+ 
+ panic-unwind = ["panic_unwind"]
+ profiler = ["profiler_builtins"]
+-compiler-builtins-c = ["alloc/compiler-builtins-c"]
+-compiler-builtins-mem = ["alloc/compiler-builtins-mem"]
+-compiler-builtins-no-asm = ["alloc/compiler-builtins-no-asm"]
+-compiler-builtins-mangled-names = ["alloc/compiler-builtins-mangled-names"]
++#compiler-builtins-c = ["alloc/compiler-builtins-c"]
++#compiler-builtins-mem = ["alloc/compiler-builtins-mem"]
++#compiler-builtins-no-asm = ["alloc/compiler-builtins-no-asm"]
++#compiler-builtins-mangled-names = ["alloc/compiler-builtins-mangled-names"]
+ llvm-libunwind = ["unwind/llvm-libunwind"]
+ system-llvm-libunwind = ["unwind/system-llvm-libunwind"]
+ 
+ # Make panics and failed asserts immediately abort without formatting any message
+-panic_immediate_abort = ["core/panic_immediate_abort"]
++#panic_immediate_abort = ["core/panic_immediate_abort"]
+ 
+ # Enable std_detect default features for stdarch/crates/std_detect:
+ # https://github.com/rust-lang/stdarch/blob/master/crates/std_detect/Cargo.toml
+diff --git a/library/stdarch/crates/std_detect/Cargo.toml b/library/stdarch/crates/std_detect/Cargo.toml
+index 1ca0d9c..5659472 100644
+--- a/library/stdarch/crates/std_detect/Cargo.toml
++++ b/library/stdarch/crates/std_detect/Cargo.toml
+@@ -25,9 +25,9 @@ libc = { version = "0.2", optional = true, default-features = false }
+ cfg-if = "0.1.10"
+ 
+ # When built as part of libstd
+-core = { version = "1.0.0", optional = true, package = "rustc-std-workspace-core" }
+-compiler_builtins = { version = "0.1.2", optional = true }
+-alloc = { version = "1.0.0", optional = true, package = "rustc-std-workspace-alloc" }
++#core = { version = "1.0.0", optional = true, package = "rustc-std-workspace-core" }
++#compiler_builtins = { version = "0.1.2", optional = true }
++#alloc = { version = "1.0.0", optional = true, package = "rustc-std-workspace-alloc" }
+ 
+ [dev-dependencies]
+ auxv = "0.3.3"
+@@ -39,7 +39,7 @@ std_detect_file_io = [ "libc" ]
+ std_detect_dlsym_getauxval = [ "libc" ]
+ std_detect_env_override = [ "libc" ]
+ rustc-dep-of-std = [
+-    "core",
+-    "compiler_builtins",
+-    "alloc",
++#    "core",
++#    "compiler_builtins",
++#    "alloc",
+ ]
+diff --git a/library/test/Cargo.toml b/library/test/Cargo.toml
+index 2da4148..58d141f 100644
+--- a/library/test/Cargo.toml
++++ b/library/test/Cargo.toml
+@@ -22,14 +22,14 @@ proc_macro = { path = "../proc_macro" }
+ [features]
+ default = ["std_detect_file_io", "std_detect_dlsym_getauxval", "panic-unwind"]
+ backtrace = ["std/backtrace"]
+-compiler-builtins-c = ["std/compiler-builtins-c"]
++#compiler-builtins-c = ["std/compiler-builtins-c"]
+ compiler-builtins-mem = ["std/compiler-builtins-mem"]
+ compiler-builtins-no-asm = ["std/compiler-builtins-no-asm"]
+ compiler-builtins-mangled-names = ["std/compiler-builtins-mangled-names"]
+ llvm-libunwind = ["std/llvm-libunwind"]
+ system-llvm-libunwind = ["std/system-llvm-libunwind"]
+ panic-unwind = ["std/panic_unwind"]
+-panic_immediate_abort = ["std/panic_immediate_abort"]
++#panic_immediate_abort = ["std/panic_immediate_abort"]
+ profiler = ["std/profiler"]
+ std_detect_file_io = ["std/std_detect_file_io"]
+ std_detect_dlsym_getauxval = ["std/std_detect_dlsym_getauxval"]
+diff --git a/library/unwind/Cargo.toml b/library/unwind/Cargo.toml
+index 69fce8d..bcb9bd1 100644
+--- a/library/unwind/Cargo.toml
++++ b/library/unwind/Cargo.toml
+@@ -14,9 +14,9 @@ bench = false
+ doc = false
+ 
+ [dependencies]
+-core = { path = "../core" }
++#core = { path = "../core" }
+ libc = { version = "0.2.79", features = ['rustc-dep-of-std'], default-features = false }
+-compiler_builtins = "0.1.0"
++#compiler_builtins = "0.1.0"
+ cfg-if = "0.1.8"
+ 
+ [build-dependencies]
+-- 
+2.32.1 (Apple Git-133)
+

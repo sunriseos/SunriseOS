@@ -311,9 +311,10 @@ impl PS2 {
                         // flip capslock state
                         loop {
                             let current = self.is_capslocked.load(SeqCst);
-                            let was = self.is_capslocked.compare_and_swap(current, !current, SeqCst);
-                            if was == current {
-                                break;
+                            let was = self.is_capslocked.compare_exchange(current, !current, SeqCst, SeqCst);
+                            match was {
+                                Ok(was) | Err(was) if was == current => break,
+                                _ => (),
                             }
                         }
                         // flip the LED

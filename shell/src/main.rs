@@ -3,7 +3,7 @@
 //! Creates an interactive terminal window, providing a few functions useful to
 //! test Sunrise. Type help followed by enter to get a list of allowed commands.
 
-#![feature(llvm_asm, naked_functions)]
+#![feature(naked_functions)]
 #![no_std]
 
 // rustc warnings
@@ -16,7 +16,7 @@
 
 // rustdoc warnings
 #![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
-#![deny(intra_doc_link_resolution_failure)]
+#![deny(rustdoc::broken_intra_doc_links)]
 
 #[macro_use]
 extern crate alloc;

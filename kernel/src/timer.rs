@@ -92,7 +92,7 @@ impl Waitable for IRQTimer {
 
     fn is_signaled(&self) -> bool {
         // First, reset the spins if necessary
-        self.countdown_value.compare_and_swap(0, self.reset_value, Ordering::SeqCst);
+        let _ = self.countdown_value.compare_exchange(0, self.reset_value, Ordering::SeqCst, Ordering::SeqCst);
 
         // Then, check if it's us.
         self.parent_event.is_signaled()

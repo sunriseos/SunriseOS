@@ -2,6 +2,7 @@
 //!
 //! This modules describe low-level functions and structures needed to perform a process switch
 
+use core::arch::asm;
 use crate::process::ThreadStruct;
 use alloc::sync::Arc;
 use core::mem::size_of;
@@ -86,7 +87,7 @@ impl Default for ThreadHardwareContext {
 ///
 /// Interrupts definitely must be masked when calling this function
 #[inline(never)] // we need that sweet saved ebp + eip on the stack
-pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_current: Arc<ThreadStruct>) -> Arc<ThreadStruct> {
+pub unsafe fn process_switch(thread_b: Arc<ThreadStruct>, thread_current: Arc<ThreadStruct>) -> Arc<ThreadStruct> {
 
     let esp_to_load = {
         // todo do not try to change cr3 if thread_b belongs to the same process.
@@ -111,7 +112,7 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
         gdt.commit(None, None, None, None, None, None);
 
         let current_esp: usize;
-        llvm_asm!("mov $0, esp" : "=r"(current_esp) : : : "intel", "volatile");
+        asm!("mov {}, esp", out(reg) current_esp);
 
         // on restoring, esp will point to the top of the saved registers
         let esp_to_save = current_esp - (8 + 1 + 1) * size_of::<usize>();
@@ -152,19 +153,19 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
     let thread_b_whoami = Arc::into_raw(thread_b);
     let whoami: *const ThreadStruct;
 
-    llvm_asm!("
+    asm!("
     // Push all registers on the stack, swap to B's stack, and jump to B's schedule-in
-    schedule_out:
-        lea eax, resume // we push a callback function, called at the end of schedule-in
+    1:
+        lea eax, 3f // we push a callback function, called at the end of schedule-in
         push eax
         pushad          // pushes eax, ecx, edx, ebx, ebp, original esp, ebp, esi, edi
         pushfd          // pushes eflags
 
         // load B's stack, and jump to its schedule-in
-        mov esp, $1
+        mov esp, {}
 
     // thread B resumes here
-    schedule_in:
+    2:
         // Ok ! Welcome again to B !
 
         // restore the saved registers
@@ -175,13 +176,12 @@ pub unsafe extern "C" fn process_switch(thread_b: Arc<ThreadStruct>, thread_curr
 
     // If this was not the first time the thread was scheduled-in,
     // it ends up here
-    resume:
+    3:
         // return to rust code as if nothing happened
-    "
-    : "={edi}"(whoami) // at re-schedule, $edi contains a pointer to our ThreadStruct
-    : "r"(esp_to_load), "{edi}"(thread_b_whoami)
-    : "eax"
-    : "volatile", "intel");
+    ",
+    in(reg) esp_to_load,
+    inout("edi") thread_b_whoami => whoami, // at re-schedule, $edi contains a pointer to our ThreadStruct
+    out("eax") _);
 
     // ends up here if it was not our first schedule-in
 
@@ -232,7 +232,7 @@ pub unsafe fn prepare_for_first_schedule(t: &ThreadStruct, entrypoint: usize, us
         // --------------
         // poison ebp
         // poison eip
-    };
+    }
 
     let stack_start = t.kstack.get_stack_start() as u32;
 
@@ -283,17 +283,18 @@ pub unsafe fn prepare_for_first_schedule(t: &ThreadStruct, entrypoint: usize, us
 ///
 /// [`scheduler_first_schedule`]: crate::scheduler::scheduler_first_schedule.
 #[naked]
-unsafe fn first_schedule() {
+unsafe extern fn first_schedule() {
     // just get the ProcessStruct pointer in $edi, the entrypoint in $eax, and call a rust function
     unsafe {
-        llvm_asm!("
+        asm!("
         push ebx
         push edx
         push ecx
         push eax
         push edi
-        call ${0:P}
-        " : : "s"(first_schedule_inner as *const u8) : : "volatile", "intel");
+        call {}",
+        sym first_schedule_inner,
+        options(noreturn));
     }
 
     /// Stack is set-up, now we can run rust code.
@@ -348,7 +349,7 @@ fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize, arg1: usize, arg2: 
     const_assert_eq!((GdtIndex::UTlsElf as u16) << 3 | 0b11, 0x43);
     const_assert_eq!((GdtIndex::UStack as u16) << 3 | 0b11, 0x4B);
     unsafe {
-        llvm_asm!("
+        asm!("
         mov ax,0x33  // ds, es <- UData, Ring 3
         mov ds,ax
         mov es,ax
@@ -359,10 +360,10 @@ fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize, arg1: usize, arg2: 
 
         // Build the fake stack for IRET
         push 0x4B   // Userland Stack, Ring 3
-        push $1     // Userspace ESP
+        push {1}     // Userspace ESP
         pushfd
         push 0x2B   // Userland Code, Ring 3
-        push $0     // Entrypoint
+        push {0}    // Entrypoint
 
         // Clean up all registers. Also setup arguments.
         // mov ecx, arg1
@@ -374,8 +375,8 @@ fn jump_to_entrypoint(ep: usize, userspace_stack_ptr: usize, arg1: usize, arg2: 
         mov esi, 0
 
         iretd
-        " :: "r"(ep), "r"(userspace_stack_ptr), "{ecx}"(arg1), "{edx}"(arg2) :
-             /* Prevent using eax as input, it's used early. */ "eax" : "intel", "volatile");
+        ",
+        in(reg) ep, in(reg) userspace_stack_ptr, in("ecx") arg1, in("edx") arg2, /* this is purely a clobber */ in("eax") 0, options(noreturn));
     }
 
     unreachable!()

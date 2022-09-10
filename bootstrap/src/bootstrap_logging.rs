@@ -5,6 +5,8 @@
 //!
 //! This driver is meant to be as simple as possible
 
+use core::arch::asm;
+
 const COM1: u16 = 0x3F8;
 
 /// Init the rs232 COM1. Must be called before logging anything.
@@ -46,12 +48,12 @@ pub fn bootstrap_log(string: &str) {
 
 unsafe fn bootstrap_inb(port: u16) -> u8 {
     let value: u8;
-    llvm_asm!("in $0, $1" : "={al}"(value) : "{dx}"(port) : "memory" : "intel", "volatile");
+    asm!("in al, dx", in("dx") port, out("al") value, options(nostack, nomem, preserves_flags));
     value
 }
 
 unsafe fn bootstrap_outb(port: u16, value: u8) {
-    llvm_asm!("out $1, $0" : : "{al}"(value), "{dx}"(port) : "memory" : "intel", "volatile");
+    asm!("out dx, al", in("dx") port, in("al") value, options(nostack, nomem, preserves_flags));
 }
 
 /// A logger that sends its output to COM1.
@@ -69,5 +71,5 @@ impl ::core::fmt::Write for Serial {
     fn write_str(&mut self, s: &str) -> Result<(), ::core::fmt::Error> {
         bootstrap_log(s);
         Ok(())
-	}
+    }
 }

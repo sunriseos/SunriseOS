@@ -236,14 +236,14 @@ pub struct IRQEvent {
 
 impl Waitable for IRQEvent {
     fn is_signaled(&self) -> bool {
-        self.ack.fetch_update(|x| {
+        self.ack.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| {
             if x < self.state.counter.load(Ordering::SeqCst) {
                 // TODO: If level-triggered, set this to the counter.
                 Some(x + 1)
             } else {
                 None
             }
-        }, Ordering::SeqCst, Ordering::SeqCst)
+        })
 
         .is_ok()
     }

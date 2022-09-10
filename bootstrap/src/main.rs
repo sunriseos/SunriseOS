@@ -22,7 +22,7 @@
 //! fancy logging interfaces that the kernel has.
 //!
 
-#![feature(lang_items, start, llvm_asm, global_asm, naked_functions, core_intrinsics, const_fn, abi_x86_interrupt)]
+#![feature(lang_items, start, core_intrinsics)]
 #![no_std]
 #![cfg_attr(target_os = "none", no_main)]
 
@@ -33,11 +33,10 @@
 #![allow(unreachable_code)]
 #![allow(dead_code)]
 #![cfg_attr(test, allow(unused_imports))]
-#![deny(intra_doc_link_resolution_failure)]
 
 // rustdoc warnings
 #![allow(missing_docs, clippy::missing_docs_in_private_items)]
-#![deny(intra_doc_link_resolution_failure)]
+#![deny(rustdoc::broken_intra_doc_links)]
 
 // clippy override
 #![allow(clippy::cast_lossless)]
@@ -54,6 +53,7 @@ extern crate bitflags;
 #[macro_use]
 extern crate static_assertions;
 
+use core::arch::asm;
 use core::fmt::Write;
 
 pub mod bootstrap_logging;
@@ -71,19 +71,19 @@ use crate::bootstrap_stack::BootstrapStack;
 
 /// 4 pages, PAGE_SIZE aligned.
 #[repr(align(4096))]
-pub struct AlignedStack([u8; 4096 * 4]);
+pub struct AlignedStack([u8; 4096 * 4096]);
 
 /// The stack we start on.
 ///
 /// The first thing we do is to make $esp point to it.
-pub static mut STACK: AlignedStack = AlignedStack([0; 4096 * 4]);
+pub static mut STACK: AlignedStack = AlignedStack([0; 4096 * 4096]);
 
 /// Prints raw hexdump of the stack.
 /// Use this if everything went wrong and you're really hopeless.
 pub fn print_stack() {
     unsafe {
         let sp: usize;
-        llvm_asm!("mov $0, esp" : "=r"(sp) : : : "intel");
+        asm!("mov {}, esp", out(reg) sp);
         let sp_start = sp - crate::STACK.0.as_ptr() as usize;
         sunrise_libutils::print_hexdump(&mut Serial, &crate::STACK.0[sp_start..]);
     }
@@ -105,7 +105,7 @@ pub fn print_stack() {
 #[cfg(any(target_os = "none", doc))]
 #[no_mangle]
 pub unsafe extern fn bootstrap_start() -> ! {
-    llvm_asm!("
+    asm!("
         // Memset the bss. Hopefully memset doesn't actually use the bss...
         mov eax, BSS_END
         sub eax, BSS_START
@@ -116,12 +116,12 @@ pub unsafe extern fn bootstrap_start() -> ! {
         add esp, 12
 
         // Create the stack
-        mov esp, $0
-        add esp, 16383
+        mov esp, {}
+        add esp, 16777216
         mov ebp, esp
         // Save multiboot infos addr present in ebx
         push ebx
-        call do_bootstrap" : : "m"(&STACK) : : "intel", "volatile");
+        call do_bootstrap", in(reg) &STACK);
     core::intrinsics::unreachable()
 }
 
@@ -180,20 +180,19 @@ pub extern "C" fn do_bootstrap(multiboot_info_addr: usize) -> ! {
 
     #[cfg(not(test))]
     unsafe {
-    llvm_asm!("
+    asm!("
         // save multiboot info pointer
-        mov ebx, $0
+        mov ebx, {multiboot}
 
         // switch to the new stack
-        mov ebp, $1
-        mov esp, $1
+        mov ebp, {stack}
+        mov esp, {stack}
 
         // jump to the kernel
-        jmp $2"
-        :
-        : "r"(multiboot_info_page), "r"(new_ebp_esp), "r"(kernel_entry_point)
-        : "memory", "ebx"
-        : "intel", "volatile");
+        jmp {start_addr}",
+        multiboot = in(reg) multiboot_info_page.0,
+        stack = in(reg) new_ebp_esp,
+        start_addr = in(reg) kernel_entry_point);
     }
 
     unreachable!()
@@ -219,7 +218,7 @@ pub extern fn panic_fmt(p: &::core::panic::PanicInfo<'_>) -> ! {
                                !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
                      p);
 
-    loop { unsafe { llvm_asm!("HLT"); } }
+    loop { unsafe { asm!("HLT"); } }
 }
 
 macro_rules! multiboot_header {

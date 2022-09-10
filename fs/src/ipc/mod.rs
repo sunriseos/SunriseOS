@@ -1,7 +1,7 @@
 //! IPC module
 //! This contains all IPC interfaces definition of the filesystem.
 
-use alloc::prelude::v1::Box;
+use alloc::boxed::Box;
 
 use sunrise_libuser::fs::{DirectoryEntry, DirectoryEntryType, DiskId, FileSystemType, PartitionId, FileSystemPath, IFileSystem, IFileSystemProxy, IFile, IFileProxy, IDirectory, IDirectoryProxy, IStorageProxy};
 use sunrise_libuser::fs::IStorage as IStorageServer;

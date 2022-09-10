@@ -3,7 +3,7 @@
 //! Provides an allocator, various lang items.
 
 #![no_std]
-#![feature(global_asm, llvm_asm, start, lang_items, core_intrinsics, const_fn, box_syntax, untagged_unions, naked_functions, proc_macro_hygiene, unboxed_closures, fn_traits, thread_local)]
+#![feature(start, lang_items, core_intrinsics, box_syntax, naked_functions, proc_macro_hygiene, unboxed_closures, fn_traits, thread_local)]
 
 #![warn(unused)]
 #![warn(missing_debug_implementations)]
@@ -16,7 +16,7 @@
 
 // rustdoc warnings
 #![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
-#![deny(intra_doc_link_resolution_failure)]
+#![deny(rustdoc::broken_intra_doc_links)]
 
 #[macro_use]
 extern crate alloc;

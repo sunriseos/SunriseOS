@@ -1,0 +1,103 @@
+From 1a8f9b83633874b65b3a0299d092b498a0bddec3 Mon Sep 17 00:00:00 2001
+From: Jorge Aparicio <jorge.aparicio@ferrous-systems.com>
+Date: Mon, 27 Jun 2022 12:37:06 +0200
+Subject: [PATCH 1/7] make Condvar, Mutex, RwLock const constructors work with
+ unsupported impl
+
+---
+ library/std/src/sys/unsupported/locks/condvar.rs | 1 +
+ library/std/src/sys/unsupported/locks/mutex.rs   | 1 +
+ library/std/src/sys/unsupported/locks/rwlock.rs  | 1 +
+ library/std/src/sys_common/condvar.rs            | 1 +
+ library/std/src/sys_common/condvar/check.rs      | 1 +
+ library/std/src/sys_common/mutex.rs              | 1 +
+ library/std/src/sys_common/rwlock.rs             | 1 +
+ 7 files changed, 7 insertions(+)
+
+diff --git a/library/std/src/sys/unsupported/locks/condvar.rs b/library/std/src/sys/unsupported/locks/condvar.rs
+index e703fd0..527a26a 100644
+--- a/library/std/src/sys/unsupported/locks/condvar.rs
++++ b/library/std/src/sys/unsupported/locks/condvar.rs
+@@ -7,6 +7,7 @@ pub type MovableCondvar = Condvar;
+ 
+ impl Condvar {
+     #[inline]
++    #[rustc_const_stable(feature = "const_locks", since = "1.63.0")]
+     pub const fn new() -> Condvar {
+         Condvar {}
+     }
+diff --git a/library/std/src/sys/unsupported/locks/mutex.rs b/library/std/src/sys/unsupported/locks/mutex.rs
+index d7cb12e..81b49c6 100644
+--- a/library/std/src/sys/unsupported/locks/mutex.rs
++++ b/library/std/src/sys/unsupported/locks/mutex.rs
+@@ -12,6 +12,7 @@ unsafe impl Sync for Mutex {} // no threads on this platform
+ 
+ impl Mutex {
+     #[inline]
++    #[rustc_const_stable(feature = "const_locks", since = "1.63.0")]
+     pub const fn new() -> Mutex {
+         Mutex { locked: Cell::new(false) }
+     }
+diff --git a/library/std/src/sys/unsupported/locks/rwlock.rs b/library/std/src/sys/unsupported/locks/rwlock.rs
+index aca5fb7..5292691 100644
+--- a/library/std/src/sys/unsupported/locks/rwlock.rs
++++ b/library/std/src/sys/unsupported/locks/rwlock.rs
+@@ -12,6 +12,7 @@ unsafe impl Sync for RwLock {} // no threads on this platform
+ 
+ impl RwLock {
+     #[inline]
++    #[rustc_const_stable(feature = "const_locks", since = "1.63.0")]
+     pub const fn new() -> RwLock {
+         RwLock { mode: Cell::new(0) }
+     }
+diff --git a/library/std/src/sys_common/condvar.rs b/library/std/src/sys_common/condvar.rs
+index f3ac106..8bc5b24 100644
+--- a/library/std/src/sys_common/condvar.rs
++++ b/library/std/src/sys_common/condvar.rs
+@@ -15,6 +15,7 @@ pub struct Condvar {
+ impl Condvar {
+     /// Creates a new condition variable for use.
+     #[inline]
++    #[rustc_const_stable(feature = "const_locks", since = "1.63.0")]
+     pub const fn new() -> Self {
+         Self { inner: imp::MovableCondvar::new(), check: CondvarCheck::new() }
+     }
+diff --git a/library/std/src/sys_common/condvar/check.rs b/library/std/src/sys_common/condvar/check.rs
+index ce8f367..4ac9e62 100644
+--- a/library/std/src/sys_common/condvar/check.rs
++++ b/library/std/src/sys_common/condvar/check.rs
+@@ -50,6 +50,7 @@ pub struct NoCheck;
+ 
+ #[allow(dead_code)]
+ impl NoCheck {
++    #[rustc_const_stable(feature = "const_locks", since = "1.63.0")]
+     pub const fn new() -> Self {
+         Self
+     }
+diff --git a/library/std/src/sys_common/mutex.rs b/library/std/src/sys_common/mutex.rs
+index 48479f5..7b9f7ef 100644
+--- a/library/std/src/sys_common/mutex.rs
++++ b/library/std/src/sys_common/mutex.rs
+@@ -61,6 +61,7 @@ unsafe impl Sync for MovableMutex {}
+ impl MovableMutex {
+     /// Creates a new mutex.
+     #[inline]
++    #[rustc_const_stable(feature = "const_locks", since = "1.63.0")]
+     pub const fn new() -> Self {
+         Self(imp::MovableMutex::new())
+     }
+diff --git a/library/std/src/sys_common/rwlock.rs b/library/std/src/sys_common/rwlock.rs
+index ba56f3a..34e9a91 100644
+--- a/library/std/src/sys_common/rwlock.rs
++++ b/library/std/src/sys_common/rwlock.rs
+@@ -75,6 +75,7 @@ pub struct MovableRwLock(imp::MovableRwLock);
+ impl MovableRwLock {
+     /// Creates a new reader-writer lock for use.
+     #[inline]
++    #[rustc_const_stable(feature = "const_locks", since = "1.63.0")]
+     pub const fn new() -> Self {
+         Self(imp::MovableRwLock::new())
+     }
+-- 
+2.32.1 (Apple Git-133)
+

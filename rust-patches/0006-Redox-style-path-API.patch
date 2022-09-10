@@ -1,0 +1,287 @@
+From a13b1f804edaf47da33ca4d401e02cc28ec64288 Mon Sep 17 00:00:00 2001
+From: roblabla <unfiltered@roblab.la>
+Date: Mon, 22 Aug 2022 18:52:45 +0200
+Subject: [PATCH 6/7] Redox-style path API
+
+---
+ library/std/src/path.rs             | 59 +++++++++++++----------------
+ library/std/src/sys/sgx/path.rs     |  4 +-
+ library/std/src/sys/solid/path.rs   |  4 +-
+ library/std/src/sys/unix/path.rs    |  4 +-
+ library/std/src/sys/windows/path.rs | 10 ++++-
+ 5 files changed, 40 insertions(+), 41 deletions(-)
+
+diff --git a/library/std/src/path.rs b/library/std/src/path.rs
+index 5dfeb51..e47f363 100644
+--- a/library/std/src/path.rs
++++ b/library/std/src/path.rs
+@@ -190,7 +190,7 @@ pub enum Prefix<'a> {
+ 
+ impl<'a> Prefix<'a> {
+     #[inline]
+-    fn len(&self) -> usize {
++    pub(crate) fn len(&self) -> usize {
+         use self::Prefix::*;
+         fn os_str_len(s: &OsStr) -> usize {
+             s.bytes().len()
+@@ -313,18 +313,17 @@ unsafe fn u8_slice_as_os_str(s: &[u8]) -> &OsStr {
+     unsafe { &*(s as *const [u8] as *const OsStr) }
+ }
+ 
+-// Detect scheme on Redox
+-fn has_redox_scheme(s: &[u8]) -> bool {
+-    cfg!(target_os = "redox") && s.contains(&b':')
+-}
+-
+ ////////////////////////////////////////////////////////////////////////////////
+ // Cross-platform, iterator-independent parsing
+ ////////////////////////////////////////////////////////////////////////////////
+ 
+ /// Says whether the first byte after the prefix is a separator.
+ fn has_physical_root(s: &[u8], prefix: Option<Prefix<'_>>) -> bool {
+-    let path = if let Some(p) = prefix { &s[p.len()..] } else { s };
++    let path = if let Some(p) = prefix {
++        &s[p.len()..]
++    } else {
++        s
++    };
+     !path.is_empty() && is_sep_byte(path[0])
+ }
+ 
+@@ -447,6 +446,13 @@ impl<'a> PrefixComponent<'a> {
+     pub fn as_os_str(&self) -> &'a OsStr {
+         self.raw
+     }
++
++    pub(crate) fn from_os_str_kind<'raw>(raw: &'raw OsStr, prefix: Prefix<'raw>) -> PrefixComponent<'raw> {
++        PrefixComponent {
++            raw,
++            parsed: prefix
++        }
++    }
+ }
+ 
+ #[stable(feature = "rust1", since = "1.0.0")]
+@@ -603,7 +609,7 @@ pub struct Components<'a> {
+     path: &'a [u8],
+ 
+     // The prefix as it was originally parsed, if any
+-    prefix: Option<Prefix<'a>>,
++    prefix: Option<PrefixComponent<'a>>,
+ 
+     // true if path *physically* has a root separator; for most Windows
+     // prefixes, it may have a "logical" root separator for the purposes of
+@@ -648,12 +654,12 @@ impl<'a> Components<'a> {
+     // how long is the prefix, if any?
+     #[inline]
+     fn prefix_len(&self) -> usize {
+-        self.prefix.as_ref().map(Prefix::len).unwrap_or(0)
++        self.prefix.map(|v| v.as_os_str().len()).unwrap_or(0)
+     }
+ 
+     #[inline]
+     fn prefix_verbatim(&self) -> bool {
+-        self.prefix.as_ref().map(Prefix::is_verbatim).unwrap_or(false)
++        self.prefix.as_ref().map(|v| v.kind().is_verbatim()).unwrap_or(false)
+     }
+ 
+     /// how much of the prefix is left from the point of view of iteration?
+@@ -713,7 +719,7 @@ impl<'a> Components<'a> {
+             return true;
+         }
+         if let Some(p) = self.prefix {
+-            if p.has_implicit_root() {
++            if p.kind().has_implicit_root() {
+                 return true;
+             }
+         }
+@@ -894,12 +900,8 @@ impl<'a> Iterator for Components<'a> {
+                 State::Prefix if self.prefix_len() > 0 => {
+                     self.front = State::StartDir;
+                     debug_assert!(self.prefix_len() <= self.path.len());
+-                    let raw = &self.path[..self.prefix_len()];
+                     self.path = &self.path[self.prefix_len()..];
+-                    return Some(Component::Prefix(PrefixComponent {
+-                        raw: unsafe { u8_slice_as_os_str(raw) },
+-                        parsed: self.prefix.unwrap(),
+-                    }));
++                    return Some(Component::Prefix(self.prefix.unwrap()));
+                 }
+                 State::Prefix => {
+                     self.front = State::StartDir;
+@@ -911,7 +913,7 @@ impl<'a> Iterator for Components<'a> {
+                         self.path = &self.path[1..];
+                         return Some(Component::RootDir);
+                     } else if let Some(p) = self.prefix {
+-                        if p.has_implicit_root() && !p.is_verbatim() {
++                        if p.kind().has_implicit_root() && !p.kind().is_verbatim() {
+                             return Some(Component::RootDir);
+                         }
+                     } else if self.include_cur_dir() {
+@@ -958,7 +960,7 @@ impl<'a> DoubleEndedIterator for Components<'a> {
+                         self.path = &self.path[..self.path.len() - 1];
+                         return Some(Component::RootDir);
+                     } else if let Some(p) = self.prefix {
+-                        if p.has_implicit_root() && !p.is_verbatim() {
++                        if p.kind().has_implicit_root() && !p.kind().is_verbatim() {
+                             return Some(Component::RootDir);
+                         }
+                     } else if self.include_cur_dir() {
+@@ -968,10 +970,7 @@ impl<'a> DoubleEndedIterator for Components<'a> {
+                 }
+                 State::Prefix if self.prefix_len() > 0 => {
+                     self.back = State::Done;
+-                    return Some(Component::Prefix(PrefixComponent {
+-                        raw: unsafe { u8_slice_as_os_str(self.path) },
+-                        parsed: self.prefix.unwrap(),
+-                    }));
++                    return Some(Component::Prefix(self.prefix.unwrap()));
+                 }
+                 State::Prefix => {
+                     self.back = State::Done;
+@@ -1281,7 +1280,7 @@ impl PathBuf {
+ 
+         if comps.prefix_len() > 0
+             && comps.prefix_len() == comps.path.len()
+-            && comps.prefix.unwrap().is_drive()
++            && comps.prefix.unwrap().kind().is_drive()
+         {
+             need_sep = false
+         }
+@@ -2085,12 +2084,7 @@ impl Path {
+     #[must_use]
+     #[allow(deprecated)]
+     pub fn is_absolute(&self) -> bool {
+-        if cfg!(target_os = "redox") {
+-            // FIXME: Allow Redox prefixes
+-            self.has_root() || has_redox_scheme(self.as_u8_slice())
+-        } else {
+-            self.has_root() && (cfg!(any(unix, target_os = "wasi")) || self.prefix().is_some())
+-        }
++        self.has_root() && (cfg!(any(all(unix, not(target_os = "redox")), target_os = "wasi")) || self.prefix().is_some())
+     }
+ 
+     /// Returns `true` if the `Path` is relative, i.e., not absolute.
+@@ -2113,7 +2107,7 @@ impl Path {
+         !self.is_absolute()
+     }
+ 
+-    fn prefix(&self) -> Option<Prefix<'_>> {
++    fn prefix(&self) -> Option<PrefixComponent<'_>> {
+         self.components().prefix
+     }
+ 
+@@ -2543,8 +2537,7 @@ impl Path {
+         Components {
+             path: self.as_u8_slice(),
+             prefix,
+-            has_physical_root: has_physical_root(self.as_u8_slice(), prefix)
+-                || has_redox_scheme(self.as_u8_slice()),
++            has_physical_root: has_physical_root(self.as_u8_slice(), prefix.map(|v| v.parsed)),
+             front: State::Prefix,
+             back: State::Body,
+         }
+@@ -2934,7 +2927,7 @@ impl Hash for Path {
+         let (prefix_len, verbatim) = match parse_prefix(&self.inner) {
+             Some(prefix) => {
+                 prefix.hash(h);
+-                (prefix.len(), prefix.is_verbatim())
++                (prefix.parsed.len(), prefix.parsed.is_verbatim())
+             }
+             None => (0, false),
+         };
+diff --git a/library/std/src/sys/sgx/path.rs b/library/std/src/sys/sgx/path.rs
+index c805c15..ff34f5c 100644
+--- a/library/std/src/sys/sgx/path.rs
++++ b/library/std/src/sys/sgx/path.rs
+@@ -1,6 +1,6 @@
+ use crate::ffi::OsStr;
+ use crate::io;
+-use crate::path::{Path, PathBuf, Prefix};
++use crate::path::{Path, PathBuf, PrefixComponent};
+ use crate::sys::unsupported;
+ 
+ #[inline]
+@@ -13,7 +13,7 @@ pub fn is_verbatim_sep(b: u8) -> bool {
+     b == b'/'
+ }
+ 
+-pub fn parse_prefix(_: &OsStr) -> Option<Prefix<'_>> {
++pub fn parse_prefix(_: &OsStr) -> Option<PrefixComponent<'_>> {
+     None
+ }
+ 
+diff --git a/library/std/src/sys/solid/path.rs b/library/std/src/sys/solid/path.rs
+index 7045c9b..b5deb37 100644
+--- a/library/std/src/sys/solid/path.rs
++++ b/library/std/src/sys/solid/path.rs
+@@ -1,6 +1,6 @@
+ use crate::ffi::OsStr;
+ use crate::io;
+-use crate::path::{Path, PathBuf, Prefix};
++use crate::path::{Path, PathBuf, PrefixComponent};
+ use crate::sys::unsupported;
+ 
+ #[inline]
+@@ -13,7 +13,7 @@ pub fn is_verbatim_sep(b: u8) -> bool {
+     b == b'\\'
+ }
+ 
+-pub fn parse_prefix(_: &OsStr) -> Option<Prefix<'_>> {
++pub fn parse_prefix(_: &OsStr) -> Option<PrefixComponent<'_>> {
+     None
+ }
+ 
+diff --git a/library/std/src/sys/unix/path.rs b/library/std/src/sys/unix/path.rs
+index a98a69e..4484015 100644
+--- a/library/std/src/sys/unix/path.rs
++++ b/library/std/src/sys/unix/path.rs
+@@ -1,7 +1,7 @@
+ use crate::env;
+ use crate::ffi::OsStr;
+ use crate::io;
+-use crate::path::{Path, PathBuf, Prefix};
++use crate::path::{Path, PathBuf, PrefixComponent};
+ 
+ #[inline]
+ pub fn is_sep_byte(b: u8) -> bool {
+@@ -14,7 +14,7 @@ pub fn is_verbatim_sep(b: u8) -> bool {
+ }
+ 
+ #[inline]
+-pub fn parse_prefix(_: &OsStr) -> Option<Prefix<'_>> {
++pub fn parse_prefix(_: &OsStr) -> Option<PrefixComponent<'_>> {
+     None
+ }
+ 
+diff --git a/library/std/src/sys/windows/path.rs b/library/std/src/sys/windows/path.rs
+index a0f8220..445bd5b 100644
+--- a/library/std/src/sys/windows/path.rs
++++ b/library/std/src/sys/windows/path.rs
+@@ -2,7 +2,7 @@ use super::{c, fill_utf16_buf, to_u16s};
+ use crate::ffi::{OsStr, OsString};
+ use crate::io;
+ use crate::mem;
+-use crate::path::{Path, PathBuf, Prefix};
++use crate::path::{Path, PathBuf, Prefix, PrefixComponent};
+ use crate::ptr;
+ 
+ #[cfg(test)]
+@@ -105,7 +105,13 @@ impl<'a> PrefixParserSlice<'a, '_> {
+     }
+ }
+ 
+-pub fn parse_prefix(path: &OsStr) -> Option<Prefix<'_>> {
++pub fn parse_prefix(path: &OsStr) -> Option<PrefixComponent<'_>> {
++    let pathu8 = os_str_as_u8_slice(path);
++    parse_prefix_simple(path)
++        .map(|v| PrefixComponent::from_os_str_kind(u8_slice_as_os_str(&pathu8[..v.len()]), v))
++}
++
++fn parse_prefix_simple(path: &OsStr) -> Option<Prefix<'_>> {
+     use Prefix::{DeviceNS, Disk, Verbatim, VerbatimDisk, VerbatimUNC, UNC};
+ 
+     let parser = PrefixParser::<8>::new(path);
+-- 
+2.32.1 (Apple Git-133)
+

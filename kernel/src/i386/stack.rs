@@ -26,6 +26,7 @@
 //!  Since the stack is several pages long, we must ensure the stack respects some alignment
 //!  in order to be able to find its bottom from any page.
 
+use core::arch::asm;
 use core::mem::size_of;
 use crate::paging::lands::{VirtualSpaceLand, UserLand, KernelLand};
 use crate::paging::{PAGE_SIZE, process_memory::QueryMemory, MappingAccessRights, PageState, kernel_memory::get_kernel_memory};
@@ -39,8 +40,9 @@ use crate::scheduler;
 use sunrise_libutils::log2_ceil;
 
 /// The size of a kernel stack in pages, not accounting for the page guard
-// Make sure this value is the same as the one in bootstrap, or bad things happen.
-pub const STACK_SIZE: usize            = 8;
+// Make sure this value stays in sync with bootstrap::bootstrap_stack::STACK_SIZE,
+// or bad things happen.
+pub const STACK_SIZE: usize            = 4095;
 /// The size of a kernel stack in pages, with the page guard.
 pub const STACK_SIZE_WITH_GUARD: usize = STACK_SIZE + 1;
 
@@ -98,7 +100,7 @@ impl KernelStack {
     // extern "C" to make sure it is called with a sane ABI
     extern "C" fn get_current_stack_bottom() -> usize {
         let esp_ptr: usize;
-        unsafe { llvm_asm!("mov $0, esp" : "=r"(esp_ptr) ::: "intel" ) };
+        unsafe { asm!("mov {}, esp", out(reg) esp_ptr) };
         Self::align_to_stack_bottom(esp_ptr)
     }
 
@@ -153,15 +155,17 @@ impl KernelStack {
         let esp;
         let eip;
         unsafe {
-            llvm_asm!("
-                mov $0, ebp
-                mov $1, esp
+            asm!("
+                mov {}, ebp
+                mov {}, esp
 
                 // eip can only be read through the stack after a call instruction
-                call read_eip
-            read_eip:
-                pop $2"
-            : "=r"(ebp), "=r"(esp), "=r"(eip) ::: "volatile", "intel" );
+                call 1f
+            1:
+                pop {}",
+                out(reg) ebp,
+                out(reg) esp,
+                out(reg) eip);
         }
 
         let source = StackDumpSource::new(esp, ebp, eip);

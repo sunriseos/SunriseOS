@@ -489,7 +489,7 @@ impl ProcessMemory {
     ///   or overlaps an existing mapping.
     pub fn resize_heap(&mut self, new_size: usize) -> Result<VirtualAddress, KernelError> {
         #[allow(clippy::missing_docs_in_private_items)]
-        enum HeapState { NoHeap, Heap(usize) };
+        enum HeapState { NoHeap, Heap(usize) }
         UserLand::check_contains_region(self.heap_base_address, new_size)?;
         // get the previous heap size
         let previous_heap_state = {
