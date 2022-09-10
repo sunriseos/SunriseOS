@@ -2,6 +2,7 @@
 //!
 //! ![minor mistake marvin](https://raw.githubusercontent.com/sunriseos/SunriseOS/master/kernel/res/kernel_panic_doc.jpg)
 
+use core::arch::asm;
 use crate::sync;
 use crate::i386::interrupt_service_routines::UserspaceHardwareContext;
 use tinybmp::Bmp;
@@ -202,7 +203,7 @@ pub fn kernel_panic(panic_origin: &PanicOrigin) -> ! {
 
     let _ = writeln!(SerialLogger, "!!!!!!!!!!!!!!!END PANIC!!!!!!!!!!!!!!");
 
-    loop { unsafe { llvm_asm!("HLT"); } }
+    loop { unsafe { asm!("HLT"); } }
 }
 
 

@@ -56,6 +56,7 @@
 //! [`Thread`]: Thread
 //! [`thread_trampoline`]: thread_trampoline
 
+use core::arch::asm;
 use crate::types::{Thread as ThreadHandle};
 
 #[cfg(not(feature = "build-for-std-app"))]
@@ -198,7 +199,7 @@ fn get_my_tls_region() -> *mut TLS {
     unsafe {
         // get the address of the TLS region from fs:0x00 translated to the flat model
         // safe: fs:0x00 is guaranteed by the kernel to hold a valid pointer to itself.
-        llvm_asm!("mov $0, fs:0x00" : "=r" (tls) ::: "intel");
+        asm!("mov {}, fs:0x00", out(reg) tls);
     }
     tls
 }

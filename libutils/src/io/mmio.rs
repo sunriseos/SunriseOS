@@ -4,7 +4,7 @@
 //!
 //! Stolen from [Redox OS](https://gitlab.redox-os.org/redox-os/syscall/blob/master/src/io/mmio.rs).
 
-use core::ptr::{read_volatile, write_volatile};
+use core::ptr::{addr_of, addr_of_mut, read_volatile, write_volatile};
 use core::mem::MaybeUninit;
 use core::fmt::{Debug, Formatter, Error};
 
@@ -82,12 +82,12 @@ impl<T> Io for Mmio<T> where T: Copy {
 
     /// Performs a volatile read of the value.
     fn read(&self) -> T {
-        unsafe { read_volatile(self.value.as_ptr()) }
+        unsafe { read_volatile(addr_of!(self.value).cast::<T>()) }
     }
 
     /// Performs a volatile write of the value.
     fn write(&mut self, value: T) {
-        unsafe { write_volatile(self.value.as_mut_ptr(), value) };
+        unsafe { write_volatile(addr_of_mut!(self.value).cast::<T>(), value) };
     }
 }
 

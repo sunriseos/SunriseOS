@@ -1,7 +1,6 @@
 //! A messy crate with various utilities shared between the user and kernel code.
 //! Should probably be further split into several useful libraries.
 
-#![feature(llvm_asm)]
 #![no_std]
 
 // rustc warnings
@@ -14,7 +13,7 @@
 
 // rustdoc warnings
 #![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
-#![deny(intra_doc_link_resolution_failure)]
+#![deny(rustdoc::broken_intra_doc_links)]
 
 
 
@@ -315,10 +314,10 @@ macro_rules! initialize_to_zero {
     ($ty:ty) => {{
         #[doc(hidden)]
         union ZeroedTypeUnion {
-            data: $ty,
+            data: core::mem::ManuallyDrop<$ty>,
             arr: [u8; core::mem::size_of::<$ty>()]
         }
 
-        ZeroedTypeUnion { arr: [0; core::mem::size_of::<$ty>()] }.data
+        core::mem::ManuallyDrop::into_inner(ZeroedTypeUnion { arr: [0; core::mem::size_of::<$ty>()] }.data)
     }}
 }

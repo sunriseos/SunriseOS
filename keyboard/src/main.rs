@@ -2,7 +2,6 @@
 //!
 //! This service takes care of anything related to keyboard inputs.
 
-#![feature(untagged_unions)]
 #![no_std]
 
 // rustc warnings
@@ -15,7 +14,7 @@
 
 // rustdoc warnings
 #![warn(missing_docs)] // hopefully this will soon become deny(missing_docs)
-#![deny(intra_doc_link_resolution_failure)]
+#![deny(rustdoc::broken_intra_doc_links)]
 
 #[macro_use]
 extern crate sunrise_libuser;

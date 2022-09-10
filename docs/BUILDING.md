@@ -45,7 +45,7 @@ printed on stdout.
 
 ## Versions
 
-- rust: `nightly-2020-05-27`
+- rust: `nightly-2022-08-19`
   - clippy
   - rust-src
 - cargo-make: `0.31.0`

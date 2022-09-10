@@ -5,6 +5,8 @@
 //!
 //! [Serial ATA AHCI: Specification, Rev. 1.3.1]: http://www.intel.com/content/dam/www/public/us/en/documents/technical-specifications/serial-ata-ahci-spec-rev1-3-1.pdf
 
+use core::mem::ManuallyDrop;
+
 use sunrise_libuser::io::{Io, Mmio};
 use sunrise_libuser::syscalls::{sleep_thread, query_physical_address};
 use sunrise_libuser::mem::{map_mmio, virt_to_phys};
@@ -1079,8 +1081,8 @@ unsafe impl ZeroInitialized for CmdTable {}
 #[allow(clippy::missing_docs_in_private_items)]
 #[repr(C)]
 union Cfis {
-    raw_bytes: [Mmio<u8>; 64],
-    h2d: FisRegH2D,
+    raw_bytes: ManuallyDrop<[Mmio<u8>; 64]>,
+    h2d: ManuallyDrop<FisRegH2D>,
     // ...
 }
 

@@ -29,6 +29,8 @@ pub mod instructions {
     pub mod tables {
         //! Instructions for loading descriptor tables (GDT, IDT, etc.).
 
+        use core::arch::asm;
+
         use crate::i386::structures::gdt::SegmentSelector;
 
         /// A struct describing a pointer to a descriptor table (GDT / IDT).
@@ -50,7 +52,7 @@ pub mod instructions {
         /// in physical memory to a correct GDT. The meaning of a "correct GDT"
         /// is left as an exercise to the reader.
         pub unsafe fn lgdt(gdt: DescriptorTablePointer) {
-            llvm_asm!("lgdt ($0)" :: "r" (&gdt) : "memory" : "volatile");
+            asm!("lgdt [{}]", in(reg) &gdt);
         }
 
         /// Store GDT table.
@@ -62,7 +64,7 @@ pub mod instructions {
                 };
                 // This *requires* the =*m bound. For whatever reason, using =r causes UB, the
                 // compiler starts wildly reordering SGDTs and LGDTs, even with volatile.
-                llvm_asm!("sgdt $0" : "=*m"(&mut out) :: "memory" : "volatile");
+                asm!("sgdt [{}]", in(reg) &mut out);
                 out
             }
         }
@@ -75,7 +77,7 @@ pub mod instructions {
         /// The ldt must point to a valid LDT segment in the GDT. Note that
         /// modifying the current LDT might cause pointer invalidation.
         pub unsafe fn lldt(ldt: SegmentSelector) {
-            llvm_asm!("lldt $0" :: "r" (ldt.0) : "memory");
+            asm!("lldt {:x}", in(reg) ldt.0);
         }
 
         // TODO: Goes somewhere else.
@@ -85,7 +87,7 @@ pub mod instructions {
         ///
         /// segment must point to a valid TSS segment in the GDT.
         pub unsafe fn ltr(segment: SegmentSelector) {
-            llvm_asm!("ltr $0" :: "r"(segment.0));
+            asm!("ltr {:x}", in(reg) segment.0);
         }
 
         /// Load IDT table.
@@ -96,12 +98,14 @@ pub mod instructions {
         /// in physical memory to a correct IDT. The meaning of a "correct IDT"
         /// is left as an exercise to the reader.
         pub unsafe fn lidt(idt: DescriptorTablePointer) {
-            llvm_asm!("lidt ($0)" :: "r" (&idt) : "memory");
+            asm!("lidt [{}]", in(reg) &idt);
         }
     }
 
     pub mod segmentation {
         //! Provides functions to read and write segment registers.
+
+        use core::arch::asm;
 
         use crate::i386::structures::gdt::SegmentSelector;
 
@@ -118,10 +122,11 @@ pub mod instructions {
         /// only sound way to use this function is if the target segment has the
         /// same layout as the original segment.
         pub unsafe fn set_cs(sel: SegmentSelector) {
-            llvm_asm!("pushl $0; \
-                  pushl $$1f; \
-                  lretl; \
-                  1:" :: "ri" (u64::from(sel.0)) : "rax" "memory");
+            asm!("pushl {}
+                  pushl $1f
+                  lretl
+                  1:",
+                  in(reg) u32::from(sel.0), options(att_syntax));
         }
 
         /// Reload stack segment register.
@@ -133,7 +138,7 @@ pub mod instructions {
         /// only sound way to use this function is if the target segment has the
         /// same layout as the original segment.
         pub unsafe fn load_ss(sel: SegmentSelector) {
-            llvm_asm!("movw $0, %ss " :: "r" (sel.0) : "memory");
+            asm!("movw {:x}, %ss", in(reg) sel.0, options(att_syntax));
         }
 
         /// Reload data segment register.
@@ -145,7 +150,7 @@ pub mod instructions {
         /// only sound way to use this function is if the target segment has the
         /// same layout as the original segment.
         pub unsafe fn load_ds(sel: SegmentSelector) {
-            llvm_asm!("movw $0, %ds " :: "r" (sel.0) : "memory");
+            asm!("movw {:x}, %ds", in(reg) sel.0, options(att_syntax));
         }
 
         /// Reload es segment register.
@@ -157,7 +162,7 @@ pub mod instructions {
         /// only sound way to use this function is if the target segment has the
         /// same layout as the original segment.
         pub unsafe fn load_es(sel: SegmentSelector) {
-            llvm_asm!("movw $0, %es " :: "r" (sel.0) : "memory");
+            asm!("movw {:x}, %es", in(reg) sel.0, options(att_syntax));
         }
 
         /// Reload fs segment register.
@@ -169,7 +174,7 @@ pub mod instructions {
         /// only sound way to use this function is if the target segment has the
         /// same layout as the original segment.
         pub unsafe fn load_fs(sel: SegmentSelector) {
-            llvm_asm!("movw $0, %fs " :: "r" (sel.0) : "memory");
+            asm!("movw {:x}, %fs", in(reg) sel.0, options(att_syntax));
         }
 
         /// Reload gs segment register.
@@ -181,53 +186,55 @@ pub mod instructions {
         /// only sound way to use this function is if the target segment has the
         /// same layout as the original segment.
         pub unsafe fn load_gs(sel: SegmentSelector) {
-            llvm_asm!("movw $0, %gs " :: "r" (sel.0) : "memory");
+            asm!("movw {:x}, %gs", in(reg) sel.0, options(att_syntax));
         }
 
         /// Returns the current value of the code segment register.
         pub fn cs() -> SegmentSelector {
             let segment: u16;
-            unsafe { llvm_asm!("mov %cs, $0" : "=r" (segment) ) };
+            unsafe { asm!("mov %cs, {:x}", out(reg) segment, options(att_syntax)) };
             SegmentSelector(segment)
         }
 
         /// Read the value of the stack segment register.
         pub fn ss() -> SegmentSelector {
             let segment: u16;
-            unsafe { llvm_asm!("mov %ss, $0" : "=r" (segment) ) };
+            unsafe { asm!("mov %ss, {:x}", out(reg) segment, options(att_syntax)) };
             SegmentSelector(segment)
         }
 
         /// Read the value of the data segment register.
         pub fn ds() -> SegmentSelector {
             let segment: u16;
-            unsafe { llvm_asm!("mov %ds, $0" : "=r" (segment) ) };
+            unsafe { asm!("mov %ds, {:x}", out(reg) segment, options(att_syntax)) };
             SegmentSelector(segment)
         }
 
         /// Read the value of the es segment register.
         pub fn es() -> SegmentSelector {
             let segment: u16;
-            unsafe { llvm_asm!("mov %es, $0" : "=r" (segment) ) };
+            unsafe { asm!("mov %es, {:x}", out(reg) segment, options(att_syntax)) };
             SegmentSelector(segment)
         }
 
         /// Read the value of the fs segment register.
         pub fn fs() -> SegmentSelector {
             let segment: u16;
-            unsafe { llvm_asm!("mov %fs, $0" : "=r" (segment) ) };
+            unsafe { asm!("mov %fs, {:x}", out(reg) segment, options(att_syntax)) };
             SegmentSelector(segment)
         }
 
         /// Read the value of the gs segment register.
         pub fn gs() -> SegmentSelector {
             let segment: u16;
-            unsafe { llvm_asm!("mov %gs, $0" : "=r" (segment) ) };
+            unsafe { asm!("mov %gs, {:x}", out(reg) segment, options(att_syntax)) };
             SegmentSelector(segment)
         }
     }
     pub mod interrupts {
         //! Interrupt disabling functionality.
+
+        use core::arch::asm;
 
         /// Enable interrupts
         ///
@@ -236,7 +243,7 @@ pub mod instructions {
         /// Enabling interrupts when they are disabled can break critical
         /// sections based on [SpinLockIRQ](crate::sync::SpinLockIRQ).
         pub unsafe fn sti() {
-            llvm_asm!("sti" :::: "volatile");
+            asm!("sti");
         }
 
         /// Disable interrupts
@@ -247,7 +254,7 @@ pub mod instructions {
         /// disabled, care should be taken not to sleep in any way, as this will
         /// cause a deadlock.
         pub unsafe fn cli() {
-            llvm_asm!("cli" :::: "volatile");
+            asm!("cli");
         }
 
         /// Waits until an interrupt is fired
@@ -256,7 +263,7 @@ pub mod instructions {
                 // Safety: HLT won't cause undefined behavior. Calling it might
                 // cause a deadlock if interrupts are disabled, but that's not a
                 // safety concern.
-                llvm_asm!("hlt" :::: "volatile");
+                asm!("hlt");
             }
         }
 

@@ -522,7 +522,7 @@ pub trait TableHierarchy {
             return None
         }
 
-        struct Hole { start_addr: usize, len: usize };
+        struct Hole { start_addr: usize, len: usize }
 
         let mut hole; // the hole we are currently considering
 

@@ -39,7 +39,7 @@
 //! simultaneously. Unfortunately we can't take advantage of that until we manage to
 //! make command-completion interrupts work.
 
-#![feature(box_syntax, untagged_unions)]
+#![feature(box_syntax)]
 #![no_std]
 
 // rustc warnings
@@ -53,7 +53,7 @@
 // rustdoc warnings
 #![deny(missing_docs)]
 #![deny(clippy::missing_docs_in_private_items)]
-#![deny(intra_doc_link_resolution_failure)]
+#![deny(rustdoc::broken_intra_doc_links)]
 
 #[macro_use]
 extern crate alloc;

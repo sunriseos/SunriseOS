@@ -202,13 +202,13 @@ impl VirtualAddress {
     pub fn ceil(self) -> VirtualAddress { VirtualAddress(round_to_page_upper(self.0)) }
 }
 
-unsafe impl core::iter::Step for PhysicalAddress {
+impl core::iter::Step for PhysicalAddress {
     fn steps_between(start: &Self, end: &Self) -> Option<usize> { Step::steps_between(&start.0, &end.0) }
     fn forward_checked(start: Self, count: usize) -> Option<Self> { Step::forward_checked(start.0, count).map(PhysicalAddress) }
     fn backward_checked(start: Self, count: usize) -> Option<Self> { Step::backward_checked(start.0, count).map(PhysicalAddress) }
 }
 
-unsafe impl core::iter::Step for VirtualAddress {
+impl core::iter::Step for VirtualAddress {
     fn steps_between(start: &Self, end: &Self) -> Option<usize> { Step::steps_between(&start.0, &end.0) }
     fn forward_checked(start: Self, count: usize) -> Option<Self> { Step::forward_checked(start.0, count).map(VirtualAddress) }
     fn backward_checked(start: Self, count: usize) -> Option<Self> { Step::backward_checked(start.0, count).map(VirtualAddress) }

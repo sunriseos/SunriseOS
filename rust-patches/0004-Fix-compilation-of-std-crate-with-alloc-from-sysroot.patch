@@ -1,0 +1,113 @@
+From 55be86b3bde99141df9720f67cd2e30c251a00e3 Mon Sep 17 00:00:00 2001
+From: roblabla <unfiltered@roblab.la>
+Date: Mon, 22 Aug 2022 18:21:33 +0200
+Subject: [PATCH 4/7] Fix compilation of std crate with alloc from sysroot
+
+---
+ library/std/src/error.rs                  | 12 ++++++------
+ library/std/src/ffi/mod.rs                |  2 +-
+ library/std/src/ffi/os_str.rs             |  2 +-
+ library/std/src/io/error/repr_unpacked.rs |  2 +-
+ library/std/src/lib.rs                    |  2 +-
+ 5 files changed, 10 insertions(+), 10 deletions(-)
+
+diff --git a/library/std/src/error.rs b/library/std/src/error.rs
+index df7a49d..b64ff34 100644
+--- a/library/std/src/error.rs
++++ b/library/std/src/error.rs
+@@ -810,13 +810,13 @@ impl Error for char::ParseCharError {
+ }
+ 
+ #[stable(feature = "try_reserve", since = "1.57.0")]
+-impl Error for alloc::collections::TryReserveError {}
++impl Error for alloc_crate::collections::TryReserveError {}
+ 
+ #[unstable(feature = "duration_checked_float", issue = "83400")]
+ impl Error for time::FromFloatSecsError {}
+ 
+ #[stable(feature = "rust1", since = "1.0.0")]
+-impl Error for alloc::ffi::NulError {
++impl Error for alloc_crate::ffi::NulError {
+     #[allow(deprecated)]
+     fn description(&self) -> &str {
+         "nul byte found in data"
+@@ -824,9 +824,9 @@ impl Error for alloc::ffi::NulError {
+ }
+ 
+ #[stable(feature = "rust1", since = "1.0.0")]
+-impl From<alloc::ffi::NulError> for io::Error {
++impl From<alloc_crate::ffi::NulError> for io::Error {
+     /// Converts a [`alloc::ffi::NulError`] into a [`io::Error`].
+-    fn from(_: alloc::ffi::NulError) -> io::Error {
++    fn from(_: alloc_crate::ffi::NulError) -> io::Error {
+         io::const_io_error!(io::ErrorKind::InvalidInput, "data provided contains a nul byte")
+     }
+ }
+@@ -843,10 +843,10 @@ impl Error for core::ffi::FromBytesWithNulError {
+ impl Error for core::ffi::FromBytesUntilNulError {}
+ 
+ #[stable(feature = "cstring_from_vec_with_nul", since = "1.58.0")]
+-impl Error for alloc::ffi::FromVecWithNulError {}
++impl Error for alloc_crate::ffi::FromVecWithNulError {}
+ 
+ #[stable(feature = "cstring_into", since = "1.7.0")]
+-impl Error for alloc::ffi::IntoStringError {
++impl Error for alloc_crate::ffi::IntoStringError {
+     #[allow(deprecated)]
+     fn description(&self) -> &str {
+         "C string contained non-utf8 bytes"
+diff --git a/library/std/src/ffi/mod.rs b/library/std/src/ffi/mod.rs
+index d987bf6..6b661db 100644
+--- a/library/std/src/ffi/mod.rs
++++ b/library/std/src/ffi/mod.rs
+@@ -147,7 +147,7 @@
+ #![stable(feature = "rust1", since = "1.0.0")]
+ 
+ #[stable(feature = "alloc_c_string", since = "1.64.0")]
+-pub use alloc::ffi::{CString, FromVecWithNulError, IntoStringError, NulError};
++pub use alloc_crate::ffi::{CString, FromVecWithNulError, IntoStringError, NulError};
+ #[stable(feature = "core_c_str", since = "1.64.0")]
+ pub use core::ffi::{CStr, FromBytesWithNulError};
+ 
+diff --git a/library/std/src/ffi/os_str.rs b/library/std/src/ffi/os_str.rs
+index a0a5c00..0d1ec29 100644
+--- a/library/std/src/ffi/os_str.rs
++++ b/library/std/src/ffi/os_str.rs
+@@ -1261,7 +1261,7 @@ impl OsStr {
+ }
+ 
+ #[unstable(feature = "slice_concat_ext", issue = "27747")]
+-impl<S: Borrow<OsStr>> alloc::slice::Join<&OsStr> for [S] {
++impl<S: Borrow<OsStr>> alloc_crate::slice::Join<&OsStr> for [S] {
+     type Output = OsString;
+ 
+     fn join(slice: &Self, sep: &OsStr) -> OsString {
+diff --git a/library/std/src/io/error/repr_unpacked.rs b/library/std/src/io/error/repr_unpacked.rs
+index d6ad55b..d6dad3b 100644
+--- a/library/std/src/io/error/repr_unpacked.rs
++++ b/library/std/src/io/error/repr_unpacked.rs
+@@ -3,7 +3,7 @@
+ //! would have no benefit.
+ 
+ use super::{Custom, ErrorData, ErrorKind, SimpleMessage};
+-use alloc::boxed::Box;
++use alloc_crate::boxed::Box;
+ 
+ type Inner = ErrorData<Box<Custom>>;
+ 
+diff --git a/library/std/src/lib.rs b/library/std/src/lib.rs
+index a8d6645..18cb1d4 100644
+--- a/library/std/src/lib.rs
++++ b/library/std/src/lib.rs
+@@ -541,7 +541,7 @@ pub mod task {
+ 
+     #[doc(inline)]
+     #[stable(feature = "wake_trait", since = "1.51.0")]
+-    pub use alloc::task::*;
++    pub use alloc_crate::task::*;
+ }
+ 
+ #[doc = include_str!("../../stdarch/crates/core_arch/src/core_arch_docs.md")]
+-- 
+2.32.1 (Apple Git-133)
+

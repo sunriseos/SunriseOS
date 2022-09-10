@@ -6,7 +6,7 @@ default_to_workspace = false
 [env]
 CARGO_MAKE_CRATE_INSTALLATION_LOCKED = "true"
 RUST_TARGET_PATH = "${CARGO_MAKE_WORKING_DIRECTORY}"
-XARGO_RUST_SRC = "${CARGO_MAKE_WORKING_DIRECTORY}/rust/src"
+XARGO_RUST_SRC = "${CARGO_MAKE_WORKING_DIRECTORY}/rust/library"
 GDB_PORT = { script = ["echo ${GDB_PORT:-9090}"] }
 VNC_PORT = { script = ["echo ${VNC_PORT:-:0}"] }
 CLIPPY_RULES = """
@@ -75,7 +75,7 @@ install_crate = { crate_name = "mkisofs-rs", binary = "mkisofs-rs", test_arg = "
 
 [tasks.install-xargo]
 dependencies = ["install-rust-src"]
-install_crate = { crate_name = "xargo", binary = "xargo", test_arg = "--version", min_version = "0.3.18" }
+install_crate = { crate_name = "xargo", binary = "xargo", test_arg = "--version", min_version = "0.3.26" }
 
 [tasks.bootstrap]
 description = "Compiles the i386 bootstrap"

@@ -20,14 +20,14 @@ pub struct Allocator(Mutex<Heap>);
 impl Allocator {
     /// Safely expands the heap if possible.
     fn expand(heap: &mut MutexGuard<'_, Heap>, by: usize) -> Result<(), KernelError> {
-        let total = heap.size() + align_up(by, 0x200_000); // set_heap_size requires this alignment.
+        let total = heap.size() + align_up(by as *mut u8, 0x200_000) as usize; // set_heap_size requires this alignment.
 
-        let heap_bottom = unsafe { set_heap_size(total)? };
+        let heap_bottom = unsafe { set_heap_size(total)? as *mut u8 };
 
-        if heap.bottom() == 0 {
+        if heap.bottom() as usize == 0 {
             unsafe { **heap = Heap::new(heap_bottom, total) };
         } else {
-            unsafe { heap.extend(align_up(by, 0x200_000)) };
+            unsafe { heap.extend(align_up(by as *mut u8, 0x200_000) as usize) };
         }
         Ok(())
     }

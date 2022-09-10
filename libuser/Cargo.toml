@@ -6,7 +6,7 @@ license = "Apache-2.0 OR MIT"
 edition = "2018"
 
 [dependencies]
-linked_list_allocator = "0.8.4"
+linked_list_allocator = { version = "0.10.1", default-features = false, features = ["use_spin", "const_mut_refs"] }
 bitfield = "0.13"
 bit_field = "0.10"
 spin = "0.5"

@@ -1,5 +1,6 @@
 //! Test function ensuring pagefaults kills only the current process.
 
+use core::arch::asm;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -14,9 +15,9 @@ pub fn main(_stdin: IPipeProxy, _stdout: IPipeProxy, _stderr: IPipeProxy, _args:
     // dereference the null pointer.
     // doing this in rust is so UB, it's optimized out, so we do it in asm.
     unsafe {
-        llvm_asm!("
+        asm!("
         mov al, [0]
-        " ::: "eax" : "volatile", "intel")
+        ", out("eax") _)
     }
     Ok(())
 }

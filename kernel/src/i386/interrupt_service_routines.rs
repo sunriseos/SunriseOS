@@ -27,6 +27,8 @@
 //!
 //! [syscall_interrupt_dispatcher]: syscall_interrupt_dispatcher
 
+use core::arch::asm;
+
 use crate::i386::structures::idt::{PageFaultErrorCode, Idt};
 use crate::i386::instructions::interrupts::sti;
 use crate::mem::VirtualAddress;
@@ -274,7 +276,7 @@ macro_rules! trap_gate_asm {
         mov gs, ax
 
         // Call some rust code, passing it a pointer to the UserspaceHardwareContext
-        call ${0:P}
+        call {}
 
         // Handler finished, restore registers.
         add esp, 0x8 // pop and ignore the pushed arg ptr and esp cpy
@@ -518,8 +520,8 @@ macro_rules! generate_trap_gate_handler {
         #[naked]
         extern "C" fn $wrapper_asm_fnname() {
             unsafe {
-                llvm_asm!(trap_gate_asm!(has_errorcode: $errcode)
-                :: "s"($wrapper_rust_fnname as extern "C" fn (&mut UserspaceHardwareContext)) : "memory" : "volatile", "intel");
+                asm!(trap_gate_asm!(has_errorcode: $errcode),
+                sym $wrapper_rust_fnname, options(noreturn));
             }
         }
     };

@@ -3,6 +3,8 @@
 mod entry;
 mod table;
 
+use core::arch::asm;
+
 use multiboot2::{BootInformation, ElfSectionFlags};
 use crate::address::{PhysicalAddress, VirtualAddress};
 use crate::frame_alloc::{round_to_page, round_to_page_upper};
@@ -31,51 +33,43 @@ fn is_paging_on() -> bool {
     let cr0: usize;
     unsafe {
         // Safety: this is just getting the CR0 register
-        llvm_asm!("mov $0, cr0" : "=r"(cr0) ::: "intel" );
+        asm!("mov {}, cr0", out(reg) cr0);
     }
     cr0 & 0x80000001 == 0x80000001 // PE | PG
 }
 
 unsafe fn enable_paging(page_directory_address: PhysicalAddress) {
     #[cfg(not(test))]
-    llvm_asm!("mov eax, $0
+    asm!("mov eax, {}
           mov cr3, eax
 
           mov eax, cr0
           or eax, 0x80010001
-          mov cr0, eax          "
-
-            :
-            : "r" (page_directory_address.addr())
-            : "eax", "memory"
-            : "intel", "volatile");
+          mov cr0, eax",
+          in(reg) page_directory_address.addr(),
+          out("eax") _);
 }
 
 /// Flush the Translation Lookaside Buffer [https://wiki.osdev.org/TLB]
 fn flush_tlb() {
     #[cfg(not(test))]
     unsafe {
-        llvm_asm!("mov eax, cr3
-          mov cr3, eax  "
-          :
-          :
-          : "eax"
-          : "intel", "volatile");
+        asm!("mov eax, cr3
+          mov cr3, eax",
+          out("eax") _);
     }
 }
 
 /// Changes the content of the cr3 register, and returns the value before the change was made
 fn swap_cr3(page_directory_address: PhysicalAddress) -> PhysicalAddress {
-    let old_value: PhysicalAddress;
+    let old_value: usize;
     unsafe {
-        llvm_asm!("mov $0, cr3
-              mov cr3, $1"
-              : "=&r"(old_value)
-              : "r"(page_directory_address)
-              : "memory"
-              : "intel", "volatile");
+        asm!("mov {}, cr3
+              mov cr3, {}",
+              out(reg) old_value,
+              in(reg) page_directory_address.0);
     }
-    old_value
+    PhysicalAddress(old_value)
 }
 
 /// Creates a set of page tables identity mapping the Bootstrap.
