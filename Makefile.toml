@@ -168,7 +168,6 @@ command = "xargo"
 args = ["build", "--target=i386-unknown-sunrise-user", "--package=uutils", "-Z", "package-features", "--features=sunrise", "--no-default-features", "@@split(COMPILER_FLAGS, )"]
 
 [tasks.userspace-nostd]
-internal = true
 command = "xargo"
 args = ["build", "--target=i386-unknown-sunrise-user", "@@split(COMPILER_FLAGS, )",
     "-p", "sunrise-shell", "-p", "sunrise-wall-clock", "-p", "sunrise-sm",
@@ -376,9 +375,11 @@ script_runner = "@duckscript"
 script = [
 '''
 version = readfile rust-toolchain
+version = trim ${version}
 date = split ${version} "-"
 array_remove ${date} 0
 date = array_join ${date} "-"
+date = trim ${date}
 datetime = concat ${date} " 12:00:00 +0000"
 
 function apply_patches
@@ -386,7 +387,7 @@ function apply_patches
     patches = array_join ${patches} " "
     set_env GIT_COMMITTER_NAME patchsystem
     set_env GIT_COMMITTER_EMAIL patchsystem
-    exec git am --committer-date-is-author-date %{patches}
+    exec --fail-on-error git am --committer-date-is-author-date %{patches}
 end
 
 # If rust folder doesn't exist, create it, and import the rust source.
@@ -396,8 +397,8 @@ if not is_path_exists ${CARGO_MAKE_WORKING_DIRECTORY}/rust
     sysroot = concat ${output.stdout} /lib/rustlib/src/rust/
     cp ${sysroot} ${CARGO_MAKE_WORKING_DIRECTORY}
     cd ${CARGO_MAKE_WORKING_DIRECTORY}/rust/
-    exec git init
-    exec git add .
+    exec --fail-on-error git init
+    exec --fail-on-error git add .
     set_env GIT_COMMITTER_NAME patchsystem
     set_env GIT_COMMITTER_EMAIL patchsystem
     set_env GIT_COMMITTER_DATE ${datetime}
@@ -405,7 +406,7 @@ if not is_path_exists ${CARGO_MAKE_WORKING_DIRECTORY}/rust
     set_env GIT_AUTHOR_EMAIL patchsystem
     set_env GIT_AUTHOR_DATE ${datetime}
     echo "Importing rust-src"
-    exec git commit -m ${version} -q
+    exec --fail-on-error git commit -m ${version} -q
     unset_env GIT_AUTHOR_DATE
     unset_env GIT_AUTHOR_EMAIL
     unset_env GIT_AUTHOR_NAME
@@ -421,32 +422,32 @@ cd ${CARGO_MAKE_WORKING_DIRECTORY}/rust/
 
 # Check the original commit matches the current rust version. If it doesn't,
 # bail out, tell user they need to update their patches.
-head_rev = exec git rev-list --max-parents=0 HEAD
+head_rev = exec --fail-on-error git rev-list --max-parents=0 HEAD
 head_rev = trim ${head_rev.stdout}
-message = exec git log --format=%B -n 1 ${head_rev}
+message = exec --fail-on-error git log --format=%B -n 1 ${head_rev}
 message = trim ${message.stdout}
-assert_eq ${message} ${version} "\nRust version doesn't match rust-toolchain. The patches will need to be updated. See docs/UPDATE_RUST.md for more information."
+assert_eq ${message} ${version} "\nRust version ${message} doesn't match rust-toolchain ${version}. The patches will need to be updated. See docs/UPDATE_RUST.md for more information."
 
 # Check if there's any uncommitted changes. If there are, bail out, tell
 # user.
-exec git update-index --refresh
-status = exec git status --porcelain -z
+exec --fail-on-error git update-index --refresh
+status = exec --fail-on-error git status --porcelain -z
 status = trim ${status.stdout}
 status_empty = is_empty ${status}
 assert ${status_empty} "\nUncommited changes were found in the rust folder.\nEither commit them and create a patch, or set the USE_DIRTY_RUST_REPO environment variable."
 
 # Check if there's any commits that got changed. If there are, tell the user
 # to create patches.
-output = exec git log --committer=^(?!patchsystem).*$ --perl-regexp --format=oneline
+output = exec --fail-on-error git log --committer=^(?!patchsystem).*$ --perl-regexp --format=oneline
 output = trim ${output.stdout}
 output_empty = is_empty ${output}
 assert ${output_empty} "\nRust repo has commits that weren't properly added to the patch system.\nEither run create-patches, or set the USE_DIRTY_RUST_REPO environment variable."
 
 # Every commit belongs to the patchsystem, re-applying the patches is safe.
 # Reset to initial commit (which imports the rust tree)
-head = exec git rev-list --max-parents=0 HEAD
+head = exec --fail-on-error git rev-list --max-parents=0 HEAD
 head = trim ${head.stdout}
-exec git reset --hard ${head}
+exec --fail-on-error git reset --hard ${head}
 # Apply all patches.
 apply_patches
 ''']
@@ -457,17 +458,17 @@ script = [
 '''
 cd rust
 # Get initial commit (which imports the rust tree)
-head = exec git rev-list --max-parents=0 HEAD
+head = exec --fail-on-error git rev-list --max-parents=0 HEAD
 head = trim ${head.stdout}
 
 # Change committer for the previous patches so they show up as being committed
 # by patchsystem.
 set_env FILTER_BRANCH_SQUELCH_WARNING 1
-exec git update-ref -d refs/original/refs/heads/master
-exec git filter-branch --env-filter "export GIT_COMMITTER_NAME=patchsystem; export GIT_COMMITTER_EMAIL=patchsystem" -- ${head}..
+exec --fail-on-error git update-ref -d refs/original/refs/heads/master
+exec --fail-on-error git filter-branch --env-filter "export GIT_COMMITTER_NAME=patchsystem; export GIT_COMMITTER_EMAIL=patchsystem" -- ${head}..
 
 # Create patch for every commit after initial commit.
-exec git format-patch -o ../rust-patches ${head}..
+exec --fail-on-error git format-patch -o ../rust-patches ${head}..
 ''']
 
 [tasks.clippy]
