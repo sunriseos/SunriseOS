@@ -32,7 +32,7 @@ QEMU_COMMON_FLAGS = """\
     -vnc ${VNC_PORT} \
     -no-reboot \
     -drive id=diskA,file=DISK.img,format=raw,if=none -device ahci,id=ahci \
-    -device ide-drive,drive=diskA,bus=ahci.0 \
+    -device ide-hd,drive=diskA,bus=ahci.0 \
     -machine q35 \
     -m 512M"""
 
