@@ -29,14 +29,14 @@ static ACPI_INFO: Once<Acpi> = Once::new();
 ///
 /// # Panics
 ///
-/// Panics if the module hasn't been inited yet or if ACPI isn't availaible.
+/// Panics if the module hasn't been inited yet or if ACPI isn't available.
 pub fn get_acpi_information() -> &'static Acpi {
-    ACPI_INFO.r#try().expect("Acpi is not availaible")
+    ACPI_INFO.r#try().expect("Acpi is not available")
 }
 
 /// Tries to get a pointer to the acpi information structure.
 ///
-/// Returns `None` if the module hasn't been inited yet or if ACPI isn't availaible.
+/// Returns `None` if the module hasn't been inited yet or if ACPI isn't available.
 pub fn try_get_acpi_information() -> Option<&'static Acpi> {
     ACPI_INFO.r#try()
 }

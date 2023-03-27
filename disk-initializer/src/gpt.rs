@@ -460,7 +460,7 @@ impl<'a, E: Debug> PartitionManager<'a, E> {
         // some name
         main_partition.set_name("SunriseOS System");
 
-        // Set the start of the partition at the first LBA availaible.
+        // Set the start of the partition at the first LBA available.
         main_partition.first_lba = 34;
 
         // Set the last LBA just before the backup GPT

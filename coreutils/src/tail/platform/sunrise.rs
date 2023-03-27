@@ -11,7 +11,7 @@ impl ProcessChecker {
 
     // Borrowing mutably to be aligned with Windows implementation
     pub fn is_dead(&mut self) -> bool {
-        // not availaible on Sunrise
+        // not available on Sunrise
         true
     }
 }

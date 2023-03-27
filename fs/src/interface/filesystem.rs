@@ -111,7 +111,7 @@ pub trait FileSystemOperations : core::fmt::Debug + Sync + Send {
         filter: DirFilterFlags,
     ) -> LibUserResult<Box<dyn DirectoryOperations>>;
 
-    /// Get the total availaible space on the given filesystem.
+    /// Get the total available space on the given filesystem.
     fn get_free_space_size(&self, path: &str) -> LibUserResult<u64>;
 
     /// Get the total size of the filesystem.

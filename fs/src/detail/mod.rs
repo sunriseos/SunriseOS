@@ -137,7 +137,7 @@ impl<'a> PartitionManager<'a> {
         // some name
         main_partition.set_name("SunriseOS System");
 
-        // Set the start of the partition at the first LBA availaible.
+        // Set the start of the partition at the first LBA available.
         main_partition.first_lba = 34;
 
         // Set the last LBA just before the backup GPT
@@ -293,7 +293,7 @@ impl FileSystemProxy {
         DRIVER_MANAGER.lock().open_disk_storage(disk_id)
     }
 
-    /// Get the count of disks availaible.
+    /// Get the count of disks available.
     pub fn get_disks_count(&mut self) -> LibUserResult<u32> {
         Ok(DRIVER_MANAGER.lock().get_disks_count())
     }

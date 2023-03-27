@@ -402,7 +402,7 @@ impl PS2 {
         }
     }
 
-    /// Return a representation of a single key press if any updates is availaible.
+    /// Return a representation of a single key press if any updates is available.
     ///
     /// Key presses are bufferized: if nobody is calling read_key when the user
     /// presses a key, it will be kept in a buffer until read_key is called.
@@ -527,7 +527,7 @@ pub fn has_read_key_event() -> bool {
     PRIMARY_PS2.has_read_key_event()
 }
 
-/// Return a representation of a single key press if any updates is availaible.
+/// Return a representation of a single key press if any updates is available.
 pub fn try_read_keyboard_state() -> Option<HidKeyboardState> {
     PRIMARY_PS2.try_read_keyboard_state()
 }
